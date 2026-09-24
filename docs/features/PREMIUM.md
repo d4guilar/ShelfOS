@@ -62,11 +62,15 @@ Free should include:
 - advanced stylus tools
 - advanced PDF reconstruction
 - enhanced statistics
-- smart collections
+- smart shelves
 - advanced metadata management
 - enhanced comic/manga tools
 
 Theme purchases/unlocks must never be required for core reading.
+
+Smart Shelves and advanced PDF entries are candidates, not finalized entitlement
+policy. Their accepted behavior and sequencing live in [Shelves](SHELVES.md) and
+[PDF ingestion](PDF_INGESTION.md); this list does not move them into an early phase.
 
 ## Entitlement
 

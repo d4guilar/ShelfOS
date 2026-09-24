@@ -3,7 +3,7 @@ package com.d4guilar.shelfos.core.input
 
 import android.view.KeyEvent
 
-fun KeyEvent.shelfCommand(context: InputContext): ShelfCommand? {
+fun KeyEvent.shelfCommand(context: InputContext, rightToLeft: Boolean = false): ShelfCommand? {
     val key = when (keyCode) {
         KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> InputKey.ENTER
         KeyEvent.KEYCODE_DPAD_CENTER -> InputKey.CENTER
@@ -25,5 +25,5 @@ fun KeyEvent.shelfCommand(context: InputContext): ShelfCommand? {
         KeyEvent.KEYCODE_BUTTON_R1 -> InputKey.R1
         else -> InputKey.OTHER
     }
-    return InputMapper.command(KeyStroke(key, isCtrlPressed, isShiftPressed, isAltPressed), context)
+    return InputMapper.command(KeyStroke(key, isCtrlPressed, isShiftPressed, isAltPressed), context, rightToLeft)
 }

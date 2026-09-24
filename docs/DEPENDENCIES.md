@@ -1,5 +1,30 @@
 # Dependency review
 
+## Phase 1 reader additions (2026-09-23)
+
+Readium navigator/streamer 3.4.0 (including shared): BSD-3-Clause, reviewed against
+the official tagged LICENSE and Gradle sources. Required for reflowable EPUB
+layout, semantic locators and typography rather than building a bespoke EPUB
+renderer. Its documented minSdk 24 and Kotlin 2.4 toolchain match this app.
+Use the stable artifact; its preference constructors retain experimental API
+annotations, isolated inside the adapter, without adopting snapshot dependencies.
+No Readium PDF adapter, LCP or commercial engine is included. PDF rendering uses
+Android PdfRenderer, CBZ uses platform ZIP/image APIs. Measure final debug APK
+growth after integration; the Phase 0 baseline was approximately 12.3 MiB.
+
+AndroidX Fragment KTX 1.9.0 and AppCompat 1.8.0: Apache-2.0. These provide the
+native fragment host required by Readium's EPUB navigator. Java API desugaring
+2.1.5: GPL-2.0 with the Classpath Exception for the OpenJDK-derived library,
+plus upstream notices; required by Readium on older Android runtimes. This is
+the standard Android desugared library, not a GPL reader engine. Keep its
+exception/notices with the resolved dependency inventory.
+
+Additional Readium transitives include jsoup (MIT), Timber (Apache-2.0), Koi
+(Apache-2.0), Kotlin serialization/datetime/reflect (Apache-2.0), and AndroidX
+WebKit/Media3/UI libraries (Apache-2.0). Bundled navigator resources require their
+own notices as well as the Maven license inventory. Runtime inventory and packaged
+notices must be refreshed before calling the build complete.
+
 Phase 0 uses stable releases, checked against official release notes and Maven
 metadata on 2026-09-23. Versions are pinned in `gradle/libs.versions.toml`.
 No reader, network, billing, analytics, image-loading or dependency-injection

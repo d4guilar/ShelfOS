@@ -3,7 +3,7 @@ package com.d4guilar.shelfos
 
 import com.d4guilar.shelfos.core.input.*
 import com.d4guilar.shelfos.core.theme.*
-import com.d4guilar.shelfos.data.library.*
+import com.d4guilar.shelfos.domain.library.*
 import com.d4guilar.shelfos.feature.home.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -50,11 +50,11 @@ class FoundationTest {
     }
 
     @Test fun favoritesAreIndependentOfMediaCategory() {
-        val items = DemoLibraryRepository().publications
+        val items = testItems().map { it.copy(favorite = it.id in setOf("forest", "field")) }
         val favorites = setOf("forest", "field")
-        val result = filterPublications(items, LibraryFilter.FAVORITES, favorites)
+        val result = filterPublications(items, LibraryFilter.FAVORITES)
         assertEquals(setOf(MediaCategory.MANGA, MediaCategory.DOCUMENT), result.map { it.category }.toSet())
-        assertEquals(setOf("forest"), filterPublications(items, LibraryFilter.MANGA, emptySet(), " SORA ").map { it.id }.toSet())
-        assertTrue(filterPublications(items, LibraryFilter.BOOKS, favorites).all { it.category == MediaCategory.BOOK })
+        assertEquals(setOf("forest"), filterPublications(items, LibraryFilter.MANGA, " SORA ").map { it.id }.toSet())
+        assertTrue(filterPublications(items, LibraryFilter.BOOKS).all { it.category == MediaCategory.BOOK })
     }
 }

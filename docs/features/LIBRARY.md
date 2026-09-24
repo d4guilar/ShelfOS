@@ -34,7 +34,7 @@ Global ShelfOS destinations are distinct from media categories:
 - Library
 - Search
 - Notes
-- Collections
+- Shelves
 - Settings
 
 Expanded layouts may use a navigation rail.
@@ -183,7 +183,7 @@ Later:
 - unread
 - in progress
 - finished
-- collections
+- shelves
 - tags
 - creator
 - series
@@ -197,7 +197,7 @@ Library-level search should eventually search:
 - series
 - identifiers
 - tags
-- collections
+- shelves
 
 Later full-text publication search is a separate capability.
 
@@ -223,7 +223,7 @@ Users should be able to:
 - change cover
 - change category
 - toggle Favorite
-- add/remove collections
+- add/remove shelves
 - refresh metadata
 - inspect source details
 - relink source later
@@ -251,3 +251,18 @@ Themes must preserve:
 - source ownership rules
 - accessibility
 - normal Android exit behavior
+
+## Organization and ingestion extensions
+
+[Series](SERIES.md) may group intrinsic sequences behind one cover and a Series
+details page with member order, progress and Series-level Continue Reading.
+Read as Omnibus coordinates independent publications. Favorites remains separate.
+[Shelves](SHELVES.md) provides multi-membership personal organization; pinned Shelves
+follow the fixed category area, while all Shelves remain in the dedicated destination.
+Do not treat folder origin, Shelf membership or Series as a new media category.
+
+The [Import Center](DATA_INGESTION.md) serves one/many files, folders, Series and
+library migrations with review before commit. [Library Sources](LIBRARY_SOURCES.md)
+remain manageable under Settings → Library → Sources; missing access preserves
+LibraryItems and offers locate/reconnect, not automatic deletion. Series/Shelf/Source
+surfaces are accepted future work, not present in the initial Library prototype.

@@ -11,6 +11,7 @@ captures/
 Thumbs.db
 # Private design concepts and local prototype captures
 /UI Concepts/
+/Example Book [Ff]iles/
 /docs/design/references/*
 !/docs/design/references/README.md
 /docs/design/screenshots/*

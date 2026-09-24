@@ -80,7 +80,7 @@ Important subareas:
 - `feature.importing`
 - `feature.reader`
 - `feature.notes`
-- `feature.collections`
+- `feature.shelves`
 - `feature.settings`
 
 ## Source of truth
@@ -185,3 +185,28 @@ Rules:
 - New dependencies require license review.
 - Do not casually introduce GPL/AGPL components.
 - Debug entitlement simulation must not become an accidental production bypass.
+
+## Ingestion and organization boundaries
+
+- Read [data ingestion](docs/features/DATA_INGESTION.md), [PDF ingestion](docs/features/PDF_INGESTION.md),
+  [Series](docs/features/SERIES.md), [Shelves](docs/features/SHELVES.md) and
+  [Library Sources](docs/features/LIBRARY_SOURCES.md) before changing these systems.
+- Source ≠ LibraryItem; ImportSession is a process, LibrarySource is durable origin/access.
+- Category ≠ Shelf; Series ≠ Shelf. Keep four categories and Favorites independent.
+- Canonical global destinations: Library, Search, Notes, Shelves, Settings. Existing
+  Collection/Collections names are legacy implementation debt, not another feature.
+- Adapted PDF is a structured derived view, never replacement of the original;
+  preserve SourceMap confidence/revision limits. Original remains available.
+- Series is generic virtual aggregation, never physical file merging.
+- Ingestion is non-destructive, staged and reviewable; bulk work requires durable
+  recovery and per-file failure isolation. Online metadata/expensive PDF analysis
+  must not block local import or reading.
+- Folder/source structure is evidence, not truth. User metadata, classification
+  and grouping decisions override automatic suggestions.
+- Missing or disconnected Sources must not automatically delete LibraryItems or
+  their state. Disconnect/removal must not delete source files by default.
+- Use stable domain UUIDs and platform access adapters; portable backups require
+  Source reconnection, not reliance on Android URI strings alone.
+- Respect scoped access, DRM and app sandboxes. Do not upload publications for lookup.
+- Accepted architecture does not authorize building all future features now;
+  follow [roadmap sequencing](docs/ROADMAP.md#accepted-ingestion-and-organization-sequence).

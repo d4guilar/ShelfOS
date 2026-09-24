@@ -183,7 +183,7 @@ Outstanding ideas:
 Adopt:
 - library-level full-text search eventually
 - excerpt-to-note workflow
-- tags in addition to collections
+- tags in addition to Shelves
 - bulk organization for large libraries
 - offline dictionary packs
 - backup/restore
@@ -283,14 +283,14 @@ Adopt:
 - Documents
 - Continue Reading
 - Recently Added
-- collections
+- Shelves
 - tags
 - author grouping
 - series grouping
 - search
 - multiple visual layouts
 - duplicate detection
-- optional watched folders
+- connected Library Sources with manual rescan; optional scheduled rescans later
 - metadata/cover editing
 - generated fallback covers
 - reading status
@@ -350,3 +350,12 @@ Every feature must pass three questions:
 - Panels: Apple App Store
 - Yomu: Apple App Store
 - KyBook 3: Apple App Store
+
+## Accepted ShelfOS organization terminology
+
+References to competitors' collections above describe their features. ShelfOS uses
+[Shelves](features/SHELVES.md), with [Series](features/SERIES.md) for intrinsic
+sequences and [Library Sources](features/LIBRARY_SOURCES.md) for origin/access.
+The accepted [ingestion](features/DATA_INGESTION.md) and [PDF](features/PDF_INGESTION.md)
+specifications supersede generic harvest shorthand; they do not assume real-time
+watching or treat advanced Adapted PDF/OCR as an early requirement.

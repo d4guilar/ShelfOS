@@ -37,7 +37,10 @@ refactor/<short-name>
 
 ## Pull requests
 
-A good PR explains what changed, why, testing performed, known limitations, and includes screenshots for UI changes.
+A good PR explains what changed, why, testing performed, known limitations, and
+supplies appropriate validation evidence. Concept images and prototype
+screenshots remain local-only; do not commit them. Public README screenshots are
+deferred until the first fully working version and must use permitted content.
 
 ## Product boundaries
 
@@ -72,3 +75,11 @@ Do not paste code of unclear provenance into ShelfOS.
 ## License
 
 By contributing, you agree that your contributions are provided under the repository's MPL-2.0 license unless explicitly stated otherwise for a particular asset.
+
+## Library model changes
+
+Follow the [canonical taxonomy](docs/ARCHITECTURE.md#canonical-taxonomy) and the
+linked ingestion/PDF/Series/Shelves/Source specifications. Preserve source files and
+user decisions. Large imports must work without online metadata, and missing access
+must not delete library knowledge. Test interruption/recovery and source changes
+when those capabilities are implemented; do not claim future specs are shipped.

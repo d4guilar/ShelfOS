@@ -1,5 +1,8 @@
 # ShelfOS Product Specification
 
+Status: product direction. Phase 0 is the recorded acceptance baseline; Phase 1 is
+unfinished work in progress. Capabilities below are not a claim of production readiness.
+
 ## 1. Product definition
 
 ShelfOS is a **personal library system** for Android.
@@ -12,7 +15,7 @@ It imports books, comics, manga, and documents the user already owns and turns t
 - bookmarks
 - highlights
 - notes
-- collections
+- shelves
 - reader preferences
 
 ShelfOS is app-focused, not launcher-focused. It may feel like a small reading operating environment while open, but it must remain a respectful Android application.
@@ -176,33 +179,40 @@ ShelfOS stores:
 - annotations
 - preferences
 - classification
-- collections
+- shelves
 
 separately.
 
-## 9. Import philosophy
+## 9. Libraries, sources and organization
 
-Import should feel more like adding media to a library than opening a file.
+ShelfOS imports libraries, not only files. Add Files, Add Folder, Add Series and
+Import Library will share a reviewable process that discovers publications,
+proposes organization and commits accepted items before optional background
+enrichment. Large imports are resumable and isolate bad files. Users can retain
+their existing folders rather than rebuilding them around ShelfOS.
 
-Conceptual flow:
+Connected **Library Sources** remember origin and access, enabling safe manual
+rescans and reconnection. Missing storage preserves library knowledge; disconnect
+and removal do not delete source files by default. Referencing files is the default;
+an optional managed copy preserves the original. Export-based migrations respect
+DRM and other apps' private storage boundaries.
 
-```text
-Select file
-    ↓
-Detect format
-    ↓
-Extract embedded metadata
-    ↓
-Classify media
-    ↓
-Resolve cover
-    ↓
-Allow user correction
-    ↓
-Create LibraryItem
-```
+**Series** groups intrinsically related books, comic issues/annuals/specials and
+manga volumes. Continue Reading can resume the current member; optional **Read as
+Omnibus** moves between members without physically merging files. **Shelves** are
+personal organization with multiple memberships and optional Library pinning;
+Smart Shelves follow later. Categories stay Books, Comics, Manga and Documents,
+with Favorites as an independent cross-category view.
 
-Classification must always be editable.
+Compatible PDFs can offer **Adapted** typography and **Original** authored pages.
+The original remains untouched. ShelfOS recommends a mode while respecting per-title
+choice; complex layouts may map imperfectly between views. Original reading arrives
+first, advanced Adapted reconstruction later, and OCR later still.
+
+These are accepted product targets, not implemented feature claims. See
+[ingestion](features/DATA_INGESTION.md), [Sources](features/LIBRARY_SOURCES.md),
+[Series](features/SERIES.md), [Shelves](features/SHELVES.md),
+[PDF modes](features/PDF_INGESTION.md) and [roadmap](ROADMAP.md).
 
 ## 10. Themes
 
@@ -281,7 +291,7 @@ Potential Premium areas:
 - advanced stylus tools
 - advanced PDF reconstruction
 - sophisticated reading statistics
-- smart collections
+- smart shelves
 - enhanced comic/manga features
 - deeper personalization
 
@@ -330,12 +340,12 @@ The user can override metadata, cover, classification, reading direction, and ot
 
 ## 15. Long-term possibilities
 
-Not commitments:
+Beyond the accepted ingestion/organization direction; timing is not committed:
 
 - DOCX
 - CBR
 - OCR
-- intelligent PDF reconstruction
+- advanced Adapted PDF refinement (accepted direction; implementation later)
 - stylus handwriting
 - universal notes
 - advanced reading stats
@@ -364,14 +374,14 @@ High-value long-term capabilities include:
 - optional translation
 - duplicate detection
 - author/series grouping
-- tags and collections
+- tags and shelves
 - reading statistics
 - widgets
 - backup/restore
 - OPDS
 - Calibre integration
 - optional WebDAV
-- advanced PDF reflow/reconstruction
+- Adapted PDF semantic reconstruction with Original access and SourceMap
 - e-ink/low-animation mode
 - biometric privacy lock
 - configurable hardware controls
@@ -379,7 +389,8 @@ High-value long-term capabilities include:
 - paragraph/focus reading
 - robust large-library indexing
 
-These are backlog opportunities, not all launch requirements.
+These are backlog opportunities, not all launch requirements. Accepted Series,
+Shelves, Sources and dual PDF direction are scoped by their feature specs and roadmap.
 
 ## 17. Adaptive and foldable product principle
 
@@ -450,7 +461,7 @@ Free and Premium themes may add visual personality, motion, optional sound, and 
 - Library
 - Search
 - Notes
-- Collections
+- Shelves
 - Settings
 - Favorites
 - Books

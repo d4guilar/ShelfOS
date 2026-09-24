@@ -1,5 +1,24 @@
 # Documentation Changelog
 
+## Accepted ingestion and organization decisions (2026-09-24)
+
+- Added dedicated Data Ingestion, PDF Ingestion, Series, Shelves and Library Sources specifications.
+- Added ADRs 0018–0022 and a requirement-by-requirement integration audit.
+- Reconciled Collections → Shelves, pre-commit metadata → post-commit enrichment,
+  Source/session identity, PDF mode terminology and safe managed-source behavior.
+- Updated product/architecture/roadmap, Phase 1 status, feature/design and contributor guidance.
+- Preserved Phase 0 validation as historical evidence and unfinished Phase 1 code unchanged.
+- This reconciliation implements no application functionality; accepted targets remain phased.
+
+## Phase 1 implementation plan (2026-09-23)
+
+- Added PHASE_1_PLAN and proposed ADR-0017 for an expanded library/first-reader build.
+- Recorded the change from original phase sequencing instead of silently moving scope.
+- Distinguished reflowable typography from PDF reconstruction and image-page limits.
+- Planned Manga PDF/CBZ direction, stable page identity and user preference precedence.
+- Specified staged schemas, private fixtures, large-file handling and acceptance gates.
+- Preserved the Phase 0 implementation status; no reader code or dependencies added.
+
 ## Phase 0 implementation revision
 
 - Imported the supplied documentation bundle into canonical root/docs paths.

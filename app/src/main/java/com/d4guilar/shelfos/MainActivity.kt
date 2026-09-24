@@ -72,7 +72,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     Box(Modifier.fillMaxSize().safeDrawingPadding().onGloballyPositioned { bounds = it.boundsInWindow() }.padding(padding)) {
-                        if (theme != null) ShelfApp(library, settings, onSystemBack = { onBackPressedDispatcher.onBackPressed() })
+                        if (theme != null) ShelfApp(library, settings, container, onSystemBack = { onBackPressedDispatcher.onBackPressed() })
                     }
                 }
             }

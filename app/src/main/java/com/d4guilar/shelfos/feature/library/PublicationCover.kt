@@ -19,11 +19,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.d4guilar.shelfos.data.library.DemoPublication
+import com.d4guilar.shelfos.domain.library.LibraryItem
 
 /** Original geometric artwork rendered locally. Never extracts reference-image artwork. */
 @Composable
-fun PublicationCover(item: DemoPublication, modifier: Modifier = Modifier) {
+fun PublicationCover(item: LibraryItem, modifier: Modifier = Modifier) {
     BoxWithConstraints(modifier.aspectRatio(0.68f).clipToBounds().background(Color(item.coverColor)).clearAndSetSemantics { }) {
         Canvas(Modifier.fillMaxSize()) {
             val cream = Color(0xFFF5E8CC)

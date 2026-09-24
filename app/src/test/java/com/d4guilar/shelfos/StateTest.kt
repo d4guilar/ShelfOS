@@ -4,8 +4,7 @@ package com.d4guilar.shelfos
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.d4guilar.shelfos.core.theme.ThemeId
-import com.d4guilar.shelfos.data.library.DemoLibraryRepository
-import com.d4guilar.shelfos.data.library.LibraryFilter
+import com.d4guilar.shelfos.domain.library.LibraryFilter
 import com.d4guilar.shelfos.data.preferences.ThemeRepository
 import com.d4guilar.shelfos.feature.library.LibraryViewModel
 import com.d4guilar.shelfos.feature.settings.SettingsViewModel
@@ -27,7 +26,8 @@ class StateTest {
 
     @Test fun restoredLibraryKeepsCategorySelectionQueryAndFavorites() = runTest {
         val saved = SavedStateHandle()
-        val vm = LibraryViewModel(DemoLibraryRepository(), saved)
+        val repository = TestLibrary()
+        val vm = LibraryViewModel(repository, saved)
         try {
             backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.state.collect {} }
             vm.selectFilter(LibraryFilter.DOCUMENTS)
@@ -37,7 +37,8 @@ class StateTest {
             advanceUntilIdle()
             // A new handle with only saved primitives simulates state restoration.
             val restored = SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })
-            val recreated = LibraryViewModel(DemoLibraryRepository(), restored)
+            val recreated = LibraryViewModel(repository, restored)
+            advanceUntilIdle()
             assertEquals(LibraryFilter.DOCUMENTS, recreated.state.value.filter)
             assertEquals("field", recreated.state.value.selected?.id)
             assertEquals("notes", recreated.state.value.query)

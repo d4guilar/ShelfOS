@@ -27,14 +27,16 @@ import androidx.compose.ui.unit.dp
 import com.d4guilar.shelfos.core.designsystem.SectionTitle
 import com.d4guilar.shelfos.core.designsystem.shelfAction
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
-import com.d4guilar.shelfos.data.library.DemoPublication
-import com.d4guilar.shelfos.data.library.LibraryFilter
+import com.d4guilar.shelfos.domain.library.LibraryItem
+import com.d4guilar.shelfos.domain.library.LibraryFilter
+import com.d4guilar.shelfos.domain.library.MediaCategory
 
 @Composable
 fun LibraryScreen(
     state: LibraryUiState, expanded: Boolean,
     onFilter: (LibraryFilter) -> Unit, onSelect: (String) -> Unit,
     onOpen: (String) -> Unit, onFavorite: (String) -> Unit,
+    onRead: (String) -> Unit, onEdit: (String, String, String, MediaCategory) -> Unit, onRemove: (String) -> Unit,
 ) {
     val t = LocalShelfTokens.current
     Row(Modifier.fillMaxSize()) {
@@ -48,10 +50,11 @@ fun LibraryScreen(
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(t.spacing.medium)) {
                     SectionTitle("Continue Reading")
+                    if (state.continueReading.isEmpty()) Text("Your reading will appear here once you open a publication.", color = t.colors.secondary)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(t.spacing.medium)) {
                         items(state.continueReading, key = { it.id }) { item ->
                             Row(Modifier.width(244.dp).shelfAction(
-                                onFocused = { onSelect(item.id) }, onClick = { onOpen(item.id) },
+                                onFocused = { onSelect(item.id) }, onClick = { onRead(item.id) },
                             ).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 PublicationCover(item, Modifier.width(60.dp))
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -75,11 +78,11 @@ fun LibraryScreen(
                             }
                         }
                     }
-                    Text("${state.items.size} sample publications", color = t.colors.secondary, style = MaterialTheme.typography.bodySmall)
+                    Text("${state.items.size} publications · Recently added", color = t.colors.secondary, style = MaterialTheme.typography.bodySmall)
                 }
             }
             if (state.items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                Text("No favorites yet. Explore a shelf and favorite a sample publication.", Modifier.padding(vertical = 24.dp))
+                Text(if (state.loading) "Loading your library…" else if (state.all.isEmpty()) "Your library starts here. Add a PDF, EPUB or CBZ using Add file." else "No publications in this view yet.", Modifier.padding(vertical = 24.dp))
             }
             items(state.items, key = { it.id }) { item ->
                 PublicationTile(item, state.selected?.id == item.id,
@@ -89,13 +92,15 @@ fun LibraryScreen(
         if (expanded && state.selected != null) {
             Box(Modifier.width(1.dp).fillMaxHeight().background(t.colors.divider))
             PublicationDetails(state.selected, state.selected.id in state.favorites,
-                onFavorite = { onFavorite(state.selected.id) }, modifier = Modifier.width(300.dp).testTag("detail_pane"))
+                onFavorite = { onFavorite(state.selected.id) }, modifier = Modifier.width(300.dp).testTag("detail_pane"),
+                onRead = { onRead(state.selected.id) }, onEdit = { title, creator, category -> onEdit(state.selected.id, title, creator, category) },
+                onRemove = { onRemove(state.selected.id) })
         }
     }
 }
 
 @Composable
-fun PublicationTile(item: DemoPublication, selected: Boolean, onFocus: () -> Unit, onOpen: () -> Unit) {
+fun PublicationTile(item: LibraryItem, selected: Boolean, onFocus: () -> Unit, onOpen: () -> Unit) {
     val t = LocalShelfTokens.current
     Column(Modifier.testTag("publication_${item.id}").shelfAction(selected, onFocused = onFocus, onClick = onOpen)
         .padding(4.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {

@@ -80,7 +80,7 @@ Order:
 - Library
 - Search
 - Notes
-- Collections
+- Shelves
 - Settings
 
 Requirements:
@@ -278,7 +278,7 @@ Bottom navigation:
 - Library
 - Search
 - Notes
-- Collections
+- Shelves
 - Settings
 
 Do not truncate `Documents` merely to force all categories into the width. The category row should scroll horizontally.
@@ -381,3 +381,12 @@ Do not treat the reference image as a pixel-perfect screenshot specification.
 Implement the **behavioral and structural rules in this document** using idiomatic Compose, adaptive layouts, accessibility semantics, and real content.
 
 If mock and written spec conflict, written spec wins.
+
+## Accepted organization extensions
+
+The fixed category order remains unchanged. Future pinned [Shelves](../features/SHELVES.md)
+follow it in the scrollable category area; unpinned Shelves remain in their global
+destination. [Series](../features/SERIES.md) can appear as grouped covers opening a
+member details page. These additions preserve Classic's cover-first geometry and
+shared focus semantics. Existing application navigation still has a legacy label;
+the Shelf specification records the pending implementation rename.

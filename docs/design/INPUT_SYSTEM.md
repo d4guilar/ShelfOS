@@ -61,6 +61,13 @@ B             → Toggle bookmark
 
 Shortcuts may be refined after usability testing.
 
+For the Phase 1 reader work in progress, the arrow defaults above describe LTR content.
+In RTL horizontal reading, Left invokes Next and Right invokes Previous. Page
+Down/R1 remain semantic Next and Page Up/L1 remain Previous in either direction.
+Resolve direction from the title override/category default before mapping reader
+input; do not change Library focus navigation or intercept arrows in editable
+fields/reader controls. See [Phase 1 plan](../PHASE_1_PLAN.md).
+
 ## 4. Suggested gamepad defaults
 
 ```text
@@ -131,3 +138,14 @@ Future stylus behavior should distinguish:
 - palm rejection where platform support permits
 
 Ink coordinates must be stored relative to page/content space.
+
+## Future Series continuity
+
+In explicit virtual omnibus reading, semantic NEXT_PAGE at a member's end may
+advance to the next imported member; PREVIOUS_PAGE at its start may return to the
+preceding member's end. This is reader-session coordination, not separate hardware
+bindings or a merged file. Direction-aware physical mappings still resolve to
+Next/Previous; Library focus retains normal directional behavior. Missing members
+and Series end need explicit recoverable UI. Standalone reading does not silently
+open unrelated items. Back/Home/system navigation must remain normal.
+See [Series](../features/SERIES.md).

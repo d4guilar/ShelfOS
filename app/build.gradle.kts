@@ -14,16 +14,21 @@ android {
         applicationId = "com.d4guilar.shelfos"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.0.1-prototype"
+        versionCode = 2
+        versionName = "0.1.0-alpha"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true }
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
     lint { abortOnError = true }
+    // This build offers platform serif/sans fonts, not Readium's optional bundled faces.
+    androidResources {
+        ignoreAssetsPatterns += listOf("OpenDyslexic-Regular.otf", "AccessibleDfA.otf", "iAWriterDuospace-Regular.ttf")
+    }
 }
 kotlin { jvmToolchain(17) }
 room { schemaDirectory("$projectDir/schemas") }
@@ -42,6 +47,12 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.coroutines.android)
     implementation(libs.window)
+    implementation(libs.readium.navigator)
+    implementation(libs.readium.streamer)
+    implementation(libs.fragment)
+    implementation(libs.appcompat)
+    implementation(libs.jsoup)
+    coreLibraryDesugaring(libs.desugar)
     ksp(libs.room.compiler)
     debugImplementation(libs.compose.tooling)
     debugImplementation(libs.compose.test.manifest)

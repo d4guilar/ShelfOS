@@ -7,6 +7,16 @@ Retro Apple UI Dark, and Paper / Vintage Library are registered but unavailable
 and marked Planned. Their eventual complete design is described below.
 No Premium themes are implemented. Theme selection is persisted locally in Room.
 
+## Planned reader presentation
+
+The [Phase 1 plan](../PHASE_1_PLAN.md) adds capability-aware reader presets through
+shared tokens. Supported per-title preferences override explicit global reading
+preferences, which override theme defaults. Changing theme must preserve explicit
+font, spacing and reading-direction choices. Reflowable book typography is separate
+from Library UI typography. Original PDF and image-based pages retain their authored layout;
+theme selection does not replace embedded fonts or recolor artwork by default.
+This is planned behavior, not a capability of the Phase 0 prototype.
+
 ## Theme philosophy
 
 Themes are complete presentation personalities, not only color palettes.
@@ -457,3 +467,11 @@ The default structural reference is:
 `docs/design/CLASSIC_LIBRARY_REFERENCE.md`
 
 This ensures a Premium theme feels like another ShelfOS experience rather than another application.
+
+## PDF mode boundary
+
+Future [Adapted PDF](../features/PDF_INGESTION.md) content can use shared reading
+typography/palette presets; this derives a semantic view without changing the PDF.
+Original mode preserves authored layout. Explicit per-title preferences win, and
+themes never select a mode by changing category, Shelf, Source or Series identity.
+All themes use Library / Search / Notes / Shelves / Settings.

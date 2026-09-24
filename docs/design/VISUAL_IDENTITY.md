@@ -127,7 +127,7 @@ ShelfOS may learn from high-quality gaming frontends such as ES-DE in these ways
 - fast browsing
 - multiple library views
 - metadata/detail panes
-- categories and collections
+- categories and shelves
 - smooth cover loading
 - strong large-library performance
 
@@ -179,7 +179,7 @@ Global navigation:
 - Library
 - Search
 - Notes
-- Collections
+- Shelves
 - Settings
 
 Library filtering:

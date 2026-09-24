@@ -28,14 +28,14 @@ for exact evidence and outstanding physical-device, API-range and accessibility 
 - [x] Relaunch persistence, basic keyboard/D-pad behavior and saved UI state verified within the documented test scope.
 
 Mock presentation in Phase 0 does not complete the persisted Library features in
-Phase 1. No import, reader, metadata provider, annotation, billing or release work
-has begun. Scope and reconciled documentation decisions are in ADR-0016.
+Phase 1. This is historical Phase 0 evidence, not validation of the unfinished
+Phase 1 working tree. Scope and reconciled decisions are in ADR-0016.
 
 ### Prototype review follow-up (2026-09-23)
 
 The initial hands-on review was positive overall. Opening/closing publication
 details and switching tabs felt insufficiently smooth; motion polish remains
-pending for a later build. The prototype does not yet open publications for reading.
+pending for a later build. The reviewed Phase 0 build did not open publications for reading.
 
 - [ ] Review ES-DE or similar frontends as interaction references for transition
   timing, interruption behavior and focus continuity, within ShelfOS's existing
@@ -80,7 +80,47 @@ ShelfOS boots, navigates, and has a stable engineering foundation.
 
 ---
 
-## Phase 1 — Library
+## Phase 1 — Library and first reading experience
+
+### Implementation and decision update (2026-09-24)
+
+The owner accepted the expanded [Phase 1 plan](PHASE_1_PLAN.md) after its initial
+proposal. [ADR-0017](adr/0017-phase-one-reading-scope.md) records that scope:
+durable Library, basic Original PDF/CBZ reading, reflowable EPUB typography and
+integration polish. Unfinished application work exists; full build/device/license
+and acceptance gates remain open. Phase 1 is not complete or production-ready.
+
+The newly accepted ingestion/organization architecture in ADRs 0018–0022 extends
+that first slice without making advanced PDF reconstruction, Sources, Series or
+Smart Shelves immediate implementation requirements. The ordered sequence below
+governs this growth. Original PDF does not replace its fonts; advanced Adapted
+presentation stays in Phase 5. Online enrichment cannot gate import or reading.
+
+### Accepted ingestion and organization sequence
+
+All rows are incomplete. The names below are incremental work tracks, not new
+claims that existing phases shipped. Preserve the already approved first reader
+scope; introduce schema and UI only with each corresponding implementation.
+
+| Order / track | Scope | Gate / relationship |
+| --- | --- | --- |
+| 1. Early import and first readers (Phase 1) | Basic single-file import, LibraryItem persistence, local metadata/category, source provenance, errors; Original PDF/CBZ and EPUB reading/resume | Current work in progress; validate before completion. Rename legacy navigation to Shelves and review owned-copy removal policy |
+| 2. Multi-file foundation (next import increment) | One selection of many files, shared candidate/duplicate/error handling | No hundreds-of-single-import migration UX; adopt shared ingestion boundaries |
+| 3. Bulk/folder and Source foundation | Recursive discovery, durable ImportSession/staging/review, process-death recovery, connected LibrarySource, health, safe manual rescan | Bounded batches, isolated corrupt files, no deletion on missing/partial scans; references default, explicit managed copies |
+| 4. Series foundation | Series/Membership, manual creation, bulk/folder Import as Series, reviewable detection, natural/manual order, details, Series-level Continue Reading | Generic Books/Comics/Manga; optional virtual omnibus follows stable per-member resume and boundary recovery |
+| 5. Shelf foundation | Manual Shelves, multi-membership, add/remove, pinning, import assignment and folder suggestions | Canonical Shelves terminology applies now; no Smart rule engine required |
+| 6. PDF foundation hardening (Phase 2) | Original rendering, progress, bookmarks/search where available, basic PDF analysis | Original starts in Phase 1; basic analysis never waits for advanced reconstruction |
+| 7. Advanced PDF ingestion (Phase 5) | Adapted, PublicationDocument, SourceMap, recommendations/per-title mode, cross-mode annotations and complex-layout limits | Original remains available; tested best-effort mapping and source preservation |
+| 8. Advanced organization | Smart Shelves, explicit Source → Shelf automation, stronger Series detection, richer issue/annual handling, optional external metadata | Post-commit enrichment only; user decisions win; entitlement remains separately scoped |
+| 9. Migration adapters | ShelfOS backup import, Calibre, OPDS, supported exported libraries, device Source reconnection | Shared pipeline, portable UUIDs/fingerprints; no private sandbox or DRM bypass |
+| 10. Later resilience/intelligence | OCR, advanced changed-source/annotation reconciliation, optional scheduled scans, advanced Smart rules, specialized comics/manga metadata | No real-time watching assumption or early OCR dependency |
+
+Detailed contracts: [ingestion](features/DATA_INGESTION.md),
+[PDF modes](features/PDF_INGESTION.md), [Series](features/SERIES.md),
+[Shelves](features/SHELVES.md), [Sources](features/LIBRARY_SOURCES.md).
+This sequencing follows the accepted specification while retaining the previously
+authorized Original PDF first-reader increment; it is not a demand to finish all
+bulk/organization work before any PDF can be opened.
 
 ### Goal
 Turn files into ShelfOS library objects.
@@ -97,7 +137,7 @@ Turn files into ShelfOS library objects.
 - Room schema
 - cover grid/list
 - Recently Added
-- Continue Reading placeholder
+- Continue Reading from persisted state once the first reader increment is validated
 - manual title/author/category edits
 - manual favorite toggle
 - remove library item
@@ -109,6 +149,10 @@ Turn files into ShelfOS library objects.
 ### Metadata enrichment milestone
 
 After the local import model is stable:
+
+Local extraction/provenance can grow incrementally. External providers belong to
+the later advanced-organization/enrichment track above, after commit; this retained
+inventory is not a requirement to add network APIs to the first reader build.
 
 - metadata provenance model
 - embedded metadata extraction
@@ -143,9 +187,18 @@ Includes:
 
 A user can import local files, classify them, see them persist across app restarts, favorite them, browse all five main library views, inspect publication details, and edit resolved metadata.
 
+That is the Library milestone. Under the accepted expanded scope, Phase 1 additionally
+requires offline EPUB/PDF/CBZ reading and resume, capability-appropriate typography,
+RTL/LTR preferences, and the validation gates in `PHASE_1_PLAN.md`.
+
 ---
 
 ## Phase 2 — Reading
+
+Planning note: basic EPUB/PDF opening, resume, supported typography and reader
+input are in the Phase 1 work in progress. This track retains chapter/search refinements,
+bookmarks, broader reading controls and hardening beyond that first usable reader.
+The original inventory below is retained for coverage; no reader milestone has completed full acceptance.
 
 ### Goal
 ShelfOS becomes a useful everyday reader.
@@ -188,6 +241,10 @@ A user can import an EPUB or PDF, read it, close the app, reopen it, and return 
 ---
 
 ## Phase 3 — Comics and Manga
+
+Scope note: basic CBZ reading and Manga RTL (including Manga PDFs) are in the Phase 1
+work in progress. Advanced spreads, thumbnails, foldable pairing and broader comic/manga
+polish remain here. The original inventory below is not a claim of completion.
 
 ### Goal
 Make image-sequence media first-class.
@@ -240,29 +297,31 @@ A student can use ShelfOS to highlight and annotate a supported publication and 
 
 ---
 
-## Phase 5 — Smart Import and Better PDFs
+## Phase 5 — Advanced PDF ingestion
 
 ### Goal
 Differentiate ShelfOS from ordinary viewers.
 
-### Research areas
+### Deliverables and research
 
-- PDF text extraction
-- reading-order reconstruction
-- repeated header/footer detection
-- chapter/heading detection
-- paragraph reconstruction
-- column handling
-- generated table of contents
-- book-mode conversion
+Follow [PDF_INGESTION](features/PDF_INGESTION.md): text/reading-order extraction,
+heading/chapter/paragraph reconstruction, repeated header/footer filtering, images,
+captions/footnotes, column/layout confidence, structured PublicationDocument and
+revision-aware SourceMap. Add Adapted/Original switching, per-title preference,
+recommendations, typography and best-effort cross-mode position/annotation mapping.
+Future global PDF preference follows usable per-title behavior. OCR is later.
 
 ### Constraint
 
-Preserve original PDF and always provide original-page access.
+Preserve the original PDF and always provide Original access. Do not hold bulk
+imports behind expensive analysis. EPUB keeps its structured pathway; Comic/Manga
+artwork is not replaced with text. DOCX is a separate future structured adapter.
 
 ### Done when
 
-Selected compatible PDFs can be presented in a substantially more comfortable reading mode without destructive conversion.
+Compatible PDFs can be read in Adapted and Original modes without source changes,
+with tested mapping limits, truthful confidence and preserved annotation anchors.
+This is advanced work, not a prerequisite for basic PDF reading.
 
 ---
 
@@ -332,7 +391,7 @@ Introduce sustainable monetization without damaging free ShelfOS.
 - PageStation
 - advanced themes
 - advanced pen presets
-- smart collections
+- smart shelves
 - advanced statistics
 - deeper metadata tools
 - advanced PDF reconstruction features
@@ -429,7 +488,8 @@ Begins only after Android architecture/product stability.
 
 ## Future / Exploration
 
-Not committed:
+Exploratory scope or deferred implementation; accepted adapter directions are
+sequenced above, not implemented:
 
 - CBR
 - DOCX
@@ -439,7 +499,7 @@ Not committed:
 - automatic panel detection
 - reading statistics
 - widgets
-- watch folders
+- optional scheduled LibrarySource rescans (manual rescan comes first)
 - OPDS
 - Calibre integration
 - optional WebDAV

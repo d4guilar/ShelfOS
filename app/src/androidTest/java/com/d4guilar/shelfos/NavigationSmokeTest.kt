@@ -7,9 +7,22 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Before
+import org.junit.After
+import kotlinx.coroutines.runBlocking
 
 class NavigationSmokeTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @Before fun seedOriginalFixture() = runBlocking<Unit> {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        (context.applicationContext as ShelfApplication).container.library.add(OriginalFixtures.pdf(context))
+        (context.applicationContext as ShelfApplication).container.library.add(OriginalFixtures.epub(context))
+    }
+    @After fun removeFixture() = runBlocking<Unit> {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        (context.applicationContext as ShelfApplication).container.library.remove("test-pdf")
+        (context.applicationContext as ShelfApplication).container.library.remove("test-epub")
+    }
 
     private fun awaitLibrary() {
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("library_grid").fetchSemanticsNodes().isNotEmpty() }
@@ -43,7 +56,36 @@ class NavigationSmokeTest {
 
     @Test fun publicationSelectionShowsDetails() {
         awaitLibrary()
-        compose.onNodeWithTag("publication_quiet").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("publication_test-pdf").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("publication_test-pdf").performClick()
+        compose.onNodeWithTag("favorite_action").assertExists()
+    }
+
+    @Test fun originalPdfOpensTurnsPagesAndReturnsToLibrary() {
+        awaitLibrary()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("publication_test-pdf").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("publication_test-pdf").performClick()
+        compose.onNodeWithTag("read_action").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("1 / 3").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Next").performClick()
+        compose.onNodeWithTag("page_number").assertTextEquals("2 / 3")
+        compose.onNodeWithText("Library", useUnmergedTree = true).performClick()
+        compose.onNodeWithTag("favorite_action").assertExists()
+    }
+
+    @Test fun originalEpubOpensAndOffersTypographyAndChapters() {
+        awaitLibrary()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("publication_test-epub").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("publication_test-epub").performClick()
+        compose.onNodeWithTag("read_action").performClick()
+        compose.waitUntil(30_000) { compose.onAllNodesWithTag("epub_reader").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(30_000) { compose.onAllNodes(hasText("Appearance") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Appearance").performClick()
+        compose.onNodeWithText("Clean").performClick()
+        compose.onNodeWithText("Apply").performClick()
+        compose.onNodeWithText("Chapters").performClick()
+        compose.onNodeWithText("Reading Room").performClick()
+        compose.onNodeWithText("Library", useUnmergedTree = true).performClick()
         compose.onNodeWithTag("favorite_action").assertExists()
     }
 

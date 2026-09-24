@@ -7,7 +7,7 @@ enum class InputKey { ENTER, CENTER, GAMEPAD_A, GAMEPAD_B, ESCAPE, HOME, BACK, L
 data class KeyStroke(val key: InputKey, val control: Boolean = false, val shift: Boolean = false, val alt: Boolean = false)
 
 object InputMapper {
-    fun command(stroke: KeyStroke, context: InputContext): ShelfCommand? {
+    fun command(stroke: KeyStroke, context: InputContext, rightToLeft: Boolean = false): ShelfCommand? {
         if (stroke.alt) return null
         if (stroke.control) return if (stroke.key == InputKey.F) ShelfCommand.SEARCH else null
         return when (stroke.key) {
@@ -16,8 +16,10 @@ object InputMapper {
             InputKey.ESCAPE, InputKey.GAMEPAD_B -> ShelfCommand.BACK
             InputKey.MENU, InputKey.START -> ShelfCommand.OPEN_MENU
             else -> if (context == InputContext.READER) when (stroke.key) {
-                InputKey.RIGHT, InputKey.PAGE_DOWN, InputKey.R1 -> ShelfCommand.NEXT_PAGE
-                InputKey.LEFT, InputKey.PAGE_UP, InputKey.L1 -> ShelfCommand.PREVIOUS_PAGE
+                InputKey.RIGHT -> if (rightToLeft) ShelfCommand.PREVIOUS_PAGE else ShelfCommand.NEXT_PAGE
+                InputKey.LEFT -> if (rightToLeft) ShelfCommand.NEXT_PAGE else ShelfCommand.PREVIOUS_PAGE
+                InputKey.PAGE_DOWN, InputKey.R1 -> ShelfCommand.NEXT_PAGE
+                InputKey.PAGE_UP, InputKey.L1 -> ShelfCommand.PREVIOUS_PAGE
                 InputKey.SPACE -> if (stroke.shift) ShelfCommand.PREVIOUS_PAGE else ShelfCommand.NEXT_PAGE
                 InputKey.B -> ShelfCommand.TOGGLE_BOOKMARK
                 else -> null

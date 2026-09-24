@@ -162,7 +162,7 @@ Global navigation:
 - Library
 - Search
 - Notes
-- Collections
+- Shelves
 - Settings
 
 ## 10. Tablet / unfolded foldable layout
@@ -251,7 +251,7 @@ Empty states should remain minimal and helpful.
 Example:
 
 ```text
-Your Books shelf is empty.
+Your Books category is empty.
 
 Import a book to get started.
 [ Import ]
@@ -268,3 +268,12 @@ Classic succeeds when:
 - touch, keyboard, and gamepad navigation feel equally intentional
 - the interface does not resemble a gaming frontend despite supporting frontend-quality navigation
 - light and dark modes feel like one design system
+
+## Accepted organization extensions
+
+The fixed category order remains unchanged. Future pinned [Shelves](../features/SHELVES.md)
+follow it in the scrollable category area; unpinned Shelves remain in their global
+destination. [Series](../features/SERIES.md) can appear as grouped covers opening a
+member details page. These additions preserve Classic's cover-first geometry and
+shared focus semantics. Existing application navigation still has a legacy label;
+the Shelf specification records the pending implementation rename.

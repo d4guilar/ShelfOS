@@ -1,5 +1,52 @@
 # ShelfOS Architecture
 
+## Implementation status and accepted direction
+
+Phase 0 is the last fully recorded acceptance baseline ([validation](VALIDATION.md)).
+The working tree contains unfinished Phase 1 single-file import, Room v2 library/
+reading state, PDF/CBZ adapters and Readium EPUB integration. It has not passed the
+full Phase 1 gates; do not describe it as a released or completed reader.
+
+[PHASE_1_PLAN](PHASE_1_PLAN.md) scopes that first slice. Accepted ADRs 0018–0022
+extend the target architecture; they do not claim the new ingestion, Series,
+Shelves, Source or Adapted PDF systems exist. The detailed specifications below
+own behavior; this document owns their relationships and responsibility boundaries.
+
+## Canonical taxonomy
+
+| Concept | Question | Boundary |
+| --- | --- | --- |
+| LibrarySource | Where did content come from, and can we access it again? | Durable origin/access, not an import job |
+| LibraryItem | What does ShelfOS know about one publication? | Stable identity, metadata and state survive access loss |
+| Category | What reading behavior does it need? | BOOK / COMIC / MANGA / DOCUMENT; format still limits capabilities |
+| Series | Which publications intrinsically belong together, in what order? | Generic virtual aggregation, never a file merge |
+| Shelf | How does this user want to organize publications? | Multiple memberships; not a custom media type |
+| Reader Mode | How should this publication be presented? | PDF Adapted / Original where supported |
+
+```mermaid
+flowchart TD
+    Source[LibrarySource: origin and access] -->|provenance and source references| Item[LibraryItem: stable UUID]
+    Source -->|input to| Session[ImportSession: ingestion process]
+    Session -->|reviewed commit| Item
+    Item -->|one| Category[Category: reading behavior]
+    Item -->|ordered membership| Series[Series: intrinsic relationship]
+    Item -->|many memberships| Shelf[Shelf: personal organization]
+    Item -->|format capabilities and preferences| Mode[Reader Mode: presentation]
+    Category -->|defaults, not identity| Mode
+    Source -.->|optional explicit assignment| Shelf
+```
+
+Favorites is an independent system filter across categories. Source, Series and
+Shelf do not determine category. All six concepts remain independent of themes.
+
+| Detailed source of truth | Scope |
+| --- | --- |
+| [Data ingestion](features/DATA_INGESTION.md) | Sessions, candidates, plans, staging/review/commit and migration |
+| [PDF ingestion](features/PDF_INGESTION.md) | Modes, PublicationDocument, SourceMap and mapping limits |
+| [Series](features/SERIES.md) | Membership, ordering, progress and virtual omnibus |
+| [Shelves](features/SHELVES.md) | Personal organization, pinning and terminology |
+| [Library Sources](features/LIBRARY_SOURCES.md) | Provenance, scans, health and reconnection |
+
 ## 1. Architecture goals
 
 ShelfOS architecture should prioritize:
@@ -73,7 +120,7 @@ app/
         ├── importing/
         ├── reader/
         ├── notes/
-        ├── collections/
+        ├── shelves/
         └── settings/
 ```
 
@@ -145,7 +192,11 @@ Conceptual model:
 LibraryItem
 ├── id
 ├── source
-│   ├── uri
+│   ├── sourceId (LibrarySource UUID)
+│   ├── platformReference (Android URI at the edge)
+│   ├── sourceRelativePath?
+│   ├── sourceFingerprint?
+│   ├── sourceModifiedAt?
 │   ├── mimeType
 │   ├── format
 │   ├── originalFileName
@@ -166,82 +217,78 @@ LibraryItem
 ├── favorite
 ├── cover
 ├── readingState
-├── presentationPreferences
+├── presentationPreferences (including preferred PDF mode)
+├── seriesMemberships
+├── shelfMemberships
 ├── createdAt
 └── updatedAt
 ```
 
 The exact Room schema may normalize some of these concerns.
 
-## 6. Suggested future Room entities
+## 6. Persistence and conceptual models
 
-Phase 0 implements only the persisted appearance preference. The following
-publication schemas begin in Phase 1 or later, not in the mock library prototype.
+Room v1 persisted appearance only. The Phase 1 working tree adds library items,
+reading state and reader preferences in v2; it does not implement the full model
+above. Extend through tested, non-destructive migrations, not speculative tables.
 
-Early:
+| Concept | Responsibility and eventual data |
+| --- | --- |
+| LibrarySource | UUID, name/type/location descriptor, health, capabilities, last scan, recursive/category hint, optional Shelf mapping and scan policy |
+| ImportSession | Ingestion ID, source references, status/timestamps and discovered/analyzed/staged/committed/review/skipped/failed counts |
+| ImportCandidate / StagedItem | Uncommitted source, format, proposed metadata/category/Series/order/Shelves, duplicates, PDF summary, warnings and review state |
+| ImportPlan | Candidates, detected Series, suggested Shelves, duplicate groups, unresolved items and warnings |
+| SourceScan | Source ID, start/end, discovered/added/changed/moved/missing/failed results |
+| Series / SeriesMembership | Intrinsic group metadata/cover and ordered stable item references with volume/issue/range/date/type evidence |
+| Shelf | Manual/Smart organization, memberships or later rules, pinning, presentation and sorting preferences |
+| PublicationDocument / SourceMap | Derived semantic chapters/blocks and confidence-bearing source page/bounds/text-range mappings tied to a source revision |
 
-- `LibraryItemEntity`
-- `ReadingProgressEntity`
-- `BookmarkEntity`
-- `AnnotationEntity`
-- `CollectionEntity`
-- `CollectionItemCrossRef`
-- `CoverEntity` or cover fields attached to LibraryItem
-- `MetadataOverrideEntity` if needed
+LibraryItem source provenance is separate from source access and platform identity.
+Bookmarks, annotations, covers, metadata overrides, reading sessions and later ink
+remain separate concerns as their milestones need them. Exact tables, cardinalities
+and serialized schemas are not frozen by this conceptual inventory.
 
-Later:
+## 7. Source access and durability
 
-- `ReadingSessionEntity`
-- `ImportRecordEntity`
-- `InkAnnotationEntity`
+Android adapters use SAF document/tree URIs and persistable user-scoped grants;
+domain identity uses stable ShelfOS UUIDs. No assumed raw filesystem paths, broad
+storage access, private app sandbox access or DRM bypass. References are default;
+explicit managed copies preserve originals and form a managed LibrarySource.
 
-## 7. Source file model
+Access can disappear through a move, deletion, revoked grant or disconnected
+provider/storage. Preserve the LibraryItem and its metadata, annotations, progress,
+Series and Shelves. Rescans produce reviewable additive changes, never destructive
+mirroring. Changed publications need revision-aware locator/SourceMap review.
+Details, health vocabulary and disconnect/reconnect flows belong to
+[Library Sources](features/LIBRARY_SOURCES.md).
 
-Use Android Storage Access Framework URIs.
+## 8. Ingestion architecture
 
-Do not assume direct filesystem paths.
+The common flow is Import Source → Discovery → Staging → Local Analysis →
+Organization → Import Review → Commit → ShelfOS Library → Background Enrichment.
+Add Files, Add Folder, Add Series and Import Library share these boundaries.
+[DATA_INGESTION](features/DATA_INGESTION.md) owns detailed semantics and recovery.
 
-Persist URI permissions when appropriate.
+| Conceptual responsibility | Boundary |
+| --- | --- |
+| ImportCoordinator | Advances sessions/checkpoints and coordinates cancellation/commit; does not parse every format |
+| DiscoveryService | Enumerates authorized selections/trees through source adapters |
+| ImportStagingRepository | Persists candidates, review decisions and resumable session state |
+| ImportAnalyzer | Bounded format/embedded metadata/local evidence analysis |
+| OrganizationEngine | Proposes category, Series and Shelf organization with user overrides |
+| DuplicateDetector | Progressive evidence and reviewable duplicate groups |
+| SeriesDetector | Combines embedded/filename/folder/source evidence with confidence |
+| PdfAnalyzer | PDF capabilities/confidence and deferred mode recommendations |
+| MetadataEnrichmentService | Optional post-commit provider enrichment with provenance |
+| LibrarySourceRepository | Durable origin definitions, capabilities, access health and provenance |
+| SourceScanner | Traverses authorized Sources and records scan results |
+| SourceReconciliationService | Compares scan evidence, proposes relinks/changes and preserves stable identities |
 
-A source publication may become unavailable because:
-
-- file was deleted
-- file moved
-- storage provider changed
-- permission was revoked
-- external storage disconnected
-
-ShelfOS must represent this as an unavailable source, not as a corrupted database row.
-
-## 8. Import pipeline
-
-Conceptual pipeline:
-
-```text
-URI
- ↓
-FileInspector
- ↓
-FormatDetector
- ↓
-FormatParser
- ↓
-EmbeddedMetadataExtractor
- ↓
-MediaClassifier
- ↓
-CoverResolver
- ↓
-OptionalMetadataResolver
- ↓
-UserReview / Override
- ↓
-LibraryRepository
-```
-
-Import should be resumable or fail safely.
-
-Do not mutate the source publication.
+These are responsibilities, not a demand for one class per name or extra Gradle
+modules. Avoid a giant ImportManager. UI consumes state and review actions through
+ViewModels/repositories; source/platform/provider details stay behind adapters.
+Bulk import needs durable checkpoints, bounded batches and isolated per-file errors.
+Online enrichment and expensive PDF reconstruction never gate local commit/reading.
 
 ## 9. Media classification
 
@@ -289,14 +336,14 @@ Potential implementations:
 - `PdfReaderEngine`
 - `ImageSequenceReaderEngine`
 - later `DocxReaderEngine`
-- later `ReflowReaderEngine`
+- later Adapted PDF adapter over `PublicationDocument` and `SourceMap`
 
 ## 11. Reader/content mapping
 
 ```text
 BOOK
 ├── EPUB → EpubReaderEngine
-└── PDF  → PdfReaderEngine or future ReflowReaderEngine
+└── PDF  → Original PDF adapter or future Adapted PDF adapter
 
 COMIC
 ├── CBZ  → ImageSequenceReaderEngine
@@ -307,7 +354,7 @@ MANGA
 └── PDF  → PdfReaderEngine + RTL-aware presentation where possible
 
 DOCUMENT
-└── PDF  → PdfReaderEngine
+└── PDF  → Original PDF adapter or future Adapted PDF adapter where supported
 ```
 
 ## 12. Input architecture
@@ -548,7 +595,7 @@ Portable concepts should include stable identifiers and serializable forms for:
 - metadata
 - annotations
 - bookmarks
-- collections
+- shelves
 - tags
 - progress
 
@@ -644,6 +691,32 @@ Do not reverse-engineer literal pixel values from AI-generated references.
 See [ADR-0016](adr/0016-phase-zero-foundation.md) for the implemented boundary.
 `ShelfApplication` owns a manual `AppContainer`; UI receives ViewModels backed by
 repositories. `RoomThemeRepository` persists the selected theme. Library content
-is an in-memory set of original demo fixtures, not the final LibraryItem model.
+was an in-memory set of original demo fixtures. This describes the validated Phase 0
+baseline; unfinished Phase 1 replaces those fixtures with persisted publications.
 Theme tokens centralize colors, typography, shapes, spacing, surfaces, focus,
 motion and icons. Navigation destinations and category meanings are shared.
+
+## Reader coordination and portable backups
+
+Series coordination opens individual reader sessions and preserves each member
+locator; it never merges files. PDF modes use best-effort SourceMap positioning
+and annotation mapping, with Original always preserved. EPUB keeps its structured
+format. See [Reader](features/READER.md), [Series](features/SERIES.md) and
+[PDF ingestion](features/PDF_INGESTION.md).
+
+Future backups include stable item/Source/Series/Shelf identities, user overrides,
+metadata, permitted covers, progress, annotations/bookmarks, member ordering, Shelf
+rules and preferences. Android grants do not transfer to iOS or a new Android device.
+Reconnection uses newly granted platform references plus fingerprints/identifiers;
+see [backup contract](features/LIBRARY_SOURCES.md#backup-and-device-reconnection).
+
+## Implementation gaps against accepted direction
+
+The existing single-item sourceUri/managedPath model is an interim implementation,
+not a durable LibrarySource or ImportSession. It needs provenance/access separation
+and resumable staging before bulk/folder claims. Existing removal of an owned private
+copy also needs review against the accepted non-destructive managed-Source contract;
+do not silently carry that prototype behavior into Source disconnect/removal.
+The application still has a Collections placeholder; the target is Shelves as
+specified in [terminology and migration](features/SHELVES.md#terminology-and-category-boundary).
+No application changes are made by this documentation reconciliation.

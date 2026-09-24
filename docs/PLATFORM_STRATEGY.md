@@ -83,7 +83,7 @@ Cover reference or asset
 ReadingProgress
 Bookmark
 Annotation
-Collection
+Shelf
 Tag
 Reading preferences
 ```
@@ -125,3 +125,13 @@ iOS:
 A future policy decision will be required on whether a Premium purchase is cross-platform.
 
 Do not create an account system merely to solve cross-platform Premium before there is a demonstrated need.
+
+## Source portability
+
+Domain LibraryItem, LibrarySource, Series, SeriesMembership and Shelf identities
+use stable ShelfOS UUIDs. ImportSession/SourceScan are distinct process records.
+Android document/tree URIs and future iOS file-provider/document-picker references
+belong at platform boundaries. Backups preserve knowledge, Source definitions and
+fingerprints/identifiers, but cannot silently transfer access grants. Restore must
+support explicit reconnection and ambiguous-match review; see
+[Library Sources](features/LIBRARY_SOURCES.md#backup-and-device-reconnection).

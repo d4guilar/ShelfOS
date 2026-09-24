@@ -48,7 +48,7 @@ USER
 > EXACT_IDENTIFIER_MATCH
 > HIGH_CONFIDENCE_EXTERNAL_MATCH
 > INFERRED_EXTERNAL_MATCH
-> FILENAME_INFERENCE
+> FILENAME/FOLDER_INFERENCE
 > GENERATED
 ```
 
@@ -83,29 +83,23 @@ enrich(seed): List<MetadataCandidate>
 
 Provider implementations remain replaceable.
 
-## 5. Suggested import pipeline
+## 5. Ingestion integration
 
-```text
-Source URI
-   ↓
-Format detection
-   ↓
-Embedded metadata
-   ↓
-Identifier extraction
-   ↓
-Filename/title inference
-   ↓
-Optional external enrichment
-   ↓
-Candidate scoring
-   ↓
-High-confidence match OR user selection
-   ↓
-Persist metadata + provenance
-   ↓
-Cache cover / metadata locally
-```
+[DATA_INGESTION](DATA_INGESTION.md) owns the common pipeline. Its fast local pass
+extracts supported embedded metadata/identifiers and filename/folder evidence,
+then stages organization proposals for review and commit. External enrichment
+operates on committed LibraryItems in the background; reading and local import
+never wait for provider availability, rate limits or candidate lookup.
+
+Series/volume/issue metadata, `ComicInfo.xml`, folder hierarchy, category hints and
+LibrarySource context feed [reviewable Series detection](SERIES.md). Persist
+provenance/confidence for inferred fields and grouping proposals. Folder/source
+evidence is weaker than trusted embedded or user data. User classification,
+ordering, grouping and rejection decisions must survive rescans and refresh.
+
+Online Series candidates may improve unresolved metadata later but must not
+silently regroup items or override Manual Shelves. Neither Series nor Shelves
+requires online metadata. Cache permitted covers and resolved fields locally.
 
 ## 6. EPUB
 

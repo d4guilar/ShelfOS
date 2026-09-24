@@ -1,157 +1,45 @@
-# Import Feature Specification
+# Import feature entry points
 
-## 1. Goal
+Status: single-file import is Phase 1 work in progress; the library-scale system
+below is accepted direction, not completed functionality.
 
-Import transforms a user-selected file into a durable ShelfOS `LibraryItem`.
+## Entry points and shared contract
 
-The file is the source. The LibraryItem is the ShelfOS experience.
+The Import Center offers Add Files (one or many), Add Folder (recursive discovery),
+Add Series (multi-file/folder grouping) and Import Library (existing libraries or
+future migration adapters). All use [DATA_INGESTION](DATA_INGESTION.md), the source
+of truth for discovery, staging, local analysis, organization, review, commit,
+background enrichment, duplicates, errors, recovery and migration.
 
-## 2. Initial sources
+Durable origin/access belongs to [Library Sources](LIBRARY_SOURCES.md); an import
+session is not a Source. Android uses scoped document/tree access. Share/Open With
+can be added later. Manual rescan precedes any optional scheduled scanning; no
+guaranteed real-time folder watcher is assumed.
 
-- Android document picker
-- share/open-with later
-- watched folders later
+## Format and review surface
 
-## 3. Initial formats
+Initial reading scope: EPUB, PDF and CBZ. CBR, CB7, DOCX, TXT/Markdown and other
+formats remain later work subject to capability/license review.
 
-- EPUB
-- PDF
-- CBZ
+Review may show cover, title, creator, proposed category, Series/volume/issue,
+year, provenance/confidence, duplicate warnings and Shelf assignments. User
+classification is editable: Book, Comic, Manga or Document. Straightforward
+single-file imports can minimize ceremony; bulk review must expose the plan.
 
-Later:
+Cover precedence is USER_SELECTED > EMBEDDED > HIGH_CONFIDENCE_ONLINE_MATCH >
+FIRST_PAGE > GENERATED. Online covers arrive through optional post-commit
+enrichment; expensive extraction must not block a batch. Generated covers should
+look intentional in the active theme. User metadata and cover choices always win.
 
-- CBR
-- CB7
-- DOCX
-- TXT / Markdown
-- additional formats where justified
+## Related specifications
 
-## 4. Import flow
+- [PDF ingestion](PDF_INGESTION.md): Original/Adapted capability, recommendations and deferred analysis.
+- [Series](SERIES.md): reviewable detection, natural order and bulk/folder creation.
+- [Shelves](SHELVES.md): assignment during import and accepted folder suggestions.
+- [Metadata enrichment](METADATA_ENRICHMENT.md): provider independence and provenance.
+- [Phase 1 plan](../PHASE_1_PLAN.md): limited first reading build and gaps before bulk ingestion.
 
-```text
-Choose file
-   ↓
-Persist source permission where possible
-   ↓
-Detect format
-   ↓
-Parse publication/archive
-   ↓
-Extract embedded metadata
-   ↓
-Detect identifiers
-   ↓
-Infer missing title/creator cautiously
-   ↓
-Suggest media category
-   ↓
-Resolve cover
-   ↓
-Optional online metadata enrichment
-   ↓
-Score candidate match
-   ↓
-Auto-apply high-confidence OR ask user
-   ↓
-Preview / correct
-   ↓
-Create LibraryItem
-   ↓
-Cache resolved metadata/cover
-```
-
-## 5. Media classification
-
-User-facing options:
-
-- Book
-- Comic
-- Manga
-- Document
-
-Automatic classification is advisory.
-
-The user can always override it.
-
-## 6. Metadata resolution
-
-See:
-
-`docs/features/METADATA_ENRICHMENT.md`
-
-Key rule:
-
-> Manual user metadata always wins over automatic enrichment.
-
-## 7. Covers
-
-Suggested precedence:
-
-```text
-USER_SELECTED
-> EMBEDDED
-> HIGH_CONFIDENCE_ONLINE_MATCH
-> FIRST_PAGE
-> GENERATED
-```
-
-A generated fallback cover should use ShelfOS design language and never look like a broken-image placeholder.
-
-## 8. Preview
-
-Before finalizing an ambiguous import, ShelfOS may show:
-
-- cover
-- title
-- creator
-- suggested category
-- series / volume
-- year
-- metadata match confidence
-
-High-confidence embedded/exact-identifier imports may minimize confirmation friction.
-
-## 9. Duplicate handling
-
-Potential signals:
-
-- source URI
-- stable content fingerprint
-- file size + filename as weak signal
-- ISBN/identifier as metadata signal
-
-Do not automatically delete duplicates.
-
-Different editions may legitimately share a title or work identifier.
-
-## 10. Offline behavior
-
-Import must still work without network connectivity.
-
-Offline fallback:
-
-- embedded metadata
-- filename inference
-- manual correction
-- embedded/first-page/generated cover
-
-Online enrichment can happen later through explicit refresh.
-
-## 11. Failure states
-
-Handle explicitly:
-
-- unsupported format
-- corrupt file
-- encrypted/password-protected file where unsupported
-- permission denied
-- source unavailable
-- archive with no readable pages
-- metadata provider unavailable
-- ambiguous metadata match
-
-## 12. Source safety
-
-Never modify the source during import.
-
-A future export/conversion feature must produce a separate output and require explicit user action.
+Original files are never modified by import. Reference existing files by default;
+copy only by explicit choice. Removing library metadata or disconnecting a Source
+does not delete source files. Future export/conversion produces a separate output.
+Online metadata never gates local import or reading.
