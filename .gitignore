@@ -1,0 +1,35 @@
+# Local tools and machine state
+.tools/
+.gradle/
+.kotlin/
+local.properties
+.idea/
+*.iml
+**/build/
+captures/
+.DS_Store
+Thumbs.db
+# Private design concepts and local prototype captures
+/UI Concepts/
+/docs/design/references/*
+!/docs/design/references/README.md
+/docs/design/screenshots/*
+!/docs/design/screenshots/README.md
+# Credentials and signing material
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.p8
+*.pem
+*.key
+keystore.properties
+signing.properties
+google-services.json
+*service-account*.json
+credentials*.json
+# Local agent configuration
+.codex/
+.agents/

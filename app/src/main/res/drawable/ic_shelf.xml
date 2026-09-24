@@ -1,0 +1,7 @@
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp" android:height="32dp"
+    android:viewportWidth="32" android:viewportHeight="32">
+    <path android:fillColor="#111111" android:pathData="M5,5L10,5L10,22L5,22ZM12,4L17,4L17,22L12,22ZM19,6L24,5L28,21L23,22ZM4,24L28,24Q30,24 30,26L30,28Q30,30 28,30L4,30Q2,30 2,28L2,26Q2,24 4,24ZM7,26L7,28L25,28L25,26Z"
+        android:fillType="evenOdd" />
+</vector>
