@@ -271,11 +271,14 @@ The common flow is Import Source → Discovery → Staging → Local Analysis �
 Organization → Import Review → Commit → ShelfOS Library → Background Enrichment.
 Add Files, Add Folder, Add Series and Import Library share these boundaries.
 [DATA_INGESTION](features/DATA_INGESTION.md) owns detailed semantics and recovery.
+Import-source adapters include document selections, folder trees and the future
+`ZipArchiveSource`; the latter safely enumerates a multi-publication archive and
+stages ordinary candidates. It is distinct from the CBZ publication adapter.
 
 | Conceptual responsibility | Boundary |
 | --- | --- |
 | ImportCoordinator | Advances sessions/checkpoints and coordinates cancellation/commit; does not parse every format |
-| DiscoveryService | Enumerates authorized selections/trees through source adapters |
+| DiscoveryService | Enumerates authorized selections/trees and safe archive entries through source adapters |
 | ImportStagingRepository | Persists candidates, review decisions and resumable session state |
 | ImportAnalyzer | Bounded format/embedded metadata/local evidence analysis |
 | OrganizationEngine | Proposes category, Series and Shelf organization with user overrides |
@@ -286,12 +289,16 @@ Add Files, Add Folder, Add Series and Import Library share these boundaries.
 | LibrarySourceRepository | Durable origin definitions, capabilities, access health and provenance |
 | SourceScanner | Traverses authorized Sources and records scan results |
 | SourceReconciliationService | Compares scan evidence, proposes relinks/changes and preserves stable identities |
+| Archive access utility | Performs bounded, traversal-safe entry access shared where appropriate; does not decide whether a container is a CBZ publication, generic library ZIP or ShelfOS backup |
 
 These are responsibilities, not a demand for one class per name or extra Gradle
 modules. Avoid a giant ImportManager. UI consumes state and review actions through
 ViewModels/repositories; source/platform/provider details stay behind adapters.
 Bulk import needs durable checkpoints, bounded batches and isolated per-file errors.
 Online enrichment and expensive PDF reconstruction never gate local commit/reading.
+For generic ZIP library import, `ImportCoordinator` commits each accepted candidate
+as an independent managed publication. Original archives remain untouched, arbitrary
+nested ZIPs do not recurse implicitly, and a bad entry is isolated from safe siblings.
 
 ## 9. Media classification
 

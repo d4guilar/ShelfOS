@@ -28,6 +28,7 @@ organization, not an identity relation. Renaming a Shelf does not rename a Sourc
 | Folder (`FOLDER`) | Persistent; rescan/reconnect while user-granted tree access exists |
 | Managed ShelfOS Library (`MANAGED`) | Persistent destination for explicit copies; local maintenance and export |
 | Selected file set | Origin of one/many selected documents; do not infer permission to scan parent folders |
+| Generic ZIP archive (`ZIP_ARCHIVE`, future conceptual name) | One-shot multi-publication import; safe discovery and review, then extraction to the managed Source; normally not rescannable or required for reading afterward |
 | Calibre directory (`CALIBRE`, future) | Persistent/rescannable structured library when accessible |
 | OPDS (`OPDS`, future) | Explicit provider adapter; capabilities and offline availability depend on access/local copies |
 | ShelfOS backup (`SHELFOS_BACKUP`, future) | Usually a one-shot migration, not a permanently watched archive |
@@ -42,6 +43,13 @@ descriptor, createdAt, lastScannedAt, health/status, recursive setting, category
 optional shelfId mapping, capabilities and scanPolicy. `SourceScan` records sourceId,
 start/completion times and discovered/added/changed/moved/missing/failed counts.
 Keep these conceptual until the corresponding storage milestone.
+
+A generic ZIP archive is not a connected folder Source and is not a ShelfOS backup.
+Its original location remains provenance, while committed extracted publications
+are backed by the managed Source. The original archive remains untouched and is not
+automatically deleted. Capability modeling should express its one-shot lifetime
+rather than forcing folder-style rescan/reconnect behavior. See the
+[ZIP ingestion contract](DATA_INGESTION.md#generic-zip-library-import).
 
 LibraryItem provenance retains sourceId, platform source reference, optional relative
 path, fingerprint and sourceModifiedAt. Preserve origin when creating a managed copy;

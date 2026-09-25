@@ -84,6 +84,11 @@ Folder-as-Series import does not permanently equate that folder with the Series.
 Use the common [staging/review pipeline](DATA_INGESTION.md); unsupported files and
 duplicates remain inspectable. A later source scan proposes new members for review.
 
+A future generic ZIP library import can provide the same hierarchy evidence. For
+example, `Comics/New X-Men/Vol 1.cbz`, a future-supported `Vol 2.cbr`, and
+`Vol 3.cbz` may suggest one mixed-format Series. The outer ZIP is only an import
+container; it is never the Series or an omnibus, and the proposal remains reviewable.
+
 ## Library and Series page
 
 The Library can group members behind one cover, Series title, item count and useful

@@ -29,3 +29,10 @@ Use ignored local configuration or protected CI secrets.
 ShelfOS handles personal publications and documents.
 
 Security-sensitive changes involving file access, archive parsing, metadata, or network transmission require extra review.
+
+Future generic ZIP library import must treat selected archives as untrusted input:
+prevent absolute/path-traversal extraction, bound file counts, nesting, expanded
+size and compression ratios, handle duplicate names and malformed/encrypted entries,
+and isolate per-entry failures. Never recursively expand arbitrary nested archives
+or modify/delete the original ZIP. The detailed contract is in
+[`DATA_INGESTION.md`](docs/features/DATA_INGESTION.md#archive-safety).

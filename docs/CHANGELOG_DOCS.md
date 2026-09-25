@@ -1,12 +1,13 @@
 # Documentation Changelog
 
-## Phase 1 review remediation (2026-09-24)
+## Generic ZIP library import decision (2026-09-24)
 
-- Corrected Phase 1 status (README, roadmap, Phase 1 plan, validation): 1Aâ€“1C implemented,
-  1D partial; open software gaps listed alongside the physical-device gates.
-- Named the three samples whose hashes were verified; the large CBZ was not hashed.
-- Recorded the review fixes and their evidence by category (static/build, unit/regression,
-  emulator, physical device), and the import ownership rule in the architecture.
+- Added future `ZipArchiveSource` to the shared staged-ingestion architecture.
+- Distinguished a multi-publication generic ZIP from CBZ and ShelfOS backup semantics.
+- Specified managed extraction, one-shot Source lifetime, hierarchy evidence,
+  partial failure, duplicate reuse, nested-archive policy and archive safety.
+- Sequenced the capability after bulk/folder and LibrarySource foundations and
+  before richer migration adapters. No application code was implemented.
 
 ## Phase 1 implementation status (2026-09-24)
 

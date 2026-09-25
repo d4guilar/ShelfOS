@@ -55,6 +55,11 @@ as University/Pathology may suggest **Create Shelf Pathology**, **Choose Existin
 or **No Shelf**. The suggestion needs user acceptance; not every folder is a Shelf.
 Renaming the Shelf does not rename the folder.
 
+Internal folders in a future generic ZIP library import provide the same weak,
+reviewable evidence. `Research/` may suggest a Research Shelf, while a franchise
+root may suggest a Shelf distinct from any detected Series. Importing the ZIP does
+not automatically create a Shelf or make the archive a Shelf.
+
 An optional explicit [LibrarySource → Shelf mapping](LIBRARY_SOURCES.md) can later
 add newly imported source items to a selected Shelf. Keep origin and organization
 independent. Missing files or Source disconnect do not automatically remove Shelf

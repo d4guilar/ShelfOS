@@ -11,6 +11,11 @@ future migration adapters). All use [DATA_INGESTION](DATA_INGESTION.md), the sou
 of truth for discovery, staging, local analysis, organization, review, commit,
 background enrichment, duplicates, errors, recovery and migration.
 
+Future Import Library sources include a **generic ZIP library archive** containing
+multiple publications and folders. It uses normal staging/review and managed-copy
+commit; the original ZIP stays untouched. This is distinct from CBZ, which is one
+image-sequence publication. See [generic ZIP library import](DATA_INGESTION.md#generic-zip-library-import).
+
 Durable origin/access belongs to [Library Sources](LIBRARY_SOURCES.md); an import
 session is not a Source. Android uses scoped document/tree access. Share/Open With
 can be added later. Manual rescan precedes any optional scheduled scanning; no

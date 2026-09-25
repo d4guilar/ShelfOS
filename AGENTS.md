@@ -210,3 +210,8 @@ Rules:
 - Respect scoped access, DRM and app sandboxes. Do not upload publications for lookup.
 - Accepted architecture does not authorize building all future features now;
   follow [roadmap sequencing](docs/ROADMAP.md#accepted-ingestion-and-organization-sequence).
+- A CBZ is one image-sequence publication; a generic ZIP library is a future
+  multi-item import source. Route ZIP libraries through normal staging/review,
+  treat entries as untrusted, preserve the original archive and extract committed
+  items non-destructively under the documented safety limits. See
+  [generic ZIP import](docs/features/DATA_INGESTION.md#generic-zip-library-import).
