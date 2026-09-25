@@ -22,6 +22,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -35,8 +38,9 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * Original-page reader. Back, Escape and gamepad B first hide visible controls, then leave the reader.
- * Direction changes navigation and control placement, never the stored page order or the artwork.
+ * Original-page reader. Back, Escape and gamepad B reveal hidden controls first; only once controls are
+ * visible do they leave the reader (ADR-0023). Direction changes navigation and control placement, never
+ * the stored page order or the artwork.
  */
 @Composable
 fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
@@ -62,10 +66,12 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
         controls = true
         if (moveFocus) controlFocusRequests++
     }
+    // Back never leaves the reader from hidden chrome: it reveals controls first, then a second Back exits.
+    fun backPress() { if (controls) onBack() else { controls = true; controlFocusRequests++ } }
 
     LaunchedEffect(Unit) { pageFocus.requestFocus() }
     LaunchedEffect(controlFocusRequests) { if (controlFocusRequests > 0) runCatching { firstControl.requestFocus() } }
-    BackHandler(enabled = controls) { hideControls() }
+    BackHandler { backPress() }
     if (appearance && item != null) ReaderAppearance(state.preferences, capabilities(item.format), { appearance = false },
         vm::applyAppearance, vm::resetAppearance)
 
@@ -77,7 +83,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                     ShelfCommand.NEXT_PAGE -> vm.turn(1)
                     ShelfCommand.PREVIOUS_PAGE -> vm.turn(-1)
                     ShelfCommand.OPEN_MENU -> toggleControls(moveFocus = true)
-                    else -> if (controls) hideControls() else onBack()
+                    else -> backPress()
                 }
                 true
             }
@@ -92,6 +98,16 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
             TextButton({ hideControls() }) { Text("Hide controls") }
         }
         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().focusRequester(pageFocus).focusable().testTag("reader_page")
+            .semantics {
+                // Tap zones (edges turn pages, center toggles chrome) and double-tap-to-zoom are unchanged;
+                // this only adds an accessibility action, exposed exclusively while chrome is hidden, so
+                // TalkBack's announced instruction always matches an action that actually reveals chrome.
+                if (controls) stateDescription = "Controls shown"
+                else {
+                    stateDescription = "Controls hidden"
+                    onClick(label = "Show reader controls") { toggleControls(moveFocus = true); true }
+                }
+            }
             .pointerInput(state.page, rtl) {
                 detectTapGestures(onDoubleTap = { scale = if (scale == 1f) 2f else 1f; panX = 0f; panY = 0f }, onTap = { point ->
                     when {

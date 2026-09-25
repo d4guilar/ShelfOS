@@ -1,5 +1,145 @@
 # Validation
 
+## Phase 2A validation (2026-09-25)
+
+Status: **Phase 2A (reader chrome/Back semantics, `docs/PHASE_2_PLAN.md`) is
+accepted**, on branch `phase-2/reading`, not yet merged. Independent Codex
+review verdict: **PASS WITH NON-BLOCKING FINDINGS** (see FINAL ACCEPTANCE
+below for the full evidence summary and explicitly unclaimed items). Phase 1's
+acceptance (below) is unaffected; no Phase 1 code outside the reader
+Back-handling paths described in
+[ADR-0023](adr/0023-reader-chrome-back-semantics.md) was touched.
+
+### STATIC / BUILD
+
+| Check | Result |
+| --- | --- |
+| `:app:compileDebugKotlin` | Passed |
+| `:app:compileDebugAndroidTestKotlin` | Passed |
+| `:app:assembleDebug` | Passed |
+| `:app:lintDebug` | Passed |
+| `:app:assembleDebugAndroidTest` | Passed |
+| Room schema cleanliness (`git status --porcelain -- app/schemas`) | Clean — no Room changes in this increment |
+| `git diff --check` | Clean |
+
+### JVM / REGRESSION
+
+| Check | Result |
+| --- | --- |
+| `:app:testDebugUnitTest` | Passed — 63/63 (independent Codex re-review count) |
+
+### INSTRUMENTED / EMULATOR
+
+`NavigationSmokeTest` run via `:app:connectedDebugAndroidTest`. Test count grew
+from 14 (the original acceptance pass, including the two Back-reveal tests
+replacing the prior single Back test — see ADR-0023) to 16 after the Codex-review
+accessibility remediation added `accessibilityActionRevealsHiddenControlsInFixedReader`
+and `...InEpubReader`:
+
+| Device | Result |
+| --- | --- |
+| `shelfos-api37` (AVD, API 37, freshly data-wiped) | All 14 (pre-remediation) failed identically at Espresso's `onIdle()` with `NoSuchMethodException: android.hardware.input.InputManager.getInstance` — a pre-existing, already-documented environment gap (see "COMPATIBILITY: API 24 and API 37" below), not a regression from this change. Not retried post-remediation; this gap is not claimed fixed. |
+| `shelfos-phase0` (AVD, API 35), default phone viewport (1080×1920, 420dpi) | 14/14 passed pre-remediation; **16/16 passed** after the accessibility remediation, targeted explicitly via `ANDROID_SERIAL` to exclude a physical RP5 that was connected at the same time but intentionally not used for this pass (see Phase 2A remediation note below) |
+| `shelfos-phase0` (AVD, API 35), forced expanded/tablet viewport (`wm size 1600x1000`, `wm density 160`) | 14/14 passed (pre-remediation) |
+
+This is real automated evidence for the fix: `backRevealsHiddenControlsBeforeLeavingTheReader`
+(Original/PDF reader) and `epubBackRevealsHiddenControlsBeforeLeavingTheReader`
+(EPUB) both start from hidden chrome, press system Back, assert chrome reappears
+and the reader is still open, press Back again, and assert the reader exits —
+directly exercising the previously-untested path that let the field bug through.
+
+### PHYSICAL DEVICE
+
+**Retroid Pocket 5 (RP5), Android 13 / API 33, ADB serial `d8f7f1b6`.**
+Performed during independent Codex re-review (2026-09-25), after the
+accessibility remediation above:
+
+- Real-hardware execution (over ADB, not simulated) confirmed for EPUB, PDF and
+  CBZ opening and reading.
+- Hide/reveal/exit Back semantics (ADR-0023) validated on-device through
+  Android key events: hidden chrome + Back reveals chrome; visible chrome +
+  Back exits the reader.
+- PDF resume validated on-device.
+- CBZ D-pad/input validated on-device.
+- Android Home / Recent Apps safety confirmed — normal system navigation
+  remains available and is not intercepted.
+- A focused RP5 instrumentation pass: **6/6 passed**.
+- No ShelfOS crashes or navigation exceptions observed in RP5 logcat during
+  the pass.
+- No obvious Phase 2A performance regression observed.
+
+**Important distinction (Codex's own framing, preserved here):** this is real
+RP5 hardware execution driven through Android key events over ADB, not a
+record of physically pressing the handheld's own L1/R1/B buttons during this
+review pass. The owner has separately confirmed that physical controller
+controls work on the RP5, but exact per-button physical-press sequences for
+each reader were not explicitly recorded in this pass, so physical-controller
+support is described here conservatively rather than as a specific tested
+sequence.
+
+**Manual TalkBack:** not performed. TalkBack was unavailable on the test
+targets used for this review. This is not claimed as a pass.
+
+**Pre-existing, non-blocking observation (not caused by Phase 2A):** in
+landscape orientation, the import dialog's category-chip row visually exposed
+only the Books chip without usable scrolling to reach Comics/Manga/Documents.
+This predates Phase 2A and is not part of its acceptance criteria; tracked
+here as a future adaptive/import UX follow-up, not fixed in this branch.
+
+**Samsung Galaxy Tab A (SM-T580):** not performed in this pass. Per the device
+strategy in `PHASE_2_PLAN.md` §7, this is optional/periodic and non-blocking for
+2A; recorded as pending, not claimed.
+
+### ACCESSIBILITY
+
+`stateDescription` semantics were added to the chrome-toggle areas in both
+readers (`FixedReaderScreen`'s page `Box`, `EpubActivity`'s `EpubSurface`
+container). **Remediated 2026-09-25** after independent Codex review (R2)
+found the initial version announced "double tap to show controls" while
+double-tap was actually reserved for zoom, and neither surface exposed an
+`onClick` accessibility action at all — so TalkBack's double-tap-to-activate
+gesture had nothing to invoke and the announced instruction did not correspond
+to a working action. Both surfaces now expose `stateDescription` reflecting
+only the real state ("Controls shown" / "Controls hidden") and, exclusively
+while chrome is hidden, `onClick(label = "Show reader controls")`, which
+reveals chrome when invoked. New tests
+(`accessibilityActionRevealsHiddenControlsInFixedReader` /
+`...InEpubReader`) invoke the semantic action itself via
+`performSemanticsAction(SemanticsActions.OnClick)` rather than merely
+asserting a description string exists, and pass on `shelfos-phase0` (API 35).
+This is still not independently verified with TalkBack physically running —
+no physical/emulator TalkBack walkthrough was performed for this change. That
+explicit TalkBack pass remains open for 2D's accessibility closure or an
+earlier follow-up.
+
+### MOTION
+
+No animation was added to reader chrome show/hide (remains an instant
+conditional composition, as it already was). `Context.reducedMotionEnabled()`
+was not called from reader code in this pass because there is no motion in
+reader chrome to gate — reduced motion is honored trivially. Not independently
+tested with the system "Remove animations" setting for this reason.
+
+### FINAL ACCEPTANCE (2A)
+
+**Phase 2A is accepted (2026-09-25).** Independent Codex re-review verdict:
+**PASS WITH NON-BLOCKING FINDINGS.** Evidence: JVM unit tests 63/63; API 35
+`NavigationSmokeTest` 16/16; a focused RP5 (Android 13/API 33) instrumentation
+pass 6/6 with real-hardware EPUB/PDF/CBZ execution, on-device Back-semantics
+validation, PDF resume, CBZ D-pad input, Home/Recent-Apps safety, no crashes in
+logcat and no obvious performance regression; full Gradle validation passing;
+the previously blocking accessibility finding (R2) and its three non-blocking
+documentation findings (R3) both independently confirmed resolved.
+
+Explicitly **not** claimed as part of this acceptance: a manual TalkBack
+walkthrough (TalkBack was unavailable on the test targets used); exact
+per-button physical-press sequences on the RP5's own controls beyond the
+owner's separate general confirmation that they work; the API 37
+Espresso/InputManager tooling gap (pre-existing, unrelated, not fixed); PDF
+rendering resolution/fidelity (explicitly deferred to Phase 2C); and the
+pre-existing RP5 landscape import-dialog category-chip scrolling issue noted
+above (predates Phase 2A, not part of its acceptance criteria).
+
 ## Manual legacy-tablet field evidence
 
 A physical Samsung Galaxy Tab A SM-T580 (Android 8.1, approximately 2 GB RAM)

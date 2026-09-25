@@ -7,8 +7,10 @@ reading and resume. Settings must reflect publication capabilities: reflowable
 EPUB supports typography changes; original-page PDF and image pages retain
 authored fonts/layout. PDF font replacement remains future reconstruction work.
 Manga PDFs use the same category-based RTL default as Manga CBZs. Reader adapters
-are present in the unfinished Phase 1 working tree; full acceptance
-is pending. The sections below describe target behavior, not a completed feature list.
+for EPUB, Original PDF and CBZ are implemented and accepted as part of Phase 1
+(ADR-0017, 2026-09-24). The sections below describe the shared target behavior;
+Phase 2 (see `docs/PHASE_2_PLAN.md`) hardens and extends this accepted foundation
+rather than starting it.
 
 ## Shared goals
 

@@ -24,6 +24,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -77,6 +80,8 @@ class EpubActivity : AppCompatActivity() {
         val item = state.item
         val session = state.session
         val rtl = readingDirection(item?.category ?: MediaCategory.BOOK, state.preferences.direction) == ReadingDirection.RTL
+        // Back never leaves the reader from hidden chrome: it reveals controls first, then a second Back exits.
+        fun backPress() { if (controls) finish() else { controls = true; controlFocusRequests++ } }
 
         SideEffect {
             val style = if (tokens.dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
@@ -89,7 +94,7 @@ class EpubActivity : AppCompatActivity() {
                             ShelfCommand.NEXT_PAGE -> controller.next()
                             ShelfCommand.PREVIOUS_PAGE -> controller.previous()
                             ShelfCommand.OPEN_MENU -> if (controls) controls = false else { controls = true; controlFocusRequests++ }
-                            else -> if (controls) controls = false else finish()
+                            else -> backPress()
                         }
                         true
                     }
@@ -97,7 +102,7 @@ class EpubActivity : AppCompatActivity() {
                 }
             }
         }
-        BackHandler(enabled = controls) { controls = false }
+        BackHandler { backPress() }
         LaunchedEffect(controlFocusRequests) { if (controlFocusRequests > 0) runCatching { firstControl.requestFocus() } }
 
         Surface(Modifier.fillMaxSize()) {
@@ -109,7 +114,17 @@ class EpubActivity : AppCompatActivity() {
                 }
                 if (session != null && item != null) {
                     EpubSurface(this@EpubActivity, session, item.locator, state.preferences, tokens.dark, item.category, controller,
-                        Modifier.weight(1f).fillMaxWidth(), onCenterTap = { controls = !controls }, onLocation = vm::location)
+                        Modifier.weight(1f).fillMaxWidth().testTag("epub_page")
+                            // Center-tap-to-toggle is unchanged; this only adds an accessibility action, exposed
+                            // exclusively while chrome is hidden, so TalkBack's instruction matches a real action.
+                            .semantics {
+                                if (controls) stateDescription = "Controls shown"
+                                else {
+                                    stateDescription = "Controls hidden"
+                                    onClick(label = "Show reader controls") { controls = true; controlFocusRequests++; true }
+                                }
+                            },
+                        onCenterTap = { controls = !controls }, onLocation = vm::location)
                 } else Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     val error = state.error
                     if (error == null) CircularProgressIndicator()

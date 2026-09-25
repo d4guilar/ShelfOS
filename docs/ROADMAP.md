@@ -205,9 +205,15 @@ RTL/LTR preferences, and the validation gates in `PHASE_1_PLAN.md`.
 ## Phase 2 — Reading
 
 Planning note: basic EPUB/PDF opening, resume, supported typography and reader
-input are in the Phase 1 work in progress. This track retains chapter/search refinements,
-bookmarks, broader reading controls and hardening beyond that first usable reader.
-The original inventory below is retained for coverage; no reader milestone has completed full acceptance.
+input were pulled forward and are **implemented and accepted as part of Phase 1**
+(ADR-0017, 2026-09-24). This track is the refinement/extension phase that builds on
+that accepted foundation: chapter/search refinements, bookmarks, reader chrome and
+Back/immersive-mode hardening, controller/keyboard input-discovery hints, broader
+reading controls, and closure beyond the first usable reader. See
+[`PHASE_2_PLAN.md`](PHASE_2_PLAN.md) for the current increment breakdown
+(2A, accepted; 2A.1 planned input-discovery/controller-hint polish; 2B–2D
+planned) and acceptance criteria. The original inventory below is retained for
+coverage; items already accepted in Phase 1 are marked accordingly.
 
 ### Goal
 ShelfOS becomes a useful everyday reader.
@@ -219,18 +225,18 @@ ShelfOS becomes a useful everyday reader.
 
 ### Deliverables
 
-- reader abstraction
-- Readium integration where appropriate
-- EPUB opening
-- PDF opening
-- current location persistence
-- resume reading
+- reader abstraction — accepted in Phase 1
+- Readium integration where appropriate — accepted in Phase 1 (EPUB)
+- EPUB opening — accepted in Phase 1
+- PDF opening — accepted in Phase 1 (Original mode)
+- current location persistence — accepted in Phase 1
+- resume reading — accepted in Phase 1
 - chapter navigation where available
 - reader search where available
 - pagination / scroll preferences
 - typography controls for EPUB
 - bookmarks
-- reader chrome
+- reader chrome — hardened in Phase 2A (immersive Back/rediscoverability)
 - dark reading mode
 - TTS research / initial implementation if practical
 - custom font architecture
@@ -251,9 +257,11 @@ A user can import an EPUB or PDF, read it, close the app, reopen it, and return 
 
 ## Phase 3 — Comics and Manga
 
-Scope note: basic CBZ reading and Manga RTL (including Manga PDFs) are in the Phase 1
-work in progress. Advanced spreads, thumbnails, foldable pairing and broader comic/manga
-polish remain here. The original inventory below is not a claim of completion.
+Scope note: basic CBZ reading and Manga RTL (including Manga PDFs) were pulled
+forward and are **implemented and accepted as part of Phase 1** (ADR-0017,
+2026-09-24). Advanced spreads, thumbnails, foldable pairing, CBR support and
+broader comic/manga polish remain here. The original inventory below is retained
+for coverage; items already accepted in Phase 1 are marked accordingly.
 
 ### Goal
 Make image-sequence media first-class.
