@@ -1,0 +1,45 @@
+# Local tools and machine state
+.tools/
+.gradle/
+.kotlin/
+local.properties
+.idea/
+*.iml
+**/build/
+captures/
+.DS_Store
+Thumbs.db
+# Private design concepts and local prototype captures
+/UI Concepts/
+/Example Book [Ff]iles/
+/docs/design/references/*
+!/docs/design/references/README.md
+/docs/design/screenshots/*
+!/docs/design/screenshots/README.md
+# Credentials and signing material
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.p8
+*.pem
+*.key
+keystore.properties
+signing.properties
+google-services.json
+*service-account*.json
+credentials*.json
+# Local agent configuration
+.codex/
+.agents/
+
+# Private agent workflow artifacts
+/PHASE*_CLAUDE_HANDOFF.md
+/PHASE*_CODEX_REVIEW.md
+
+# Eclipse/Buildship IDE metadata (some VS Code Java/Gradle extensions generate this)
+.settings/
+.classpath
+.project

@@ -1,0 +1,13 @@
+<resources>
+    <style name="Theme.ShelfOS.Reader" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:colorAccent">#111111</item>
+        <item name="android:windowBackground">#F7F7F5</item>
+    </style>
+    <style name="Theme.ShelfOS" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:colorAccent">#111111</item>
+        <item name="android:windowBackground">#F7F7F5</item>
+    </style>
+</resources>
