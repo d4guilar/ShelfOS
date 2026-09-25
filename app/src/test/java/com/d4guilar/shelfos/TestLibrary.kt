@@ -4,6 +4,7 @@ package com.d4guilar.shelfos
 import com.d4guilar.shelfos.data.library.LibraryRepository
 import com.d4guilar.shelfos.domain.library.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 
 fun testItems() = listOf(
@@ -12,10 +13,17 @@ fun testItems() = listOf(
     LibraryItem("field", "Field Notes", "ShelfOS", MediaCategory.DOCUMENT, "test:field", PublicationFormat.PDF, "notes.pdf", 300L, favorite = true),
 )
 
-class TestLibrary : LibraryRepository {
-    override val publications = MutableStateFlow(testItems())
+class TestLibrary(items: List<LibraryItem> = testItems()) : LibraryRepository {
+    override val publications = MutableStateFlow(items)
     override val globalPreferences = MutableStateFlow<String?>(null)
-    override suspend fun add(item: LibraryItem): String { publications.update { it + item }; return item.id }
+    val added = mutableListOf<LibraryItem>()
+    override fun publication(id: String) = publications.map { list -> list.find { it.id == id } }
+    override suspend fun add(item: LibraryItem): String {
+        publications.value.find { it.sourceUri == item.sourceUri }?.let { return it.id }
+        added += item
+        publications.update { it + item }
+        return item.id
+    }
     override suspend fun favorite(id: String) { publications.update { list -> list.map { if (it.id == id) it.copy(favorite = !it.favorite) else it } } }
     override suspend fun edit(id: String, title: String, creator: String, category: MediaCategory) { publications.update { list -> list.map { if (it.id == id) it.copy(title = title, creator = creator, category = category) else it } } }
     override suspend fun remove(id: String) { publications.update { list -> list.filterNot { it.id == id } } }

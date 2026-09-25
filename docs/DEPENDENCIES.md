@@ -9,8 +9,16 @@ renderer. Its documented minSdk 24 and Kotlin 2.4 toolchain match this app.
 Use the stable artifact; its preference constructors retain experimental API
 annotations, isolated inside the adapter, without adopting snapshot dependencies.
 No Readium PDF adapter, LCP or commercial engine is included. PDF rendering uses
-Android PdfRenderer, CBZ uses platform ZIP/image APIs. Measure final debug APK
-growth after integration; the Phase 0 baseline was approximately 12.3 MiB.
+Android PdfRenderer. CBZ pages are read by ShelfOS's own positional ZIP reader
+(`core.files.SeekableZip`, using the JDK `Inflater`) and decoded with platform image
+APIs; no archive library was added. Measured on 2026-09-24: the unshrunk debug APK is
+about 21.7 MiB (Phase 0 baseline about 12.3 MiB), mostly Readium's navigator and its
+AndroidX/Media3 transitives. This is a debug measurement, not a release size.
+
+Status check 2026-09-24: no dependency was added or changed during Phase 1 completion.
+Every resolved `debugRuntimeClasspath` artifact is covered by `DEPENDENCY_LICENSES.csv`
+(directly or through its packaged `-android`/`-jvm` variant). Bundled third-party notices
+are not yet shown in the app; providing them is a release prerequisite.
 
 AndroidX Fragment KTX 1.9.0 and AppCompat 1.8.0: Apache-2.0. These provide the
 native fragment host required by Readium's EPUB navigator. Java API desugaring

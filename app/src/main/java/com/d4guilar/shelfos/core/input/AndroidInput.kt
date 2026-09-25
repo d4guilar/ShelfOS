@@ -3,7 +3,7 @@ package com.d4guilar.shelfos.core.input
 
 import android.view.KeyEvent
 
-fun KeyEvent.shelfCommand(context: InputContext, rightToLeft: Boolean = false): ShelfCommand? {
+fun KeyEvent.keyStroke(): KeyStroke {
     val key = when (keyCode) {
         KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> InputKey.ENTER
         KeyEvent.KEYCODE_DPAD_CENTER -> InputKey.CENTER
@@ -14,6 +14,9 @@ fun KeyEvent.shelfCommand(context: InputContext, rightToLeft: Boolean = false): 
         KeyEvent.KEYCODE_BACK -> InputKey.BACK
         KeyEvent.KEYCODE_DPAD_LEFT -> InputKey.LEFT
         KeyEvent.KEYCODE_DPAD_RIGHT -> InputKey.RIGHT
+        KeyEvent.KEYCODE_DPAD_UP -> InputKey.UP
+        KeyEvent.KEYCODE_DPAD_DOWN -> InputKey.DOWN
+        KeyEvent.KEYCODE_TAB -> InputKey.TAB
         KeyEvent.KEYCODE_PAGE_UP -> InputKey.PAGE_UP
         KeyEvent.KEYCODE_PAGE_DOWN -> InputKey.PAGE_DOWN
         KeyEvent.KEYCODE_SPACE -> InputKey.SPACE
@@ -25,5 +28,11 @@ fun KeyEvent.shelfCommand(context: InputContext, rightToLeft: Boolean = false): 
         KeyEvent.KEYCODE_BUTTON_R1 -> InputKey.R1
         else -> InputKey.OTHER
     }
-    return InputMapper.command(KeyStroke(key, isCtrlPressed, isShiftPressed, isAltPressed), context, rightToLeft)
+    return KeyStroke(key, isCtrlPressed, isShiftPressed, isAltPressed)
 }
+
+fun KeyEvent.shelfCommand(context: InputContext, rightToLeft: Boolean = false): ShelfCommand? =
+    InputMapper.command(keyStroke(), context, rightToLeft)
+
+fun KeyEvent.readerCommand(rightToLeft: Boolean, controlsFocused: Boolean): ShelfCommand? =
+    InputMapper.readerCommand(keyStroke(), rightToLeft, controlsFocused)

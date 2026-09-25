@@ -34,3 +34,8 @@ credentials*.json
 # Local agent configuration
 .codex/
 .agents/
+
+# Eclipse/Buildship IDE metadata (some VS Code Java/Gradle extensions generate this)
+.settings/
+.classpath
+.project

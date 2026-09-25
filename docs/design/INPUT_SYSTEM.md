@@ -61,12 +61,19 @@ B             → Toggle bookmark
 
 Shortcuts may be refined after usability testing.
 
-For the Phase 1 reader work in progress, the arrow defaults above describe LTR content.
+For the Phase 1 readers, the arrow defaults above describe LTR content.
 In RTL horizontal reading, Left invokes Next and Right invokes Previous. Page
 Down/R1 remain semantic Next and Page Up/L1 remain Previous in either direction.
 Resolve direction from the title override/category default before mapping reader
 input; do not change Library focus navigation or intercept arrows in editable
 fields/reader controls. See [Phase 1 plan](../PHASE_1_PLAN.md).
+
+Implemented in Phase 1 (`InputMapper.readerCommand`): the page surface takes focus
+when a reader opens, so keys work immediately; while a reader control has focus,
+arrows/Tab/Enter/Space/A keep normal focus behavior and page keys still turn pages.
+Menu/Start toggles controls and focuses the first one. System Back, Escape and B
+hide visible controls first, then leave the reader. Returning from details or a
+fixed-layout reader restores keyboard focus to the selected publication.
 
 ## 4. Suggested gamepad defaults
 

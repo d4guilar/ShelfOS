@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -19,6 +20,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.dp
@@ -52,7 +54,7 @@ fun Modifier.shelfAction(
         .clickable(enabled = enabled, role = role, onClick = onClick)
 }
 
-enum class ShelfIcon { LIBRARY, SEARCH, NOTES, COLLECTIONS, SETTINGS, BACK, STAR }
+enum class ShelfIcon { LIBRARY, SEARCH, NOTES, SHELVES, SETTINGS, BACK, STAR }
 
 /** Original stroke icons; no third-party icon pack or font dependency. */
 @Composable
@@ -75,7 +77,7 @@ fun ShelfIcon(icon: ShelfIcon, modifier: Modifier = Modifier) {
                 val path = Path().apply { moveTo(5f * scale, 2f * scale); lineTo(15f * scale, 2f * scale); lineTo(20f * scale, 7f * scale); lineTo(20f * scale, 22f * scale); lineTo(5f * scale, 22f * scale); close() }
                 drawPath(path, ink, style = stroke); line(9f, 12f, 16f, 12f); line(9f, 16f, 16f, 16f)
             }
-            ShelfIcon.COLLECTIONS -> {
+            ShelfIcon.SHELVES -> {
                 val path = Path().apply { moveTo(12f * scale, 2f * scale); lineTo(22f * scale, 7f * scale); lineTo(22f * scale, 17f * scale); lineTo(12f * scale, 22f * scale); lineTo(2f * scale, 17f * scale); lineTo(2f * scale, 7f * scale); close() }
                 drawPath(path, ink, style = stroke); line(2f, 7f, 12f, 12f); line(12f, 12f, 22f, 7f)
             }
@@ -107,4 +109,12 @@ fun ShelfIcon(icon: ShelfIcon, modifier: Modifier = Modifier) {
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier) {
     Text(text, modifier, style = MaterialTheme.typography.titleMedium)
+}
+
+/** Choice chip whose selected state stays visible in monochrome themes: a check mark, not only a tint. */
+@Composable
+fun ShelfChoiceChip(selected: Boolean, onClick: () -> Unit, label: String, modifier: Modifier = Modifier) {
+    // The mark is decorative; the chip already announces its selected state to accessibility services.
+    FilterChip(selected = selected, onClick = onClick, label = { Text(label) }, modifier = modifier,
+        leadingIcon = if (selected) { { Text("✓", Modifier.clearAndSetSemantics { }) } } else null)
 }

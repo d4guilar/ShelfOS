@@ -11,15 +11,17 @@ bookstore, subscription catalog, or cloud service.
 
 ## Current status
 
-Phase 0 is the last fully recorded acceptance baseline: adaptive navigation and
-library details, fictional sample covers, keyboard/D-pad focus, Classic/Dark and
-a Room-persisted theme. The working tree now contains **unfinished Phase 1** work:
-single-file import, persisted library/reading state, Original PDF/CBZ readers and
-Readium EPUB integration. Full Phase 1 validation is pending; this is not a release.
+Phase 1 is **accepted** (2026-09-24): single-file import by reference (or an
+explicit private copy), a persisted library with Continue Reading, Original PDF/CBZ reading
+with right-to-left Manga, Readium EPUB typography, and a subtle reader-entry cover
+transition. It passes its automated, emulator and physical-device checks, including the
+fixes for its first review and a full acceptance-closure pass; see
+[validation](docs/VALIDATION.md) for two documented, non-blocking environment limitations
+(an emulator-specific API 24 test flake and an API 37 UI-test tooling gap, neither a
+ShelfOS defect). This is not a release.
 
-The intended destinations are Library, Search, Notes, Shelves and Settings. The
-app still uses a legacy Collections placeholder for Shelves; its rename is pending.
-Notes and Shelves functionality is not implemented. See the [Phase 1 plan](docs/PHASE_1_PLAN.md)
+Global destinations are Library, Search, Notes, Shelves and Settings. Notes and
+Shelves are placeholders; their functionality is not implemented. See the [Phase 1 plan](docs/PHASE_1_PLAN.md)
 and [roadmap](docs/ROADMAP.md) for current gaps and completion gates.
 
 ShelfOS aims to support whole local libraries: bulk/folder import, connected
@@ -70,7 +72,7 @@ GitHub Actions is configured for builds, unit tests and lint; device tests run
 separately. Historical Phase 0 validation passed a clean-checkout build, seven JVM tests and
 five Android tests on both phone and expanded API 35 emulator layouts. Physical
 devices, fold postures, API 24/37 runtimes and broader accessibility QA remain.
-Those results do not validate the unfinished Phase 1 changes.
+Phase 1 emulator and private-sample results are recorded separately in the validation document.
 
 ## Product and design
 

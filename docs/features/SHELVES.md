@@ -7,11 +7,10 @@ See [ADR-0020](../adr/0020-categories-series-and-shelves.md).
 
 Canonical global destinations are **Library · Search · Notes · Shelves · Settings**.
 Shelves replaces the earlier user-facing **Collections** term; there is no separate
-Collections product concept. Existing application enum/route/icon/test names such
-as `Collections` and its visible placeholder label are legacy implementation debt,
-retained only because this reconciliation changes documentation, not code. Rename
-the visible destination in the next implementation increment and migrate retained
-routes/state deliberately. New documentation and new feature naming use Shelf.
+Collections product concept. Phase 1 renamed the application's destination label,
+route (`shelves`), icon and test names; no Collection names remain in code. Saved
+navigation state that referenced the old prototype route is not migrated; this affects
+only unreleased prototype installs. New documentation and feature naming use Shelf.
 
 Core categories remain `BOOK`, `COMIC`, `MANGA`, `DOCUMENT`: Books, Comics, Manga,
 Documents. Categories guide reading behavior and defaults, subject to actual format

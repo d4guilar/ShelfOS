@@ -2,10 +2,13 @@
 
 ## Implementation status and accepted direction
 
-Phase 0 is the last fully recorded acceptance baseline ([validation](VALIDATION.md)).
-The working tree contains unfinished Phase 1 single-file import, Room v2 library/
-reading state, PDF/CBZ adapters and Readium EPUB integration. It has not passed the
-full Phase 1 gates; do not describe it as a released or completed reader.
+Phase 1 is accepted ([validation](VALIDATION.md), 2026-09-24): single-file import, Room v2
+library/reading state, PDF/CBZ adapters, Readium EPUB integration, the cover-expansion
+reader transition and the rest of 1D polish are implemented and validated on both emulators
+and physical hardware. Two documented, non-blocking environment limitations remain (an API
+24 emulator-specific test flake and an API 37 automated-UI-test tooling gap; see
+[VALIDATION](VALIDATION.md)), neither a ShelfOS defect. Do not describe it as a public
+release: [Public Demo Readiness](VALIDATION.md) is a separate, later gate.
 
 [PHASE_1_PLAN](PHASE_1_PLAN.md) scopes that first slice. Accepted ADRs 0018–0022
 extend the target architecture; they do not claim the new ingestion, Series,
@@ -692,9 +695,24 @@ See [ADR-0016](adr/0016-phase-zero-foundation.md) for the implemented boundary.
 `ShelfApplication` owns a manual `AppContainer`; UI receives ViewModels backed by
 repositories. `RoomThemeRepository` persists the selected theme. Library content
 was an in-memory set of original demo fixtures. This describes the validated Phase 0
-baseline; unfinished Phase 1 replaces those fixtures with persisted publications.
+baseline; Phase 1 replaces those fixtures with persisted publications.
 Theme tokens centralize colors, typography, shapes, spacing, surfaces, focus,
 motion and icons. Navigation destinations and category meanings are shared.
+
+## Phase 1 implementation
+
+Responsibilities follow the [Phase 1 plan](PHASE_1_PLAN.md#3-architecture-and-data) table.
+
+| Concern | Implementation |
+| --- | --- |
+| Import port | `domain.importing.PublicationImporter` (prepare/discard) with pure archive classification, duplicate and category policies; `core.files.PublicationFiles` implements it for Android documents |
+| Import ownership | A preparation (possible private copy and grant) has one owner at a time: the preparing job, the review, the save, then the library. Only abandoned work is discarded; work the library references never is. `domain.importing.ImportLeases`, shared by the process, records which sources unfinished imports hold: a grant is released only when no library item or other import depends on it. Future durable owners such as Library Sources join that check |
+| Archive access | `core.files.SeekableZip` reads the granted descriptor with positional reads. Shared-storage descriptors cannot be reopened by path (including `/proc/self/fd`), so `java.util.zip.ZipFile` is not used |
+| Error model | `domain.library.PublicationProblem` distinguishes permission loss, unavailable source, unsupported format/layout, protection, damage, empty archives, size limits and storage; only access problems mark an item unavailable |
+| Reader sessions | Fixed-layout and EPUB ViewModels own their sessions and close them when cleared; positions are written through a conflated application-scope writer so the latest page survives leaving the reader |
+| Preferences | Explicit per-title and global layers; an Appearance change records only the fields it changed, and direction is always per-title |
+| Startup maintenance | `AppContainer.sourceMaintenance` removes interrupted partial copies, releases unreferenced read grants and marks items without access unavailable; imports wait for it |
+| Private copies | Referenced by file name; removal never deletes them, Settings → Storage deletes unreferenced copies after confirmation |
 
 ## Reader coordination and portable backups
 
@@ -714,9 +732,8 @@ see [backup contract](features/LIBRARY_SOURCES.md#backup-and-device-reconnection
 
 The existing single-item sourceUri/managedPath model is an interim implementation,
 not a durable LibrarySource or ImportSession. It needs provenance/access separation
-and resumable staging before bulk/folder claims. Existing removal of an owned private
-copy also needs review against the accepted non-destructive managed-Source contract;
-do not silently carry that prototype behavior into Source disconnect/removal.
-The application still has a Collections placeholder; the target is Shelves as
-specified in [terminology and migration](features/SHELVES.md#terminology-and-category-boundary).
-No application changes are made by this documentation reconciliation.
+and resumable staging before bulk/folder claims. Removal is now non-destructive for
+private copies (explicit Settings cleanup only); the private copy lives in app storage
+rather than the user-visible managed Source the accepted contract prefers, which remains
+Source-foundation work. The global destination is Shelves; no Collection names remain
+in code ([terminology](features/SHELVES.md#terminology-and-category-boundary)).

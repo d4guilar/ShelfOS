@@ -1,44 +1,42 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos.core.files
 
-import java.io.IOException
-import java.util.zip.ZipEntry
-import java.util.zip.ZipFile
-
-class PublicationException(message: String) : IOException(message)
-class CopyRequired : IOException("This provider needs a private local copy for reliable offline access.")
+import android.os.ParcelFileDescriptor
+import com.d4guilar.shelfos.domain.importing.isPageImage
+import com.d4guilar.shelfos.domain.library.PublicationException
+import com.d4guilar.shelfos.domain.library.PublicationProblem
 
 object ArchivePolicy {
     const val MAX_ENTRIES = 100_000
     const val MAX_IMAGE_BYTES = 128L * 1024 * 1024
-    private val images = setOf("jpg", "jpeg", "png", "webp")
-    fun isImage(name: String) = name.substringAfterLast('.').lowercase() in images &&
-        !name.startsWith("__MACOSX/") && !name.substringAfterLast('/').startsWith('.')
     fun safeName(name: String) = !name.startsWith('/') && !name.contains('\\') &&
         !name.contains(':') && name.split('/').none { it == ".." }
 
-    fun entries(zip: ZipFile): List<ZipEntry> {
-        val result = ArrayList<ZipEntry>()
+    /**
+     * Reads the archive through a duplicate of the granted descriptor using positional reads; the caller
+     * keeps ownership of [descriptor]. Works for provider-backed shared storage that cannot be reopened by path.
+     */
+    fun open(descriptor: ParcelFileDescriptor): SeekableZip =
+        SeekableZip.open(ParcelFileDescriptor.AutoCloseInputStream(ParcelFileDescriptor.dup(descriptor.fileDescriptor)).channel)
+
+    fun entries(zip: SeekableZip): List<SeekableZip.Entry> {
         var expanded = 0L
-        val enumeration = zip.entries()
-        while (enumeration.hasMoreElements()) {
-            if (result.size >= MAX_ENTRIES) throw PublicationException("The archive has too many entries.")
-            val entry = enumeration.nextElement()
-            if (!safeName(entry.name)) throw PublicationException("The archive contains an unsafe entry path.")
-            if (entry.size < 0 || entry.size > 8L * 1024 * 1024 * 1024) throw PublicationException("Unsupported archive entry size.")
+        return zip.entries.onEach { entry ->
+            if (!safeName(entry.name)) throw PublicationException(PublicationProblem.CORRUPT, "The archive contains an unsafe entry path.")
+            if (entry.size > 8L * 1024 * 1024 * 1024)
+                throw PublicationException(PublicationProblem.TOO_LARGE, "The archive contains an unsupported entry size.")
             expanded += entry.size
             if (expanded > 64L * 1024 * 1024 * 1024 ||
                 entry.size > 1024 * 1024 && entry.size / entry.compressedSize.coerceAtLeast(1) > 1000)
-                throw PublicationException("The archive expands beyond safe limits.")
-            result.add(entry)
+                throw PublicationException(PublicationProblem.TOO_LARGE, "The archive expands beyond safe limits.")
         }
-        return result
     }
 
-    fun pages(zip: ZipFile): List<ZipEntry> = entries(zip).filter { !it.isDirectory && isImage(it.name) }
+    fun pages(zip: SeekableZip): List<SeekableZip.Entry> = entries(zip).filter { !it.isDirectory && isPageImage(it.name) }
         .also { pages ->
-            if (pages.isEmpty()) throw PublicationException("The archive contains no supported image pages.")
-            if (pages.any { it.size > MAX_IMAGE_BYTES }) throw PublicationException("An image page exceeds the supported size.")
+            if (pages.isEmpty()) throw PublicationException(PublicationProblem.EMPTY_ARCHIVE)
+            if (pages.any { it.encrypted }) throw PublicationException(PublicationProblem.PROTECTED)
+            if (pages.any { it.size > MAX_IMAGE_BYTES }) throw PublicationException(PublicationProblem.TOO_LARGE, "An image page exceeds the supported size.")
         }.sortedWith { a, b -> naturalCompare(a.name, b.name) }
 }
 

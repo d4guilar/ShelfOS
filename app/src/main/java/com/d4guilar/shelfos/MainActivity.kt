@@ -37,7 +37,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val container = (application as ShelfApplication).container
         setContent {
-            val settings: SettingsViewModel = viewModel(factory = viewModelFactory { initializer { SettingsViewModel(container.themes) } })
+            val settings: SettingsViewModel = viewModel(factory = viewModelFactory { initializer { SettingsViewModel(container.themes, container.library) } })
             val library: LibraryViewModel = viewModel(factory = viewModelFactory { initializer {
                 LibraryViewModel(container.library, createSavedStateHandle())
             } })

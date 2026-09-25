@@ -1,9 +1,15 @@
 # Phase 1 plan: local library and first reading experience
 
-Status: scope accepted after the 2026-09-23 proposal; implementation is unfinished
-work in progress as of 2026-09-24. Library persistence, single-file import and
-reader adapters/dependencies exist in the working tree, but full acceptance is
-pending. This document is not a completion report.
+Status: scope accepted after the 2026-09-23 proposal. As of 2026-09-24, **Phase 1 is
+accepted**: increments 1A–1D (including the cover-expansion transition and the large-load,
+compatibility, TalkBack and physical-controller items) are complete, and the automated,
+emulator and physical-device checks recorded in
+[VALIDATION](VALIDATION.md#phase-1-validation-2026-09-24) pass, including the fixes for the
+first Phase 1 review and the full acceptance-closure passes that followed it. Two items
+remain recorded as documented, non-blocking environment limitations rather than resolved
+gates — an API 24 emulator-specific test flake and an API 37 automated-UI-test tooling gap,
+neither a ShelfOS defect — per section 7 and the validation document. This document remains
+the plan, not a completion report.
 
 ## 1. Outcome and scope
 
@@ -89,10 +95,10 @@ Add only tables serving the increment being implemented:
 Migrate from schema v1 without losing `appearance_preference`. Use separate,
 tested migrations as increments add tables; never use destructive fallback.
 Removing an entry must not delete source files by default, including managed
-publications. Cache cleanup is separate from source deletion. The existing prototype
-removes its owned private copy; reconcile that behavior before managed-Source/removal
-acceptance. Release URI
-grants only when no remaining ShelfOS item or active operation requires them.
+publications. Cache cleanup is separate from source deletion. Implemented: removal keeps
+a private offline copy; Settings → Storage deletes unreferenced copies only after explicit
+confirmation. Release URI grants only when no remaining ShelfOS item or active operation
+requires them.
 
 ## 4. Import and large-file policy
 
@@ -112,7 +118,10 @@ Network metadata providers stay outside the first reading build.
 Import runs off the main thread with cancellation and observable stage progress.
 Use indeterminate progress when the provider cannot report byte totals. Rotation
 keeps the operation attached to its state holder. The current single-file implementation may lose an unfinished import on process
-death and require retry; record this limitation, not a library-scale guarantee.
+death and require retry; record this limitation, not a library-scale guarantee. On the next
+launch, startup maintenance deletes interrupted partial copies and releases read grants no
+library item references before any new import begins; a completed but unconfirmed copy
+appears under Settings → Storage as an unused private copy.
 Before bulk/folder imports ship, persist ImportSession/staging checkpoints and
 review decisions so restart resumes safely. Do not extend a ViewModel-only job into
 a bulk import engine. Complete the database transaction only after required access/validation
@@ -124,7 +133,11 @@ Do not hash every multi-gigabyte file before allowing an import.
 
 The private CBZ sample is approximately 3.16 GB. Never load or expand an entire
 publication in memory. Evaluate seekable archive access and ZIP64 behavior;
-stream page decoding with a bounded bitmap cache and limited prefetch. If a
+stream page decoding with a bounded bitmap cache and limited prefetch. Evaluation
+result: provider descriptors for shared storage cannot be reopened by path (including
+`/proc/self/fd`), so archives are read through the granted descriptor with positional
+reads (`core.files.SeekableZip`, ZIP64 directories supported); one page bitmap is held
+at a time and no prefetch is implemented yet. If a
 provider requires a temporary seekable copy, check available storage, disclose
 the copy, permit cancellation and clean partial output. Avoid unconditional
 whole-archive extraction. Limit entry counts, decoded pixel dimensions, expanded
@@ -200,9 +213,9 @@ full-text search, advanced spreads and richer reader controls remain later work.
 Fresh installs start with an honest empty library. Keep fictional fixtures in
 tests or an explicit development-only demo; never seed them as owned publications.
 Continue Reading contains real saved reading state after 1B, and is an empty state
-before then. Notes and Shelves remain truthful planned destinations. The app still labels the
-legacy placeholder Collections; renaming its visible label and any retained saved
-routes is pending implementation, not performed by this documentation task.
+before then. Notes and Shelves remain truthful planned destinations. The legacy
+Collections placeholder is renamed to Shelves in the visible label, route, icon and tests;
+no Collection names remain in application code.
 
 Motion work uses the shared token contract and Classic's restrained 100-160 ms
 interaction guidance. Study ES-DE-like continuity as inspiration, then profile

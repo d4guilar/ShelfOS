@@ -87,8 +87,16 @@ ShelfOS boots, navigates, and has a stable engineering foundation.
 The owner accepted the expanded [Phase 1 plan](PHASE_1_PLAN.md) after its initial
 proposal. [ADR-0017](adr/0017-phase-one-reading-scope.md) records that scope:
 durable Library, basic Original PDF/CBZ reading, reflowable EPUB typography and
-integration polish. Unfinished application work exists; full build/device/license
-and acceptance gates remain open. Phase 1 is not complete or production-ready.
+integration polish. **Phase 1 is accepted (2026-09-24):** increments 1A–1D, including the
+cover-expansion transition, 1D scroll-restoration/rapid-switch coverage, reader zoom/fit and
+global Appearance persistence, are complete. They pass the automated build, unit, lint,
+license-inventory, emulator and physical-device checks, including private-sample reading,
+the fixes for the first Phase 1 review, and the acceptance-closure passes that followed
+([validation](VALIDATION.md#phase-1-validation-2026-09-24)). Two items remain as documented,
+non-blocking environment limitations rather than open gates: an API 24 emulator-specific
+test flake and an API 37 automated-UI-test tooling gap, neither a ShelfOS defect. Phase 1 is
+not yet a public release; see [Public Demo Readiness](VALIDATION.md) as the separate next
+gate.
 
 The newly accepted ingestion/organization architecture in ADRs 0018–0022 extends
 that first slice without making advanced PDF reconstruction, Sources, Series or
@@ -104,7 +112,7 @@ scope; introduce schema and UI only with each corresponding implementation.
 
 | Order / track | Scope | Gate / relationship |
 | --- | --- | --- |
-| 1. Early import and first readers (Phase 1) | Basic single-file import, LibraryItem persistence, local metadata/category, source provenance, errors; Original PDF/CBZ and EPUB reading/resume | Current work in progress; validate before completion. Rename legacy navigation to Shelves and review owned-copy removal policy |
+| 1. Early import and first readers (Phase 1) | Basic single-file import, LibraryItem persistence, local metadata/category, source provenance, errors; Original PDF/CBZ and EPUB reading/resume | **Accepted.** Emulator- and physical-device-validated, including the cover-expansion transition and 1D polish. Shelves naming and non-destructive private-copy removal are done. Two documented, non-blocking environment limitations remain (API 24 emulator flake, API 37 UI-test tooling gap) |
 | 2. Multi-file foundation (next import increment) | One selection of many files, shared candidate/duplicate/error handling | No hundreds-of-single-import migration UX; adopt shared ingestion boundaries |
 | 3. Bulk/folder and Source foundation | Recursive discovery, durable ImportSession/staging/review, process-death recovery, connected LibrarySource, health, safe manual rescan | Bounded batches, isolated corrupt files, no deletion on missing/partial scans; references default, explicit managed copies |
 | 4. Series foundation | Series/Membership, manual creation, bulk/folder Import as Series, reviewable detection, natural/manual order, details, Series-level Continue Reading | Generic Books/Comics/Manga; optional virtual omnibus follows stable per-member resume and boundary recovery |

@@ -43,17 +43,28 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
-import android.content.Intent
+import com.d4guilar.shelfos.core.theme.reducedMotionEnabled
 
+/** Canonical global destinations. Shelves replaced the earlier Collections placeholder (ADR-0020). */
 enum class Destination(val route: String, val label: String, val icon: ShelfIcon) {
     LIBRARY("library", "Library", ShelfIcon.LIBRARY), SEARCH("search", "Search", ShelfIcon.SEARCH),
-    NOTES("notes", "Notes", ShelfIcon.NOTES), COLLECTIONS("collections", "Collections", ShelfIcon.COLLECTIONS),
+    NOTES("notes", "Notes", ShelfIcon.NOTES), SHELVES("shelves", "Shelves", ShelfIcon.SHELVES),
     SETTINGS("settings", "Settings", ShelfIcon.SETTINGS),
 }
+
+/** Set on the Library entry before opening details/reader so returning restores keyboard focus. */
+private const val RESTORE_FOCUS = "restoreFocus"
 
 @Composable
 fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: AppContainer, onSystemBack: () -> Unit) {
@@ -65,10 +76,14 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
     val libraryState by library.state.collectAsStateWithLifecycle()
     val theme by settings.theme.collectAsStateWithLifecycle()
     val error by settings.error.collectAsStateWithLifecycle()
-    val importing: ImportViewModel = viewModel(factory = viewModelFactory { initializer { ImportViewModel(container.files, container.library, container.backgroundScope) } })
+    val unusedCopies by settings.unusedCopies.collectAsStateWithLifecycle()
+    val importing: ImportViewModel = viewModel(factory = viewModelFactory { initializer {
+        ImportViewModel(container.files, container.library, container.backgroundScope, beforeImport = { container.sourceMaintenance.join() },
+            leases = container.importLeases)
+    } })
     val importState by importing.state.collectAsStateWithLifecycle()
     val libraryError by library.error.collectAsStateWithLifecycle()
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { importing.choose(it) } }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { importing.choose(it.toString()) } }
     val reading = route.startsWith("reader")
     ImportDialogs(importState, importing::dismiss, importing::copySource, importing::confirm)
     LaunchedEffect(importState.imported) { importState.imported?.let { item ->
@@ -84,7 +99,38 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
             restoreState = true
         }
     }
-    BoxWithConstraints(Modifier.fillMaxSize().background(t.colors.canvas).onPreviewKeyEvent { event ->
+    fun markLibraryReturn() {
+        nav.currentBackStackEntry?.takeIf { it.destination.route == Destination.LIBRARY.route }?.savedStateHandle?.set(RESTORE_FOCUS, true)
+    }
+    fun openDetails(id: String) { markLibraryReturn(); nav.navigate("details/$id") }
+    // The reader-entry cover transition (CLASSIC_UI.md §12): the chosen cover expands into the incoming
+    // reader's area while chrome fades, then the real navigation (below) runs. Reduced motion, or a caller
+    // with no cover position to expand from, skips straight to that navigation — the documented fallback.
+    var pendingTransition by remember { mutableStateOf<PendingCoverTransition?>(null) }
+    var transitionProgress by remember { mutableFloatStateOf(0f) }
+    var contentBounds by remember { mutableStateOf(Rect.Zero) }
+    var rootOrigin by remember { mutableStateOf(Offset.Zero) }
+    LaunchedEffect(pendingTransition) {
+        val active = pendingTransition ?: return@LaunchedEffect
+        Animatable(0f).animateTo(1f, tween(COVER_EXPAND_MILLIS, easing = FastOutSlowInEasing)) { transitionProgress = value }
+        active.proceed()
+        pendingTransition = null
+        transitionProgress = 0f
+    }
+    // EPUB uses Readium's fragment host in its own activity; fixed-layout formats stay in the navigation graph.
+    fun openReader(id: String, coverBounds: Rect? = null) {
+        val item = library.publication(id) ?: return
+        markLibraryReturn()
+        val proceed = {
+            if (item.format == PublicationFormat.EPUB) context.startActivity(EpubActivity.intent(context, id))
+            else nav.navigate("reader/$id") { launchSingleTop = true }
+        }
+        if (coverBounds != null && !coverBounds.isEmpty && !context.reducedMotionEnabled())
+            pendingTransition = PendingCoverTransition(item, coverBounds, proceed)
+        else proceed()
+    }
+    BoxWithConstraints(Modifier.fillMaxSize().background(t.colors.canvas)
+        .onGloballyPositioned { rootOrigin = it.boundsInWindow().topLeft }.onPreviewKeyEvent { event ->
         if (reading) return@onPreviewKeyEvent false
         val command = event.nativeKeyEvent.shelfCommand(InputContext.LIBRARY)
         when (command) {
@@ -99,9 +145,12 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
         }
     }) {
         val layout = adaptiveLayout(maxWidth.value, maxHeight.value)
+        // Chrome finishes fading before the cover expansion does; see chromeAlpha's own doc.
+        val chromeAlphaValue = pendingTransition?.let { chromeAlpha(transitionProgress) } ?: 1f
         Row(Modifier.fillMaxSize()) {
             if (!reading && layout.navigation == NavigationLayout.RAIL) {
-                Column(Modifier.width(88.dp).fillMaxHeight().verticalScroll(rememberScrollState()).testTag("navigation_rail")) {
+                Column(Modifier.width(88.dp).fillMaxHeight().graphicsLayer(alpha = chromeAlphaValue)
+                    .verticalScroll(rememberScrollState()).testTag("navigation_rail")) {
                     Spacer(Modifier.height(t.spacing.medium))
                     Destination.entries.forEach { destination ->
                         NavigationItem(destination, route == destination.route || (destination == Destination.LIBRARY && route.startsWith("details")),
@@ -110,8 +159,9 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                 }
                 Box(Modifier.width(1.dp).fillMaxHeight().background(t.colors.divider))
             }
-            Column(Modifier.weight(1f)) {
-                if (!reading) Row(Modifier.fillMaxWidth().padding(horizontal = t.spacing.medium, vertical = 12.dp),
+            Column(Modifier.weight(1f).onGloballyPositioned { contentBounds = it.boundsInWindow() }) {
+                if (!reading) Row(Modifier.fillMaxWidth().graphicsLayer(alpha = chromeAlphaValue)
+                    .padding(horizontal = t.spacing.medium, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (route.startsWith("details")) {
                         Text("Back", Modifier.shelfAction(onClick = { nav.popBackStack() }).padding(12.dp))
@@ -128,32 +178,27 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                 HorizontalDivider(color = t.colors.divider)
                 NavHost(navController = nav, startDestination = Destination.LIBRARY.route, modifier = Modifier.weight(1f),
                     enterTransition = { fadeIn(tween(t.motion.focusMillis)) }, exitTransition = { fadeOut(tween(t.motion.focusMillis)) }) {
-                    composable(Destination.LIBRARY.route) {
+                    composable(Destination.LIBRARY.route) { backStack ->
+                        val restoreFocus = remember { backStack.savedStateHandle.remove<Boolean>(RESTORE_FOCUS) == true }
                         LibraryScreen(libraryState, layout.showDetails, library::selectFilter, library::select,
-                            onOpen = { id -> library.select(id); if (!layout.showDetails) nav.navigate("details/$id") },
-                            onFavorite = library::toggleFavorite, onRead = { nav.navigate("reader/$it") }, onEdit = library::edit, onRemove = library::remove)
+                            onOpen = { id -> library.select(id); if (!layout.showDetails) openDetails(id) },
+                            onFavorite = library::toggleFavorite, onRead = ::openReader, onEdit = library::edit, onRemove = library::remove,
+                            restoreFocus = restoreFocus)
                     }
                     composable("details/{id}") { backStack ->
                         val item = library.publication(backStack.arguments?.getString("id"))
                         if (item != null) PublicationDetails(item, item.id in libraryState.favorites,
                             onFavorite = { library.toggleFavorite(item.id) }, modifier = Modifier.fillMaxWidth().testTag("details_screen"),
-                            onRead = { nav.navigate("reader/${item.id}") }, onEdit = { title, creator, category -> library.edit(item.id, title, creator, category) },
-                            onRemove = { library.remove(item.id); nav.popBackStack() })
+                            onRead = { openReader(item.id) }, onEdit = { title, creator, category -> library.edit(item.id, title, creator, category) },
+                            onRemove = { library.remove(item.id); nav.popBackStack() }, focusPrimaryAction = true)
                         else PlaceholderScreen("Publication unavailable", "Return to the Library to choose a publication.")
                     }
                     composable("reader/{id}") { backStack ->
                         val id = backStack.arguments?.getString("id").orEmpty()
-                        val item = library.publication(id)
-                        if (item?.format == PublicationFormat.EPUB) LaunchedEffect(id) {
-                            nav.popBackStack()
-                            context.startActivity(Intent(context, EpubActivity::class.java).putExtra("itemId", id))
-                        }
-                        else {
-                            val reader: FixedReaderViewModel = viewModel(factory = viewModelFactory { initializer {
-                                FixedReaderViewModel(id, container.library, container.fixedReaders, container.backgroundScope)
-                            } })
-                            FixedReaderScreen(reader) { nav.popBackStack() }
-                        }
+                        val reader: FixedReaderViewModel = viewModel(factory = viewModelFactory { initializer {
+                            FixedReaderViewModel(id, container.library, container.fixedReaders, container.backgroundScope)
+                        } })
+                        FixedReaderScreen(reader) { nav.popBackStack() }
                     }
                     composable(Destination.SEARCH.route) {
                         Column(Modifier.fillMaxSize().padding(t.spacing.medium), verticalArrangement = Arrangement.spacedBy(t.spacing.medium)) {
@@ -162,7 +207,7 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                                 label = { Text("Search titles or creators") }, singleLine = true,
                                 modifier = Modifier.fillMaxWidth().testTag("search_field"))
                             val results = library.searchResults(libraryState.query)
-                            Text("${results.size} results", color = t.colors.secondary)
+                            Text(if (results.size == 1) "1 result" else "${results.size} results", color = t.colors.secondary)
                             LazyColumn {
                                 items(results, key = { it.id }) { item ->
                                     Row(Modifier.fillMaxWidth().shelfAction(onClick = {
@@ -176,12 +221,15 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                         }
                     }
                     composable(Destination.NOTES.route) { PlaceholderScreen("Notes", "A place for your reading notes. Notes and annotations are planned for a later phase.") }
-                    composable(Destination.COLLECTIONS.route) { PlaceholderScreen("Collections", "Your own ways to organize a library. Collections are planned for a later phase.") }
-                    composable(Destination.SETTINGS.route) { SettingsScreen(theme ?: ThemeId.CLASSIC, error, settings::select) }
+                    composable(Destination.SHELVES.route) { PlaceholderScreen("Shelves", "Your own ways to organize a library, such as Research or University. A publication can sit on several Shelves and keeps its category. Shelves are planned for a later phase.") }
+                    composable(Destination.SETTINGS.route) {
+                        LaunchedEffect(Unit) { settings.refreshStorage() }
+                        SettingsScreen(theme ?: ThemeId.CLASSIC, error, settings::select, unusedCopies, settings::deleteUnusedCopies)
+                    }
                 }
                 if (!reading && layout.navigation == NavigationLayout.BOTTOM) {
                     HorizontalDivider(color = t.colors.divider)
-                    Row(Modifier.fillMaxWidth().testTag("bottom_navigation")) {
+                    Row(Modifier.fillMaxWidth().graphicsLayer(alpha = chromeAlphaValue).testTag("bottom_navigation")) {
                         Destination.entries.forEach { destination ->
                             NavigationItem(destination, route == destination.route || (destination == Destination.LIBRARY && route.startsWith("details")),
                                 Modifier.weight(1f), onClick = { navigate(destination) })
@@ -189,6 +237,12 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                     }
                 }
             }
+        }
+        pendingTransition?.let { transition ->
+            // Rects were measured in window coordinates; this Box's own origin may not be the window's origin
+            // (for example under a status bar), so both are shifted into this Box's local coordinate space.
+            val local = transition.copy(start = transition.start.translate(-rootOrigin.x, -rootOrigin.y))
+            CoverExpandOverlay(local, contentBounds.translate(-rootOrigin.x, -rootOrigin.y), transitionProgress)
         }
     }
 }

@@ -3,7 +3,9 @@ package com.d4guilar.shelfos.domain.library
 
 enum class PublicationFormat { PDF, EPUB, CBZ }
 enum class ReadingDirection { LTR, RTL }
-enum class MediaCategory(val label: String) { BOOK("Books"), COMIC("Comics"), MANGA("Manga"), DOCUMENT("Documents") }
+enum class MediaCategory(val label: String, val singular: String) {
+    BOOK("Books", "Book"), COMIC("Comics", "Comic"), MANGA("Manga", "Manga"), DOCUMENT("Documents", "Document")
+}
 enum class LibraryFilter(val label: String, val category: MediaCategory?) {
     FAVORITES("★ Favorites", null), BOOKS("Books", MediaCategory.BOOK), COMICS("Comics", MediaCategory.COMIC),
     MANGA("Manga", MediaCategory.MANGA), DOCUMENTS("Documents", MediaCategory.DOCUMENT)

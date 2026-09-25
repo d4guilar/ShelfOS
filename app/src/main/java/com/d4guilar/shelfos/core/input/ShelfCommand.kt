@@ -3,10 +3,14 @@ package com.d4guilar.shelfos.core.input
 
 enum class ShelfCommand { NEXT_PAGE, PREVIOUS_PAGE, CONFIRM, BACK, OPEN_MENU, SEARCH, TOGGLE_BOOKMARK }
 enum class InputContext { LIBRARY, READER }
-enum class InputKey { ENTER, CENTER, GAMEPAD_A, GAMEPAD_B, ESCAPE, HOME, BACK, LEFT, RIGHT, PAGE_UP, PAGE_DOWN, SPACE, F, B, MENU, START, L1, R1, OTHER }
+enum class InputKey { ENTER, CENTER, GAMEPAD_A, GAMEPAD_B, ESCAPE, HOME, BACK, LEFT, RIGHT, UP, DOWN, TAB, PAGE_UP, PAGE_DOWN, SPACE, F, B, MENU, START, L1, R1, OTHER }
 data class KeyStroke(val key: InputKey, val control: Boolean = false, val shift: Boolean = false, val alt: Boolean = false)
 
 object InputMapper {
+    /** Keys that move or activate Compose focus. */
+    private val focusKeys = setOf(InputKey.LEFT, InputKey.RIGHT, InputKey.UP, InputKey.DOWN, InputKey.TAB,
+        InputKey.ENTER, InputKey.CENTER, InputKey.SPACE, InputKey.GAMEPAD_A)
+
     fun command(stroke: KeyStroke, context: InputContext, rightToLeft: Boolean = false): ShelfCommand? {
         if (stroke.alt) return null
         if (stroke.control) return if (stroke.key == InputKey.F) ShelfCommand.SEARCH else null
@@ -26,4 +30,12 @@ object InputMapper {
             } else null // Arrows / D-pad belong to Compose focus in the library.
         }
     }
+
+    /**
+     * Reader input: while a reader control has focus, keys that move or activate focus keep their normal
+     * Compose behavior; page, menu and back commands still apply.
+     */
+    fun readerCommand(stroke: KeyStroke, rightToLeft: Boolean, controlsFocused: Boolean): ShelfCommand? =
+        if (controlsFocused && !stroke.control && !stroke.alt && stroke.key in focusKeys) null
+        else command(stroke, InputContext.READER, rightToLeft)
 }

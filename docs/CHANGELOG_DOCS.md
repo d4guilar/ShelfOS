@@ -1,10 +1,27 @@
 # Documentation Changelog
 
+## Phase 1 review remediation (2026-09-24)
+
+- Corrected Phase 1 status (README, roadmap, Phase 1 plan, validation): 1Aâ€“1C implemented,
+  1D partial; open software gaps listed alongside the physical-device gates.
+- Named the three samples whose hashes were verified; the large CBZ was not hashed.
+- Recorded the review fixes and their evidence by category (static/build, unit/regression,
+  emulator, physical device), and the import ownership rule in the architecture.
+
+## Phase 1 implementation status (2026-09-24)
+
+- Recorded Phase 1 as implemented and emulator-validated but not accepted (README,
+  roadmap, Phase 1 plan, architecture, validation); physical-device gates stay open.
+- Marked the Shelves rename and non-destructive private-copy removal as done.
+- Documented descriptor-based archive access (shared storage cannot be reopened by path),
+  startup maintenance, the error model and reader input/focus behavior.
+- Recorded the measured debug APK size and a dependency-inventory check; no dependency changed.
+
 ## Accepted ingestion and organization decisions (2026-09-24)
 
 - Added dedicated Data Ingestion, PDF Ingestion, Series, Shelves and Library Sources specifications.
-- Added ADRs 0018–0022 and a requirement-by-requirement integration audit.
-- Reconciled Collections → Shelves, pre-commit metadata → post-commit enrichment,
+- Added ADRs 0018â€“0022 and a requirement-by-requirement integration audit.
+- Reconciled Collections â†’ Shelves, pre-commit metadata â†’ post-commit enrichment,
   Source/session identity, PDF mode terminology and safe managed-source behavior.
 - Updated product/architecture/roadmap, Phase 1 status, feature/design and contributor guidance.
 - Preserved Phase 0 validation as historical evidence and unfinished Phase 1 code unchanged.
@@ -28,7 +45,7 @@
 - Clarified that suggested publication schemas and metadata work are future phases.
 - Added dependency review, validation instructions and actual prototype status.
 
-## v4 — Library Foundation + Metadata Enrichment
+## v4 â€” Library Foundation + Metadata Enrichment
 
 This revision incorporates conclusions from the approved ShelfOS Classic Library mock.
 
@@ -61,7 +78,7 @@ Core decision:
 > Themes are visual/interaction layers over one ShelfOS structure. Metadata enrichment is part of the library model, not a theme feature.
 
 
-## v5 — Open Source, Licensing, and Release Governance
+## v5 â€” Open Source, Licensing, and Release Governance
 
 Added:
 

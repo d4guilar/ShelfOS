@@ -15,6 +15,7 @@ import org.readium.r2.navigator.epub.*
 import org.readium.r2.navigator.preferences.*
 import org.readium.r2.navigator.preferences.ReadingProgression
 import org.readium.r2.shared.publication.*
+import org.readium.r2.shared.publication.services.isRestricted
 import org.readium.r2.shared.util.*
 import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.http.*
@@ -22,29 +23,28 @@ import org.readium.r2.shared.util.resource.TransformingContainer
 import org.readium.r2.shared.util.resource.TransformingResource
 import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.streamer.parser.epub.EpubParser
-import java.io.File
 import java.io.IOException
-import java.util.zip.ZipFile
 
 class EpubReaderFactory(private val context: Context, private val files: PublicationFiles) {
     private val offlineClient = object : HttpClient {
         override suspend fun stream(request: HttpRequest): HttpTry<HttpStreamResponse> = Try.failure(HttpError.IO(IOException("Offline publication reader")))
     }
     suspend fun open(item: LibraryItem): EpubSession = withContext(Dispatchers.IO) {
-        files.open(item).use { descriptor -> ZipFile("/proc/self/fd/${descriptor.fd}").use { zip ->
+        files.open(item).use { descriptor -> ArchivePolicy.open(descriptor).use { zip ->
             val entries = ArchivePolicy.entries(zip)
             val markup = entries.filter { it.name.substringAfterLast('.').lowercase() in setOf("xhtml", "html", "htm", "svg", "xml", "opf", "ncx", "css") }
             if (markup.any { it.size > 8 * 1024 * 1024 } || markup.sumOf { it.size } > 128 * 1024 * 1024)
-                throw PublicationException("This EPUB has exceptionally large content resources and is not supported yet.")
+                throw PublicationException(PublicationProblem.TOO_LARGE, "This EPUB has exceptionally large content resources and is not supported yet.")
             entries.filter { it.name.endsWith(".opf", true) || it.name.endsWith(".xml", true) || it.name.endsWith(".ncx", true) }.forEach { entry ->
-                val xml = zip.getInputStream(entry).use { it.readBytes().toString(Charsets.UTF_8) }
-                if (xml.contains("<!ENTITY", true)) throw PublicationException("This EPUB contains unsupported external entity declarations.")
+                val xml = zip.readBytes(entry, 8L * 1024 * 1024)?.toString(Charsets.UTF_8)
+                    ?: throw PublicationException(PublicationProblem.TOO_LARGE, "This EPUB has exceptionally large content resources and is not supported yet.")
+                if (xml.contains("<!ENTITY", true)) throw PublicationException(PublicationProblem.UNSUPPORTED_FORMAT, "This EPUB contains unsupported entity declarations.")
             }
         } }
-        val url = if (item.managedPath != null) File(item.managedPath).toUrl(isDirectory = false) else
-            Uri.parse(item.sourceUri).toAbsoluteUrl() ?: throw PublicationException("Invalid source location.")
+        val url = item.managedPath?.let { files.managedFile(it).toUrl(isDirectory = false) }
+            ?: Uri.parse(item.sourceUri).toAbsoluteUrl() ?: throw PublicationException(PublicationProblem.SOURCE_UNAVAILABLE)
         val asset = AssetRetriever(context.contentResolver, offlineClient).retrieve(url)
-            .getOrElse { throw PublicationException("This EPUB could not be accessed.") }
+            .getOrElse { throw PublicationException(PublicationProblem.UNREADABLE) }
         try {
             val publication = PublicationOpener(EpubParser(offlineClient), onCreatePublication = {
                 container = TransformingContainer(container) { resourceUrl, resource ->
@@ -52,10 +52,17 @@ class EpubReaderFactory(private val context: Context, private val files: Publica
                         TransformingResource(resource) { data -> Try.success(sanitizeEpubHtml(data)) }
                     else resource
                 }
-            }).open(asset, allowUserInteraction = false).getOrElse { throw PublicationException("This EPUB is invalid, protected or unsupported.") }
+            }).open(asset, allowUserInteraction = false).getOrElse { error ->
+                throw if (error is PublicationOpener.OpenError.FormatNotSupported) PublicationException(PublicationProblem.CORRUPT, "This EPUB is invalid or unsupported.")
+                else PublicationException(PublicationProblem.UNREADABLE)
+            }
+            if (publication.isRestricted) {
+                publication.close()
+                throw PublicationException(PublicationProblem.PROTECTED)
+            }
             if (publication.metadata.layout == Layout.FIXED) {
                 publication.close()
-                throw PublicationException("Fixed-layout EPUB reading is not supported in this build. PDF and CBZ fixed pages are supported.")
+                throw PublicationException(PublicationProblem.UNSUPPORTED_LAYOUT)
             }
             EpubSession(publication)
         } catch (error: Throwable) { asset.close(); throw error }
