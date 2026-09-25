@@ -1,9 +1,12 @@
 # Phase 2 plan: the Reading phase
 
-Status: increment 2A implemented 2026-09-25 on branch `phase-2/reading`, not yet
-merged or accepted. 2B/2C/2D are planned only; none of their work has started.
-This document is the canonical Phase 2 planning location referenced by
-[`ROADMAP.md`](ROADMAP.md#phase-2--reading).
+Status: **increment 2A is accepted (2026-09-25)** on branch `phase-2/reading`,
+not yet merged to `main`. Independent Codex review verdict: PASS WITH
+NON-BLOCKING FINDINGS — see `VALIDATION.md`'s "Phase 2A validation" section for
+the full evidence and explicitly-unclaimed items. 2A.1 is planned only (this
+document, not yet implemented). 2B/2C/2D remain planned only; none of their
+work has started. This document is the canonical Phase 2 planning location
+referenced by [`ROADMAP.md`](ROADMAP.md#phase-2--reading).
 
 ## 1. Reconciling Phase 1 acceptance with the roadmap
 
@@ -31,13 +34,14 @@ reader.
 > ShelfOS becomes a useful everyday reader.
 
 Phase 2 builds on the accepted Phase 1 reader foundation rather than
-reimplementing it. It is broken into four increments, each independently
-mergeable and gated by its own acceptance criteria. Only 2A is implemented by
-this document's authoring pass.
+reimplementing it. It is broken into five increments (2A, 2A.1, 2B, 2C, 2D),
+each independently mergeable and gated by its own acceptance criteria. Only 2A
+is implemented as of this document's latest revision; 2A.1 is documented as an
+accepted future direction but not implemented (see its section below).
 
 ## 3. Increments
 
-### 2A — Reader interaction, chrome and navigation foundation (this pass)
+### 2A — Reader interaction, chrome and navigation foundation (accepted 2026-09-25)
 
 **Motivation.** A Samsung Galaxy Tab A field test found that a real user
 pressed Android Back while reader chrome was hidden and nearly exited the
@@ -100,18 +104,118 @@ behavior as an open design question pending this increment.
       pre-existing, documented environment gap (`ROADMAP.md`'s "API 37
       automated-UI-test tooling gap"), not a regression from this change and
       not claimed fixed here. See §6.
-- [ ] RP5 physical validation of the fixed Back behavior and the accessibility
-      remediation below. Not performed as of the last validation pass — see §6.
+- [x] RP5 physical validation of the fixed Back behavior and the accessibility
+      remediation. Performed during independent Codex re-review (2026-09-25):
+      real-hardware EPUB/PDF/CBZ execution, on-device Back-semantics
+      validation, PDF resume, CBZ D-pad input, Home/Recent-Apps safety, a
+      focused 6/6-passing instrumentation pass, no crashes in logcat. See
+      `VALIDATION.md` for the full breakdown and its explicit distinction
+      between hardware execution over ADB and physically pressing the RP5's
+      own buttons.
 - [ ] Galaxy Tab A physical validation. Optional/periodic per the device
-      strategy in §7; not performed in this run, documented as pending.
+      strategy in §7; not performed as of this pass, documented as pending.
 - [x] **Accessibility remediation** (Codex review R2, 2026-09-25): the reader
       chrome-toggle surfaces now expose a real `onClick` accessibility action
       while chrome is hidden, instead of only descriptive text that didn't
       correspond to an actionable TalkBack gesture. See the "Scope
       implemented" accessibility bullet above and new tests
       `accessibilityActionRevealsHiddenControlsInFixedReader`/
-      `...InEpubReader` in `NavigationSmokeTest.kt`. Not yet independently
-      walked through with TalkBack running (see §6/VALIDATION.md).
+      `...InEpubReader` in `NavigationSmokeTest.kt`. Independently confirmed
+      resolved by Codex re-review. A manual TalkBack walkthrough was still not
+      performed — TalkBack was unavailable on the test targets used.
+
+### 2A.1 — Input Discovery & Controller Hint Polish (planning only, not implemented)
+
+**Do not implement this increment yet.** No `InputHint` composable, modality
+detector, controller badge, hard-coded "R1"/"L1"/"B" label, new binding, or
+remapping architecture exists in this branch. This section records the
+accepted future direction only, to be implemented in a fresh follow-up branch
+after Phase 2A is merged.
+
+**Purpose.** ShelfOS already supports controller/keyboard reader navigation
+(Phase 1's `ShelfCommand`/`InputMapper`, hardened in 2A), but nothing in the UI
+lets a user discover that capability without experimenting. Media frontends
+such as Beacon and ES-DE demonstrate the value of subtle contextual input
+hints — they are interaction references only; ShelfOS must not copy their
+proprietary assets, controller artwork, layouts, branding or sounds, and must
+implement this using its own visual system.
+
+**Product direction.** When reader chrome is visible and controller input is
+the active/recent input modality, ShelfOS may show small contextual hints such
+as `[L1] Previous`, `[R1] Next`, `[B] Back` — small monochrome rounded
+keycaps/badges, subtle border/background, theme-aware, visually secondary to
+the publication, consistent with ShelfOS Classic, with no bright
+Xbox/PlayStation/Nintendo branding or proprietary controller glyphs. Hints
+disappear with reader chrome. The exact visual treatment is not frozen; the
+examples above are not pixel-perfect contracts.
+
+**Semantic architecture requirement.** The implementation must not hard-code
+display strings like `"R1"`/`"L1"`/`"B"` inside individual reader
+screens/buttons — that would regress the semantic-input architecture Phase 1
+and 2A both preserved. The intended shape is:
+
+```
+Physical input -> current binding -> ShelfCommand -> InputHint representation
+```
+
+e.g. `ShelfCommand.NEXT_PAGE -> current binding -> R1 -> rendered keycap`. The
+displayed hint must describe the actual current binding, not a label
+hard-coded by the reader UI, so future remapping/support stays possible. The
+concrete API/abstraction is not decided by this planning pass — do not build a
+speculative production abstraction ahead of the actual implementation work.
+
+**Input-modality-aware presentation:**
+- **Touch:** when touch is the active/recent modality, controller badges
+  generally should not occupy reader chrome — touch users should not see
+  unnecessary controller clutter.
+- **Controller:** after controller/D-pad/button input, relevant controller
+  hints may appear with reader chrome, making supported actions immediately
+  discoverable.
+- **Keyboard:** the same architecture should eventually support keyboard hints
+  (e.g. `[←] Previous`, `[→] Next`, `[Esc] Back`), but the first 2A.1 slice
+  does not need to include keyboard hints if that would make the increment
+  unnecessarily large.
+- **Immersive mode:** when reader chrome is hidden, input hints disappear with
+  it; the publication remains visually dominant.
+
+**Likely first-slice scope:** detect/reuse recent input modality; a reusable
+ShelfOS keycap/`InputHint` visual component; mapping semantic reader commands
+to their currently-relevant displayed bindings; reader-chrome integration for
+EPUB, PDF and CBZ; Previous/Next/Back as the minimum useful command set;
+Classic/Dark parity; accessibility semantics; reduced-motion compatibility;
+compact/expanded layout sanity; RP5 physical-controller validation. Potential
+future extension (not first-slice): keyboard hints, remapped-control
+reflection, alternate controllers/layouts. Do not expand the first slice into
+a complete remapping system.
+
+**UX principles:**
+1. Discoverability without clutter.
+2. The publication remains the hero.
+3. Hints describe actual behavior.
+4. Input hints come from semantic commands/bindings, not individual-screen
+   strings.
+5. Controller support should feel intentional rather than accidental.
+6. Touch-only users should not be presented with irrelevant controller chrome.
+7. Hints must remain readable on compact handheld devices such as RP5.
+8. Hints must also scale appropriately on tablets.
+9. Accessibility names should describe actions, not merely announce raw
+   button names.
+10. ShelfOS should use its own neutral visual language rather than imitate a
+    specific console platform.
+
+**Sequencing.** 2A.1 sits between 2A and 2B because input hints directly
+extend the reader-chrome and semantic-input work 2A just closed, and they
+benefit EPUB/PDF/CBZ together rather than being comics-specific — so it is not
+postponed to Phase 3 merely because controller navigation is especially useful
+for comics:
+
+```
+2A   — Reader interaction/chrome/navigation
+2A.1 — Input Discovery & Controller Hint Polish
+2B   — EPUB everyday-reading improvements
+2C   — Original PDF hardening/fidelity
+2D   — continuity/accessibility/performance closure
+```
 
 ### 2B — EPUB everyday-reading improvements (planned, not started)
 
@@ -296,5 +400,9 @@ field validation.**
 
 ## 9. Explicit out-of-scope confirmation for this run
 
-Only 2A was implemented. 2B, 2C and 2D are planning-only in this document; no
-code for them exists. No item from §4's out-of-scope list was touched.
+Only 2A was implemented (and, in a later pass, remediated against independent
+Codex review — no new reader behavior beyond that remediation). 2A.1, 2B, 2C
+and 2D are planning-only in this document; no `InputHint` composable, modality
+detector, controller badge, hard-coded button label, new binding, remapping
+architecture, or any other 2A.1/2B/2C/2D code exists on this branch. No item
+from §4's out-of-scope list was touched.

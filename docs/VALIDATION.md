@@ -2,10 +2,13 @@
 
 ## Phase 2A validation (2026-09-25)
 
-Status: 2A (reader chrome/Back semantics, `docs/PHASE_2_PLAN.md`) implemented on
-branch `phase-2/reading`, not merged, not yet Codex-reviewed. Phase 1's acceptance
-(below) is unaffected; no Phase 1 code outside the reader Back-handling paths
-described in [ADR-0023](adr/0023-reader-chrome-back-semantics.md) was touched.
+Status: **Phase 2A (reader chrome/Back semantics, `docs/PHASE_2_PLAN.md`) is
+accepted**, on branch `phase-2/reading`, not yet merged. Independent Codex
+review verdict: **PASS WITH NON-BLOCKING FINDINGS** (see FINAL ACCEPTANCE
+below for the full evidence summary and explicitly unclaimed items). Phase 1's
+acceptance (below) is unaffected; no Phase 1 code outside the reader
+Back-handling paths described in
+[ADR-0023](adr/0023-reader-chrome-back-semantics.md) was touched.
 
 ### STATIC / BUILD
 
@@ -23,7 +26,7 @@ described in [ADR-0023](adr/0023-reader-chrome-back-semantics.md) was touched.
 
 | Check | Result |
 | --- | --- |
-| `:app:testDebugUnitTest` | Passed |
+| `:app:testDebugUnitTest` | Passed — 63/63 (independent Codex re-review count) |
 
 ### INSTRUMENTED / EMULATOR
 
@@ -47,9 +50,41 @@ directly exercising the previously-untested path that let the field bug through.
 
 ### PHYSICAL DEVICE
 
-**Retroid Pocket 5 (RP5):** not performed in this pass — no RP5 device was
-connected to this environment. This is the first physical check that should
-happen before Codex review or merge; recorded here as pending, not claimed.
+**Retroid Pocket 5 (RP5), Android 13 / API 33, ADB serial `d8f7f1b6`.**
+Performed during independent Codex re-review (2026-09-25), after the
+accessibility remediation above:
+
+- Real-hardware execution (over ADB, not simulated) confirmed for EPUB, PDF and
+  CBZ opening and reading.
+- Hide/reveal/exit Back semantics (ADR-0023) validated on-device through
+  Android key events: hidden chrome + Back reveals chrome; visible chrome +
+  Back exits the reader.
+- PDF resume validated on-device.
+- CBZ D-pad/input validated on-device.
+- Android Home / Recent Apps safety confirmed — normal system navigation
+  remains available and is not intercepted.
+- A focused RP5 instrumentation pass: **6/6 passed**.
+- No ShelfOS crashes or navigation exceptions observed in RP5 logcat during
+  the pass.
+- No obvious Phase 2A performance regression observed.
+
+**Important distinction (Codex's own framing, preserved here):** this is real
+RP5 hardware execution driven through Android key events over ADB, not a
+record of physically pressing the handheld's own L1/R1/B buttons during this
+review pass. The owner has separately confirmed that physical controller
+controls work on the RP5, but exact per-button physical-press sequences for
+each reader were not explicitly recorded in this pass, so physical-controller
+support is described here conservatively rather than as a specific tested
+sequence.
+
+**Manual TalkBack:** not performed. TalkBack was unavailable on the test
+targets used for this review. This is not claimed as a pass.
+
+**Pre-existing, non-blocking observation (not caused by Phase 2A):** in
+landscape orientation, the import dialog's category-chip row visually exposed
+only the Books chip without usable scrolling to reach Comics/Manga/Documents.
+This predates Phase 2A and is not part of its acceptance criteria; tracked
+here as a future adaptive/import UX follow-up, not fixed in this branch.
 
 **Samsung Galaxy Tab A (SM-T580):** not performed in this pass. Per the device
 strategy in `PHASE_2_PLAN.md` §7, this is optional/periodic and non-blocking for
@@ -87,15 +122,23 @@ tested with the system "Remove animations" setting for this reason.
 
 ### FINAL ACCEPTANCE (2A)
 
-2A is **implemented, automated-tested on two of three available emulator
-configurations** (one blocked by a pre-existing, documented tooling gap
-unrelated to this change), **and remediated once against an independent Codex
-review** (R2 accessibility finding, plus the R3 documentation findings below,
-2026-09-25). It is still **not physically validated** (RP5 remains pending — a
-device was connected during the remediation pass but intentionally not used
-for it, per that review's own instruction to keep RP5 validation as a separate
-step) and **not yet re-reviewed by Codex** after this remediation. Do not treat
-2A as accepted until the RP5 pass happens and Codex confirms the remediation.
+**Phase 2A is accepted (2026-09-25).** Independent Codex re-review verdict:
+**PASS WITH NON-BLOCKING FINDINGS.** Evidence: JVM unit tests 63/63; API 35
+`NavigationSmokeTest` 16/16; a focused RP5 (Android 13/API 33) instrumentation
+pass 6/6 with real-hardware EPUB/PDF/CBZ execution, on-device Back-semantics
+validation, PDF resume, CBZ D-pad input, Home/Recent-Apps safety, no crashes in
+logcat and no obvious performance regression; full Gradle validation passing;
+the previously blocking accessibility finding (R2) and its three non-blocking
+documentation findings (R3) both independently confirmed resolved.
+
+Explicitly **not** claimed as part of this acceptance: a manual TalkBack
+walkthrough (TalkBack was unavailable on the test targets used); exact
+per-button physical-press sequences on the RP5's own controls beyond the
+owner's separate general confirmation that they work; the API 37
+Espresso/InputManager tooling gap (pre-existing, unrelated, not fixed); PDF
+rendering resolution/fidelity (explicitly deferred to Phase 2C); and the
+pre-existing RP5 landscape import-dialog category-chip scrolling issue noted
+above (predates Phase 2A, not part of its acceptance criteria).
 
 ## Manual legacy-tablet field evidence
 
