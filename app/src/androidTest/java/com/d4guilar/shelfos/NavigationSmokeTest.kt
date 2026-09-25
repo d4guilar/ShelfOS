@@ -132,6 +132,35 @@ class NavigationSmokeTest {
         compose.onNodeWithTag("favorite_action").assertExists()
     }
 
+    /**
+     * Codex review R2: the "show controls" instruction TalkBack announces while chrome is hidden must be
+     * backed by a real accessibility action, not just descriptive text. Invokes the semantic OnClick action
+     * directly (not a raw tap) and confirms it reveals chrome without exiting the reader.
+     */
+    @Test fun accessibilityActionRevealsHiddenControlsInFixedReader() {
+        awaitLibrary()
+        read("test-pdf")
+        awaitPage("1 / 3")
+        compose.onNodeWithText("Hide controls").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("page_number").fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithTag("reader_page").performSemanticsAction(SemanticsActions.OnClick)
+        awaitPage("1 / 3") // The accessibility action revealed chrome; the reader is still open.
+        compose.onNodeWithTag("reader_page").assertExists()
+    }
+
+    /** Same accessibility-action contract as above, for the EPUB reader's chrome-toggle surface. */
+    @Test fun accessibilityActionRevealsHiddenControlsInEpubReader() {
+        awaitLibrary()
+        read("test-epub")
+        awaitTag("epub_reader", 30_000)
+        compose.waitUntil(30_000) { compose.onAllNodesWithTag("epub_library").fetchSemanticsNodes().isNotEmpty() }
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_MENU)
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("epub_library").fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithTag("epub_page").performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("epub_library").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("epub_reader").assertExists()
+    }
+
     /** Same Back-reveals-before-leaving contract for the EPUB reader, toggled here via the OPEN_MENU key. */
     @Test fun epubBackRevealsHiddenControlsBeforeLeavingTheReader() {
         awaitLibrary()

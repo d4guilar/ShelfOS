@@ -27,15 +27,17 @@ described in [ADR-0023](adr/0023-reader-chrome-back-semantics.md) was touched.
 
 ### INSTRUMENTED / EMULATOR
 
-`NavigationSmokeTest` (14 tests, including the two new Back-reveal tests
-replacing the prior single Back test — see ADR-0023) run via
-`:app:connectedDebugAndroidTest`:
+`NavigationSmokeTest` run via `:app:connectedDebugAndroidTest`. Test count grew
+from 14 (the original acceptance pass, including the two Back-reveal tests
+replacing the prior single Back test — see ADR-0023) to 16 after the Codex-review
+accessibility remediation added `accessibilityActionRevealsHiddenControlsInFixedReader`
+and `...InEpubReader`:
 
 | Device | Result |
 | --- | --- |
-| `shelfos-api37` (AVD, API 37, freshly data-wiped) | All 14 failed identically at Espresso's `onIdle()` with `NoSuchMethodException: android.hardware.input.InputManager.getInstance` — a pre-existing, already-documented environment gap (see "COMPATIBILITY: API 24 and API 37" below), not a regression from this change. No test-logic failure occurred; every test in the class failed the same way regardless of what it exercised. |
-| `shelfos-phase0` (AVD, API 35), default phone viewport (1080×1920, 420dpi) | 14/14 passed |
-| `shelfos-phase0` (AVD, API 35), forced expanded/tablet viewport (`wm size 1600x1000`, `wm density 160`) | 14/14 passed |
+| `shelfos-api37` (AVD, API 37, freshly data-wiped) | All 14 (pre-remediation) failed identically at Espresso's `onIdle()` with `NoSuchMethodException: android.hardware.input.InputManager.getInstance` — a pre-existing, already-documented environment gap (see "COMPATIBILITY: API 24 and API 37" below), not a regression from this change. Not retried post-remediation; this gap is not claimed fixed. |
+| `shelfos-phase0` (AVD, API 35), default phone viewport (1080×1920, 420dpi) | 14/14 passed pre-remediation; **16/16 passed** after the accessibility remediation, targeted explicitly via `ANDROID_SERIAL` to exclude a physical RP5 that was connected at the same time but intentionally not used for this pass (see Phase 2A remediation note below) |
+| `shelfos-phase0` (AVD, API 35), forced expanded/tablet viewport (`wm size 1600x1000`, `wm density 160`) | 14/14 passed (pre-remediation) |
 
 This is real automated evidence for the fix: `backRevealsHiddenControlsBeforeLeavingTheReader`
 (Original/PDF reader) and `epubBackRevealsHiddenControlsBeforeLeavingTheReader`
@@ -57,14 +59,23 @@ strategy in `PHASE_2_PLAN.md` §7, this is optional/periodic and non-blocking fo
 
 `stateDescription` semantics were added to the chrome-toggle areas in both
 readers (`FixedReaderScreen`'s page `Box`, `EpubActivity`'s `EpubSurface`
-container), announcing "Controls shown" / "Controls hidden. Double tap to show
-controls." (or "Tap the page center…" for EPUB) to TalkBack. This was not
-independently verified with TalkBack running in this pass — no physical/emulator
-TalkBack walkthrough was performed for this specific change. The semantics
-compile and are present in the composition (verified via the passing
-instrumented test suite, which exercises these composables), but an explicit
-TalkBack pass remains open for 2D's accessibility closure or an earlier
-follow-up.
+container). **Remediated 2026-09-25** after independent Codex review (R2)
+found the initial version announced "double tap to show controls" while
+double-tap was actually reserved for zoom, and neither surface exposed an
+`onClick` accessibility action at all — so TalkBack's double-tap-to-activate
+gesture had nothing to invoke and the announced instruction did not correspond
+to a working action. Both surfaces now expose `stateDescription` reflecting
+only the real state ("Controls shown" / "Controls hidden") and, exclusively
+while chrome is hidden, `onClick(label = "Show reader controls")`, which
+reveals chrome when invoked. New tests
+(`accessibilityActionRevealsHiddenControlsInFixedReader` /
+`...InEpubReader`) invoke the semantic action itself via
+`performSemanticsAction(SemanticsActions.OnClick)` rather than merely
+asserting a description string exists, and pass on `shelfos-phase0` (API 35).
+This is still not independently verified with TalkBack physically running —
+no physical/emulator TalkBack walkthrough was performed for this change. That
+explicit TalkBack pass remains open for 2D's accessibility closure or an
+earlier follow-up.
 
 ### MOTION
 
@@ -76,11 +87,15 @@ tested with the system "Remove animations" setting for this reason.
 
 ### FINAL ACCEPTANCE (2A)
 
-2A is **implemented, code-reviewed by its own author, and automated-tested on
-two of three available emulator configurations** (one blocked by a pre-existing,
-documented tooling gap unrelated to this change). It is **not physically
-validated** (RP5 pending) and **not yet reviewed by Codex**. Do not treat 2A as
-accepted until both of those happen.
+2A is **implemented, automated-tested on two of three available emulator
+configurations** (one blocked by a pre-existing, documented tooling gap
+unrelated to this change), **and remediated once against an independent Codex
+review** (R2 accessibility finding, plus the R3 documentation findings below,
+2026-09-25). It is still **not physically validated** (RP5 remains pending — a
+device was connected during the remediation pass but intentionally not used
+for it, per that review's own instruction to keep RP5 validation as a separate
+step) and **not yet re-reviewed by Codex** after this remediation. Do not treat
+2A as accepted until the RP5 pass happens and Codex confirms the remediation.
 
 ## Manual legacy-tablet field evidence
 

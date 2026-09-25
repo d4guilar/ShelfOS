@@ -53,9 +53,17 @@ behavior as an open design question pending this increment.
   (Escape/gamepad B), in both the Original (PDF/CBZ) reader and the EPUB
   reader — these were two independently broken call sites with the same bug.
 - Accessibility: reader chrome-toggle areas (`FixedReaderScreen`'s page `Box`,
-  `EpubActivity`'s `EpubSurface` container) now carry a `stateDescription`
-  ("Controls shown" / "Controls hidden. Double tap to show controls.") so
-  TalkBack users get feedback on the current chrome state and how to change it.
+  `EpubActivity`'s `EpubSurface` container, the latter now also tagged
+  `epub_page`) carry a `stateDescription` ("Controls shown" / "Controls
+  hidden") reflecting the real state, and — only while chrome is hidden — an
+  `onClick(label = "Show reader controls")` accessibility action that actually
+  reveals chrome. **Remediated 2026-09-25** after Codex review (R2) found the
+  first version announced "double tap to show controls" while double-tap was
+  actually reserved for zoom and no accessibility action existed at all, so
+  TalkBack could not reliably perform the announced action; when chrome is
+  visible, no such action is exposed (nothing misleading is announced). Normal
+  touch behavior (single center tap toggles chrome, double tap zooms) is
+  unchanged in both readers.
 - Reduced motion: chrome show/hide remains an instant, unanimated state change
   (no `AnimatedVisibility` was introduced). This trivially honors reduced
   motion, since there is no motion. `Context.reducedMotionEnabled()`
@@ -85,16 +93,25 @@ behavior as an open design question pending this increment.
 - [x] Compiles (`:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`).
 - [x] `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`,
       `:app:assembleDebugAndroidTest` pass.
-- [ ] `:app:connectedDebugAndroidTest` (`NavigationSmokeTest`) passes on an
-      emulator that supports Espresso/Compose UI test instrumentation. See §6 —
-      blocked in this run by a pre-existing, documented environment gap
-      (`ROADMAP.md`'s "API 37 automated-UI-test tooling gap"), not a
-      regression from this change; retry is pending an emulator/tooling
-      combination that supports it.
-- [ ] RP5 physical validation of the fixed Back behavior. Not performed in this
-      run — no RP5 device was available in this environment. See §6.
+- [x] `:app:connectedDebugAndroidTest` (`NavigationSmokeTest`) passes on an
+      emulator that supports Espresso/Compose UI test instrumentation:
+      **passed on `shelfos-phase0` (API 35), both default phone and forced
+      expanded/tablet viewports.** Still blocked on `shelfos-api37` by a
+      pre-existing, documented environment gap (`ROADMAP.md`'s "API 37
+      automated-UI-test tooling gap"), not a regression from this change and
+      not claimed fixed here. See §6.
+- [ ] RP5 physical validation of the fixed Back behavior and the accessibility
+      remediation below. Not performed as of the last validation pass — see §6.
 - [ ] Galaxy Tab A physical validation. Optional/periodic per the device
       strategy in §7; not performed in this run, documented as pending.
+- [x] **Accessibility remediation** (Codex review R2, 2026-09-25): the reader
+      chrome-toggle surfaces now expose a real `onClick` accessibility action
+      while chrome is hidden, instead of only descriptive text that didn't
+      correspond to an actionable TalkBack gesture. See the "Scope
+      implemented" accessibility bullet above and new tests
+      `accessibilityActionRevealsHiddenControlsInFixedReader`/
+      `...InEpubReader` in `NavigationSmokeTest.kt`. Not yet independently
+      walked through with TalkBack running (see §6/VALIDATION.md).
 
 ### 2B — EPUB everyday-reading improvements (planned, not started)
 
@@ -103,7 +120,7 @@ behavior as an open design question pending this increment.
 - In-publication search where the Readium adapter supports it.
 - Bookmarks (a discrete saved-locations list; distinct from resume position).
 - Pagination vs. scrolling preference where the adapter supports it.
-- EPUB typography refinement beyond the four presets already implemented
+- EPUB typography refinement beyond the three presets already implemented
   (Editorial/Clean/Spacious plus size/line-height/margin sliders).
 - Dark-reading behavior (a reading-surface dark mode independent of the
   Classic/Dark app theme, e.g. sepia/night page colors — `ReaderAppearance.kt`

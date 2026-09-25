@@ -24,6 +24,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextDirection
@@ -113,8 +114,16 @@ class EpubActivity : AppCompatActivity() {
                 }
                 if (session != null && item != null) {
                     EpubSurface(this@EpubActivity, session, item.locator, state.preferences, tokens.dark, item.category, controller,
-                        Modifier.weight(1f).fillMaxWidth()
-                            .semantics { stateDescription = if (controls) "Controls shown" else "Controls hidden. Tap the page center to show controls." },
+                        Modifier.weight(1f).fillMaxWidth().testTag("epub_page")
+                            // Center-tap-to-toggle is unchanged; this only adds an accessibility action, exposed
+                            // exclusively while chrome is hidden, so TalkBack's instruction matches a real action.
+                            .semantics {
+                                if (controls) stateDescription = "Controls shown"
+                                else {
+                                    stateDescription = "Controls hidden"
+                                    onClick(label = "Show reader controls") { controls = true; controlFocusRequests++; true }
+                                }
+                            },
                         onCenterTap = { controls = !controls }, onLocation = vm::location)
                 } else Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     val error = state.error

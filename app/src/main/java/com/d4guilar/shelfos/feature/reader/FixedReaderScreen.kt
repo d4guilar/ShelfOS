@@ -22,6 +22,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextDirection
@@ -37,8 +38,9 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * Original-page reader. Back, Escape and gamepad B first hide visible controls, then leave the reader.
- * Direction changes navigation and control placement, never the stored page order or the artwork.
+ * Original-page reader. Back, Escape and gamepad B reveal hidden controls first; only once controls are
+ * visible do they leave the reader (ADR-0023). Direction changes navigation and control placement, never
+ * the stored page order or the artwork.
  */
 @Composable
 fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
@@ -96,7 +98,16 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
             TextButton({ hideControls() }) { Text("Hide controls") }
         }
         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().focusRequester(pageFocus).focusable().testTag("reader_page")
-            .semantics { stateDescription = if (controls) "Controls shown" else "Controls hidden. Double tap to show controls." }
+            .semantics {
+                // Tap zones (edges turn pages, center toggles chrome) and double-tap-to-zoom are unchanged;
+                // this only adds an accessibility action, exposed exclusively while chrome is hidden, so
+                // TalkBack's announced instruction always matches an action that actually reveals chrome.
+                if (controls) stateDescription = "Controls shown"
+                else {
+                    stateDescription = "Controls hidden"
+                    onClick(label = "Show reader controls") { toggleControls(moveFocus = true); true }
+                }
+            }
             .pointerInput(state.page, rtl) {
                 detectTapGestures(onDoubleTap = { scale = if (scale == 1f) 2f else 1f; panX = 0f; panY = 0f }, onTap = { point ->
                     when {
