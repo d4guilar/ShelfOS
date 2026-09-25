@@ -1,5 +1,22 @@
 # Documentation Changelog
 
+## Phase 2A: reader chrome/Back semantics (2026-09-25)
+
+- Added `PHASE_2_PLAN.md` as the canonical Phase 2 planning location: reconciles
+  Phase 1's acceptance against stale roadmap/feature wording, defines increments
+  2A–2D with acceptance criteria, records the emulator/RP5/Galaxy-Tab-A device
+  strategy, and records PDF-fidelity pipeline observations without acting on them.
+- Fixed stale "work in progress" / "unfinished... pending" wording in
+  `ROADMAP.md` (Phase 2 and Phase 3 sections) and `docs/features/READER.md`
+  that contradicted the Phase 1 acceptance already recorded elsewhere in the
+  same documents.
+- Added ADR-0023 recording the reader chrome-visibility/Back-semantics decision
+  and resolved the two matching "remains open" spots in
+  `docs/design/READER_UX.md` and `docs/design/INPUT_SYSTEM.md`.
+- Recorded Phase 2A validation evidence in `VALIDATION.md`, including an
+  emulator tooling-gap result (not a regression) and explicitly-pending RP5/
+  Galaxy Tab A physical validation.
+
 ## Tablet field-test and product-direction reconciliation (2026-09-25)
 
 - Preserved qualitative Samsung Galaxy Tab A findings separately from formal metrics.

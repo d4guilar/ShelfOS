@@ -1,5 +1,87 @@
 # Validation
 
+## Phase 2A validation (2026-09-25)
+
+Status: 2A (reader chrome/Back semantics, `docs/PHASE_2_PLAN.md`) implemented on
+branch `phase-2/reading`, not merged, not yet Codex-reviewed. Phase 1's acceptance
+(below) is unaffected; no Phase 1 code outside the reader Back-handling paths
+described in [ADR-0023](adr/0023-reader-chrome-back-semantics.md) was touched.
+
+### STATIC / BUILD
+
+| Check | Result |
+| --- | --- |
+| `:app:compileDebugKotlin` | Passed |
+| `:app:compileDebugAndroidTestKotlin` | Passed |
+| `:app:assembleDebug` | Passed |
+| `:app:lintDebug` | Passed |
+| `:app:assembleDebugAndroidTest` | Passed |
+| Room schema cleanliness (`git status --porcelain -- app/schemas`) | Clean — no Room changes in this increment |
+| `git diff --check` | Clean |
+
+### JVM / REGRESSION
+
+| Check | Result |
+| --- | --- |
+| `:app:testDebugUnitTest` | Passed |
+
+### INSTRUMENTED / EMULATOR
+
+`NavigationSmokeTest` (14 tests, including the two new Back-reveal tests
+replacing the prior single Back test — see ADR-0023) run via
+`:app:connectedDebugAndroidTest`:
+
+| Device | Result |
+| --- | --- |
+| `shelfos-api37` (AVD, API 37, freshly data-wiped) | All 14 failed identically at Espresso's `onIdle()` with `NoSuchMethodException: android.hardware.input.InputManager.getInstance` — a pre-existing, already-documented environment gap (see "COMPATIBILITY: API 24 and API 37" below), not a regression from this change. No test-logic failure occurred; every test in the class failed the same way regardless of what it exercised. |
+| `shelfos-phase0` (AVD, API 35), default phone viewport (1080×1920, 420dpi) | 14/14 passed |
+| `shelfos-phase0` (AVD, API 35), forced expanded/tablet viewport (`wm size 1600x1000`, `wm density 160`) | 14/14 passed |
+
+This is real automated evidence for the fix: `backRevealsHiddenControlsBeforeLeavingTheReader`
+(Original/PDF reader) and `epubBackRevealsHiddenControlsBeforeLeavingTheReader`
+(EPUB) both start from hidden chrome, press system Back, assert chrome reappears
+and the reader is still open, press Back again, and assert the reader exits —
+directly exercising the previously-untested path that let the field bug through.
+
+### PHYSICAL DEVICE
+
+**Retroid Pocket 5 (RP5):** not performed in this pass — no RP5 device was
+connected to this environment. This is the first physical check that should
+happen before Codex review or merge; recorded here as pending, not claimed.
+
+**Samsung Galaxy Tab A (SM-T580):** not performed in this pass. Per the device
+strategy in `PHASE_2_PLAN.md` §7, this is optional/periodic and non-blocking for
+2A; recorded as pending, not claimed.
+
+### ACCESSIBILITY
+
+`stateDescription` semantics were added to the chrome-toggle areas in both
+readers (`FixedReaderScreen`'s page `Box`, `EpubActivity`'s `EpubSurface`
+container), announcing "Controls shown" / "Controls hidden. Double tap to show
+controls." (or "Tap the page center…" for EPUB) to TalkBack. This was not
+independently verified with TalkBack running in this pass — no physical/emulator
+TalkBack walkthrough was performed for this specific change. The semantics
+compile and are present in the composition (verified via the passing
+instrumented test suite, which exercises these composables), but an explicit
+TalkBack pass remains open for 2D's accessibility closure or an earlier
+follow-up.
+
+### MOTION
+
+No animation was added to reader chrome show/hide (remains an instant
+conditional composition, as it already was). `Context.reducedMotionEnabled()`
+was not called from reader code in this pass because there is no motion in
+reader chrome to gate — reduced motion is honored trivially. Not independently
+tested with the system "Remove animations" setting for this reason.
+
+### FINAL ACCEPTANCE (2A)
+
+2A is **implemented, code-reviewed by its own author, and automated-tested on
+two of three available emulator configurations** (one blocked by a pre-existing,
+documented tooling gap unrelated to this change). It is **not physically
+validated** (RP5 pending) and **not yet reviewed by Codex**. Do not treat 2A as
+accepted until both of those happen.
+
 ## Manual legacy-tablet field evidence
 
 A physical Samsung Galaxy Tab A SM-T580 (Android 8.1, approximately 2 GB RAM)

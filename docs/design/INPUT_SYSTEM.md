@@ -1,12 +1,14 @@
 # ShelfOS Input System
 
-## Phase 0 implementation status
+## Implementation status
 
 `core.input` defines semantic commands and a context-aware mapper. In Library,
 Compose handles Tab/arrows/D-pad focus; Enter/center/gamepad A activate controls,
-Ctrl+F opens Search, Escape/gamepad B use normal back behavior. Android Back/Home
-are left to the system. Reader commands are modeled but have no active reader.
-Focus rings are centralized in `shelfAction`; no remapping UI exists yet.
+Ctrl+F opens Search, Escape/gamepad B use normal back behavior. Android Home is
+left to the system. Reader commands (`NEXT_PAGE`/`PREVIOUS_PAGE`/`OPEN_MENU`/`BACK`)
+are implemented and active in both the EPUB and Original (PDF/CBZ) readers as of
+Phase 1, covering keyboard and gamepad; see the Phase 2A note below for Back and
+touch. Focus rings are centralized in `shelfAction`; no remapping UI exists yet.
 
 ## 1. Principle
 
@@ -108,9 +110,13 @@ Gamepad and keyboard users must be able to:
 ## 6. Immersive, not possessive
 
 Hidden reader chrome must remain rediscoverable across touch, keyboard, gamepad and
-accessibility input. Whether Back reveals hidden chrome before leaving is an open
-reader-UX decision; any chosen behavior must preserve normal Android Back semantics
-and never trap the user.
+accessibility input. **Resolved in Phase 2A**: Back reveals hidden chrome before
+leaving — the reader's `BackHandler` and the `ShelfCommand.BACK` key path (Escape,
+gamepad B) both apply this unconditionally, so at most two Back presses ever
+exit the reader and Back never traps the user. Touch gestures (tap-to-page,
+pinch-zoom, center-tap-to-toggle) remain screen-specific `pointerInput` handling
+in `FixedReaderScreen`/`EpubSurface` rather than routed through `ShelfCommand`;
+unifying touch into the semantic command layer remains open for a later increment.
 
 Never:
 

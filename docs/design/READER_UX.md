@@ -62,12 +62,18 @@ enough for the artwork to dominate. Rendering must be resolution-aware and
 re-render at useful zoom resolution while protecting usability on modest devices.
 
 Hidden chrome improves immersion, but the Samsung tablet field test found that
-restoring controls was not obvious. The design problem is **reader immersive mode
-lacks sufficient rediscoverability**. Center-tap toggling, edge-page zones, Back
-revealing chrome before exit, a restrained first-use affordance, controller
-consistency and accessibility are options to evaluate. The exact interaction,
-including Back behavior, remains open. The goal is discoverable controls without
-cluttering the reading experience.
+restoring controls was not obvious. The design problem was **reader immersive mode
+lacks sufficient rediscoverability**.
+
+**Resolved in Phase 2A** (see `docs/PHASE_2_PLAN.md`): center-tap toggling (touch)
+and the existing `OPEN_MENU` semantic command (keyboard/gamepad) remain the way to
+show/hide chrome. Back is unconditional: while chrome is hidden, Back reveals it
+instead of leaving the reader; only once chrome is visible does Back close the
+reader. This never requires more than two Back presses to exit and never traps the
+user, matching AGENTS.md rule 5. Chrome show/hide remains an instant, unanimated
+state change (no motion to gate behind reduced-motion — trivially honored). A
+restrained first-use affordance and any further discoverability polish beyond this
+Back contract remain open for a later increment.
 
 ## Completion experience — future
 
@@ -119,8 +125,9 @@ Back should:
 3. allow normal Android app exit behavior
 
 Do not trap the user inside a theme or reading mode.
-Whether hidden chrome is the first transient layer revealed by Back remains open;
-after transient UI is handled, the normal exit sequence above still applies.
+**Resolved in Phase 2A**: hidden chrome is the first transient layer Back reveals
+— after transient UI (dialogs, then hidden chrome) is handled, the normal exit
+sequence above still applies once chrome is visible.
 
 ## Series boundaries
 
