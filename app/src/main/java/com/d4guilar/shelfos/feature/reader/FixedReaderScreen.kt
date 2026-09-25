@@ -22,6 +22,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -62,10 +64,12 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
         controls = true
         if (moveFocus) controlFocusRequests++
     }
+    // Back never leaves the reader from hidden chrome: it reveals controls first, then a second Back exits.
+    fun backPress() { if (controls) onBack() else { controls = true; controlFocusRequests++ } }
 
     LaunchedEffect(Unit) { pageFocus.requestFocus() }
     LaunchedEffect(controlFocusRequests) { if (controlFocusRequests > 0) runCatching { firstControl.requestFocus() } }
-    BackHandler(enabled = controls) { hideControls() }
+    BackHandler { backPress() }
     if (appearance && item != null) ReaderAppearance(state.preferences, capabilities(item.format), { appearance = false },
         vm::applyAppearance, vm::resetAppearance)
 
@@ -77,7 +81,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                     ShelfCommand.NEXT_PAGE -> vm.turn(1)
                     ShelfCommand.PREVIOUS_PAGE -> vm.turn(-1)
                     ShelfCommand.OPEN_MENU -> toggleControls(moveFocus = true)
-                    else -> if (controls) hideControls() else onBack()
+                    else -> backPress()
                 }
                 true
             }
@@ -92,6 +96,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
             TextButton({ hideControls() }) { Text("Hide controls") }
         }
         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().focusRequester(pageFocus).focusable().testTag("reader_page")
+            .semantics { stateDescription = if (controls) "Controls shown" else "Controls hidden. Double tap to show controls." }
             .pointerInput(state.page, rtl) {
                 detectTapGestures(onDoubleTap = { scale = if (scale == 1f) 2f else 1f; panX = 0f; panY = 0f }, onTap = { point ->
                     when {

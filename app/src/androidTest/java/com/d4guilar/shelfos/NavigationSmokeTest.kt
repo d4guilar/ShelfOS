@@ -114,15 +114,36 @@ class NavigationSmokeTest {
         awaitPage("2 / 3")
     }
 
-    @Test fun backHidesReaderControlsBeforeLeavingTheReader() {
+    /**
+     * Phase 2A fix: from hidden chrome, Back must reveal controls rather than silently exit the reader
+     * (the field-reported bug). Only once controls are visible does Back leave the reader.
+     */
+    @Test fun backRevealsHiddenControlsBeforeLeavingTheReader() {
         awaitLibrary()
         read("test-pdf")
         awaitPage("1 / 3")
-        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        compose.onNodeWithText("Hide controls").performClick()
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("page_number").fetchSemanticsNodes().isEmpty() }
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        awaitPage("1 / 3") // Chrome reappeared; the reader is still open, not exited.
         compose.onNodeWithTag("reader_page").assertExists()
         instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("reader_page").fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithTag("favorite_action").assertExists()
+    }
+
+    /** Same Back-reveals-before-leaving contract for the EPUB reader, toggled here via the OPEN_MENU key. */
+    @Test fun epubBackRevealsHiddenControlsBeforeLeavingTheReader() {
+        awaitLibrary()
+        read("test-epub")
+        awaitTag("epub_reader", 30_000)
+        compose.waitUntil(30_000) { compose.onAllNodesWithTag("epub_library").fetchSemanticsNodes().isNotEmpty() }
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_MENU)
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("epub_library").fetchSemanticsNodes().isEmpty() }
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("epub_library").fetchSemanticsNodes().isNotEmpty() }
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("epub_reader").fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithTag("favorite_action").assertExists()
     }
 
