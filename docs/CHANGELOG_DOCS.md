@@ -119,3 +119,5 @@ Decisions:
 - debug builds may simulate Plus
 - official releases are controlled by signing/store credentials
 - `main` should be protected and changed through reviewed pull requests
+
+<!-- ruleset smoke test: verifies PR workflow still functions after main-protection; safe to delete -->
