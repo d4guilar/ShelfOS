@@ -35,6 +35,10 @@ credentials*.json
 .codex/
 .agents/
 
+# Private agent workflow artifacts
+/PHASE*_CLAUDE_HANDOFF.md
+/PHASE*_CODEX_REVIEW.md
+
 # Eclipse/Buildship IDE metadata (some VS Code Java/Gradle extensions generate this)
 .settings/
 .classpath
