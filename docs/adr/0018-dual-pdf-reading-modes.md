@@ -27,6 +27,10 @@ PDF analysis cannot block a bulk import. Low-confidence mapping must be disclose
 with source revision awareness and preserved annotation anchors. This refines
 ADR-0003 and ADR-0017 without moving advanced PDF work into Phase 1.
 
+OCR-required scans use the Adapted pipeline rather than a third user-facing mode.
+A fully local OCR path is required/default; optional remote OCR remains an open later
+enhancement. Preserve block-level source mapping and recognition confidence. Engine,
+model, language and packaging choices remain undecided.
+
 Detailed source of truth: [PDF_INGESTION](../features/PDF_INGESTION.md).
 Integration evidence: [coverage audit](../DECISION_INTEGRATION_AUDIT.md).
-

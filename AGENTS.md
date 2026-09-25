@@ -208,6 +208,15 @@ Rules:
 - Use stable domain UUIDs and platform access adapters; portable backups require
   Source reconnection, not reliance on Android URI strings alone.
 - Respect scoped access, DRM and app sandboxes. Do not upload publications for lookup.
+- Core importing, browsing and reading must retain an offline path. Online enrichment
+  is background enhancement and must never gate import or reading.
+- Preserve source fidelity: ShelfOS must not visibly degrade a publication through
+  undersized rendering, caching or scaling. Fidelity work must remain usable on
+  modest hardware.
+- Metadata inferred from filenames, folders or providers is a candidate. User choices
+  win, and secret provider credentials must never be embedded in the open-source APK.
+- CBZ and future CBR are container adapters for the same image-sequence reader
+  semantics. Any RAR implementation requires dependency and license review first.
 - Accepted architecture does not authorize building all future features now;
   follow [roadmap sequencing](docs/ROADMAP.md#accepted-ingestion-and-organization-sequence).
 - A CBZ is one image-sequence publication; a generic ZIP library is a future

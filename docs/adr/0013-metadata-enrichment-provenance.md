@@ -18,6 +18,9 @@ Persist metadata provenance.
 Manual user edits have the highest precedence and must survive refresh.
 
 Core reading never depends on external metadata providers.
+Default enrichment should require no API configuration from ordinary users. Optional
+BYOK providers remain an enhancement. Never embed secret provider credentials in the
+APK; cache provider results only where current terms permit.
 
 ## Consequences
 

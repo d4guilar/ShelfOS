@@ -21,21 +21,21 @@ These feed the same architecture, not separate implementations per button:
 
 ```text
 IMPORT SOURCE (Files / Folder Tree / ZIP Archive / Migration Adapter)
-â†“
+↓
 DISCOVERY
-â†“
+↓
 STAGING
-â†“
+↓
 LOCAL ANALYSIS (format, embedded metadata, category evidence, cheap PDF signals)
-â†“
+↓
 ORGANIZATION (Category / Series / Shelves proposals)
-â†“
+↓
 IMPORT REVIEW
-â†“
+↓
 COMMIT
-â†“
+↓
 SHELFOS LIBRARY
-â†“
+↓
 BACKGROUND ENRICHMENT
 ```
 
@@ -85,6 +85,10 @@ may suggest a Shelf of Documents. Never turn every directory into a Series or Sh
 Keep provenance/confidence and allow per-item corrections. User classification,
 grouping and metadata decisions always override inference.
 
+Filename tokens such as creator phrases, years, volume/issue markers and separators
+may produce [metadata candidates](METADATA_ENRICHMENT.md#5-ingestion-integration).
+They remain reviewable proposals; valid embedded metadata such as `ComicInfo.xml`
+normally carries stronger evidence, and the user always has final authority.
 
 ## Generic ZIP library import
 
@@ -96,13 +100,13 @@ pipeline and must not create a parallel ZIP-specific import subsystem:
 
 ```text
 ZipArchiveSource
-â†’ safe entry discovery
-â†’ one staged candidate per supported publication
-â†’ bounded local analysis
-â†’ category / Series / Shelf proposals
-â†’ duplicate and warning review
-â†’ commit selected items into the managed ShelfOS Source
-â†’ optional background enrichment
+→ safe entry discovery
+→ one staged candidate per supported publication
+→ bounded local analysis
+→ category / Series / Shelf proposals
+→ duplicate and warning review
+→ commit selected items into the managed ShelfOS Source
+→ optional background enrichment
 ```
 
 ### Generic ZIP is not CBZ
@@ -141,8 +145,8 @@ A future review may summarize, for example, **143 publications found** with Book
 Comics, Manga and Documents counts; detected Series such as Berserk or Dune;
 possible Shelves such as Research; and duplicate, unsupported or corrupt warnings.
 The primary action imports the accepted item count, accompanied by clear copy such
-as: â€œShelfOS will extract copies into managed storage. The original ZIP will not
-be modified.â€ Exact presentation and wording can evolve with Import Review.
+as: “ShelfOS will extract copies into managed storage. The original ZIP will not
+be modified.” Exact presentation and wording can evolve with Import Review.
 
 ZIP candidates use the normal progressive duplicate policy: source/origin evidence,
 name and size, metadata/identifiers and fingerprint only when needed. There is no
@@ -237,7 +241,7 @@ user-visible/exportable location where practical, with no opaque proprietary loc
 The destination is a managed LibrarySource. Preserve the original and its origin
 provenance; do not automatically delete it or move/reorganize a user's folder.
 
-## Migration adapters â€” later
+## Migration adapters — later
 
 An import-source adapter discovers candidates and origin context for the common
 pipeline. Conceptual adapters include DocumentSource, MultiDocumentSource,
@@ -262,17 +266,17 @@ a URI string does not restore platform access permission.
 
 | Flow | Expected result |
 | --- | --- |
-| One EPUB | Add Files â†’ discover/stage â†’ embedded metadata â†’ preview â†’ commit â†’ later enrichment |
+| One EPUB | Add Files → discover/stage → embedded metadata → preview → commit → later enrichment |
 | One PDF novel | Basic import; show Adapted recommendation if analysis is ready, otherwise analyze later; Original remains usable |
 | Technical paper | Complex-layout evidence can recommend Original; supported Adapted remains a choice |
-| Many volumes | Add Series â†’ select together â†’ analyze â†’ review order â†’ commit members + Series â†’ eventually Read as Omnibus |
-| Series folder | Add Series â†’ folder discovery â†’ trusted metadata/natural order â†’ review â†’ commit |
-| Books folder | Add Folder â†’ Auto/Books hint â†’ recursive staging â†’ Series/duplicate review â†’ commit â†’ connected Source retained |
-| Mixed library | Import Library â†’ root discovery â†’ correctable categories/Series/Shelves â†’ review â†’ commit â†’ enrichment and rescannable origin |
-| Generic ZIP library | Import Library â†’ safe archive discovery â†’ one candidate per publication â†’ review organization/duplicates/warnings â†’ extract accepted items to managed storage; original ZIP remains untouched |
+| Many volumes | Add Series → select together → analyze → review order → commit members + Series → eventually Read as Omnibus |
+| Series folder | Add Series → folder discovery → trusted metadata/natural order → review → commit |
+| Books folder | Add Folder → Auto/Books hint → recursive staging → Series/duplicate review → commit → connected Source retained |
+| Mixed library | Import Library → root discovery → correctable categories/Series/Shelves → review → commit → enrichment and rescannable origin |
+| Generic ZIP library | Import Library → safe archive discovery → one candidate per publication → review organization/duplicates/warnings → extract accepted items to managed storage; original ZIP remains untouched |
 | Research folder | Accept suggested Research Shelf; publications retain DOCUMENT category |
-| Later additions / moved files | Manual Source rescan â†’ review new items or verified relink; retain existing library state |
-| New device | Backup restore â†’ access needs reconnection â†’ select equivalent Source â†’ reconcile, review ambiguity |
+| Later additions / moved files | Manual Source rescan → review new items or verified relink; retain existing library state |
+| New device | Backup restore → access needs reconnection → select equivalent Source → reconcile, review ambiguity |
 
 ## Security and evaluation
 

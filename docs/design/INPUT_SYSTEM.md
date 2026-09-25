@@ -107,6 +107,11 @@ Gamepad and keyboard users must be able to:
 
 ## 6. Immersive, not possessive
 
+Hidden reader chrome must remain rediscoverable across touch, keyboard, gamepad and
+accessibility input. Whether Back reveals hidden chrome before leaving is an open
+reader-UX decision; any chosen behavior must preserve normal Android Back semantics
+and never trap the user.
+
 Never:
 
 - intercept Home

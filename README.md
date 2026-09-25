@@ -7,6 +7,9 @@ Books, Comics, Manga, and Documents you own. Core use is accountless and ad-free
 Favorites is a cross-category view. ShelfOS is a normal app, not a launcher,
 bookstore, subscription catalog, or cloud service.
 
+Its direction is offline-complete and online-enhanced: local reading remains the
+core, while optional background services may later improve metadata and covers.
+
 > The interface is monochrome. The library is the color.
 
 ## Current status

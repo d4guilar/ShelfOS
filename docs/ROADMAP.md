@@ -274,6 +274,10 @@ Make image-sequence media first-class.
 - keyboard/gamepad paging
 - foldable two-page/spread behavior
 - hinge-aware gutter handling
+- high-priority CBR container support through the same image-sequence engine as CBZ,
+  after explicit RAR implementation/license review
+- source-faithful, resolution-aware rendering and high-resolution zoom/re-render
+- immersive-chrome rediscoverability across touch, keyboard/gamepad and accessibility
 
 ### Done when
 
@@ -319,6 +323,8 @@ captions/footnotes, column/layout confidence, structured PublicationDocument and
 revision-aware SourceMap. Add Adapted/Original switching, per-title preference,
 recommendations, typography and best-effort cross-mode position/annotation mapping.
 Future global PDF preference follows usable per-title behavior. OCR is later.
+That later OCR path must work locally by default and retain per-block confidence;
+engine choice, model/language packaging and optional remote policy remain research.
 
 ### Constraint
 
@@ -516,6 +522,10 @@ sequenced above, not implemented:
 - theme SDK
 - plugin architecture
 - metadata provider extensions
+- zero-setup default online enrichment plus optional BYOK specialist providers
+- cover normalization/generated fallbacks and provider-term-aware caching
+- local Completion Cards, system-share images and local completion history
+- launcher icon density/adaptive/legacy fidelity validation
 - iOS / iPadOS
 - SwiftUI
 - iPhone Duo optimization

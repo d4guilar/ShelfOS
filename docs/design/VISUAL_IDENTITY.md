@@ -118,6 +118,17 @@ Cards are better reserved for:
 - focused detail panes
 - contextual surfaces
 
+ShelfOS should be **beautiful by default, configurable for power users**. Missing
+or poor metadata must not become a broken-looking library. Cover source and cover
+presentation are separate: preserve original artwork while the UI applies
+consistent framing, category-appropriate proportions, theme-aware backgrounds and
+crop/contain behavior without stretching. Exact ratios and crop defaults remain open.
+
+The source priority remains user-selected, embedded, trusted online candidate,
+first-page-derived, then generated. A generated fallback uses title, creator,
+category and restrained theme-aware ShelfOS typography so local documents and
+obscure works still look intentional.
+
 ## 7. ES-DE influence: structural, not visual
 
 ShelfOS may learn from high-quality gaming frontends such as ES-DE in these ways:
@@ -257,3 +268,13 @@ Platform packaging can adapt:
 - platform-native spacing and surfaces
 
 The brand should never require a skeuomorphic glossy app icon to feel complete.
+
+### Launcher asset fidelity follow-up
+
+On the Samsung Galaxy Tab A / Android 8.1 field test, the ShelfOS launcher icon
+looked visibly blurrier than nearby icons. The cause is unconfirmed. Future
+public-demo polish must inspect source artwork, density scaling, adaptive resources,
+legacy fallbacks and padding, then validate the approved logo on that tablet,
+Retroid Pocket 5 and current Android. The intended asset path is canonical vector
+artwork to VectorDrawable plus adaptive-icon resources and correct legacy fallbacks.
+This is not permission to redesign the logo and is not retroactively a Phase 1 blocker.

@@ -36,6 +36,12 @@ The purchase primarily supports development and may unlock additional theme expe
 
 Core reading must not be intentionally degraded for free users.
 
+Core ShelfOS functionality should approach zero marginal infrastructure cost per
+user. Favor local execution for reading, indexing, OCR/PDF analysis, search, notes,
+Series and Shelves. Plus/supporter value should generally come from local themes,
+layouts, customization and power-user convenience rather than recurring server
+costs. Exact Plus boundaries and pricing remain open.
+
 The public source may contain Plus feature implementation. Debug/development builds may expose a developer entitlement override so contributors can work on Plus features without purchasing them.
 
 ## No DRM arms race

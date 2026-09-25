@@ -1,5 +1,23 @@
 # Documentation Changelog
 
+## Tablet field-test and product-direction reconciliation (2026-09-25)
+
+- Preserved qualitative Samsung Galaxy Tab A findings separately from formal metrics.
+- Strengthened offline-complete architecture, source fidelity, shared CBR/CBZ reader
+  semantics, Adapted PDF/local OCR, metadata/BYOK security and cover presentation.
+- Recorded immersive-control rediscoverability, launcher fidelity and future local
+  Completion Cards without changing Phase 1 status or implementing future work.
+- Reconciled all 67 source sections, retained a cleaned historical research record,
+  and removed the temporary v3 integration source after the audit passed.
+
+## Phase 1 review remediation (2026-09-24)
+
+- Corrected Phase 1 status (README, roadmap, Phase 1 plan, validation): 1A–1C implemented,
+  1D partial; open software gaps listed alongside the physical-device gates.
+- Named the three samples whose hashes were verified; the large CBZ was not hashed.
+- Recorded the review fixes and their evidence by category (static/build, unit/regression,
+  emulator, physical device), and the import ownership rule in the architecture.
+
 ## Generic ZIP library import decision (2026-09-24)
 
 - Added future `ZipArchiveSource` to the shared staged-ingestion architecture.
@@ -21,8 +39,8 @@
 ## Accepted ingestion and organization decisions (2026-09-24)
 
 - Added dedicated Data Ingestion, PDF Ingestion, Series, Shelves and Library Sources specifications.
-- Added ADRs 0018â€“0022 and a requirement-by-requirement integration audit.
-- Reconciled Collections â†’ Shelves, pre-commit metadata â†’ post-commit enrichment,
+- Added ADRs 0018–0022 and a requirement-by-requirement integration audit.
+- Reconciled Collections → Shelves, pre-commit metadata → post-commit enrichment,
   Source/session identity, PDF mode terminology and safe managed-source behavior.
 - Updated product/architecture/roadmap, Phase 1 status, feature/design and contributor guidance.
 - Preserved Phase 0 validation as historical evidence and unfinished Phase 1 code unchanged.
@@ -46,7 +64,7 @@
 - Clarified that suggested publication schemas and metadata work are future phases.
 - Added dependency review, validation instructions and actual prototype status.
 
-## v4 â€” Library Foundation + Metadata Enrichment
+## v4 — Library Foundation + Metadata Enrichment
 
 This revision incorporates conclusions from the approved ShelfOS Classic Library mock.
 
@@ -79,7 +97,7 @@ Core decision:
 > Themes are visual/interaction layers over one ShelfOS structure. Metadata enrichment is part of the library model, not a theme feature.
 
 
-## v5 â€” Open Source, Licensing, and Release Governance
+## v5 — Open Source, Licensing, and Release Governance
 
 Added:
 

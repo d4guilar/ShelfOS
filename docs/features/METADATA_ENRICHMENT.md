@@ -83,6 +83,22 @@ enrich(seed): List<MetadataCandidate>
 
 Provider implementations remain replaceable.
 
+The product has three enrichment layers:
+
+1. **Offline complete:** embedded metadata, filename/folder candidates, local
+   analysis, future local OCR/search, generated covers and local reading.
+2. **Default online enrichment:** background metadata/cover improvement with no
+   API configuration expected from ordinary users.
+3. **Power user / BYOK:** optional specialist providers, user keys and provider
+   priority.
+
+BYOK is an enhancement, never a prerequisite for a good library. Secret provider
+credentials must not ship in an open-source APK; bundled client values are
+discoverable. Prefer no-key/public providers or authentication designed for
+installed clients. Keep user keys local where practical, and do not add a proxy
+merely to hide secrets without deliberately accepting its infrastructure and
+privacy costs.
+
 ## 5. Ingestion integration
 
 [DATA_INGESTION](DATA_INGESTION.md) owns the common pipeline. Its fast local pass
@@ -90,6 +106,13 @@ extracts supported embedded metadata/identifiers and filename/folder evidence,
 then stages organization proposals for review and commit. External enrichment
 operates on committed LibraryItems in the background; reading and local import
 never wait for provider availability, rate limits or candidate lookup.
+
+Filename parsing may propose title, creator, year, Series, volume or issue from
+signals such as `by`, `written by`, four-digit years, brackets, `Vol`/`Volume`,
+`Issue`/`#`, separators and parent folders. These are reviewable candidates, never
+authoritative truth. For example, `Dune by Frank Herbert (1965).pdf` may propose
+Dune / Frank Herbert / 1965. **ShelfOS proposes; the user wins.** Valid structured
+metadata such as `ComicInfo.xml` normally outranks filename inference.
 
 Series/volume/issue metadata, `ComicInfo.xml`, folder hierarchy, category hints and
 LibrarySource context feed [reviewable Series detection](SERIES.md). Persist
@@ -143,6 +166,10 @@ Potential sources:
 - embedded `ComicInfo.xml` where present
 - user classification
 - later comic/manga metadata providers
+
+Useful valid `ComicInfo.xml` fields include Title, Series, Number, Volume, Year,
+Writer and Publisher. They can inform credits, dates, Series detection/order and
+cover selection, while still yielding to user overrides.
 
 Do not force book-oriented metadata providers onto comics/manga if match quality is poor.
 
@@ -215,6 +242,8 @@ Benefits:
 - lower provider dependency
 
 A future refresh should be explicit or controlled, not performed on every screen opening.
+Caching and retention rights must be reviewed per provider; ShelfOS does not assume
+that every response or cover can be stored permanently.
 
 ## 12. UI states
 

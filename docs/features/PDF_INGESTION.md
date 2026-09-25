@@ -20,6 +20,12 @@ annotations, keyboard/gamepad paging, smart crop/margin trimming, optional night
 treatment where appropriate, and later smart column navigation. These are a
 capability roadmap, not promises of the first PDF renderer.
 
+A physical-tablet test of *Dune* confirmed this boundary: Original worked, but its
+authored font and white page could not be meaningfully restyled. That is an
+Original-mode constraint, not a defect. When appearance changes are unavailable,
+ShelfOS should communicate the reason elegantly and may suggest Adapted mode; exact
+wording remains a design question.
+
 Adapted suits novels, essays, text-heavy books, simple reports and single-column
 documents with reliable reading order. Where extraction confidence permits, it
 offers font family/size, line and paragraph spacing, margins, pagination or scroll,
@@ -66,14 +72,16 @@ Original PDF → analysis → text extraction → reading-order detection
 ```
 
 `PublicationDocument` contains chapters and structured blocks: Heading, Paragraph,
-Image, Caption, Quote, Footnote and extensible semantic block types. Preserve
+Image, Caption, Quote, Footnote, List, page-reference information and extensible
+semantic block types. Preserve
 structure and provenance, rather than concatenating extracted text. Exact storage,
 parser selection and schema remain open until implementation is scoped.
 
 ## SourceMap and annotations
 
 `SourceMap` connects semantic block identities to source page, source bounds,
-source text range where available, and mapping confidence. Retain source revision
+source text range where available, and mapping confidence. OCR-derived blocks also
+retain recognition confidence rather than discarding uncertainty. Retain source revision
 identity so a map for an old file is not applied to changed content. For example,
 paragraph 483 may correspond to page 184 and its bounding region.
 
@@ -102,6 +110,28 @@ it. Reanalysis or a changed source must not silently move/delete annotations; fo
   presentation or replace artwork with reflowed dialogue. Later OCR could support
   dialogue search, accessibility, translation or speech-bubble text lookup while
   preserving artwork. These are future possibilities, not OCR commitments now.
+
+## Scanned publications and OCR
+
+OCR-required scans remain part of Adapted PDF, not a user-facing third mode:
+
+```text
+Scanned PDF → detect OCR need → local OCR → layout/reading-order analysis
+            → PublicationDocument → Adapted reader
+```
+
+The original scan remains untouched. A fully local `OcrEngine` path is required
+and is the default architectural direction; optional remote OCR could only be a
+later, explicit enhancement. No engine is selected here. Engine choice, model size
+and packaging, language support, and remote policy remain research questions.
+
+Future confidence-aware UX may show uncertain text, open the original page or accept
+a user correction. Corrections override interpreted text without modifying the
+source. Exact UI remains open.
+
+Conceptually, `OcrEngine` has a required/default `LocalOcrEngine` adapter and may
+later admit an optional `RemoteOcrEngine`. Core scanned-publication support must not
+depend on the remote adapter.
 
 ## Ingestion scheduling and scope
 

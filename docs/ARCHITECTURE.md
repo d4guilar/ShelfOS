@@ -356,11 +356,13 @@ BOOK
 └── PDF  → Original PDF adapter or future Adapted PDF adapter
 
 COMIC
-├── CBZ  → ImageSequenceReaderEngine
+├── CBZ/ZIP container → ImageSequenceReaderEngine
+├── future CBR/RAR container → ImageSequenceReaderEngine
 └── PDF  → PdfReaderEngine with comic presentation
 
 MANGA
-├── CBZ  → ImageSequenceReaderEngine + RTL defaults
+├── CBZ/ZIP container → ImageSequenceReaderEngine + RTL defaults
+├── future CBR/RAR container → ImageSequenceReaderEngine + RTL defaults
 └── PDF  → PdfReaderEngine + RTL-aware presentation where possible
 
 DOCUMENT
@@ -533,6 +535,16 @@ A future backend may be justified for:
 - remote metadata proxying if rate limits require it
 
 Core reading must not depend on it.
+
+The governing boundary is **offline-complete, online-enhanced**. Core processing should
+approach zero marginal infrastructure cost per user: favor local OCR, PDF analysis,
+indexing, search, database, notes, organization and reader work. A backend is a deliberate
+future infrastructure decision, not the default answer to an extractable client secret.
+
+Default online enrichment should use public/no-key services or authentication designed
+for installed clients. Never embed secret provider credentials in the APK. Optional
+BYOK credentials remain local where practical. Provider data is cached only where its
+current licensing and terms permit; no provider is assumed to grant permanent storage.
 
 ## 19. Error model
 

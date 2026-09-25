@@ -152,9 +152,14 @@ Expected experience:
 - search
 - later study mode and stylus tools
 
-## 7. Local-first philosophy
+## 7. Offline-complete, online-enhanced
 
-Core features must work offline after the file is imported.
+> **The cloud may enrich the library; it must never be required to read it.**
+
+Every core reading function should have a local path wherever technically reasonable:
+importing, reading, library browsing, metadata editing, progress, Series, Shelves,
+notes, highlights, search, generated covers, backup/export and future Adapted PDF/OCR
+processing. A reader in airplane mode retains the essential ShelfOS experience.
 
 Network access may later be used for optional enrichment such as:
 
@@ -164,6 +169,10 @@ Network access may later be used for optional enrichment such as:
 - optional purchase verification
 
 Network failure must not prevent reading local content.
+
+Online services may improve metadata and covers after a publication is locally usable.
+Ordinary users should receive good default enrichment without configuring APIs or
+keys; optional bring-your-own-key providers are a later power-user enhancement.
 
 ## 8. Ownership and source files
 
@@ -208,6 +217,12 @@ Compatible PDFs can offer **Adapted** typography and **Original** authored pages
 The original remains untouched. ShelfOS recommends a mode while respecting per-title
 choice; complex layouts may map imperfectly between views. Original reading arrives
 first, advanced Adapted reconstruction later, and OCR later still.
+
+Original mode faithfully preserves authored layout, including typography and page
+backgrounds that ShelfOS cannot restyle. Adapted mode is the future structured path
+for ShelfOS typography, spacing, margins, themes, semantic search, highlights, notes,
+accessibility and trustworthy reflow. Scanned publications may use local OCR inside
+that Adapted pipeline; OCR is an implementation detail, not a third reader mode.
 
 These are accepted product targets, not implemented feature claims. See
 [ingestion](features/DATA_INGESTION.md), [Sources](features/LIBRARY_SOURCES.md),
@@ -317,8 +332,17 @@ Optional sync, if ever added, must not redefine ShelfOS as a cloud-first product
 
 ## 14. Product principles
 
-### Local first
-The library belongs on the user's device.
+### Offline-complete, online-enhanced
+The library belongs on the user's device. Online services improve it without deciding
+whether it works.
+
+### Beautiful by default
+A non-technical user should get an attractive, coherent library without understanding
+metadata schemas, filenames, providers or API keys. Power users may configure more.
+
+### Preserve source fidelity
+ShelfOS must not visibly degrade the source. Source-faithful rendering comes before
+optional enhancement, and high fidelity must remain practical on modest hardware.
 
 ### Immersive, not possessive
 ShelfOS should be delightful while open and effortless to leave.
@@ -336,7 +360,16 @@ ShelfOS should have identity.
 Books, comics, manga, and documents should not be forced into the same reader behavior.
 
 ### Manual control wins
-The user can override metadata, cover, classification, reading direction, and other inferred decisions.
+ShelfOS proposes; the user wins. The user can override metadata, cover,
+classification, reading direction, and other inferred decisions.
+
+### The collection is the product
+The reader is the means. Import, organization, presentation and durable local state
+must make the user's whole collection feel intentional.
+
+### Quiet satisfaction
+Future completion experiences may acknowledge finishing a publication without game-like
+pressure, mandatory sharing, streaks or intrusive rewards. The publication stays central.
 
 ## 15. Long-term possibilities
 
