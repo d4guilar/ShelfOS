@@ -1,14 +1,392 @@
 # Validation
 
+## Phase 2A.1 owner physical-controller verification (2026-09-25)
+
+The owner manually pressed the Retroid Pocket 5's actual physical controller
+controls (not an ADB-injected key event) while a reader was open with chrome
+visible. The physical controller inputs activated the corresponding ShelfOS
+controller-hint badges/actions in the reader UI as expected.
+
+This is **owner-verified physical hardware evidence**, distinct from the
+Codex-side RP5 evidence recorded elsewhere in this document, which was real
+hardware *execution* driven through ADB-injected key events and screen taps,
+not physically pressing the device's own buttons by hand. Codex's review did
+not independently press the RP5's physical controls; that distinction stands
+as previously recorded.
+
+The owner's statement does not specify an exact per-button sequence (which
+buttons, which reader format, how many presses), so none is recorded here
+beyond what was actually stated: physical controller input worked and
+produced the expected controller-hint UI response.
+
+**Keyboard evidence remains unchanged by this note.** Keyboard hint/input
+behavior has automated (JVM) and injected-key (emulator and RP5, over ADB)
+validation only. No physical tablet keyboard has been tested, on the RP5 or
+otherwise. This owner physical-controller check does not extend to, and must
+not be read as implying, physical keyboard validation — controller and
+keyboard are independent input modalities in this feature and are evidenced
+separately.
+
+## Phase 2A.1 R3 cleanup validation (2026-09-25)
+
+A second independent Codex review of the remediated 2A.1 implementation
+(below) returned **PASS WITH NON-BLOCKING FINDINGS** — no R1/R2 defects, four
+small R3 items. All four are documentation/test-quality corrections; only one
+touches production code, and as a pure refactor with no behavior change
+(verified by all affected tests still passing identically before and after).
+
+**1. Source-precedence test quality.** The prior regression test
+(`specificEventSourceTakesPrecedenceOverDeviceAggregate`) used a nonexistent
+`deviceId`, so `device` resolved to `null` and the test never actually
+exercised a real hybrid device's aggregate sources — it could not have failed
+even if precedence were reverted to aggregate-first. Fixed by extracting
+`resolveInputSources(eventSource, deviceSources)` and `isGamepadSource(sources)`
+(`core/input/InputHints.kt`) as small, pure, internal functions operating only
+on `Int` bitmasks — no `KeyEvent`/`InputDevice` involved, so they compile and
+run in a plain JVM unit test. Two new `InputHintsTest` cases construct an
+explicit hybrid aggregate (`SOURCE_KEYBOARD or SOURCE_DPAD or SOURCE_GAMEPAD`)
+against a concrete `SOURCE_KEYBOARD` event source and assert the *event*
+source wins, plus the `SOURCE_UNKNOWN`-falls-back-to-aggregate case — both
+would fail if precedence reverted. The misleading instrumented test was
+removed; a correctly-scoped instrumented test remains, honestly documented as
+proving only that the real `KeyEvent`/absent-device path doesn't crash (not
+device-aggregate precedence, which the JVM tests now prove deterministically).
+Production classification (`inputModalityOrNull()`) delegates to these two
+helpers with identical logic to before — no behavior change.
+
+**2. Controller → Escape coverage.** The prior
+`escapeAndGamepadBEstablishModalityWhileRevealingChromeInFixedReader` test's
+middle step was `KEYBOARD → Escape → KEYBOARD` — a no-op that never actually
+established `CONTROLLER` before pressing Escape, despite the surrounding
+comment implying that transition was covered. Fixed by replacing that step
+with `TOUCH → GAMEPAD_B → CONTROLLER` first, so the sequence now explicitly
+exercises `CONTROLLER → Escape → KEYBOARD`, asserting both the resulting
+keyboard hint style and that the reader remains open (Back semantics correct)
+at each step.
+
+**3. Stale Phase 2 plan status.** `PHASE_2_PLAN.md`'s top status line and
+2A.1 acceptance checklist were updated to reflect: 2A accepted; 2A.1
+implementation complete, first Codex review CHANGES REQUIRED (remediated),
+second Codex review PASS WITH NON-BLOCKING FINDINGS (this cleanup); not yet
+merged, not yet re-confirmed.
+
+**4. Remediation history accuracy.** The prior remediation entries in
+`PHASE_2_PLAN.md`, `VALIDATION.md` (below) and `docs/design/INPUT_SYSTEM.md`
+§10 stated raw system Back "fell through to an unguarded KEYBOARD default" as
+the observed defect. Re-verified directly against the pre-remediation commit
+(`git show <commit>^:...`): `InputMapper` mapped `InputKey.BACK`/`HOME` to no
+command in *both* the original implementation and the first fix, so raw Back
+never entered the affected branch in either version — the claim was
+inaccurate. The actual defect: `InputKey.ESCAPE`/`InputKey.GAMEPAD_B` both map
+to `ShelfCommand.BACK`, and the first fix's `if (command != ShelfCommand.BACK)`
+guard excluded that resolved command from the modality update, so this real
+keyboard/controller input silently failed to update the displayed hint style
+even though Back/reveal behavior itself stayed correct. Corrected in all three
+locations.
+
+### STATIC / BUILD
+
+| Check | Result |
+| --- | --- |
+| `:app:compileDebugKotlin` / `:app:compileDebugAndroidTestKotlin` | Passed |
+| `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:assembleDebugAndroidTest` (`--rerun-tasks --offline`) | Passed |
+| `git diff --check` | Clean |
+| `git status --porcelain -- app/schemas` | Clean (no Room changes) |
+
+### JVM / REGRESSION
+
+| Check | Result |
+| --- | --- |
+| `:app:testDebugUnitTest` (`InputHintsTest`) | 8/8 passed (6 existing + 2 new source-precedence tests) |
+
+### INSTRUMENTED / EMULATOR
+
+| Test class | Device | Result |
+| --- | --- | --- |
+| `NavigationSmokeTest` | `shelfos-phase0` (API 35) | 26/26 passed (unchanged count — one existing test edited, not added) |
+| `InputModalityClassificationTest` | `shelfos-phase0` (API 35) | 10/10 passed (11 → 10: one misleading test removed) |
+
+### PHYSICAL DEVICE
+
+No RP5 re-certification was performed for this pass. The only production
+change (`resolveInputSources`/`isGamepadSource` extraction) is a pure
+refactor — identical logic moved into named, independently-testable
+functions, with no change to `inputModalityOrNull()`'s observable behavior —
+so per the review's own instruction, a focused RP5 sanity check is not
+required unless the extraction changed runtime logic, which it did not.
+
+### FINAL ACCEPTANCE (2A.1 R3 cleanup)
+
+All four non-blocking findings are closed with evidence. `EpubRecreationTest.kt`
+remains untouched, as instructed — it is separate, pre-existing Phase 2A test
+debt, to be handled in a tiny follow-up after 2A.1 merges. **Not yet
+re-confirmed by Codex; not merged.**
+
+## Phase 2A.1 remediation validation (2026-09-25)
+
+Independent Codex review of the initial 2A.1 implementation (below) returned
+**CHANGES REQUIRED**: the modality-tracking fix described there as final was
+itself incorrect. Root cause and fix are recorded in full in
+`docs/PHASE_2_PLAN.md`'s 2A.1 "Remediation" note and `docs/design/
+INPUT_SYSTEM.md` §10. In short: `InputMapper` maps `InputKey.BACK`/`HOME` to no
+command at all, in both the original implementation and the fix — raw system
+Back never entered the affected branch in either version, so the original
+fix's stated reasoning (excluding it would stop raw Back from claiming a
+modality) was moot from the start. The actual defect was that
+`InputKey.ESCAPE`/`InputKey.GAMEPAD_B` both map to `ShelfCommand.BACK`, and
+excluding that *resolved command* from the modality update meant this real,
+attributable keyboard/controller input silently failed to update the
+displayed hint style, even though it still correctly revealed/exited the
+reader. The fix moved the exclusion to the raw key-classification function
+itself (`inputModalityOrNull()` now returns `null` specifically for the
+system Back/Home keys, independent of what command they produce), applied
+unconditionally before any command dispatch. The ambiguous-source precedence
+was also corrected to prefer the specific event's own source over a device's
+aggregate sources.
+
+### STATIC / BUILD
+
+| Check | Result |
+| --- | --- |
+| `:app:compileDebugKotlin` / `:app:compileDebugAndroidTestKotlin` | Passed |
+| `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:assembleDebugAndroidTest` (`--rerun-tasks --offline`) | Passed |
+| `git diff --check` | Clean |
+| `git status --porcelain -- app/schemas` | Clean (no Room changes) |
+
+### INSTRUMENTED / EMULATOR
+
+New instrumented test class `InputModalityClassificationTest` (11 tests):
+constructs real `KeyEvent`s with explicit `source` values (plain JVM tests
+cannot exercise real `KeyEvent`/`InputDevice` behavior) and asserts: Escape is
+always `KEYBOARD`; gamepad A/B/L1/R1 are always `CONTROLLER`; raw system
+Back/Home have no modality (`null`) regardless of source; D-pad/Enter resolve
+from source (keyboard vs. gamepad/joystick/dpad source); the specific event's
+own source takes precedence over a hybrid device's aggregate sources; an
+unknown event source falls back without crashing.
+
+`NavigationSmokeTest` grew from 21 to 26 tests with five new cases:
+`escapeAndGamepadBEstablishModalityWhileRevealingChromeInFixedReader`,
+`rawSystemBackNeverChangesModalityInFixedReader`,
+`escapeAndGamepadBEstablishModalityInEpubReader`,
+`keyboardHintsReflectRtlSwapInMangaCbz`,
+`focusNavigationKeyStillUpdatesModalityWithoutBeingConsumed`. Since Escape/
+gamepad B produce `ShelfCommand.BACK` and would exit the reader if chrome were
+visible (ADR-0023), these tests establish the "before" modality, hide chrome
+via a real touch action, then press Escape/gamepad B — the same key that
+reveals chrome instead of exiting from that state — and assert the resulting
+hint style, directly proving the fixed transition without ever leaving the
+reader.
+
+| Test class | Device | Result |
+| --- | --- | --- |
+| `NavigationSmokeTest` | `shelfos-phase0` (API 35) | 26/26 passed |
+| `InputModalityClassificationTest` | `shelfos-phase0` (API 35) | 11/11 passed |
+| `NavigationSmokeTest` | RP5 (Android 13) | 26/26 passed |
+| `InputModalityClassificationTest` | RP5 (Android 13) | 11/11 passed |
+
+A separate, pre-existing full-suite run (all test classes, not just the two
+above) surfaced one unrelated failure in `EpubRecreationTest.kt`
+(`readerUiStateSurvivesRecreationAndAppliedAppearanceReloads`): it presses
+system Back expecting the pre-ADR-0023 "hide chrome, stay open" contract, but
+current (accepted) Phase 2A behavior is "visible chrome + Back exits," so the
+reader now actually closes and the test's later rotation-persistence
+assertions fail against a closed Activity. `git log` confirms this test file
+was last touched in the Phase 1 foundation commit and was never updated when
+Phase 2A's merge (`cb9df1a`) changed `EpubActivity`'s Back behavior — this is a
+**pre-existing gap from the Phase 2A merge, unrelated to 2A.1's modality
+remediation and outside this review's scope**. Recorded here, not fixed, per
+the instruction to avoid scope creep beyond the reviewed findings.
+
+### PHYSICAL DEVICE
+
+**Retroid Pocket 5 (RP5), Android 13/API 33, ADB serial `d8f7f1b6`.** Beyond
+the automated re-run above, the exact manual sequence the review specified was
+performed, with screenshots at each step:
+
+1. Start from TOUCH (fresh reader open, no hints). Press the RP5's B-equivalent
+   (`KEYCODE_BUTTON_B` over ADB) — chrome reveals (not exit, ADR-0023 held) and
+   controller hints (`L1`/`R1`/`B`) appear: confirms TOUCH → CONTROLLER.
+2. Press R1 — page turns forward (1→2), Next behavior matches the `R1` label.
+3. Press L1 — page turns backward (2→1), Previous behavior matches the `L1` label.
+4. A real touch (edge-tap page turn, chrome left visible) — controller hints
+   disappear; chrome stays visible with plain "Previous"/"Next", no keycaps.
+5. Press R1 again — controller hints (`L1`/`R1`/`B`) return, page turns.
+6. Hide chrome (touch), press Escape — chrome reveals and hints switch to
+   keyboard style (`←`/`→`/`Esc`): confirms Escape establishes `KEYBOARD` even
+   though it also produces `ShelfCommand.BACK`.
+7. Hide chrome again, press raw system Back — chrome reveals (does not exit)
+   and hints **remain** keyboard-styled: confirms the actual fix — raw Back no
+   longer claims a modality of its own, in either direction.
+
+All screenshots showed correct, legible chrome with no clipping/overflow on
+the RP5's 1080×1920 screen. No crashes observed. This sequence, like the
+review's own framing, is real hardware execution via ADB-injected key events
+and screen taps, not a record of physically pressing the handheld's own
+buttons by hand — the owner's separate general confirmation that the RP5's
+physical controls work was not independently re-verified button-by-button in
+this pass.
+
+**Manual TalkBack:** still not performed — unavailable on the test targets used.
+
+**Samsung Galaxy Tab A:** not performed, per the device strategy — optional/periodic.
+
+### FINAL ACCEPTANCE (2A.1 remediation) — superseded, see R3 cleanup entry above
+
+This entry's fix was independently re-reviewed and returned PASS WITH
+NON-BLOCKING FINDINGS — see "Phase 2A.1 R3 cleanup validation" at the top of
+this document, which also corrects this entry's inaccurate claim about raw
+Back's original behavior. The reviewed defect (Escape/gamepad B failing to
+establish modality) is fixed; independently reproducible evidence (11
+raw-classification tests at the time, now 10 after the R3 cleanup removed a
+misleading one; 5 transition tests; a 7-step real-hardware RP5 sequence)
+confirms the corrected behavior in both directions. A separate, pre-existing,
+out-of-scope gap (`EpubRecreationTest`) was found and documented, not fixed —
+still true, still not fixed. **Not yet re-confirmed by Codex; not merged.**
+
+## Phase 2A.1 validation (2026-09-25)
+
+Status: 2A.1 (input-discovery/controller-hint polish, `docs/PHASE_2_PLAN.md`)
+implemented on branch `phase-2/input-hints`, based on the merged Phase 2A
+(`main`). Not yet reviewed by Codex; not yet merged.
+
+### STATIC / BUILD
+
+| Check | Result |
+| --- | --- |
+| `:app:compileDebugKotlin` | Passed |
+| `:app:compileDebugAndroidTestKotlin` | Passed |
+| `:app:assembleDebug` | Passed |
+| `:app:lintDebug` | Passed |
+| `:app:assembleDebugAndroidTest` | Passed |
+| Room schema cleanliness (`git status --porcelain -- app/schemas`) | Clean — no Room changes |
+| `git diff --check` | Clean |
+| Dependency check | No dependency added or changed (`gradle/libs.versions.toml`/`app/build.gradle.kts` diff is empty); the hint system uses only existing Compose/Android APIs |
+
+### JVM / REGRESSION
+
+| Check | Result |
+| --- | --- |
+| `:app:testDebugUnitTest` | Passed, including new `InputHintsTest` (touch→null, controller labels match the real `InputMapper` bindings, controller labels are not RTL-swapped, keyboard labels are and match the actual arrow/Escape bindings, no hint for a command without a candidate binding) |
+
+### INSTRUMENTED / EMULATOR
+
+`NavigationSmokeTest` grew from 16 to 21 tests with five new Phase 2A.1 tests
+(`controllerInputShowsControllerHintsThenTouchClearsThem`,
+`keyboardInputShowsKeyboardHintsInFixedReader`,
+`hiddenChromeNeverExposesInputHints`,
+`decorativeBackHintIsNotItsOwnAccessibilityStop`,
+`keyboardInputShowsKeyboardHintsInEpubReader`), run via
+`:app:connectedDebugAndroidTest` targeted explicitly at one device with
+`ANDROID_SERIAL` to avoid accidentally exercising a connected RP5 during
+routine emulator runs:
+
+| Device | Result |
+| --- | --- |
+| `shelfos-phase0` (AVD, API 35) | 21/21 passed |
+
+A test-design pitfall was found and fixed during this pass: `InputKeycap` is
+deliberately stripped of its own semantics (`clearAndSetSemantics {}`), so
+`onNodeWithText` queries against it always fail — Compose test APIs only see
+the semantics tree, not rendered pixels. Tests were corrected to check the
+merged `contentDescription` on Previous/Next (e.g. `"Next, R1"`) and a
+`testTag` on the decorative Back hint instead of raw keycap text. A second,
+real bug was found this way and independently confirmed on RP5 hardware (see
+PHYSICAL DEVICE below): the system Back key was unconditionally classified as
+`KEYBOARD` modality, flipping an active controller hint set on every Back
+press. **This entry's original fix — excluding `ShelfCommand.BACK` from the
+modality update — was itself incorrect**, as a later independent Codex review
+found: it filtered at the semantic-command level, which suppressed legitimate
+Escape/gamepad-B modality updates without actually addressing raw Back (see
+"Phase 2A.1 remediation validation" above for the corrected fix and its
+evidence).
+
+The emulator's synthetic `DPAD_LEFT`/`DPAD_RIGHT` key injection was found to be
+ambiguous for modality classification (unclear whether the virtual keyboard
+device used by `Instrumentation.sendKeyDownUpSync` reports gamepad-like
+`SOURCE_DPAD`); the keyboard-hint tests use `PAGE_DOWN`/`PAGE_UP` instead,
+which are unambiguous keyboard-only keycodes in the classifier and produce the
+same displayed hint (`→`/`←`) via `InputHints`' candidate-based lookup
+regardless of which actual key triggered the modality.
+
+### PHYSICAL DEVICE
+
+**Retroid Pocket 5 (RP5), Android 13/API 33, ADB serial `d8f7f1b6`:**
+
+- Full 21-test `NavigationSmokeTest` suite: **21/21 passed**, run via
+  `ANDROID_SERIAL` targeting the RP5 specifically. One run hung for ~9 minutes
+  on `controllerInputShowsControllerHintsThenTouchClearsThem` (a
+  `performTouchInput` synthetic touch) and failed via an outer timeout; this
+  was traced to the device's screen timing out mid-test, not a code defect —
+  confirmed by extending `screen_off_timeout` and re-running cleanly at 52s
+  for all 21 tests. The device's screen timeout was restored to 30s afterward.
+- Manual real-hardware verification (screenshots, not merely the automated
+  suite): imported a real PDF through the actual SAF import UI, opened it,
+  pressed the physical-equivalent `R1` key over ADB — controller hints
+  (`L1 Previous`, `R1 Next`, `B Back`) rendered correctly and legibly on the
+  RP5's 1080×1920 screen, with no chrome overflow or clipping. Hid chrome —
+  hints disappeared with it. Pressed Back — chrome and hints both reappeared
+  (hidden-chrome contract from ADR-0023 held), and, after the fix above, the
+  hints correctly stayed in controller mode instead of flipping to keyboard.
+  Pressed Back again from visible chrome — reader exited to Library/details
+  correctly, position saved.
+- No ShelfOS crashes or navigation exceptions observed in RP5 logcat during
+  either the automated run or the manual pass.
+- No obvious performance regression observed.
+
+**Important distinction, preserved from the Phase 2A review:** the above is
+real RP5 hardware execution driven through ADB-injected key events and actual
+screen taps, not a record of physically pressing the handheld's own L1/R1/B
+buttons by hand. The owner's separate general confirmation that the RP5's
+physical controls work was not re-verified with a new specific per-button
+sequence in this pass.
+
+**Manual TalkBack:** not performed — TalkBack was unavailable on the test
+targets used, consistent with the Phase 2A record.
+
+**Samsung Galaxy Tab A (SM-T580):** not performed in this pass, per the device
+strategy in `PHASE_2_PLAN.md` §7 — optional/periodic and non-blocking.
+
+### ACCESSIBILITY
+
+Previous/Next hints are merged into the existing buttons'
+`contentDescription` (e.g. `"Next, R1"`, `"Previous, ←"`) rather than adding a
+new focusable node — verified by the automated tests checking for exactly that
+merged description. The Back hint, which has no single existing "Back"
+control to merge into, is fully decorative: `clearAndSetSemantics {}` removes
+it from the tree entirely (confirmed via `onAllNodesWithText("Back")` finding
+zero nodes in the default merged tree, and `assert(!hasClickAction())` on its
+`testTag`), so it cannot become a noisy duplicate stop. This was not
+independently walked through with TalkBack physically running, for the same
+reason recorded in the Phase 2A entry above.
+
+### MOTION
+
+No animation was added for hint appearance/disappearance — hints follow the
+same instant, unanimated pattern as chrome show/hide (2A). Reduced motion is
+honored trivially, as there is no motion to gate.
+
+### FINAL ACCEPTANCE (2A.1) — superseded, see remediation entry above
+
+This entry originally claimed the Back/modality fix below was final. An
+independent Codex review found that fix itself incorrect (it filtered on the
+wrong abstraction level); see "Phase 2A.1 remediation validation" at the top
+of this document for the corrected fix and its full evidence. The 21/21
+figures here reflect the pre-remediation test count (26/26 + 11/11 after
+remediation). Keyboard hint validation used ADB-injected key events on both
+the emulator and RP5, not a physical tablet keyboard — none was available in
+this environment; this remains true after remediation. **Do not treat 2A.1 as
+accepted** — not yet re-reviewed by Codex, not merged.
+
 ## Phase 2A validation (2026-09-25)
 
 Status: **Phase 2A (reader chrome/Back semantics, `docs/PHASE_2_PLAN.md`) is
-accepted**, on branch `phase-2/reading`, not yet merged. Independent Codex
-review verdict: **PASS WITH NON-BLOCKING FINDINGS** (see FINAL ACCEPTANCE
-below for the full evidence summary and explicitly unclaimed items). Phase 1's
-acceptance (below) is unaffected; no Phase 1 code outside the reader
-Back-handling paths described in
-[ADR-0023](adr/0023-reader-chrome-back-semantics.md) was touched.
+accepted and merged to `main`.** Independent Codex review verdict: **PASS WITH
+NON-BLOCKING FINDINGS** (see FINAL ACCEPTANCE below for the full evidence
+summary and explicitly unclaimed items). Phase 1's acceptance (below) is
+unaffected; no Phase 1 code outside the reader Back-handling paths described
+in [ADR-0023](adr/0023-reader-chrome-back-semantics.md) was touched. 2A.1
+(input-discovery/controller-hint polish) builds on this merge — see the
+"Phase 2A.1 validation" section below.
 
 ### STATIC / BUILD
 

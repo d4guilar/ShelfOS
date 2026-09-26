@@ -1,5 +1,77 @@
 # Documentation Changelog
 
+## Phase 2A.1 R3 cleanup (2026-09-25)
+
+- Closed all four non-blocking findings from a second independent Codex
+  review (PASS WITH NON-BLOCKING FINDINGS): extracted a pure, unit-testable
+  `resolveInputSources`/`isGamepadSource` helper pair so source-precedence has
+  a deterministic JVM regression test (the prior instrumented test used a
+  nonexistent device ID and never actually exercised a real hybrid device's
+  aggregate); added an explicit `CONTROLLER → Escape → KEYBOARD` transition
+  step to the fixed-reader modality test, replacing a redundant no-op step;
+  corrected `PHASE_2_PLAN.md`'s stale status line; and corrected an inaccurate
+  historical claim, repeated in `PHASE_2_PLAN.md`, `VALIDATION.md` and
+  `docs/design/INPUT_SYSTEM.md` §10, that raw system Back "fell through to an
+  unguarded KEYBOARD default" — re-verified against the actual pre-remediation
+  commit, `InputMapper` mapped raw Back to no command in both the original
+  implementation and the first fix, so it never entered the affected branch
+  in either version; the real defect was Escape/gamepad B being wrongly
+  excluded from the modality update.
+- `EpubRecreationTest.kt` remains untouched, as instructed — separate,
+  pre-existing Phase 2A test debt, deferred to a follow-up after 2A.1 merges.
+- The only production change (the helper extraction) is a pure refactor with
+  identical logic; no RP5 re-certification was required or performed.
+- 2A.1 remains implemented, not yet re-confirmed by Codex, not merged.
+
+## Phase 2A.1 modality-tracking remediation (2026-09-25)
+
+- Corrected `PHASE_2_PLAN.md`, `VALIDATION.md` and `docs/design/
+  INPUT_SYSTEM.md` §10 after an independent Codex review found the initial
+  2A.1 implementation's Back/modality fix itself incorrect: it filtered on
+  the *resolved semantic command* (`ShelfCommand.BACK`), which suppressed
+  legitimate Escape/gamepad-B modality updates. Raw system Back maps to no
+  `ShelfCommand` at all (`InputMapper` returns `null` for `InputKey.BACK`), so
+  it never entered that semantic-command branch in the first place, in either
+  the original implementation or this fix — the defect was Escape and
+  gamepad B, which do produce `ShelfCommand.BACK`, being wrongly excluded from
+  their legitimate `KEYBOARD`/`CONTROLLER` modality updates by that guard.
+- Narrowed the previously overstated "hints can never drift" wording to
+  "validated against InputMapper for candidate bindings the catalog covers" —
+  a future rebinding is not automatically discoverable unless also added to
+  the candidate catalog.
+- Also corrected the ambiguous-source classification to prefer the specific
+  event's own reported source over a hybrid device's aggregate sources.
+- Recorded new automated evidence: `InputModalityClassificationTest`
+  (instrumented, 11 tests, real `KeyEvent`/`InputDevice` raw-classification
+  coverage) and five new `NavigationSmokeTest` transition/RTL-hint cases
+  (26 total), plus a real-hardware RP5 sequence confirming the fix in both
+  directions (Escape/gamepad B now establish modality; raw Back does not).
+- Recorded a separate, pre-existing, out-of-scope gap discovered while
+  running the full test suite: `EpubRecreationTest.kt` still assumes the
+  pre-ADR-0023 "Back hides chrome, stays open" contract and was never updated
+  when Phase 2A's merge changed that behavior. Documented, not fixed, per
+  this remediation's scope guard.
+- 2A.1 remains implemented, not yet re-reviewed by Codex, not merged.
+
+## Phase 2A.1: input-discovery/controller-hint implementation (2026-09-25)
+
+- Recorded Phase 2A.1 as implemented in `PHASE_2_PLAN.md` and `VALIDATION.md`:
+  `core.input.InputModality`/`InputHints` (self-verifying against the real
+  `InputMapper` bindings) and `core.designsystem.InputKeycap`, integrated into
+  both readers' chrome, with keyboard hints as first-class (not deferred).
+- Recorded a real bug found via RP5 hardware testing and its fix: the system
+  Back key was unconditionally classified as keyboard modality, flipping an
+  active controller hint set on every Back press; Back is now excluded from
+  modality updates in both readers.
+- Recorded automated evidence (21/21 on the known-good API 35 emulator and on
+  real RP5 hardware) and the explicit limits: no manual TalkBack walkthrough,
+  no physical tablet keyboard available (keyboard validation used ADB-injected
+  keys), and a known gap where EPUB edge-tap-only reading doesn't clear a
+  stale controller/keyboard hint (only center-tap does).
+- Added `docs/design/INPUT_SYSTEM.md` §10 documenting the hint-resolution
+  architecture and the Back/modality interaction.
+- Phase 2A.1 is implemented but not yet reviewed by Codex or merged.
+
 ## Phase 2A acceptance and Phase 2A.1 planning (2026-09-25)
 
 - Recorded Phase 2A as accepted in `VALIDATION.md` and `PHASE_2_PLAN.md`,

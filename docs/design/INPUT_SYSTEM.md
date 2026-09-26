@@ -8,7 +8,8 @@ Ctrl+F opens Search, Escape/gamepad B use normal back behavior. Android Home is
 left to the system. Reader commands (`NEXT_PAGE`/`PREVIOUS_PAGE`/`OPEN_MENU`/`BACK`)
 are implemented and active in both the EPUB and Original (PDF/CBZ) readers as of
 Phase 1, covering keyboard and gamepad; see the Phase 2A note below for Back and
-touch. Focus rings are centralized in `shelfAction`; no remapping UI exists yet.
+touch, and §10 for the Phase 2A.1 input-discovery hint layer built on top of this
+mapper. Focus rings are centralized in `shelfAction`; no remapping UI exists yet.
 
 ## 1. Principle
 
@@ -156,6 +157,68 @@ Future stylus behavior should distinguish:
 - palm rejection where platform support permits
 
 Ink coordinates must be stored relative to page/content space.
+
+## 10. Input discovery hints (Phase 2A.1)
+
+Implemented on top of the existing `ShelfCommand`/`InputMapper` layer, not a
+parallel system: `core.input.InputModality` (`TOUCH`/`KEYBOARD`/`CONTROLLER`)
+tracks the user's recent input per reader screen, and
+`core.input.InputHints.hint(command, modality, rightToLeft)` resolves the
+on-screen label from a small candidate catalog (`keyboardCandidates`/
+`controllerCandidates`), each entry validated against the real
+`InputMapper.command()` before being shown. This means a displayed hint (`R1`,
+`←`, `Esc`, ...) can never disagree with `InputMapper`'s current behavior for a
+binding the catalog covers — it does **not** mean an arbitrary future rebound
+or remapped key is automatically discoverable; a new binding is only ever
+hinted once it is also added to the candidate catalog. `core.designsystem.
+InputKeycap` renders the small monochrome keycap badge.
+
+Raw modality classification (`KeyEvent.inputModalityOrNull()`) is a separate
+question from *which command an event produces*, and is evaluated independently
+of it — this distinction matters because it must also apply to keys that never
+become a reader `ShelfCommand` at all (Compose focus navigation, `CONFIRM`).
+Classification never inspects device model/name: gamepad-exclusive keycodes
+(`L1`/`R1`/`GAMEPAD_A`/`GAMEPAD_B`/`START`) are always `CONTROLLER`; keys a
+keyboard's arrows/Enter and a gamepad's D-pad report identically are resolved
+from the reporting sources, with the *specific event's own* `source` taking
+precedence over the device's aggregate `sources` (a hybrid device's aggregate
+capabilities could otherwise misclassify one of its plain keyboard events as
+gamepad input; the aggregate is only consulted when the event itself reports
+none — via the small, pure, internal `resolveInputSources`/`isGamepadSource`
+helpers, which operate on plain `Int` bitmasks so the precedence rule itself
+is directly unit-testable without a real or fake `InputDevice`). The function
+returns `null` — no modality signal at all — for the raw
+system Back/Home keys and unclassified keys, and each reader applies that
+result unconditionally, before dispatching any semantic command, rather than
+gating on the *resolved command* being `ShelfCommand.BACK`.
+
+**This distinction was the subject of a real defect, found by independent
+review.** `InputMapper` maps `InputKey.BACK`/`InputKey.HOME` to no command at
+all (`null`) — only `InputKey.ESCAPE` and `InputKey.GAMEPAD_B` produce
+`ShelfCommand.BACK`. This was true of both the original implementation and an
+earlier attempted fix that filtered at the semantic level
+(`if (command != ShelfCommand.BACK) modality = ...`): raw system Back never
+entered the branch containing that line in either version, so the fix's own
+stated reasoning — that excluding `ShelfCommand.BACK` would stop raw Back from
+claiming a modality — was moot from the start. The actual defect was simpler:
+that same guard also excluded Escape and gamepad B, which legitimately
+produce `ShelfCommand.BACK` while being real, attributable keyboard/controller
+input, so pressing them correctly revealed/exited the reader (Back semantics
+were never wrong) but silently failed to update the displayed hint style. The
+fix moved the exclusion to the raw-classification function itself
+(`inputModalityOrNull()` returns `null` for `InputKey.BACK`/`InputKey.HOME`
+directly, independent of what command they produce), so Escape and gamepad B
+now correctly establish `KEYBOARD`/`CONTROLLER` modality, while the raw system
+Back key/gesture still never claims a modality of its own.
+
+Touch itself is still not routed through `ShelfCommand` (§6's open item
+remains open) — only the *hint display* is command-derived. Real touch
+gestures (tap/double-tap/swipe in the Original reader, center-tap in EPUB)
+clear the tracked modality back to `TOUCH`; a known gap is that EPUB page
+turns via edge-tap are handled entirely inside Readium's own navigator and
+never reach this tracking, so edge-tap-only EPUB reading after a keyboard/
+controller session can leave a stale hint showing until a center-tap or key
+press occurs.
 
 ## Future Series continuity
 

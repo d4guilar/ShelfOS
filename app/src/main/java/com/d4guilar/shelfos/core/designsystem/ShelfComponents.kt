@@ -118,3 +118,18 @@ fun ShelfChoiceChip(selected: Boolean, onClick: () -> Unit, label: String, modif
     FilterChip(selected = selected, onClick = onClick, label = { Text(label) }, modifier = modifier,
         leadingIcon = if (selected) { { Text("✓", Modifier.clearAndSetSemantics { }) } } else null)
 }
+
+/**
+ * A small monochrome keycap badge for reader input-discovery hints (Phase 2A.1): restrained, theme-aware,
+ * secondary to the publication. Purely decorative — pair it with a merged contentDescription on the action
+ * it labels (e.g. "Next, R1") rather than exposing it as its own accessibility stop.
+ */
+@Composable
+fun InputKeycap(label: String, modifier: Modifier = Modifier) {
+    val t = LocalShelfTokens.current
+    Text(label, modifier.clearAndSetSemantics { }
+        .border(t.surfaces.border, t.colors.divider, t.shapes.extraSmall)
+        .background(t.colors.muted, t.shapes.extraSmall)
+        .padding(horizontal = 6.dp, vertical = 1.dp),
+        style = t.typography.labelSmall, color = t.colors.secondary)
+}
