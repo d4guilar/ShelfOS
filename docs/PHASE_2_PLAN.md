@@ -1,12 +1,13 @@
 # Phase 2 plan: the Reading phase
 
 Status: **2A is accepted** (2026-09-24, merged to `main`; Codex verdict: PASS
-WITH NON-BLOCKING FINDINGS). **2A.1 is implemented (2026-09-25)** on branch
-`phase-2/input-hints`, not yet merged or reviewed by Codex — see
-`VALIDATION.md`'s "Phase 2A.1 validation" section for evidence and
-explicitly-unclaimed items. 2B/2C/2D remain planned only; none of their work
-has started. This document is the canonical Phase 2 planning location
-referenced by [`ROADMAP.md`](ROADMAP.md#phase-2--reading).
+WITH NON-BLOCKING FINDINGS). **2A.1 implementation is complete; independent
+review pending.** A first Codex review (2026-09-25) returned CHANGES REQUIRED
+for a modality-tracking defect, since remediated (see below) — not yet
+re-reviewed or merged. See `VALIDATION.md`'s "Phase 2A.1 validation" section
+for evidence and explicitly-unclaimed items. 2B/2C/2D remain planned only;
+none of their work has started. This document is the canonical Phase 2
+planning location referenced by [`ROADMAP.md`](ROADMAP.md#phase-2--reading).
 
 ## 1. Reconciling Phase 1 acceptance with the roadmap
 
@@ -136,18 +137,23 @@ visual system (`core.designsystem`/`core.theme` tokens) is used throughout.
 
 **Implemented scope:**
 - `core.input.InputModality` (`TOUCH`/`KEYBOARD`/`CONTROLLER`) and
-  `KeyEvent.inputModality()` (`core/input/InputHints.kt`): classifies a real
-  key event by keycode where unambiguous (`L1`/`R1`/`GAMEPAD_A`/`GAMEPAD_B`/
-  `START` are gamepad-exclusive keycodes a keyboard cannot generate) and by the
-  event's reported `InputDevice` sources (`SOURCE_GAMEPAD`/`SOURCE_JOYSTICK`/
-  `SOURCE_DPAD`) for the keys a keyboard's arrows/Enter and a gamepad's D-pad
-  report identically. Never inspects device model/name.
+  `KeyEvent.inputModalityOrNull()` (`core/input/InputHints.kt`): classifies a
+  real key event's *raw* input modality — independently of whether it becomes
+  a `ShelfCommand` — by keycode where unambiguous (`L1`/`R1`/`GAMEPAD_A`/
+  `GAMEPAD_B`/`START` are gamepad-exclusive keycodes a keyboard cannot
+  generate) and, for the keys a keyboard's arrows/Enter and a gamepad's D-pad
+  report identically, from the reporting sources — the specific event's own
+  `source` takes precedence over a device's aggregate `sources`, which is only
+  a fallback when the event itself reports none. Returns `null` (no modality
+  signal) for the raw system Back/Home keys and unclassified keys. Never
+  inspects device model/name.
 - `core.input.InputHints.hint(command, modality, rightToLeft)`: resolves the
-  on-screen label by asking the *real* `InputMapper.command()` which candidate
-  physical key currently produces that command, so a displayed hint can never
-  drift out of sync with the binding it describes — this directly satisfies
-  the semantic-architecture requirement below without a separate hand-maintained
-  label table. Returns `null` for `TOUCH` (no hint shown).
+  on-screen label from a small candidate catalog, each candidate validated
+  against the real `InputMapper.command()` before being shown. A displayed
+  hint can never disagree with `InputMapper`'s current behavior for a
+  candidate the catalog covers — this does **not** mean an arbitrary future
+  rebinding is automatically discoverable; a new binding must also be added to
+  the catalog. Returns `null` for `TOUCH` (no hint shown).
 - `core.designsystem.InputKeycap`: the reusable monochrome keycap badge —
   small, rounded, theme-aware (`t.colors.muted`/`t.colors.divider`/
   `t.shapes.extraSmall`), visually secondary, no bright console branding.
@@ -160,18 +166,40 @@ visual system (`core.designsystem`/`core.theme` tokens) is used throughout.
   blocks, so hiding chrome removes them from the tree automatically — no
   separate visibility mechanism was needed.
 - Recent-modality tracking is local per-reader-screen state
-  (`rememberSaveable`), updated only by real touch gestures (tap/double-tap/
-  swipe-turn in `FixedReaderScreen`, center-tap in `EpubSurface`) and real key
-  events — never by a button `onClick`, since a click may itself have been
-  keyboard/gamepad-activated. **Real-hardware finding (RP5):** the system Back
-  key/gesture must *not* update modality — it is a universal dismissal action
-  available identically from every modality, and letting it flip the tracked
-  modality was observed live on RP5 hardware to yank an active controller hint
-  set back to keyboard on every Back press. Both readers exclude
-  `ShelfCommand.BACK` from the modality update.
+  (`rememberSaveable`), updated for every key event reaching the reader's key
+  handler — before, and independently of, dispatching any semantic command —
+  and by real touch gestures (tap/double-tap/swipe-turn in `FixedReaderScreen`,
+  center-tap in `EpubSurface`); never by a button `onClick`, since a click may
+  itself have been keyboard/gamepad-activated. Applying the update
+  unconditionally (gated only on `inputModalityOrNull()` returning non-null)
+  means it also covers keys that never produce a reader `ShelfCommand` at all,
+  such as pure Compose focus navigation.
 - Keyboard hints are first-class, not deferred: `←`/`→`/`Esc` render exactly
   like controller hints, including the RTL swap (`InputHints.hint` reuses
   `InputMapper.command()`'s own RTL branch, so it can never disagree with it).
+
+**Remediation (2026-09-25), after independent Codex review returned CHANGES
+REQUIRED:** the first version filtered at the wrong level — it excluded
+modality updates when the *resolved semantic command* equaled
+`ShelfCommand.BACK`, reasoning that this would stop the raw system Back key
+from claiming a modality. It didn't: `InputMapper` maps `InputKey.BACK` to no
+command at all, so raw Back never reached that branch and instead fell through
+to an unguarded default of `KEYBOARD` — the actual bug reproduced on RP5
+hardware. Worse, the same filter incorrectly suppressed modality updates for
+Escape and gamepad B, which legitimately produce `ShelfCommand.BACK` while
+still being real, attributable keyboard/controller input. The fix separates
+"what command does this produce" from "what raw modality does this represent":
+`inputModalityOrNull()` now excludes only the raw system Back/Home keys
+(returning `null`), and both readers apply it unconditionally before dispatch,
+so Escape correctly establishes `KEYBOARD` and gamepad B correctly establishes
+`CONTROLLER` (each still also reveals hidden chrome per ADR-0023), while the
+raw system Back key/gesture still never claims a modality of its own. The
+ambiguous-source precedence was also corrected to prefer the specific event's
+own source over a hybrid device's aggregate sources. See
+`docs/design/INPUT_SYSTEM.md` §10 for the full explanation and
+`InputModalityClassificationTest.kt` (instrumented — real `KeyEvent`/
+`InputDevice` behavior isn't mockable in a plain JVM test) plus five new
+`NavigationSmokeTest` cases for the regression coverage.
 
 **Known gap, honestly recorded, not fixed in this pass:** touch-modality
 detection for the EPUB reader is only fully reliable via the center tap.
@@ -234,27 +262,34 @@ for comics:
 
 **Acceptance criteria:**
 - [x] Compiles (`:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`).
-- [x] `:app:assembleDebug`, `:app:testDebugUnitTest` (including the new
-      `InputHintsTest` JVM unit tests), `:app:lintDebug`,
-      `:app:assembleDebugAndroidTest` pass.
-- [x] `:app:connectedDebugAndroidTest` (`NavigationSmokeTest`, 21 tests) passes
-      on `shelfos-phase0` (API 35) — the known-good emulator for this class of
-      test, per the API 37 Espresso/InputManager tooling gap recorded in 2A.
-- [x] RP5 (Retroid Pocket 5, Android 13/API 33) physical validation: the full
-      21-test suite passes on-device, plus manual real-hardware confirmation
-      (screenshots) that controller hints appear on an `R1` press, persist
-      correctly across a Back-reveal (after the modality-tracking fix above),
-      and disappear with hidden chrome. See `VALIDATION.md`.
-- [x] Keyboard hint validation: automated (emulator + RP5) via
-      `PAGE_DOWN`/`PAGE_UP` injection, which are unambiguous keyboard-only
-      keycodes in the modality classifier (chosen over `DPAD_LEFT/RIGHT`
-      specifically because the emulator's/RP5's synthetic key injection made
-      D-pad-vs-keyboard ambiguous — a real physical tablet keyboard was not
-      available in this environment; see the "Known limitations" note in
-      `VALIDATION.md`).
+- [x] `:app:assembleDebug`, `:app:testDebugUnitTest` (including `InputHintsTest`),
+      `:app:lintDebug`, `:app:assembleDebugAndroidTest` pass.
+- [x] `:app:connectedDebugAndroidTest`: `NavigationSmokeTest` (26 tests, after
+      remediation added 5 modality-transition/RTL-hint cases) and the new
+      instrumented `InputModalityClassificationTest` (11 tests, real-`KeyEvent`
+      raw-classification coverage that a plain JVM test cannot exercise) both
+      pass on `shelfos-phase0` (API 35) — the known-good emulator for this
+      class of test, per the API 37 Espresso/InputManager tooling gap recorded
+      in 2A.
+- [x] RP5 (Retroid Pocket 5, Android 13/API 33) physical validation: both test
+      classes pass on-device (26/26, 11/11), plus manual real-hardware
+      confirmation (screenshots) of the full requested sequence — TOUCH+B
+      reveals chrome and establishes CONTROLLER hints without exiting, R1/L1
+      match Next/Previous, a real touch tap clears hints, a controller press
+      restores them, Escape establishes KEYBOARD hints, and raw Back reveals
+      chrome while leaving the established modality untouched. See
+      `VALIDATION.md`.
+- [x] Keyboard hint validation: automated (emulator + RP5) via `PAGE_DOWN`/
+      `PAGE_UP`/`ESCAPE` injection — `PAGE_DOWN`/`PAGE_UP` chosen over
+      `DPAD_LEFT/RIGHT` for the page-turn cases specifically because the
+      emulator's/RP5's synthetic D-pad injection was ambiguous for modality
+      classification; a real physical tablet keyboard was not available in
+      this environment (see "Known limitations" in `VALIDATION.md`).
 - [ ] Galaxy Tab A physical validation. Optional/periodic per the device
       strategy in §7; not performed in this pass, documented as pending.
-- [ ] Independent Codex review of this increment. Not yet performed.
+- [x] First independent Codex review: **CHANGES REQUIRED** (a modality-tracking
+      defect described in the remediation note above). Remediated and
+      re-validated in this same pass; **not yet re-reviewed**.
 
 ### 2B — EPUB everyday-reading improvements (planned, not started)
 

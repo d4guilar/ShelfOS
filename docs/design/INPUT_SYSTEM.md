@@ -164,20 +164,46 @@ Implemented on top of the existing `ShelfCommand`/`InputMapper` layer, not a
 parallel system: `core.input.InputModality` (`TOUCH`/`KEYBOARD`/`CONTROLLER`)
 tracks the user's recent input per reader screen, and
 `core.input.InputHints.hint(command, modality, rightToLeft)` resolves the
-on-screen label by asking `InputMapper.command()` itself which candidate
-physical key currently produces that command — so a displayed hint (`R1`,
-`←`, `Esc`, ...) can never drift out of sync with what the key actually does.
-`core.designsystem.InputKeycap` renders the small monochrome keycap badge.
+on-screen label from a small candidate catalog (`keyboardCandidates`/
+`controllerCandidates`), each entry validated against the real
+`InputMapper.command()` before being shown. This means a displayed hint (`R1`,
+`←`, `Esc`, ...) can never disagree with `InputMapper`'s current behavior for a
+binding the catalog covers — it does **not** mean an arbitrary future rebound
+or remapped key is automatically discoverable; a new binding is only ever
+hinted once it is also added to the candidate catalog. `core.designsystem.
+InputKeycap` renders the small monochrome keycap badge.
 
-Modality classification (`KeyEvent.inputModality()`) never inspects device
-model/name: gamepad-exclusive keycodes (`L1`/`R1`/`GAMEPAD_A`/`GAMEPAD_B`/
-`START`) are always `CONTROLLER`; the keys a keyboard's arrows/Enter and a
-gamepad's D-pad report identically fall back to the event's reported
-`InputDevice` sources. The system Back key/gesture is deliberately excluded
-from updating modality — real RP5 hardware testing found that including it
-flipped an active controller hint set to keyboard on every Back press, since
-Back is a universal dismissal action common to every modality, not a signal
-of modality preference.
+Raw modality classification (`KeyEvent.inputModalityOrNull()`) is a separate
+question from *which command an event produces*, and is evaluated independently
+of it — this distinction matters because it must also apply to keys that never
+become a reader `ShelfCommand` at all (Compose focus navigation, `CONFIRM`).
+Classification never inspects device model/name: gamepad-exclusive keycodes
+(`L1`/`R1`/`GAMEPAD_A`/`GAMEPAD_B`/`START`) are always `CONTROLLER`; keys a
+keyboard's arrows/Enter and a gamepad's D-pad report identically are resolved
+from the reporting sources, with the *specific event's own* `source` taking
+precedence over the device's aggregate `sources` (a hybrid device's aggregate
+capabilities could otherwise misclassify one of its plain keyboard events as
+gamepad input; the aggregate is only consulted when the event itself reports
+none). The function returns `null` — no modality signal at all — for the raw
+system Back/Home keys and unclassified keys, and each reader applies that
+result unconditionally, before dispatching any semantic command, rather than
+gating on the *resolved command* being `ShelfCommand.BACK`.
+
+**This distinction was the subject of a real defect, found by independent
+review and confirmed on RP5 hardware.** `InputMapper` maps `InputKey.BACK` to
+no command at all (`null`) — only `InputKey.ESCAPE` and `InputKey.GAMEPAD_B`
+produce `ShelfCommand.BACK`. An earlier version of this feature filtered at
+the semantic level (`if (command != ShelfCommand.BACK) modality = ...`),
+which suppressed modality updates for Escape and gamepad B — real, attributable
+keyboard/controller input — while doing nothing to stop the raw system Back
+key, which never reached that branch in the first place and fell through to a
+default `KEYBOARD` classification regardless of its actual origin. The fix
+moved the exclusion to the raw-classification function itself
+(`inputModalityOrNull()` returns `null` for `InputKey.BACK`/`InputKey.HOME`
+specifically), so Escape and gamepad B now correctly establish `KEYBOARD`/
+`CONTROLLER` modality (they still also produce `ShelfCommand.BACK` and reveal
+hidden chrome, per ADR-0023), while the raw system Back key/gesture still never
+claims a modality of its own.
 
 Touch itself is still not routed through `ShelfCommand` (§6's open item
 remains open) — only the *hint display* is command-derived. Real touch

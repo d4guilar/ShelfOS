@@ -1,5 +1,32 @@
 # Documentation Changelog
 
+## Phase 2A.1 modality-tracking remediation (2026-09-25)
+
+- Corrected `PHASE_2_PLAN.md`, `VALIDATION.md` and `docs/design/
+  INPUT_SYSTEM.md` §10 after an independent Codex review found the initial
+  2A.1 implementation's Back/modality fix itself incorrect: it filtered on
+  the *resolved semantic command* (`ShelfCommand.BACK`), which suppressed
+  legitimate Escape/gamepad-B modality updates without addressing the actual
+  bug (raw system Back, which `InputMapper` maps to no command at all,
+  falling through to an unguarded `KEYBOARD` default).
+- Narrowed the previously overstated "hints can never drift" wording to
+  "validated against InputMapper for candidate bindings the catalog covers" —
+  a future rebinding is not automatically discoverable unless also added to
+  the candidate catalog.
+- Also corrected the ambiguous-source classification to prefer the specific
+  event's own reported source over a hybrid device's aggregate sources.
+- Recorded new automated evidence: `InputModalityClassificationTest`
+  (instrumented, 11 tests, real `KeyEvent`/`InputDevice` raw-classification
+  coverage) and five new `NavigationSmokeTest` transition/RTL-hint cases
+  (26 total), plus a real-hardware RP5 sequence confirming the fix in both
+  directions (Escape/gamepad B now establish modality; raw Back does not).
+- Recorded a separate, pre-existing, out-of-scope gap discovered while
+  running the full test suite: `EpubRecreationTest.kt` still assumes the
+  pre-ADR-0023 "Back hides chrome, stays open" contract and was never updated
+  when Phase 2A's merge changed that behavior. Documented, not fixed, per
+  this remediation's scope guard.
+- 2A.1 remains implemented, not yet re-reviewed by Codex, not merged.
+
 ## Phase 2A.1: input-discovery/controller-hint implementation (2026-09-25)
 
 - Recorded Phase 2A.1 as implemented in `PHASE_2_PLAN.md` and `VALIDATION.md`:
