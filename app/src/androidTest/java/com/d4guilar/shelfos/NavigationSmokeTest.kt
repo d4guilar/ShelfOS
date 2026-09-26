@@ -239,14 +239,14 @@ class NavigationSmokeTest {
         awaitPage("1 / 3")
         compose.onNodeWithText("Hide controls").performClick() // still TOUCH
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("page_number").fetchSemanticsNodes().isEmpty() }
-        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ESCAPE) // TOUCH -> Escape => KEYBOARD, reveals chrome
-        awaitPage("1 / 3")
-        compose.onNode(hasContentDescription("Next, →")).assertExists()
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BUTTON_B) // TOUCH -> GAMEPAD_B => CONTROLLER, reveals
+        awaitPage("1 / 3") // Reader still open (Back semantics correct), not exited.
+        compose.onNode(hasContentDescription("Next, R1")).assertExists()
 
         compose.onNodeWithText("Hide controls").performClick()
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("page_number").fetchSemanticsNodes().isEmpty() }
-        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ESCAPE) // KEYBOARD -> Escape (still KEYBOARD), reveals
-        awaitPage("1 / 3")
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ESCAPE) // CONTROLLER -> Escape => KEYBOARD, reveals
+        awaitPage("1 / 3") // Reader still open (Back semantics correct), not exited.
         compose.onNode(hasContentDescription("Next, →")).assertExists()
 
         compose.onNodeWithText("Hide controls").performClick()

@@ -61,19 +61,14 @@ class InputModalityClassificationTest {
     }
 
     /**
-     * The event's own source must win even when it conflicts with what a hybrid device's aggregate sources would
-     * suggest. A gamepad-classified deviceId here (if it resolved to a real, currently-connected InputDevice) would
-     * push this toward CONTROLLER through the device-aggregate fallback; supplying a concrete SOURCE_KEYBOARD event
-     * source must still resolve to KEYBOARD, proving event-source precedence rather than device-aggregate lookup.
+     * The deterministic proof that event-source precedence beats a hybrid device's aggregate sources lives in
+     * InputHintsTest (JVM): resolveInputSources()/isGamepadSource() are pure int-constant logic, testable without
+     * any real or fake InputDevice. A nonexistent deviceId here would only prove device == null, not that a real
+     * hybrid device's aggregate was actually overridden — Codex R3 correctly flagged that as a test-quality gap in
+     * the prior version of this file. This test instead confirms the real end-to-end KeyEvent path doesn't crash
+     * when the device lookup itself is absent, falling back to a sensible default.
      */
-    @Test fun specificEventSourceTakesPrecedenceOverDeviceAggregate() {
-        val event = keyEvent(KeyEvent.KEYCODE_DPAD_RIGHT, InputDevice.SOURCE_KEYBOARD, deviceId = 12345)
-        assertEquals(InputModality.KEYBOARD, event.inputModalityOrNull())
-    }
-
-    /** When the event itself reports no source, classification falls back to the (possibly absent) device's
-     *  aggregate sources rather than crashing; with no real device registered at this id, it defaults sensibly. */
-    @Test fun unknownEventSourceFallsBackWithoutCrashing() {
+    @Test fun unknownEventSourceWithNoRealDeviceFallsBackWithoutCrashing() {
         val event = keyEvent(KeyEvent.KEYCODE_DPAD_LEFT, InputDevice.SOURCE_UNKNOWN, deviceId = 999_999)
         assertEquals(InputModality.KEYBOARD, event.inputModalityOrNull())
     }

@@ -18,26 +18,34 @@ private val ambiguousDirectionalKeys = setOf(InputKey.LEFT, InputKey.RIGHT, Inpu
 private val noModalityKeys = setOf(InputKey.BACK, InputKey.HOME, InputKey.OTHER)
 
 /**
+ * Resolves which sources bitmask to classify an ambiguous key against: a specific event's own reported [eventSource]
+ * wins whenever it's known, since a hybrid device's aggregate [deviceSources] can otherwise misclassify one of its
+ * plain keyboard events as its gamepad D-pad. [deviceSources] is consulted only when [eventSource] itself is
+ * SOURCE_UNKNOWN. Pure/deterministic (no Android runtime needed) so it can be unit-tested directly, including the
+ * precedence rule itself, without a real hybrid InputDevice.
+ */
+internal fun resolveInputSources(eventSource: Int, deviceSources: Int?): Int =
+    eventSource.takeIf { it != InputDevice.SOURCE_UNKNOWN } ?: deviceSources ?: InputDevice.SOURCE_UNKNOWN
+
+/** Whether a resolved sources bitmask indicates a gamepad/joystick/D-pad origin rather than a plain keyboard. */
+internal fun isGamepadSource(sources: Int): Boolean =
+    sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
+        sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK ||
+        sources and InputDevice.SOURCE_DPAD == InputDevice.SOURCE_DPAD
+
+/**
  * Classifies a real key event's raw input modality (KEYBOARD/CONTROLLER), independently of whether it becomes a
  * ShelfCommand. Returns null for keys with no meaningful, attributable modality — system-owned Back/Home, and
  * unclassified keys — so a caller can distinguish "no signal" from an actual modality and never mistake, say, the
  * system Back key for keyboard input. Never inspects device model/name: gamepad-exclusive keycodes are always
- * CONTROLLER, and the ambiguous D-pad/Enter keycodes are resolved from the reporting sources (SOURCE_GAMEPAD/
- * SOURCE_JOYSTICK/SOURCE_DPAD vs. a plain keyboard) — the specific event's own source takes precedence, since a
- * hybrid device's aggregate InputDevice sources can otherwise misclassify one of its plain keyboard events as a
- * gamepad's D-pad; the aggregate is only a fallback when the event itself reports no source.
+ * CONTROLLER, and the ambiguous D-pad/Enter keycodes are resolved via [resolveInputSources]/[isGamepadSource].
  */
 fun KeyEvent.inputModalityOrNull(): InputModality? {
     val key = keyStroke().key
     if (key in noModalityKeys) return null
     if (key in gamepadOnlyKeys) return InputModality.CONTROLLER
-    if (key in ambiguousDirectionalKeys) {
-        val sources = source.takeIf { it != InputDevice.SOURCE_UNKNOWN } ?: device?.sources ?: InputDevice.SOURCE_UNKNOWN
-        val fromGamepad = sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
-            sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK ||
-            sources and InputDevice.SOURCE_DPAD == InputDevice.SOURCE_DPAD
-        return if (fromGamepad) InputModality.CONTROLLER else InputModality.KEYBOARD
-    }
+    if (key in ambiguousDirectionalKeys)
+        return if (isGamepadSource(resolveInputSources(source, device?.sources))) InputModality.CONTROLLER else InputModality.KEYBOARD
     return InputModality.KEYBOARD
 }
 
