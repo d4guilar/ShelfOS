@@ -6,13 +6,18 @@ squash-merged to `main` via PR #5 at commit `44c8f10600f93f875a3cfb685c27f47c259
 after a first Codex review returned CHANGES REQUIRED for a modality-tracking
 defect, remediation, a second Codex review that returned PASS WITH
 NON-BLOCKING FINDINGS, an R3 cleanup pass closing those findings, and final
-Codex confirmation). A small post-merge maintenance pass
+Codex confirmation). The post-merge maintenance pass
 (`maintenance/epub-recreation-back-test`, see its note under 2A.1 below)
-corrected stale Phase-2A test debt in `EpubRecreationTest.kt` that this
-acceptance surfaced. See `VALIDATION.md`'s "Phase 2A.1" sections for evidence
-and explicitly-unclaimed items. 2B/2C/2D remain planned only; none of their
-work has started. This document is the canonical Phase 2 planning location
-referenced by [`ROADMAP.md`](ROADMAP.md#phase-2--reading).
+corrected stale Phase-2A test debt in `EpubRecreationTest.kt` and was itself
+**accepted and merged to `main` via PR #6**. See `VALIDATION.md`'s "Phase 2A.1"
+sections for evidence and explicitly-unclaimed items. **2B (EPUB everyday-reading
+improvements) is in discovery/implementation-planning** as of this pass
+(`phase-2/epub-everyday-reading`, base `8430566396e98196752d9ec9f33910a2e248b039`)
+— no 2B production code has been implemented yet; see §3's 2B section for the
+grounded capability findings and the proposed internal slice sequence. 2C/2D
+remain planned only; none of their work has started. This document is the
+canonical Phase 2 planning location referenced by
+[`ROADMAP.md`](ROADMAP.md#phase-2--reading).
 
 ## 1. Reconciling Phase 1 acceptance with the roadmap
 
@@ -43,7 +48,10 @@ Phase 2 builds on the accepted Phase 1 reader foundation rather than
 reimplementing it. It is broken into five increments (2A, 2A.1, 2B, 2C, 2D),
 each independently mergeable and gated by its own acceptance criteria. 2A and
 2A.1 are both accepted and merged (see their sections below and
-`VALIDATION.md` for the full history). 2B/2C/2D remain planned only; none of
+`VALIDATION.md` for the full history). 2B is now further broken into four
+internal slices (2B.1–2B.4, see below) after a discovery/implementation-
+planning pass; none of 2B's own implementation exists yet. 2C/2D remain
+planned only; none of
 their work has started.
 
 ## 3. Increments
@@ -354,26 +362,510 @@ work. Fixed by hiding chrome via `KEYCODE_MENU` (the `OPEN_MENU` semantic
 command already used for this exact purpose in `NavigationSmokeTest.kt`)
 instead of `KEYCODE_BACK`; Back's reveal-then-exit contract is unchanged and
 already covered separately by `NavigationSmokeTest`. No production code
-changed.
+changed. **Accepted and merged to `main` via PR #6.**
 
-### 2B — EPUB everyday-reading improvements (planned, not started)
+### 2B — EPUB everyday-reading improvements (discovery/implementation planning, 2026-09-26)
 
-- Chapter navigation polish (the existing Chapters dialog already lists
-  chapters; evaluate current-chapter highlighting and search-within-list).
-- In-publication search where the Readium adapter supports it.
-- Bookmarks (a discrete saved-locations list; distinct from resume position).
-- Pagination vs. scrolling preference where the adapter supports it.
-- EPUB typography refinement beyond the three presets already implemented
-  (Editorial/Clean/Spacious plus size/line-height/margin sliders).
-- Dark-reading behavior (a reading-surface dark mode independent of the
-  Classic/Dark app theme, e.g. sepia/night page colors — `ReaderAppearance.kt`
-  already has a `Theme`/`Light`/`Dark`/`Paper` `Page colors` group; 2B should
-  evaluate whether this already satisfies the roadmap's "dark reading mode"
-  deliverable or whether more is needed).
-- Custom-font architecture without unnecessarily bundling many fonts (the
-  Phase 1 comment in `app/build.gradle.kts` already excludes bundled
-  accessibility fonts from assets; 2B should evaluate a minimal
-  user-supplied-font path rather than adding a large bundled font set).
+**Scope (unchanged from the roadmap, not silently expanded):** chapter-navigation
+polish, in-publication EPUB search where Readium supports it, bookmarks,
+pagination vs. scrolling where supported, typography refinement, reading-surface
+dark/sepia/light behavior, minimal custom-font architecture. This pass is
+discovery and implementation planning only, on branch
+`phase-2/epub-everyday-reading` (base `main` at
+`8430566396e98196752d9ec9f33910a2e248b039`). No 2B production code exists yet.
+
+#### 2B.0 Current EPUB baseline (as implemented, verified by reading the source)
+
+- **Chapters:** `EpubSession.chapters` (`core/reader/EpubReader.kt`) already
+  builds a flat, depth-indented `List<Pair<title, href>>` from
+  `publication.tableOfContents.ifEmpty { publication.readingOrder }`.
+  `EpubController.chapter(session, href)` already resolves the `Link` and calls
+  `navigator.go(link, animated = false)`. `EpubActivity`'s Chapters `AlertDialog`
+  already lists and navigates chapters. **Missing:** no current-chapter
+  highlight, no title filter.
+- **Locator/progress:** `EpubSurface` already collects `navigator.currentLocator`
+  every STARTED lifecycle tick and forwards `(locatorJson, progressPercent)` to
+  `EpubReaderViewModel.location()`, which persists through a conflated
+  `PositionWriter` into `ReadingEntity(itemId, locator, progress, lastRead)`.
+  This is resume-position, not a discrete bookmark list — no bookmark storage
+  exists.
+- **Typography/reading mode/page colors:** `ReaderPreferences` (`core/reader/
+  ReaderPreferences.kt`) already has `font` (SERIF/SANS), `fontSize`,
+  `lineHeight`, `margins`, `justified`, `scroll` (pagination vs. continuous
+  scrolling), and `palette` (THEME/LIGHT/DARK/PAPER). `ReaderAppearance.kt`
+  already exposes all of these: three style presets (Editorial/Clean/Spacious),
+  size/line-height/margin sliders, a "Justified text" checkbox, a **"Continuous
+  scrolling" checkbox already wired to `scroll`**, and a **"Page colors"**
+  chip row for Theme/Light/Dark/Paper. `epubPreferences()` (`core/reader/
+  EpubReader.kt`) already maps all of this into Readium's `EpubPreferences`
+  (`fontFamily`, `fontSize`, `lineHeight`, `pageMargins`, `textAlign`, `scroll`,
+  `theme`, `backgroundColor`, `textColor`, `readingProgression`), forces
+  `publisherStyles = false` and `columnCount = ColumnCount.ONE`.
+- **Fonts:** only the two built-in generic families (`sans-serif`/`serif`); no
+  user-supplied font path exists.
+- **Search:** no search of any kind exists for EPUB (no UI, no Readium service
+  attached to the opened `Publication`).
+- **Persistence:** Room v2 (`ShelfDatabase`, `app/schemas/.../2.json`):
+  `library_item`, `reading_state` (one row per item — resume position only),
+  `reader_preference` (one row per item, plus an empty-key global row),
+  `appearance_preference`. No bookmark table exists. `androidx.room:room-testing`
+  is not a current dependency; the one existing migration (1→2) has no
+  `MigrationTestHelper` coverage.
+- **Readium:** `org.readium.kotlin-toolkit` **3.4.0** pinned
+  (`gradle/libs.versions.toml`), `readium-navigator` + `readium-streamer`
+  (`app/build.gradle.kts`). `EpubReaderFactory.open()` already uses the
+  `PublicationOpener(EpubParser(...), onCreatePublication = { ... })` callback
+  shape (currently only to wrap `container` for HTML sanitization via
+  `TransformingContainer`); the callback receives a `Publication.Builder` with
+  mutable `manifest`/`container`/`servicesBuilder`, which is the same
+  extension point 2B.3 (search) needs.
+
+#### 2B.1 Readium capability findings (verified against the actual 3.4.0 `.aar`/API jars in this environment, not documentation)
+
+No sources jars ship with the pinned artifacts; every finding below was
+confirmed by decompiling method signatures (`javap`) from the cached
+`readium-shared-3.4.0-api.jar`, `readium-navigator-3.4.0-api.jar` and
+`readium-streamer-3.4.0-api.jar` in `~/.gradle/caches`, not inferred from
+upstream Readium documentation, which can drift from a pinned older release.
+
+**Chapters / TOC / current locator**
+- `Publication.tableOfContents: List<Link>` and `.readingOrder` — already used.
+- `Navigator.currentLocator: StateFlow<Locator>` and `Navigator.go(Locator/Link,
+  animated): Boolean` — already used for page turns/chapter jumps.
+- No dedicated "current chapter" API: current chapter must be derived
+  ShelfOS-side by matching `currentLocator.href` against the flattened TOC/href
+  list already built in `EpubSession.chapters`. This is a small, local
+  computation, not a missing Readium capability.
+- TOC title filtering is plain in-memory string filtering over
+  `EpubSession.chapters`; no Readium API involved either way.
+- **Verdict: ALREADY IMPLEMENTED** (navigation) **+ REQUIRES SHELFOS UI** (highlight/filter are pure ShelfOS-side, using APIs already in use).
+
+**Publication-wide search**
+- `org.readium.r2.shared.publication.services.search.SearchService` (a
+  `Publication.Service`): `suspend fun search(query, Options):
+  SearchIterator`. Suspend-based, not `Flow`.
+- `SearchIterator.next(): Try<LocatorCollection, SearchError>` (suspend, one
+  page of results at a time) and a `forEach` convenience; `getResultCount()`
+  when known.
+- `SearchService.Options`: `caseSensitive`, `diacriticSensitive`, `wholeWord`,
+  `exact`, `language`, `regularExpression`, `otherOptions` — real, usable knobs.
+- `Locator` (the result type, inside `LocatorCollection.locators`) already
+  carries `href`, `title`, `locations` (`progression`, `position`,
+  `totalProgression`), **and `text: Locator.Text(before, highlight, after)`
+  — the match snippet.** Search results have snippets, hrefs and progression
+  out of the box.
+- `StringSearchService` (`readium-shared`) is a **ready-made, concrete
+  implementation**: constructed from `(Manifest, Container<Resource>,
+  PublicationServicesHolder, language, snippetLength, Algorithm,
+  ResourceContentExtractor.Factory)`, with `StringSearchService.Algorithm`
+  offering `NaiveAlgorithm`/`IcuAlgorithm`. `StringSearchService.Companion
+  .createDefaultFactory(snippetLength, algorithm, extractorFactory)` returns a
+  ready `(Publication.Service.Context) -> StringSearchService` factory.
+  `DefaultResourceContentExtractorFactory` (plus `HtmlResourceContentExtractor`)
+  already exists to extract plain text from EPUB XHTML resources — no custom
+  HTML/text extractor needs to be written.
+- **Not auto-registered:** `EpubParser` (readium-streamer) does not attach any
+  `SearchService` by default — only `EpubPositionsService`. Attaching search
+  is a deliberate `servicesBuilder.set(SearchService::class, factory)` call
+  inside `PublicationOpener`'s `onCreatePublication` callback — the exact
+  callback shape `EpubReaderFactory.open()` already uses for HTML
+  sanitization, extended with one more `servicesBuilder.set(...)` call.
+- **Verdict: SUPPORTED BY CURRENT READIUM BUT NOT WIRED.** No custom EPUB
+  parser or text index is needed; this is wiring a real, current-version
+  Readium service, not building one. Search is in-memory/on-demand per
+  session (Readium extracts and searches resource text at query time); this
+  is expected to be fine for typical EPUB sizes given the existing per-EPUB
+  size caps already enforced in `EpubReaderFactory.open()` (8 MiB per markup
+  resource / 128 MiB total markup), and should be measured against the
+  largest private fixture during implementation rather than assumed.
+
+**Reading mode (pagination/scroll)**
+- `EpubPreferences.scroll: Boolean?` — **already wired end-to-end**
+  (`ReaderPreferences.scroll` → `ReaderAppearance`'s "Continuous scrolling"
+  checkbox → `epubPreferences()` → Readium). Nothing to build.
+- `EpubPreferences.columnCount: ColumnCount` exists (Readium supports
+  ONE/TWO/AUTO) but ShelfOS hard-codes `ColumnCount.ONE` in `epubPreferences()`
+  — a deliberate single-column, phone-first choice, not a gap. Multi-column/
+  two-page EPUB layout is foldable/tablet territory and belongs to 2D's
+  adaptive-layout closure (§4/§10 scope guard), not 2B.
+- **Verdict: ALREADY IMPLEMENTED** (pagination vs. scroll toggle). Column
+  count: **SUPPORTED BY CURRENT READIUM, DELIBERATELY NOT EXPOSED** (out of
+  2B scope; belongs to 2D).
+
+**Typography**
+- `EpubPreferences` (decompiled field list) supports: `fontFamily`,
+  `fontSize`, `fontWeight`, `lineHeight`, `pageMargins`, `paragraphIndent`,
+  `paragraphSpacing`, `wordSpacing`, `letterSpacing`, `hyphens`, `ligatures`,
+  `textAlign`, `textNormalization`, `typeScale`, `publisherStyles`,
+  `columnCount`, `imageFilter`, `verticalText`, `theme`, `backgroundColor`,
+  `textColor`, `readingProgression`, `spread`, `language`.
+- **Already wired:** `fontFamily`, `fontSize`, `lineHeight`, `pageMargins`,
+  `textAlign` (justified/start only), `scroll`, `theme`/`backgroundColor`/
+  `textColor`, `readingProgression`. `publisherStyles` is hard-forced `false`.
+- **SUPPORTED BY CURRENT READIUM BUT NOT WIRED (desired, in-scope for 2B):**
+  none identified as clearly desired beyond what's already wired — the
+  roadmap's "typography refinement beyond the three presets" is satisfied by
+  the existing size/line-height/margin/justify controls; no field gap was
+  found that users have asked for. Paragraph spacing/hyphens/ligatures/word
+  spacing/letter spacing exist in Readium but are **DESIRED BUT UNSUPPORTED
+  BY ANY EXISTING SHELFOS REQUIREMENT** — do not add UI for these
+  speculatively (AGENTS.md: no features beyond what the task requires).
+- **Verdict: ALREADY IMPLEMENTED** for everything currently asked for.
+  2B.1 (below) does not add new typography controls; it only confirms this
+  finding in the plan so nobody re-builds what already exists.
+
+**Page colors / dark reading mode**
+- `PagePalette.THEME/LIGHT/DARK/PAPER` already maps to Readium's
+  `Theme.LIGHT/DARK/SEPIA` plus explicit `backgroundColor`/`textColor`, fully
+  independent of the ShelfOS app theme (Classic/Dark/etc.) — a real reading
+  surface color system, not merely following the app theme.
+- **Verdict: ALREADY IMPLEMENTED.** This already satisfies the roadmap's
+  "dark reading mode" deliverable. **2B must not add a second, redundant dark
+  mode.** The only 2B action here is documenting this closure (this section).
+
+**Custom fonts**
+- `org.readium.r2.navigator.epub.css.FontFamilyDeclaration` /
+  `MutableFontFamilyDeclaration` / `FontFaceSource` /
+  `EpubNavigatorFragment.Configuration.addFontFamilyDeclaration(name,
+  alternates) { addFontFace { addSource(url, preload) } }` — a real,
+  concrete API for registering a custom `@font-face` with the navigator,
+  confirmed present in the pinned 3.4.0 navigator artifact.
+- `FontFaceSource.href` is a `org.readium.r2.shared.util.Url` — the source
+  must be reachable by Readium's own resource-serving path (the same
+  mechanism that serves the publication's own resources into its WebView),
+  not an arbitrary external URI. `EpubNavigatorFragment.Configuration
+  .servedAssets: List<String>` further suggests only specific, declared
+  asset paths are servable this way.
+- **Findings against the prompt's specific questions:**
+  - *Can the navigator accept custom font-family declarations?* Yes —
+    `addFontFamilyDeclaration`/`FontFamilyDeclaration` is real and present.
+  - *Can ShelfOS inject a local font resource/URL?* Only if that resource is
+    reachable through Readium's own resource-serving path — an arbitrary
+    external `content://` URI is **not confirmed** to be directly usable as
+    a `FontFaceSource.href` from this API surface alone.
+  - *Would a user-selected font need to be copied into ShelfOS-managed
+    storage?* **Yes, almost certainly** — this matches ShelfOS's existing
+    "private managed copy" pattern already used for large/otherwise-
+    unreachable source files (`core.files`, Phase 1), and is the safest,
+    most consistent way to guarantee the font byte-for-byte survives SAF
+    grant loss, is available offline, and lands on a stable local path
+    Readium's resource path can serve.
+  - *Can SAF-persisted content be referenced safely by the navigator
+    directly?* **Not confirmed safe or supported** by this API surface; the
+    managed-copy path avoids relying on that.
+  - *Lifetime/permission concerns?* Same class of concern already solved for
+    managed publication copies: SAF grants can be revoked, files can move;
+    a copied font in ShelfOS-managed storage avoids depending on a live SAF
+    grant at read time.
+  - *What happens if the font disappears* (managed copy deleted/corrupted)?
+    Reader must fall back to the existing built-in `sans-serif`/`serif`
+    choice, never fail to open the publication.
+  - *Reset/fallback?* `BookFont` would need a third case (e.g. `CUSTOM`) with
+    a stored reference to the managed copy; resetting typography (existing
+    "Reset" action in `ReaderAppearance`) must cleanly fall back to SERIF/
+    SANS, not leave a dangling reference.
+- **Verdict: FEASIBLE, NOT CONFIRMED SIMPLE.** The Readium-side API exists
+  and is real; the ShelfOS-side work (SAF font picker, managed-copy storage,
+  lifecycle, fallback) is genuinely new architecture, not a small wiring
+  task like search. Do not bundle a font library; a single user-supplied
+  font per title/globally is the minimal viable shape, consistent with the
+  roadmap's own "without unnecessarily bundling many fonts" instruction.
+
+#### 2B.2 Supported/not-supported summary table
+
+| Capability | Status |
+| --- | --- |
+| Chapter navigation (jump to TOC entry) | ALREADY IMPLEMENTED |
+| Current-chapter highlight | REQUIRES SHELFOS UI (Readium API already used) |
+| TOC title filter | REQUIRES SHELFOS UI (no Readium API involved) |
+| Publication-wide text search | SUPPORTED BY CURRENT READIUM BUT NOT WIRED |
+| Pagination vs. scrolling | ALREADY IMPLEMENTED |
+| Multi-column / two-page EPUB | SUPPORTED BY CURRENT READIUM, out of 2B scope (2D) |
+| Typography (font/size/line-height/margins/justify) | ALREADY IMPLEMENTED |
+| Extended typography (paragraph/word/letter spacing, hyphens, ligatures) | DESIRED BY NO CURRENT REQUIREMENT — not built |
+| Reading-surface dark/sepia/light ("Page colors") | ALREADY IMPLEMENTED — satisfies roadmap's dark-reading-mode item |
+| Bookmarks (discrete saved locations) | NOT IMPLEMENTED — REQUIRES SHELFOS STORAGE/UI |
+| Custom user-supplied font | NOT IMPLEMENTED — REQUIRES SHELFOS STORAGE/UI, Readium font-face API confirmed available |
+
+#### 2B.3 Bookmark data-model proposal
+
+Distinct from `reading_state` (one row per item, auto-updated resume
+position). A bookmark is a **user-created, durable, multi-row-per-item**
+record, following the existing `ReadingEntity`/repository pattern rather than
+inventing a new shape:
+
+```kotlin
+@Entity(tableName = "bookmark", foreignKeys = [ForeignKey(entity = LibraryEntity::class,
+    parentColumns = ["id"], childColumns = ["itemId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("itemId")])
+data class BookmarkEntity(
+    @PrimaryKey val id: String,       // ShelfOS UUID, not the item id — multiple per item
+    val itemId: String,               // LibraryItem.id
+    val locator: String,              // Locator.toJSON() — same serialization already used by reading_state
+    val progress: Int,                // 0..100, same convention as ReadingEntity, for display only
+    val label: String?,               // optional user note/context; null shows chapter title + progress instead
+    val createdAt: Long,
+)
+```
+
+- **Requires a Room migration**, v2 → v3, adding one table (`CREATE TABLE
+  bookmark (...)` plus `CREATE INDEX index_bookmark_itemId ON
+  bookmark(itemId)`), following the same manual-SQL `Migration` pattern as
+  the existing 1→2 migration. No changes to any existing table.
+- **Multiple bookmarks per publication:** yes — `itemId` is not unique/PK;
+  `id` (a fresh UUID) is the primary key.
+- **Duplicate bookmark behavior:** not deduplicated by locator — a user may
+  bookmark the same passage twice if they choose to; this matches how a
+  physical bookmark works and avoids surprising silent no-ops. (Revisit only
+  if real usage shows this is confusing — do not pre-solve.)
+- **Delete bookmark:** `DELETE FROM bookmark WHERE id = :id`.
+- **Bookmark current location:** insert a new row from `EpubActivity`'s
+  already-available current locator (the same JSON `EpubSurface` already
+  forwards to `onLocation`) — no new Readium capability needed.
+- **List bookmarks:** `SELECT * FROM bookmark WHERE itemId = :itemId ORDER BY
+  locator position / createdAt` (exact ordering — by document position via
+  the stored locator, or by creation time — is a UI-detail decision for
+  implementation, not a discovery blocker).
+- **Jump to bookmark:** `Locator.fromJSON(stored locator)` then
+  `navigator.go(locator, animated = false)` — identical mechanism to the
+  existing chapter-jump code path.
+- **Source file remains untouched:** bookmarks are pure ShelfOS-owned rows
+  referencing a `Locator`, never written into the EPUB — consistent with
+  AGENTS.md rule 4 and the existing reading-state/preferences pattern.
+- Repository surface follows the existing `LibraryRepository` shape:
+  `fun bookmarks(itemId: String): Flow<List<Bookmark>>`, `suspend fun
+  addBookmark(itemId: String, locator: String, progress: Int, label: String?):
+  String`, `suspend fun removeBookmark(id: String)`.
+- **Testing implication:** implementing this migration should add
+  `androidx.room:room-testing` (official AndroidX artifact, Apache-2.0,
+  actively maintained, test-only/no release APK size impact) and a
+  `MigrationTestHelper`-based 2→3 test — the existing 1→2 migration has no
+  such coverage today, so this would also be the first. This is a dependency
+  decision for the implementation slice, not made in this planning pass.
+
+#### 2B.4 Chapter UX clarification
+
+"Search within chapter list," per the roadmap wording, means **(A) filter TOC
+chapter titles**, a small local string filter over `EpubSession.chapters` —
+**not (B) search publication text**, which is the separate, larger
+publication-search capability (2B's own "in-publication search" item, §2B.1
+above). These are kept as two separate features in the slices below and must
+not be conflated in implementation either. (A) is only worth adding if a
+publication's TOC is long enough to need it — evaluate against real fixture
+TOC sizes during implementation rather than always showing a filter field.
+
+#### 2B.5 Proposed internal slices and order
+
+Four slices (not the example's three-to-four "chapter+bookmark combined"
+grouping — schema-affecting work is kept in its own isolated slice per this
+plan's own risk analysis, not bundled with a zero-schema UI change):
+
+**2B.1 — Chapter navigation polish + typography/reading-mode/page-color closure.**
+Current-chapter highlight in the Chapters dialog (derive from
+`navigator.currentLocator.href` against `EpubSession.chapters`, both already
+in use); TOC title filter if warranted by real fixture TOC length; formally
+document (this plan + `docs/design/READER_UX.md`/`docs/features/READER.md` as
+needed) that pagination/scroll and page-color/dark-reading-mode are already
+complete, closing those two roadmap bullets without new code. Zero schema
+change, zero new Readium capability — pure reuse of APIs already wired.
+
+**2B.2 — Bookmark foundation.**
+Room migration 2→3 (`bookmark` table), repository CRUD, "Add bookmark"/list/
+jump/delete UI in the EPUB reader chrome and/or a bookmarks sheet. The only
+slice touching the schema; isolating it means a migration problem is caught
+and reviewed on its own, not entangled with unrelated UI changes.
+
+**2B.3 — Publication search.**
+Wire `StringSearchService` via `servicesBuilder.set(SearchService::class,
+StringSearchService.createDefaultFactory(...))` inside `EpubReaderFactory`'s
+existing `onCreatePublication` callback; add a search UI surface (query
+input, snippet results list reusing `Locator.Text.before/highlight/after`,
+jump-to-result via the same `navigator.go(locator)` path as chapters/
+bookmarks); no schema change. Ordered after bookmarks because it is 2B's
+largest net-new UI surface and can reuse the list/jump-to-locator UI pattern
+2B.2 establishes, and because it depends on nothing bookmarks doesn't also
+depend on, so de-risking the smaller schema change first is preferable.
+
+**2B.4 — Custom-font architecture.**
+SAF font picker → managed-copy storage (reusing the existing private-copy
+pattern) → `EpubNavigatorFragment.Configuration.addFontFamilyDeclaration`
+wiring → fallback-to-built-in-font behavior on failure/deletion. Ordered
+last: it is the most architecturally novel piece (new user-supplied-asset
+lifecycle through a third-party rendering engine), has the least-specific
+existing user pull among the four, and benefits from the reader chrome
+being otherwise stable (chapters/bookmarks/search settled) before adding a
+new asset-lifecycle concern. **Recommend a short ADR when this slice is
+actually implemented** (not now — this is a discovery pass) if it in fact
+requires a new "user-supplied external content becomes managed, engine-
+servable storage" pattern beyond what Phase 1's private-copy precedent
+already covers; that determination is better made with real implementation
+detail in hand than speculatively here.
+
+#### 2B.6 Data-model / dependency impact summary
+
+- **Schema:** exactly one migration, 2B.2 only (`bookmark` table, v2→v3).
+  2B.1/2B.3/2B.4 make no schema changes.
+- **Dependencies:** none required to be added in this planning pass. 2B.2's
+  implementation will likely want `androidx.room:room-testing` (test-only).
+  2B.3/2B.1 need no new dependency — `StringSearchService`,
+  `DefaultResourceContentExtractorFactory` and the font-face API all already
+  ship inside the pinned `readium-shared`/`readium-navigator` 3.4.0 artifacts.
+  2B.4 needs no new dependency either — SAF picking and managed-copy storage
+  reuse `core.files` patterns already in the codebase.
+- **UI impact:** 2B.1 changes only the existing Chapters dialog (highlight +
+  optional filter) and adds no new screen. 2B.2 adds a bookmarks
+  list/add/jump surface. 2B.3 adds a search surface. 2B.4 adds a font picker
+  entry point inside `ReaderAppearance`.
+
+#### 2B.7 Testing strategy (per slice, see acceptance criteria below for detail)
+
+- Unit/JVM: TOC-highlight matching logic, TOC filter logic, bookmark
+  entity/repository mapping, search-result-to-UI mapping — all plain Kotlin,
+  testable without instrumentation, following the existing `InputHintsTest`-
+  style pattern of extracting pure logic where possible.
+- Instrumented (`shelfos-phase0`, API 35, the established known-good target
+  for this class of Compose/Espresso test): new `EpubBookmarkTest`,
+  `EpubSearchTest`, and additions to the existing Chapters coverage area,
+  following the existing `NavigationSmokeTest`/`EpubRecreationTest` house
+  style (real `ActivityScenario`, real key events where input-modality-
+  relevant, `compose.waitUntil`).
+- Room migration test (2B.2 only): `MigrationTestHelper` 2→3, the first such
+  test in this codebase — validates the new table/index/foreign key without
+  relying only on manual inspection.
+- RP5 relevance is per-slice, not blanket: warranted where a slice adds new
+  reachable chrome (bookmark add/list button, search entry point) that must
+  stay reachable via the existing semantic-command/input-hint layer
+  (2A/2A.1); **not** warranted for typography confirmation (2B.1's typography
+  finding is "already implemented," nothing new to certify) or for search
+  result *content* correctness (an emulator-only concern).
+
+#### 2B.8 Risks
+
+- **Search performance/size:** `StringSearchService` extracts and scans
+  resource text at query time; large EPUBs could make search feel slow. Not
+  yet measured — 2B.3's acceptance criteria must include a real-fixture
+  timing check before calling it done, not an assumption either way.
+- **Migration correctness:** the existing 1→2 migration has no automated
+  regression test; 2B.2 is the first schema change since acceptance and
+  should not repeat that gap — add `MigrationTestHelper` coverage as part of
+  2B.2, not defer it.
+- **Font lifecycle edge cases:** a managed font copy could be deleted by the
+  same Settings → Storage cleanup flow that already reclaims unreferenced
+  private copies (Phase 1); 2B.4 must ensure a font copy in active use is
+  never treated as "unreferenced," and that losing it degrades to a built-in
+  font rather than breaking the reader.
+- **Scope bleed:** chapter/typography/search/bookmark work all touch
+  `EpubActivity`/`EpubReaderViewModel`, which are already fairly dense; each
+  slice should resist expanding these files' existing responsibilities
+  (dialog, key handling, chrome) beyond what its own capability needs.
+
+#### 2B.9 Explicitly deferred, not part of any 2B slice
+
+Two-page/multi-column EPUB layout (2D, adaptive/foldable closure); highlights/
+notes/annotations (post-2B, per `docs/features/READER.md`'s "Later" list);
+in-page search-result highlighting via `HtmlDecorationTemplates` (a possible
+future refinement of 2B.3, not required for a useful first search feature);
+bundling any font library; remapping/controls UI; anything in §4/§10's
+out-of-scope lists (PDF/CBZ rendering, Series, CBR, OCR, Adapted PDF, TTS
+beyond existing research, ShelfOS Home, billing, cloud sync, metadata-
+provider work, theme redesign).
+
+#### 2B.10 Regression gates (must not break, verified per slice before merge)
+
+- Phase 2A Back reveal/exit semantics (ADR-0023) — new dialogs (bookmarks,
+  search) must not introduce a new trap; Back must still close a transient
+  dialog first, then behave per ADR-0023.
+- Phase 2A's chrome accessibility action (`onClick(label = "Show reader
+  controls")` while chrome is hidden).
+- Phase 2A.1 contextual input hints (Previous/Next/Back keycaps) and touch-
+  modality clearing on a real touch gesture.
+- Keyboard/controller navigation of existing chrome (Chapters/Appearance
+  buttons) must remain reachable, and any new buttons (bookmark, search)
+  must join the same semantic-command-reachable chrome rather than becoming
+  touch-only additions.
+- Resume/progress persistence (`reading_state`) — unaffected by a new,
+  separate `bookmark` table.
+- Appearance persistence (per-title/global layering) — unaffected by 2B.1's
+  documentation-only typography closure.
+- Recreation/rotation behavior (`EpubRecreationTest`'s now-corrected
+  contract) — new dialogs must survive recreation the same way the existing
+  Chapters/Appearance dialogs already do.
+- Offline reading — search/bookmarks/fonts must all work fully offline;
+  none of this pass's findings introduce a network dependency.
+- Source preservation (AGENTS.md rule 4) — nothing in 2B writes into the
+  EPUB file itself.
+
+#### 2B.11 Acceptance criteria (per slice, to be met at implementation time — none met yet)
+
+**2B.1 (chapter/typography/page-color closure):**
+user-visible: current chapter visibly indicated in the Chapters dialog;
+optional TOC filter if implemented. persistence: none new. accessibility:
+highlighted chapter row must not rely on color alone (e.g. also a check mark
+or bold label). touch/keyboard/controller: dialog remains fully reachable
+exactly as today (TextButton-based list, already focusable). compact/
+expanded layout: dialog already scrolls via `LazyColumn`, no new layout
+concern. recreation/app restart: highlight recomputes from the restored
+locator, not stored separately. source preservation: n/a (read-only).
+offline: n/a (local-only). failure/recovery: empty/short TOC (already
+handled — dialog just lists what exists). tests: unit test for the
+highlight-matching function; instrumented test extending the existing
+Chapters coverage. API 35: yes. RP5: not required (no new chrome reachability
+surface, per §2B.7).
+
+**2B.2 (bookmarks):**
+user-visible: add/list/jump/delete bookmarks for the open EPUB. persistence:
+new `bookmark` table survives app restart and recreation; deleting the
+`LibraryItem` cascades bookmark deletion (matches `reading_state`'s existing
+`ForeignKey.CASCADE`). accessibility: list items expose readable content
+descriptions (label or chapter+progress), delete action clearly labeled.
+touch/keyboard/controller: add/list/jump/delete all reachable via existing
+semantic-command chrome. compact/expanded: bookmark list scrolls like the
+Chapters dialog. recreation: dialog-open state (if any) survives recreation
+like Appearance/Chapters already do. app restart: bookmarks persist (Room).
+source preservation: untouched (ShelfOS-owned table only). offline: fully
+local. failure/recovery: deleting the last bookmark leaves an empty-state
+list, not an error. unit tests: entity mapping, repository CRUD. instrumented
+tests: add/jump/delete flow, migration test (`MigrationTestHelper` 2→3).
+API 35: yes. RP5: relevant — confirm the new add/list chrome entry point is
+reachable via existing input hints/semantic commands, consistent with 2A.1's
+own RP5 evidence bar.
+
+**2B.3 (search):**
+user-visible: query input, results with snippets, jump to a result.
+persistence: none (search is not persisted; recent searches are explicitly
+not part of this scope). accessibility: result rows expose their snippet
+text as content description; empty-results state announced. touch/keyboard/
+controller: query field and result list reachable via existing focus/
+semantic-command handling. compact/expanded: result list scrolls; no
+tablet-specific layout required beyond what Compose gives for free.
+recreation: in-progress query/results survive recreation the way the
+Appearance dialog's draft already does (`rememberSaveable`). app restart: no
+persistence needed, so nothing to restore. source preservation: read-only.
+offline: fully local (Readium extracts text from the already-open
+publication, no network). failure/recovery: `SearchError` (from
+`SearchIterator.next()`) surfaces a readable message rather than crashing.
+unit tests: result-to-UI mapping. instrumented tests: query → results → jump
+flow against a real fixture EPUB with known text; a timing check against the
+largest available fixture (§2B.8). API 35: yes. RP5: relevant for the new
+search entry point's reachability, same bar as 2B.2.
+
+**2B.4 (custom fonts):**
+user-visible: pick a font file, apply it, reset falls back to built-in.
+persistence: a reference to the managed font copy, likely as a new `BookFont`
+case or a separate preference field (exact shape decided at implementation
+time). accessibility: font picker uses standard SAF file-picker accessibility
+(system-provided). touch/keyboard/controller: picker entry point reachable
+like other Appearance controls. compact/expanded: no new layout surface
+beyond the existing Appearance dialog. recreation: draft/applied font
+selection follows the existing Appearance draft/apply pattern. app restart:
+managed copy and preference persist. source preservation: n/a (a new asset,
+not the publication). offline: fully local once copied. failure/recovery:
+missing/corrupt managed copy falls back to built-in font, never fails to
+open the publication. unit tests: fallback logic. instrumented tests: pick →
+apply → recreate → still-applied; delete managed copy → falls back cleanly.
+API 35: yes. RP5: not required specifically for font rendering (a rendering-
+fidelity concern more than an input-reachability one), but the picker entry
+point should join the same reachability bar as other Appearance controls.
 
 ### 2C — Original PDF hardening and fidelity (planned, not started)
 
@@ -547,8 +1039,23 @@ review, then accepted and merged to `main` (2A.1 via PR #5, commit
 `44c8f10600f93f875a3cfb685c27f47c25929c29`). The subsequent
 `maintenance/epub-recreation-back-test` pass corrected only the stale
 `EpubRecreationTest.kt` assumption described above and this document's/
-`VALIDATION.md`'s/`ROADMAP.md`'s/`CHANGELOG_DOCS.md`'s acceptance wording. No
-code for user-editable bindings, a complete remapping UI, controller
-profiles, console-brand-specific glyph packs, controller detection by
-product/model database, platform-specific visual modes, or any 2B/2C/2D work
-exists on that branch. No item from §4's out-of-scope list was touched.
+`VALIDATION.md`'s/`ROADMAP.md`'s/`CHANGELOG_DOCS.md`'s acceptance wording, and
+was itself accepted and merged via PR #6. No code for user-editable bindings,
+a complete remapping UI, controller profiles, console-brand-specific glyph
+packs, controller detection by product/model database, platform-specific
+visual modes, or any 2B/2C/2D work existed on that branch. No item from §4's
+out-of-scope list was touched.
+
+## 10. Explicit out-of-scope confirmation for the 2B discovery/planning pass
+
+This pass, on `phase-2/epub-everyday-reading` (base `main` at
+`8430566396e98196752d9ec9f33910a2e248b039`), changed documentation only: this
+document's 2B section (§3) plus, if updated, `ROADMAP.md` sequencing notes. No
+file under `app/src/main/...` was changed. No Room schema, migration or
+`app/schemas/` file was changed. No `gradle/libs.versions.toml`/
+`app/build.gradle.kts` dependency was added, removed or upgraded. No PDF/CBZ
+rendering change, no Series/CBR/OCR/Adapted PDF/notes/annotations/TTS-beyond-
+research/remappable-controls/ShelfOS-Home/billing/cloud-sync/metadata-
+provider/theme-redesign work exists on this branch — see §4's standing
+Phase-2-wide out-of-scope list and §3's 2B "explicitly deferred" subsection
+above, both of which this pass's findings respect without exception.
