@@ -403,8 +403,12 @@ discovery and implementation planning only, on branch
   `publisherStyles = false` and `columnCount = ColumnCount.ONE`.
 - **Fonts:** only the two built-in generic families (`sans-serif`/`serif`); no
   user-supplied font path exists.
-- **Search:** no search of any kind exists for EPUB (no UI, no Readium service
-  attached to the opened `Publication`).
+- **Search:** no ShelfOS-side search of any kind exists (no UI, no
+  orchestration). **Corrected 2026-09-26:** the opened `Publication` itself
+  already carries a working `SearchService`, installed unconditionally by
+  `EpubParser` at parse time (verified by decompiling the pinned
+  `readium-streamer` 3.4.0 bytecode — see §2B.1's search findings below); the
+  gap is entirely on ShelfOS's side, not Readium's.
 - **Persistence:** Room v2 (`ShelfDatabase`, `app/schemas/.../2.json`):
   `library_item`, `reading_state` (one row per item — resume position only),
   `reader_preference` (one row per item, plus an empty-key global row),
@@ -415,10 +419,13 @@ discovery and implementation planning only, on branch
   (`gradle/libs.versions.toml`), `readium-navigator` + `readium-streamer`
   (`app/build.gradle.kts`). `EpubReaderFactory.open()` already uses the
   `PublicationOpener(EpubParser(...), onCreatePublication = { ... })` callback
-  shape (currently only to wrap `container` for HTML sanitization via
-  `TransformingContainer`); the callback receives a `Publication.Builder` with
-  mutable `manifest`/`container`/`servicesBuilder`, which is the same
-  extension point 2B.3 (search) needs.
+  shape, currently only to wrap `container` for HTML sanitization via
+  `TransformingContainer`; the callback receives a `Publication.Builder` with
+  mutable `manifest`/`container`/`servicesBuilder`. **Corrected 2026-09-26:**
+  2B.3 (search) does **not** need this extension point — `EpubParser` itself
+  already populates `servicesBuilder` with a working search-service factory
+  before this callback even runs (see §2B.1's search findings below); nothing
+  in `EpubReaderFactory` needs to change for search.
 
 #### 2B.1 Readium capability findings (verified against the actual 3.4.0 `.aar`/API jars in this environment, not documentation)
 
@@ -433,51 +440,138 @@ upstream Readium documentation, which can drift from a pinned older release.
 - `Navigator.currentLocator: StateFlow<Locator>` and `Navigator.go(Locator/Link,
   animated): Boolean` — already used for page turns/chapter jumps.
 - No dedicated "current chapter" API: current chapter must be derived
-  ShelfOS-side by matching `currentLocator.href` against the flattened TOC/href
-  list already built in `EpubSession.chapters`. This is a small, local
-  computation, not a missing Readium capability.
+  ShelfOS-side. **Corrected 2026-09-26 (Codex R3):** naive direct equality of
+  `currentLocator.href == tocLink.href` is not sufficient and must not be the
+  implemented rule. A `Link.href`/`Locator.href` can carry a fragment
+  (`chapter3.xhtml#section2`), while a `Locator`'s fragment may instead live in
+  `Locator.Locations.fragments`, separately from `Locator.href`; several TOC
+  entries can legitimately point into the *same* XHTML resource at different
+  fragments (a long chapter with sub-headings in the TOC); and a TOC can be
+  nested (a `Link.children` tree, already walked recursively when
+  `EpubSession.chapters` is built). A same-resource, exact-fragment match is
+  not always resolvable — a deterministic fallback is required rather than
+  silently matching every TOC entry that shares the resource. 2B.1 must
+  implement and unit-test a small, explicit matching helper, at minimum:
+  1. normalize both sides to the publication resource href (strip/compare
+     without the fragment) as the first-pass match;
+  2. when more than one TOC entry shares that resource href, prefer the entry
+     whose fragment matches `Locator.Locations.fragments` (or the href's own
+     fragment, whichever the current locator actually carries) exactly;
+  3. when no fragment is available or none matches exactly, fall back
+     deterministically to the *last* same-resource TOC entry at or before the
+     current position in TOC order (not "every entry with that resource," and
+     not an arbitrary/unstable choice) — this mirrors how a reading position
+     inside a resource belongs to the nearest preceding heading.
+  Do not invent a fuller algorithm (e.g. reading-order-position interpolation)
+  beyond this — the above is the minimum needed to avoid the two concrete
+  failure modes (fragment ignored; same-resource TOC entries indistinguishable)
+  without over-building.
 - TOC title filtering is plain in-memory string filtering over
   `EpubSession.chapters`; no Readium API involved either way.
-- **Verdict: ALREADY IMPLEMENTED** (navigation) **+ REQUIRES SHELFOS UI** (highlight/filter are pure ShelfOS-side, using APIs already in use).
+- **Verdict: ALREADY IMPLEMENTED** (navigation) **+ REQUIRES SHELFOS UI**
+  (highlight/filter are pure ShelfOS-side) **+ REQUIRES A DEDICATED MATCHING
+  HELPER** (not simple href equality — see above).
 
-**Publication-wide search**
-- `org.readium.r2.shared.publication.services.search.SearchService` (a
-  `Publication.Service`): `suspend fun search(query, Options):
-  SearchIterator`. Suspend-based, not `Flow`.
-- `SearchIterator.next(): Try<LocatorCollection, SearchError>` (suspend, one
-  page of results at a time) and a `forEach` convenience; `getResultCount()`
-  when known.
-- `SearchService.Options`: `caseSensitive`, `diacriticSensitive`, `wholeWord`,
-  `exact`, `language`, `regularExpression`, `otherOptions` — real, usable knobs.
-- `Locator` (the result type, inside `LocatorCollection.locators`) already
-  carries `href`, `title`, `locations` (`progression`, `position`,
-  `totalProgression`), **and `text: Locator.Text(before, highlight, after)`
-  — the match snippet.** Search results have snippets, hrefs and progression
-  out of the box.
-- `StringSearchService` (`readium-shared`) is a **ready-made, concrete
-  implementation**: constructed from `(Manifest, Container<Resource>,
-  PublicationServicesHolder, language, snippetLength, Algorithm,
-  ResourceContentExtractor.Factory)`, with `StringSearchService.Algorithm`
-  offering `NaiveAlgorithm`/`IcuAlgorithm`. `StringSearchService.Companion
-  .createDefaultFactory(snippetLength, algorithm, extractorFactory)` returns a
-  ready `(Publication.Service.Context) -> StringSearchService` factory.
-  `DefaultResourceContentExtractorFactory` (plus `HtmlResourceContentExtractor`)
-  already exists to extract plain text from EPUB XHTML resources — no custom
-  HTML/text extractor needs to be written.
-- **Not auto-registered:** `EpubParser` (readium-streamer) does not attach any
-  `SearchService` by default — only `EpubPositionsService`. Attaching search
-  is a deliberate `servicesBuilder.set(SearchService::class, factory)` call
-  inside `PublicationOpener`'s `onCreatePublication` callback — the exact
-  callback shape `EpubReaderFactory.open()` already uses for HTML
-  sanitization, extended with one more `servicesBuilder.set(...)` call.
-- **Verdict: SUPPORTED BY CURRENT READIUM BUT NOT WIRED.** No custom EPUB
-  parser or text index is needed; this is wiring a real, current-version
-  Readium service, not building one. Search is in-memory/on-demand per
-  session (Readium extracts and searches resource text at query time); this
-  is expected to be fine for typical EPUB sizes given the existing per-EPUB
-  size caps already enforced in `EpubReaderFactory.open()` (8 MiB per markup
-  resource / 128 MiB total markup), and should be measured against the
-  largest private fixture during implementation rather than assumed.
+**Publication-wide search — corrected 2026-09-26 (Codex R2; re-verified independently
+against the pinned `.aar` bytecode itself, not taken on either party's word)**
+
+The original version of this section claimed `SearchService` is "not
+auto-registered" and that ShelfOS would need to call
+`servicesBuilder.set(SearchService::class, factory)` inside
+`EpubReaderFactory`'s `onCreatePublication` callback. **That claim was wrong.**
+Direct bytecode inspection of `readium-streamer-3.4.0-api.jar`'s
+`EpubParser.class` (`javap -v`, constant pool + instruction trace) shows
+`EpubParser.parse()` itself calls
+`StringSearchService.Companion.createDefaultFactory$default(...)`
+unconditionally and passes the resulting factory into the
+`Publication.ServicesBuilder(...)` it constructs for every `Publication.Builder`
+it returns — in the same straight-line sequence that also installs
+`EpubPositionsService`. There is no branch/flag guarding it in the decompiled
+method. **Every EPUB `EpubReaderFactory.open()` opens already has a working
+`SearchService` attached, with no ShelfOS wiring required or possible to add
+"more correctly" — registering a second one would shadow/duplicate the
+parser's own, not fill a gap.**
+
+**SUPPORTED AND ALREADY INSTALLED BY `EpubParser` (verified, not to be redone):**
+- `SearchService` attachment itself (`StringSearchService`, via the parser's
+  own default factory).
+- `StringSearchService`'s default resource content extraction
+  (`DefaultResourceContentExtractorFactory`/`HtmlResourceContentExtractor`,
+  used internally by the factory `EpubParser` invokes).
+- Locator/snippet result shape: `LocatorCollection.locators: List<Locator>`,
+  each with `href`, `title`, `locations` (`progression`/`position`/
+  `totalProgression`), and `text: Locator.Text(before, highlight, after)` —
+  the match snippet, present out of the box.
+- Paged, suspend-based iteration: `SearchIterator.next(): Try<LocatorCollection,
+  SearchError>` (one page at a time, not `Flow`), plus a `forEach` convenience
+  and `getResultCount()` when known.
+- Query options: `SearchService.Options(caseSensitive, diacriticSensitive,
+  wholeWord, exact, language, regularExpression, otherOptions)` — real, usable
+  knobs already available on the attached service.
+
+**NOT YET IMPLEMENTED IN SHELFOS (this is 2B.3's actual scope):**
+- A search UI surface (query input, results list, jump-to-result).
+- Query state/orchestration (debouncing, superseding an in-flight query).
+- Result presentation (rendering `Locator.Text.before/highlight/after` and
+  progression into a readable row).
+- Jump-to-result UX (`navigator.go(locator)` from a tapped result — the same
+  mechanism chapters/bookmarks already use).
+- **Cancellation handling and `SearchIterator`/coroutine lifecycle** — see the
+  dedicated lifecycle subsection below; this is unimplemented and was
+  previously unmentioned in this plan, which was itself a gap independent of
+  the wiring mistake above.
+
+**2B.3's obligation is therefore to consume the `SearchService` the opened
+publication already exposes** — retrieved via `publication.findService(
+SearchService::class)` (exposed from `EpubSession`, e.g. a small
+`EpubSession.search(query, options)` wrapper) — never to construct or attach
+a `StringSearchService` itself, and never to build a parallel parser or text
+index. `EpubReaderFactory`'s `onCreatePublication` callback keeps its current,
+narrower job (HTML sanitization only); no search-related change belongs there.
+
+Search remains in-memory/on-demand per session regardless of who attaches the
+service (Readium extracts and searches resource text at query time); this is
+expected to be fine for typical EPUB sizes given the existing per-EPUB size
+caps already enforced in `EpubReaderFactory.open()` (8 MiB per markup resource
+/ 128 MiB total markup), and should still be measured against the largest
+private fixture during implementation rather than assumed.
+
+**Verdict: SUPPORTED AND ALREADY INSTALLED BY THE PARSER.** 2B.3 is a
+consumption/UI/lifecycle slice, not a service-attachment slice.
+
+**Search lifecycle requirements (added 2026-09-26, Codex R2) — binding on
+2B.3's implementation, not fully specified to exact classes here:**
+- A superseded query (the user types a new query, or clears the field, before
+  the previous one finishes) must cancel the prior search operation rather
+  than let both run and race to update the UI.
+- Every `SearchIterator` obtained from `SearchService.search(...)` must be
+  closed via a guaranteed cleanup path (`finally` or the coroutine/structured-
+  concurrency equivalent — exact shape decided at 2B.3 implementation time),
+  covering all three exits: normal completion (results exhausted or the user
+  stops paging), cancellation (superseded query, leaving the reader), and
+  error (`SearchError` from `next()`).
+- Do not retain `SearchService` or `SearchIterator` instances in
+  `rememberSaveable`/saved-instance-state — they are not serializable and not
+  meaningfully restorable. Only plain, serializable UI/query state (the query
+  string, the options, and copied result data ShelfOS needs to render —
+  `locator` JSON, `href`, `progression`, `text.before`/`text.highlight`/
+  `text.after`, as the pinned API actually returns) may survive
+  recreation, following the same `rememberSaveable` pattern the Appearance
+  dialog's draft already uses.
+- After a configuration/process recreation, do not attempt to resume a
+  half-consumed iterator (it cannot survive); if a query was in progress or
+  had results, the implementation should decide whether to silently clear it
+  or deterministically rerun the same query against the freshly reopened
+  `EpubSession`/`SearchService` — either is acceptable, but the choice must be
+  intentional and documented at implementation time, not accidental.
+- Closing the reader (leaving the EPUB screen, `EpubReaderViewModel.onCleared()`)
+  must not leave a search operation running — any active search coroutine and
+  its `SearchIterator` must be cancelled/closed as part of the same teardown
+  that already closes the `EpubSession`/`Publication`.
+- Exact implementation classes/coroutine shape (e.g. whether this lives in the
+  ViewModel as a `Job`-per-query, or another structure) are intentionally not
+  specified here — that is 2B.3 implementation detail, not a discovery-time
+  decision.
 
 **Reading mode (pagination/scroll)**
 - `EpubPreferences.scroll: Boolean?` — **already wired end-to-end**
@@ -523,69 +617,143 @@ upstream Readium documentation, which can drift from a pinned older release.
   "dark reading mode" deliverable. **2B must not add a second, redundant dark
   mode.** The only 2B action here is documenting this closure (this section).
 
-**Custom fonts**
+**Custom fonts — corrected 2026-09-26 (Codex R2/R3); architecture split into
+ingestion and serving, with only ingestion actually proven**
+
 - `org.readium.r2.navigator.epub.css.FontFamilyDeclaration` /
   `MutableFontFamilyDeclaration` / `FontFaceSource` /
   `EpubNavigatorFragment.Configuration.addFontFamilyDeclaration(name,
   alternates) { addFontFace { addSource(url, preload) } }` — a real,
-  concrete API for registering a custom `@font-face` with the navigator,
-  confirmed present in the pinned 3.4.0 navigator artifact.
-- `FontFaceSource.href` is a `org.readium.r2.shared.util.Url` — the source
-  must be reachable by Readium's own resource-serving path (the same
-  mechanism that serves the publication's own resources into its WebView),
-  not an arbitrary external URI. `EpubNavigatorFragment.Configuration
-  .servedAssets: List<String>` further suggests only specific, declared
-  asset paths are servable this way.
-- **Findings against the prompt's specific questions:**
+  concrete API for *declaring* a custom `@font-face` with the navigator,
+  confirmed present in the pinned 3.4.0 navigator artifact. Declaring the
+  font-face is not the same question as whether the byte source behind it is
+  reachable, which is the part this plan previously overstated.
+- **The previous version of this section was too optimistic about "lands on a
+  stable local path Readium's resource path can serve."** Direct bytecode
+  inspection of `readium-navigator-3.4.0-api.jar`'s `WebViewServer.class`
+  shows exactly one `WebViewAssetLoader.Builder.addPathHandler(...)` call,
+  registering an `androidx.webkit.WebViewAssetLoader.AssetsPathHandler` — the
+  official AndroidX handler that serves only from the app's **packaged APK
+  `assets/` folder** via `AssetManager`, for whatever path prefix
+  `EpubNavigatorFragment.Configuration.servedAssets` configures. A font file
+  copied into ShelfOS's private app-internal storage (the existing "managed
+  copy" pattern, `core.files`) is **not** inside the APK's `assets/` folder
+  and is therefore **not proven reachable through this handler**. The
+  publication's own resources (including any fonts embedded *inside* the
+  EPUB) are evidently served through a separate mechanism (`WebViewServer`
+  also implements `shouldInterceptRequest`-style resource interception
+  elsewhere in the same class, reading directly from the open `Container`) —
+  but that path is for the container's own entries, not for an arbitrary
+  external file ShelfOS wants to inject. **No mechanism confirmed by this
+  investigation currently proves an externally-supplied font file, stored
+  outside the APK's packaged assets, is servable to the EPUB WebView.**
+- **This plan must not commit to a final resource-serving implementation.**
+  The architecture is split into two distinct concerns, and only the first is
+  proven:
+
+  **A. Font ingestion (proven, reuses an existing ShelfOS pattern):**
+  - user selects a font file via SAF;
+  - ShelfOS validates it (see the ingestion requirements below);
+  - ShelfOS may copy it into app-managed private storage, reusing the
+    existing private-copy pattern (`core.files`, Phase 1);
+  - the user's original source file is never modified or moved.
+
+  **B. Font serving (not proven; requires its own feasibility gate before any
+  user-facing UX is built):**
+  - a separate bridge is required so the Readium/WebView navigator can
+    actually load bytes from that managed copy;
+  - the currently-confirmed `servedAssets`/`AssetsPathHandler` mechanism does
+    **not** by itself prove this path, because it only serves packaged APK
+    assets, not app-internal file storage populated at runtime;
+  - the exact mechanism (candidates to investigate at implementation time
+    might include: copying into a location the existing packaged-assets
+    handler can be configured to also cover, if that is even possible for
+    non-APK storage; a custom `WebViewAssetLoader.PathHandler` registered
+    alongside the existing one, if `EpubNavigatorFragment.Configuration`
+    exposes any extension point for it; or another mechanism entirely) is
+    **not selected or committed to by this planning pass** — it must be
+    validated against the pinned Readium 3.4.0 navigator before any
+    architecture decision is treated as accepted.
+- **Findings against the original discovery questions, corrected:**
   - *Can the navigator accept custom font-family declarations?* Yes —
     `addFontFamilyDeclaration`/`FontFamilyDeclaration` is real and present.
-  - *Can ShelfOS inject a local font resource/URL?* Only if that resource is
-    reachable through Readium's own resource-serving path — an arbitrary
-    external `content://` URI is **not confirmed** to be directly usable as
-    a `FontFaceSource.href` from this API surface alone.
+  - *Can ShelfOS inject a local font resource/URL?* **Not proven.** The
+    declaration API exists; a working, servable `FontFaceSource.href` for a
+    ShelfOS-managed (non-APK-asset) file has not been demonstrated.
   - *Would a user-selected font need to be copied into ShelfOS-managed
-    storage?* **Yes, almost certainly** — this matches ShelfOS's existing
-    "private managed copy" pattern already used for large/otherwise-
-    unreachable source files (`core.files`, Phase 1), and is the safest,
-    most consistent way to guarantee the font byte-for-byte survives SAF
-    grant loss, is available offline, and lands on a stable local path
-    Readium's resource path can serve.
+    storage?* Yes for ingestion/durability reasons (SAF grant loss, offline
+    availability, lifecycle control) — but a managed copy **by itself is not
+    sufficient** to make the font servable; serving is the separate, unproven
+    half (B, above).
   - *Can SAF-persisted content be referenced safely by the navigator
-    directly?* **Not confirmed safe or supported** by this API surface; the
-    managed-copy path avoids relying on that.
-  - *Lifetime/permission concerns?* Same class of concern already solved for
-    managed publication copies: SAF grants can be revoked, files can move;
-    a copied font in ShelfOS-managed storage avoids depending on a live SAF
-    grant at read time.
-  - *What happens if the font disappears* (managed copy deleted/corrupted)?
-    Reader must fall back to the existing built-in `sans-serif`/`serif`
-    choice, never fail to open the publication.
+    directly?* No — not proven, and ingestion (A) exists specifically so
+    ShelfOS never depends on a live SAF grant at serve time either way.
+  - *Lifetime/permission concerns?* Same class already solved for managed
+    publication copies (SAF grants can be revoked, files can move); a copied
+    font avoids depending on a live SAF grant, independent of how serving
+    (B) is eventually solved.
+  - *What happens if the font disappears* (managed copy deleted/corrupted, or
+    the serving bridge fails)? Reader must fall back to the existing built-in
+    `sans-serif`/`serif` choice, never fail to open the publication.
   - *Reset/fallback?* `BookFont` would need a third case (e.g. `CUSTOM`) with
     a stored reference to the managed copy; resetting typography (existing
     "Reset" action in `ReaderAppearance`) must cleanly fall back to SERIF/
     SANS, not leave a dangling reference.
-- **Verdict: FEASIBLE, NOT CONFIRMED SIMPLE.** The Readium-side API exists
-  and is real; the ShelfOS-side work (SAF font picker, managed-copy storage,
-  lifecycle, fallback) is genuinely new architecture, not a small wiring
-  task like search. Do not bundle a font library; a single user-supplied
-  font per title/globally is the minimal viable shape, consistent with the
-  roadmap's own "without unnecessarily bundling many fonts" instruction.
+- **Verdict: INGESTION FEASIBLE AND LOW-RISK (reuses proven ShelfOS patterns);
+  SERVING NOT PROVEN.** 2B.4 is reframed below as "Custom-font feasibility +
+  managed-font architecture" with an explicit proof gate before any
+  import/selection UX is built. Do not bundle a font library either way; a
+  single user-supplied font per title/globally remains the minimal viable
+  shape if serving is proven, consistent with the roadmap's own "without
+  unnecessarily bundling many fonts" instruction.
+
+**Font ingestion requirements (added 2026-09-26, Codex R3) — apply regardless
+of how the serving question above is eventually resolved:**
+- A user-supplied font remains the user's own content; ShelfOS does not
+  redistribute it. The only licensing statement this plan makes is exactly
+  that — user-provided fonts are user content, not a ShelfOS asset — and no
+  font-license detection/enforcement is built (do not overengineer this).
+- Supported font formats must be explicitly defined at implementation time
+  (e.g. TTF/OTF/WOFF/WOFF2 — the exact accepted set is an implementation
+  decision, not fixed here).
+- MIME type alone is not sufficient validation (an SAF-reported MIME type can
+  be wrong or absent); inspect the file's actual signature/header where
+  practical before accepting it.
+- A corrupt or unsupported font must be rejected with a clear, readable
+  message — never a crash, never a silent no-op.
+- Enforce a reasonable file-size limit on an imported font (exact number is
+  an implementation decision; the principle is that an unreasonably large
+  "font" file must not be accepted uncritically).
+- An imported managed copy has stable ownership/lifetime, following the same
+  discipline as existing managed publication copies (Phase 1): referenced by
+  a stable identifier, not by a path that can silently change.
+- Replacing or removing a font must clean up the orphaned managed copy safely
+  — no leaked, unreferenced font files left behind (mirrors the existing
+  Settings → Storage unreferenced-private-copy cleanup for publications).
+- If a selected font disappears, corrupts, or fails to serve (whatever the
+  eventual serving mechanism turns out to be), the reader must fall back to a
+  built-in/default family without breaking reading — never a hard failure.
+- The source file the user picked is never modified (AGENTS.md rule 4).
+- Once successfully imported/managed, using the font must work fully offline
+  — no network dependency of any kind.
 
 #### 2B.2 Supported/not-supported summary table
 
 | Capability | Status |
 | --- | --- |
 | Chapter navigation (jump to TOC entry) | ALREADY IMPLEMENTED |
-| Current-chapter highlight | REQUIRES SHELFOS UI (Readium API already used) |
+| Current-chapter highlight | REQUIRES SHELFOS UI + a normalized, fragment-aware matching helper (not href equality) |
 | TOC title filter | REQUIRES SHELFOS UI (no Readium API involved) |
-| Publication-wide text search | SUPPORTED BY CURRENT READIUM BUT NOT WIRED |
+| Publication-wide text search — service attachment | ALREADY INSTALLED BY `EpubParser` (verified in bytecode; no ShelfOS wiring needed or wanted) |
+| Publication-wide text search — UI/orchestration/lifecycle | NOT IMPLEMENTED IN SHELFOS — REQUIRES SHELFOS UI + cancellation/iterator-lifecycle handling |
 | Pagination vs. scrolling | ALREADY IMPLEMENTED |
 | Multi-column / two-page EPUB | SUPPORTED BY CURRENT READIUM, out of 2B scope (2D) |
 | Typography (font/size/line-height/margins/justify) | ALREADY IMPLEMENTED |
 | Extended typography (paragraph/word/letter spacing, hyphens, ligatures) | DESIRED BY NO CURRENT REQUIREMENT — not built |
 | Reading-surface dark/sepia/light ("Page colors") | ALREADY IMPLEMENTED — satisfies roadmap's dark-reading-mode item |
 | Bookmarks (discrete saved locations) | NOT IMPLEMENTED — REQUIRES SHELFOS STORAGE/UI |
-| Custom user-supplied font | NOT IMPLEMENTED — REQUIRES SHELFOS STORAGE/UI, Readium font-face API confirmed available |
+| Custom font — ingestion (SAF pick, validate, managed copy) | NOT IMPLEMENTED — REQUIRES SHELFOS STORAGE/UI; feasible, reuses an existing pattern |
+| Custom font — serving to the navigator/WebView | NOT PROVEN — only `AssetsPathHandler` (packaged APK assets) is confirmed; a managed-copy file's reachability is unproven |
 
 #### 2B.3 Bookmark data-model proposal
 
@@ -601,13 +769,25 @@ inventing a new shape:
 data class BookmarkEntity(
     @PrimaryKey val id: String,       // ShelfOS UUID, not the item id — multiple per item
     val itemId: String,               // LibraryItem.id
-    val locator: String,              // Locator.toJSON() — same serialization already used by reading_state
-    val progress: Int,                // 0..100, same convention as ReadingEntity, for display only
+    val locator: String,              // Locator.toJSON() — the authoritative position; see clarification below
+    val progress: Int,                // 0..100, a display/sort snapshot only — see clarification below
     val label: String?,               // optional user note/context; null shows chapter title + progress instead
     val createdAt: Long,
 )
 ```
 
+- **Clarified 2026-09-26 (Codex R3, no blocking issue found; direction
+  preserved as-is):** the serialized `locator` is the authoritative record of
+  where the bookmark points — `navigator.go(Locator.fromJSON(locator))` is
+  always what actually resolves the position. `progress` is a **snapshot for
+  display/sort purposes only** (e.g. showing "42%" in a bookmark list, or
+  ordering bookmarks by rough document position without re-deriving it from
+  the locator every time), computed once at bookmark-creation time exactly
+  like `ReadingEntity.progress` already is — it is never a second source of
+  truth to reconcile against the locator, and nothing should ever write a
+  `progress` value back into a locator or treat a mismatch between them as
+  requiring repair. Schema is not otherwise finalized beyond what 2B.2 needs
+  at implementation time.
 - **Requires a Room migration**, v2 → v3, adding one table (`CREATE TABLE
   bookmark (...)` plus `CREATE INDEX index_bookmark_itemId ON
   bookmark(itemId)`), following the same manual-SQL `Migration` pattern as
@@ -660,46 +840,70 @@ Four slices (not the example's three-to-four "chapter+bookmark combined"
 grouping — schema-affecting work is kept in its own isolated slice per this
 plan's own risk analysis, not bundled with a zero-schema UI change):
 
-**2B.1 — Chapter navigation polish + typography/reading-mode/page-color closure.**
-Current-chapter highlight in the Chapters dialog (derive from
-`navigator.currentLocator.href` against `EpubSession.chapters`, both already
-in use); TOC title filter if warranted by real fixture TOC length; formally
-document (this plan + `docs/design/READER_UX.md`/`docs/features/READER.md` as
-needed) that pagination/scroll and page-color/dark-reading-mode are already
-complete, closing those two roadmap bullets without new code. Zero schema
-change, zero new Readium capability — pure reuse of APIs already wired.
+**2B.1 — Chapter navigation polish + validation/closure of existing scroll,
+typography and page colors.**
+Current-chapter highlight in the Chapters dialog, using the normalized,
+fragment-aware matching helper defined above (**not** direct
+`currentLocator.href == tocLink.href` equality) against `EpubSession.chapters`;
+TOC title filter if warranted by real fixture TOC length; formally document
+(this plan + `docs/design/READER_UX.md`/`docs/features/READER.md` as needed)
+that pagination/scroll and page-color/dark-reading-mode are already complete,
+closing those two roadmap bullets without new code. Zero schema change, zero
+new Readium capability — pure reuse of APIs already wired, plus one new small
+matching helper.
 
-**2B.2 — Bookmark foundation.**
+**2B.2 — Bookmarks + Room v2 → v3 migration.**
 Room migration 2→3 (`bookmark` table), repository CRUD, "Add bookmark"/list/
 jump/delete UI in the EPUB reader chrome and/or a bookmarks sheet. The only
 slice touching the schema; isolating it means a migration problem is caught
 and reviewed on its own, not entangled with unrelated UI changes.
 
-**2B.3 — Publication search.**
-Wire `StringSearchService` via `servicesBuilder.set(SearchService::class,
-StringSearchService.createDefaultFactory(...))` inside `EpubReaderFactory`'s
-existing `onCreatePublication` callback; add a search UI surface (query
-input, snippet results list reusing `Locator.Text.before/highlight/after`,
-jump-to-result via the same `navigator.go(locator)` path as chapters/
-bookmarks); no schema change. Ordered after bookmarks because it is 2B's
-largest net-new UI surface and can reuse the list/jump-to-locator UI pattern
-2B.2 establishes, and because it depends on nothing bookmarks doesn't also
-depend on, so de-risking the smaller schema change first is preferable.
+**2B.3 — Publication search UI/orchestration over the existing
+parser-provided `SearchService`.**
+**Corrected 2026-09-26:** `EpubParser` already installs a working
+`StringSearchService` on every opened EPUB (see the corrected findings
+above) — there is no service to wire. This slice's actual scope is: retrieve
+the already-attached `SearchService` via `publication.findService(...)`;
+build the query UI (input, snippet results reusing
+`Locator.Text.before/highlight/after`, jump-to-result via the same
+`navigator.go(locator)` path as chapters/bookmarks); and implement the
+cancellation/`SearchIterator`-lifecycle requirements specified above
+(supersede-on-new-query, close on completion/cancellation/error, no
+iterator/service retained across recreation, cancel on leaving the reader).
+No schema change. Ordered after bookmarks because it is 2B's largest net-new
+UI surface and can reuse the list/jump-to-locator UI pattern 2B.2
+establishes, and because it depends on nothing bookmarks doesn't also depend
+on, so de-risking the smaller schema change first is preferable.
 
-**2B.4 — Custom-font architecture.**
-SAF font picker → managed-copy storage (reusing the existing private-copy
-pattern) → `EpubNavigatorFragment.Configuration.addFontFamilyDeclaration`
-wiring → fallback-to-built-in-font behavior on failure/deletion. Ordered
-last: it is the most architecturally novel piece (new user-supplied-asset
-lifecycle through a third-party rendering engine), has the least-specific
-existing user pull among the four, and benefits from the reader chrome
-being otherwise stable (chapters/bookmarks/search settled) before adding a
-new asset-lifecycle concern. **Recommend a short ADR when this slice is
-actually implemented** (not now — this is a discovery pass) if it in fact
-requires a new "user-supplied external content becomes managed, engine-
-servable storage" pattern beyond what Phase 1's private-copy precedent
-already covers; that determination is better made with real implementation
-detail in hand than speculatively here.
+**2B.4 — Custom-font feasibility + managed-font architecture.**
+**Reframed 2026-09-26:** this slice must not promise a finished
+import/selection UX up front. It begins with an explicit proof gate, run
+before any user-facing work: (1) prove selected font bytes can actually be
+served to the navigator/WebView from ShelfOS-managed storage — not merely
+that `addFontFamilyDeclaration`/`FontFaceSource` exist, which is already
+confirmed, but that a real byte source ShelfOS controls is reachable through
+some mechanism validated against the pinned Readium 3.4.0 navigator; (2)
+prove the declared `@font-face`/`FontFamilyDeclaration` actually renders in
+the navigator once that source is reachable; (3) prove the fallback path
+(missing/corrupt/unservable font falls back to a built-in family without
+breaking reading). **Only if that proof gate succeeds** does the slice
+proceed to build the SAF font picker → managed-copy ingestion (§ font
+ingestion requirements above) → selection/reset UX. **If the proof gate
+fails under current Readium 3.4.0 constraints, this slice ends with a
+documented unsupported path and user-supplied fonts are deferred** — without
+blocking any other 2B slice — unless the owner later chooses a different
+architecture (e.g. a Readium version change, which is its own dependency
+decision outside this pass). Ordered last: it is the most architecturally
+novel piece (new user-supplied-asset lifecycle through a third-party
+rendering engine, with its core serving question still unproven), has the
+least-specific existing user pull among the four, and benefits from the
+reader chrome being otherwise stable (chapters/bookmarks/search settled)
+before adding a new asset-lifecycle concern. **Recommend a short ADR once the
+proof gate's outcome is known** (not now — this is a discovery pass) if the
+proof succeeds and requires a new "user-supplied external content becomes
+managed, engine-servable storage" pattern beyond what Phase 1's private-copy
+precedent already covers, or if it fails and the deferral itself is a durable
+decision worth recording.
 
 #### 2B.6 Data-model / dependency impact summary
 
@@ -707,9 +911,12 @@ detail in hand than speculatively here.
   2B.1/2B.3/2B.4 make no schema changes.
 - **Dependencies:** none required to be added in this planning pass. 2B.2's
   implementation will likely want `androidx.room:room-testing` (test-only).
-  2B.3/2B.1 need no new dependency — `StringSearchService`,
-  `DefaultResourceContentExtractorFactory` and the font-face API all already
-  ship inside the pinned `readium-shared`/`readium-navigator` 3.4.0 artifacts.
+  2B.1/2B.3 need no new dependency — `StringSearchService` is already
+  installed by `EpubParser` at parse time (verified in bytecode), and the
+  font-face declaration API already ships inside the pinned
+  `readium-navigator` 3.4.0 artifact — but 2B.4's *serving* half is not a
+  dependency question at all: it is an unproven capability question that a
+  new dependency cannot pre-empt (see its proof-gate reframing above).
   2B.4 needs no new dependency either — SAF picking and managed-copy storage
   reuse `core.files` patterns already in the codebase.
 - **UI impact:** 2B.1 changes only the existing Chapters dialog (highlight +
@@ -719,8 +926,11 @@ detail in hand than speculatively here.
 
 #### 2B.7 Testing strategy (per slice, see acceptance criteria below for detail)
 
-- Unit/JVM: TOC-highlight matching logic, TOC filter logic, bookmark
-  entity/repository mapping, search-result-to-UI mapping — all plain Kotlin,
+- Unit/JVM: the chapter current-location matching helper (see its dedicated
+  test list under 2B.1's acceptance criteria below — href without fragment,
+  href with fragment, several chapters sharing one resource, nested TOC,
+  locator with no usable fragment), TOC filter logic, bookmark entity/
+  repository mapping, search-result-to-UI mapping — all plain Kotlin,
   testable without instrumentation, following the existing `InputHintsTest`-
   style pattern of extracting pure logic where possible.
 - Instrumented (`shelfos-phase0`, API 35, the established known-good target
@@ -749,11 +959,18 @@ detail in hand than speculatively here.
   regression test; 2B.2 is the first schema change since acceptance and
   should not repeat that gap — add `MigrationTestHelper` coverage as part of
   2B.2, not defer it.
-- **Font lifecycle edge cases:** a managed font copy could be deleted by the
-  same Settings → Storage cleanup flow that already reclaims unreferenced
-  private copies (Phase 1); 2B.4 must ensure a font copy in active use is
-  never treated as "unreferenced," and that losing it degrades to a built-in
-  font rather than breaking the reader.
+- **Font serving is unproven:** unlike the other three slices, 2B.4's core
+  technical question (can a ShelfOS-managed font file actually be served to
+  the navigator's WebView) is not yet answered — only font *ingestion* and
+  the font-face *declaration* API are confirmed. 2B.4's proof gate exists
+  specifically to surface this risk before any UX is built, rather than
+  discovering it mid-implementation after a picker/UI already exists.
+- **Font lifecycle edge cases** (apply once/if the proof gate succeeds): a
+  managed font copy could be deleted by the same Settings → Storage cleanup
+  flow that already reclaims unreferenced private copies (Phase 1); 2B.4 must
+  ensure a font copy in active use is never treated as "unreferenced," and
+  that losing it (or a serving failure) degrades to a built-in font rather
+  than breaking the reader.
 - **Scope bleed:** chapter/typography/search/bookmark work all touch
   `EpubActivity`/`EpubReaderViewModel`, which are already fairly dense; each
   slice should resist expanding these files' existing responsibilities
@@ -807,10 +1024,20 @@ expanded layout: dialog already scrolls via `LazyColumn`, no new layout
 concern. recreation/app restart: highlight recomputes from the restored
 locator, not stored separately. source preservation: n/a (read-only).
 offline: n/a (local-only). failure/recovery: empty/short TOC (already
-handled — dialog just lists what exists). tests: unit test for the
-highlight-matching function; instrumented test extending the existing
-Chapters coverage. API 35: yes. RP5: not required (no new chrome reachability
-surface, per §2B.7).
+handled — dialog just lists what exists). **Explicit matching-helper gates
+(added 2026-09-26, Codex R3) — the highlight must not ship without unit tests
+for all five:**
+1. chapter href without a fragment (plain resource-level TOC entry);
+2. TOC href with a fragment, matched against a locator whose fragment agrees;
+3. several chapter entries pointing into one XHTML resource at different
+   fragments — verify the correct one highlights, not all of them;
+4. a nested TOC (parent/child `Link.children`) — verify a deeply-nested entry
+   still matches correctly;
+5. a locator with no usable fragment at all — verify the deterministic
+   same-resource fallback (last matching entry at/before position) is used,
+   not an arbitrary or unstable choice.
+API 35: yes. RP5: not required (no new chrome reachability surface, per
+§2B.7).
 
 **2B.2 (bookmarks):**
 user-visible: add/list/jump/delete bookmarks for the open EPUB. persistence:
@@ -837,19 +1064,65 @@ not part of this scope). accessibility: result rows expose their snippet
 text as content description; empty-results state announced. touch/keyboard/
 controller: query field and result list reachable via existing focus/
 semantic-command handling. compact/expanded: result list scrolls; no
-tablet-specific layout required beyond what Compose gives for free.
-recreation: in-progress query/results survive recreation the way the
-Appearance dialog's draft already does (`rememberSaveable`). app restart: no
-persistence needed, so nothing to restore. source preservation: read-only.
-offline: fully local (Readium extracts text from the already-open
-publication, no network). failure/recovery: `SearchError` (from
-`SearchIterator.next()`) surfaces a readable message rather than crashing.
+tablet-specific layout required beyond what Compose gives for free. source
+preservation: read-only. offline: fully local (Readium extracts text from the
+already-open publication, no network — the service is already attached by
+the parser regardless of network state). failure/recovery: `SearchError`
+(from `SearchIterator.next()`) surfaces a readable message rather than
+crashing. **Explicit lifecycle gates (added 2026-09-26, Codex R2) — must be
+demonstrated, not assumed:**
+- rapid query replacement: typing a new query before the previous search
+  finishes cancels the prior operation and closes its `SearchIterator`; only
+  the latest query's results ever reach the UI.
+- clear query: clearing the field cancels any in-flight search and returns
+  to an empty/no-query state, with no dangling iterator.
+- recreation: only serializable query/result data (query string, options,
+  copied locator/href/progression/snippet fields) survives recreation via
+  `rememberSaveable`, matching the Appearance dialog's draft pattern; the
+  `SearchService`/`SearchIterator` objects themselves are never retained
+  across recreation, and the implementation's chosen behavior (rerun the
+  query fresh, or clear it) is deliberate and tested, not accidental.
+- leaving the reader mid-search: closing `EpubActivity`/clearing the
+  ViewModel cancels any active search coroutine and closes its iterator as
+  part of the same teardown that closes the `EpubSession`.
+- malformed/empty query: an empty or whitespace-only query does not crash and
+  does not perform a search (or performs a well-defined no-op), per
+  implementation-time decision.
+- zero results: a real query that matches nothing shows a clear, non-error
+  empty-results state.
+- offline operation: search works with the device offline (no network
+  dependency exists to test against, but must be verified as part of this
+  slice's offline claim).
+- iterator cleanup: every `SearchIterator` obtained during the test run is
+  demonstrably closed on each of completion, cancellation and error — not
+  just "eventually garbage collected."
 unit tests: result-to-UI mapping. instrumented tests: query → results → jump
-flow against a real fixture EPUB with known text; a timing check against the
-largest available fixture (§2B.8). API 35: yes. RP5: relevant for the new
-search entry point's reachability, same bar as 2B.2.
+flow against a real fixture EPUB with known text; the rapid-replacement,
+clear-query, recreation and leave-mid-search cases above; a timing check
+against the largest available fixture (§2B.8). API 35: yes. RP5: relevant for
+the new search entry point's reachability, same bar as 2B.2.
 
-**2B.4 (custom fonts):**
+**2B.4 (custom-font feasibility + managed-font architecture):**
+**Phase 0 — proof gate (must pass before any of the user-facing criteria
+below are attempted):**
+- proof that a font file placed in ShelfOS-managed storage (not the APK's
+  packaged `assets/`) can be served as bytes to the EPUB navigator/WebView
+  through some mechanism validated against the pinned Readium 3.4.0
+  navigator — the currently-confirmed `AssetsPathHandler` path alone does not
+  satisfy this.
+- proof that a `FontFamilyDeclaration`/`addFontFamilyDeclaration`-declared
+  `@font-face` sourced from that reachable byte source actually renders in
+  the navigator (visually distinct from the built-in serif/sans-serif,
+  verifiable via a real fixture render).
+- proof of the fallback path: an unreachable/missing/corrupt font source
+  falls back to a built-in family without breaking reading.
+- **If this phase fails,** the slice ends here with a documented unsupported
+  path in this plan and `docs/design/INPUT_SYSTEM.md`-style honest recording
+  (this plan already frames this outcome as acceptable); user-supplied fonts
+  are deferred without blocking 2B's other slices, pending a future owner
+  decision (e.g. a different Readium version or mechanism).
+
+**Phase 1 — import/selection UX (only attempted if Phase 0 succeeds):**
 user-visible: pick a font file, apply it, reset falls back to built-in.
 persistence: a reference to the managed font copy, likely as a new `BookFont`
 case or a separate preference field (exact shape decided at implementation
@@ -859,10 +1132,23 @@ like other Appearance controls. compact/expanded: no new layout surface
 beyond the existing Appearance dialog. recreation: draft/applied font
 selection follows the existing Appearance draft/apply pattern. app restart:
 managed copy and preference persist. source preservation: n/a (a new asset,
-not the publication). offline: fully local once copied. failure/recovery:
-missing/corrupt managed copy falls back to built-in font, never fails to
-open the publication. unit tests: fallback logic. instrumented tests: pick →
-apply → recreate → still-applied; delete managed copy → falls back cleanly.
+not the publication) — the user's original font file is never modified.
+offline: fully local once copied, per the font ingestion requirements above.
+failure/recovery: missing/corrupt managed copy, or a serving failure, falls
+back to built-in font, never fails to open the publication. **Font-ingestion
+gates (added 2026-09-26, Codex R3):**
+- supported file-format validation (defined formats accepted, others
+  rejected with a clear message);
+- corrupt font rejection (signature/header inspection, not MIME-only);
+- replacement/removal cleanup: swapping or removing a font leaves no orphaned
+  managed copy;
+- managed-copy lifecycle: stable ownership/identifier, consistent with
+  existing managed publication copies;
+- offline behavior: using an already-imported font requires no network.
+unit tests: fallback logic, format/signature validation. instrumented tests:
+Phase 0's rendering proof itself; pick → apply → recreate → still-applied;
+delete managed copy → falls back cleanly; replace font → old managed copy is
+not orphaned.
 API 35: yes. RP5: not required specifically for font rendering (a rendering-
 fidelity concern more than an input-reachability one), but the picker entry
 point should join the same reachability bar as other Appearance controls.
