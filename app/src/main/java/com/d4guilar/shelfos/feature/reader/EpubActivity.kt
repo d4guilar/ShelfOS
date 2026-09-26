@@ -24,6 +24,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -35,6 +37,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.d4guilar.shelfos.ShelfApplication
+import com.d4guilar.shelfos.core.designsystem.InputKeycap
 import com.d4guilar.shelfos.core.input.*
 import com.d4guilar.shelfos.core.reader.*
 import com.d4guilar.shelfos.core.theme.*
@@ -73,6 +76,10 @@ class EpubActivity : AppCompatActivity() {
         var controls by rememberSaveable { mutableStateOf(true) }
         var appearance by rememberSaveable { mutableStateOf(false) }
         var chapters by rememberSaveable { mutableStateOf(false) }
+        // Recent input modality (Phase 2A.1): only the real center-tap gesture and real key events update this,
+        // never a button click, since a click may itself have been keyboard/gamepad-activated. Edge taps that
+        // turn EPUB pages are handled entirely inside Readium's navigator and do not reach this callback.
+        var modality by rememberSaveable { mutableStateOf(InputModality.TOUCH) }
         var topFocused by remember { mutableStateOf(false) }
         var bottomFocused by remember { mutableStateOf(false) }
         var controlFocusRequests by remember { mutableIntStateOf(0) }
@@ -80,6 +87,9 @@ class EpubActivity : AppCompatActivity() {
         val item = state.item
         val session = state.session
         val rtl = readingDirection(item?.category ?: MediaCategory.BOOK, state.preferences.direction) == ReadingDirection.RTL
+        val previousHint = InputHints.hint(ShelfCommand.PREVIOUS_PAGE, modality, rtl)
+        val nextHint = InputHints.hint(ShelfCommand.NEXT_PAGE, modality, rtl)
+        val backHint = InputHints.hint(ShelfCommand.BACK, modality, rtl)
         // Back never leaves the reader from hidden chrome: it reveals controls first, then a second Back exits.
         fun backPress() { if (controls) finish() else { controls = true; controlFocusRequests++ } }
 
@@ -90,6 +100,10 @@ class EpubActivity : AppCompatActivity() {
             readerKeys = { event ->
                 when (val command = event.readerCommand(rtl, controls && (topFocused || bottomFocused))) {
                     ShelfCommand.NEXT_PAGE, ShelfCommand.PREVIOUS_PAGE, ShelfCommand.OPEN_MENU, ShelfCommand.BACK -> {
+                        // Back is a universal dismissal action available identically from every modality; letting
+                        // it update the tracked modality would flip an active controller/keyboard hint set away
+                        // from itself on every Back press (confirmed on RP5 hardware: BACK defaults to KEYBOARD).
+                        if (command != ShelfCommand.BACK) modality = event.inputModality()
                         if (event.action == KeyEvent.ACTION_UP) when (command) {
                             ShelfCommand.NEXT_PAGE -> controller.next()
                             ShelfCommand.PREVIOUS_PAGE -> controller.previous()
@@ -108,7 +122,13 @@ class EpubActivity : AppCompatActivity() {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().testTag("epub_reader")) {
                 if (controls) Row(Modifier.fillMaxWidth().onFocusChanged { topFocused = it.hasFocus }, horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton({ finish() }, Modifier.focusRequester(firstControl).testTag("epub_library")) { Text("Library") }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton({ finish() }, Modifier.focusRequester(firstControl).testTag("epub_library")) { Text("Library") }
+                        // Input-discovery hint (Phase 2A.1): decorative only, since no single existing control is
+                        // exactly "Back" to merge this into; the system Back gesture/button remains self-describing.
+                        backHint?.let { Row(Modifier.padding(start = 4.dp).testTag("back_hint").clearAndSetSemantics { }, horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically) { InputKeycap(it); Text("Back", color = tokens.colors.secondary, style = tokens.typography.labelSmall) } }
+                    }
                     TextButton({ chapters = true }, enabled = session != null) { Text("Chapters") }
                     TextButton({ appearance = true }, enabled = session != null) { Text("Appearance") }
                 }
@@ -124,7 +144,7 @@ class EpubActivity : AppCompatActivity() {
                                     onClick(label = "Show reader controls") { controls = true; controlFocusRequests++; true }
                                 }
                             },
-                        onCenterTap = { controls = !controls }, onLocation = vm::location)
+                        onCenterTap = { modality = InputModality.TOUCH; controls = !controls }, onLocation = vm::location)
                 } else Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     val error = state.error
                     if (error == null) CircularProgressIndicator()
@@ -138,10 +158,14 @@ class EpubActivity : AppCompatActivity() {
                     // Page controls follow the reading direction: in right-to-left reading, Next sits on the left.
                     if (controls) CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
                         Row(Modifier.fillMaxWidth().onFocusChanged { bottomFocused = it.hasFocus }, horizontalArrangement = Arrangement.SpaceBetween) {
-                            TextButton(controller::previous) { Text("Previous") }
+                            TextButton(controller::previous, Modifier.let { m -> previousHint?.let { m.semantics { contentDescription = "Previous, $it" } } ?: m }) {
+                                previousHint?.let { InputKeycap(it, Modifier.padding(end = 4.dp)) }; Text("Previous")
+                            }
                             Text("${item?.progress ?: 0}%", Modifier.align(Alignment.CenterVertically),
                                 style = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr))
-                            TextButton(controller::next) { Text("Next") }
+                            TextButton(controller::next, Modifier.let { m -> nextHint?.let { m.semantics { contentDescription = "Next, $it" } } ?: m }) {
+                                Text("Next"); nextHint?.let { InputKeycap(it, Modifier.padding(start = 4.dp)) }
+                            }
                         }
                     }
                 }

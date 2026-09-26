@@ -22,6 +22,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -29,6 +31,7 @@ import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.d4guilar.shelfos.core.designsystem.InputKeycap
 import com.d4guilar.shelfos.core.input.*
 import com.d4guilar.shelfos.core.reader.FitMode
 import com.d4guilar.shelfos.core.reader.capabilities
@@ -49,6 +52,9 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
     val item = state.item
     var controls by rememberSaveable { mutableStateOf(true) }
     var appearance by rememberSaveable { mutableStateOf(false) }
+    // Recent input modality (Phase 2A.1): only real touch gestures and real key events update this, never a
+    // button click, since a click may itself have been keyboard/gamepad-activated.
+    var modality by rememberSaveable { mutableStateOf(InputModality.TOUCH) }
     var topFocused by remember { mutableStateOf(false) }
     var bottomFocused by remember { mutableStateOf(false) }
     var controlFocusRequests by remember { mutableIntStateOf(0) }
@@ -59,6 +65,9 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
     val pageFocus = remember { FocusRequester() }
     val firstControl = remember { FocusRequester() }
     val rtl = readingDirection(item?.category ?: MediaCategory.BOOK, state.preferences.direction) == ReadingDirection.RTL
+    val previousHint = InputHints.hint(ShelfCommand.PREVIOUS_PAGE, modality, rtl)
+    val nextHint = InputHints.hint(ShelfCommand.NEXT_PAGE, modality, rtl)
+    val backHint = InputHints.hint(ShelfCommand.BACK, modality, rtl)
 
     fun hideControls() { controls = false; pageFocus.requestFocus() }
     fun toggleControls(moveFocus: Boolean) {
@@ -79,6 +88,10 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
         val native = event.nativeKeyEvent
         when (val command = native.readerCommand(rtl, controls && (topFocused || bottomFocused))) {
             ShelfCommand.NEXT_PAGE, ShelfCommand.PREVIOUS_PAGE, ShelfCommand.OPEN_MENU, ShelfCommand.BACK -> {
+                // Back is a universal dismissal action available identically from every modality; letting it
+                // update the tracked modality would flip an active controller/keyboard hint set away from
+                // itself on every Back press (confirmed on RP5 hardware: BACK defaults to KEYBOARD below).
+                if (command != ShelfCommand.BACK) modality = native.inputModality()
                 if (native.action == KeyEvent.ACTION_UP) when (command) {
                     ShelfCommand.NEXT_PAGE -> vm.turn(1)
                     ShelfCommand.PREVIOUS_PAGE -> vm.turn(-1)
@@ -96,6 +109,10 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
             TextButton({ appearance = true }, enabled = item != null) { Text("Appearance") }
             TextButton({ scale = if (scale == 1f) 2f else 1f; panX = 0f; panY = 0f }) { Text(if (scale == 1f) "Zoom in" else "Reset zoom") }
             TextButton({ hideControls() }) { Text("Hide controls") }
+            // Input-discovery hint (Phase 2A.1): decorative only, since no single existing control is exactly
+            // "Back" to merge this into; the system Back gesture/button remains self-describing to TalkBack.
+            backHint?.let { Row(Modifier.padding(start = 4.dp).testTag("back_hint").clearAndSetSemantics { }, horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically) { InputKeycap(it); Text("Back", color = t.colors.secondary, style = t.typography.labelSmall) } }
         }
         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().focusRequester(pageFocus).focusable().testTag("reader_page")
             .semantics {
@@ -109,7 +126,8 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                 }
             }
             .pointerInput(state.page, rtl) {
-                detectTapGestures(onDoubleTap = { scale = if (scale == 1f) 2f else 1f; panX = 0f; panY = 0f }, onTap = { point ->
+                detectTapGestures(onDoubleTap = { modality = InputModality.TOUCH; scale = if (scale == 1f) 2f else 1f; panX = 0f; panY = 0f }, onTap = { point ->
+                    modality = InputModality.TOUCH
                     when {
                         point.x < size.width * .25f -> vm.turn(if (rtl) 1 else -1)
                         point.x > size.width * .75f -> vm.turn(if (rtl) -1 else 1)
@@ -139,8 +157,10 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                         }
                     } while (event.changes.any { it.pressed })
                     // Swiping toward the reading direction's start turns forward: left in LTR, right in RTL.
-                    if (!transformed && abs(horizontal) > 64.dp.toPx() && abs(horizontal) > abs(vertical))
+                    if (!transformed && abs(horizontal) > 64.dp.toPx() && abs(horizontal) > abs(vertical)) {
+                        modality = InputModality.TOUCH
                         vm.turn(if ((horizontal > 0) == rtl) 1 else -1)
+                    }
                 }
             }, contentAlignment = Alignment.Center) {
             state.bitmap?.let { bitmap ->
@@ -166,12 +186,14 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
         if (controls) CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
             Column(Modifier.padding(horizontal = 8.dp).onFocusChanged { bottomFocused = it.hasFocus }) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton({ vm.turn(-1) }, enabled = state.page > 0) { Text("Previous") }
+                    TextButton({ vm.turn(-1) }, Modifier.let { m -> previousHint?.let { m.semantics { contentDescription = "Previous, $it" } } ?: m },
+                        enabled = state.page > 0) { previousHint?.let { InputKeycap(it, Modifier.padding(end = 4.dp)) }; Text("Previous") }
                     // Numbers keep left-to-right order inside the mirrored row ("3 / 193", never "193 / 3").
                     if (state.count > 0) Text("${(sliderTarget?.roundToInt() ?: state.page) + 1} / ${state.count}", Modifier.testTag("page_number"),
                         style = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr))
                     else if (state.loading && state.error == null) Text("Opening…", color = t.colors.secondary)
-                    TextButton({ vm.turn(1) }, enabled = state.page + 1 < state.count) { Text("Next") }
+                    TextButton({ vm.turn(1) }, Modifier.let { m -> nextHint?.let { m.semantics { contentDescription = "Next, $it" } } ?: m },
+                        enabled = state.page + 1 < state.count) { Text("Next"); nextHint?.let { InputKeycap(it, Modifier.padding(start = 4.dp)) } }
                 }
                 if (state.count > 1) Slider(sliderTarget ?: state.page.toFloat(), { sliderTarget = it },
                     valueRange = 0f..(state.count - 1).toFloat(),

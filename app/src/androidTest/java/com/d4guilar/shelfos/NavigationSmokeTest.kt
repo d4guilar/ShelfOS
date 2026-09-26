@@ -176,6 +176,82 @@ class NavigationSmokeTest {
         compose.onNodeWithTag("favorite_action").assertExists()
     }
 
+    /**
+     * Phase 2A.1: a controller button press makes the derived hints (from the real ShelfCommand/InputMapper
+     * bindings, not a hardcoded label) appear as merged accessibility descriptions on Previous/Next and a
+     * decorative Back keycap; a real touch tap clears them again. Keycaps are deliberately stripped of their
+     * own semantics (see decorativeBackHintIsNotItsOwnAccessibilityStop below), so presence is verified via the
+     * merged button description and the decorative row's testTag, not raw onNodeWithText against a keycap.
+     */
+    @Test fun controllerInputShowsControllerHintsThenTouchClearsThem() {
+        awaitLibrary()
+        read("test-pdf")
+        awaitPage("1 / 3")
+        compose.onAllNodesWithTag("back_hint").assertCountEquals(0) // Initial modality is TOUCH: no hints yet.
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BUTTON_R1)
+        awaitPage("2 / 3")
+        compose.onNode(hasContentDescription("Next, R1")).assertExists()
+        compose.onNode(hasContentDescription("Previous, L1")).assertExists()
+        compose.onNodeWithTag("back_hint").assertExists()
+        // A real touch tap (left quarter: page-turn zone) clears controller hints back to none.
+        compose.onNodeWithTag("reader_page").performTouchInput { click(percentOffset(0.1f, 0.5f)) }
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("back_hint").fetchSemanticsNodes().isEmpty() }
+    }
+
+    /** Same hint-derivation contract for keyboard modality, including the RTL-aware arrow labels. */
+    @Test fun keyboardInputShowsKeyboardHintsInFixedReader() {
+        awaitLibrary()
+        read("test-pdf")
+        awaitPage("1 / 3")
+        // PAGE_DOWN, not an arrow/D-pad key, is unambiguously keyboard-only regardless of the emulator's
+        // virtual-keyboard device source flags (DPAD_LEFT/RIGHT can be ambiguous with a real gamepad's D-pad).
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_PAGE_DOWN)
+        awaitPage("2 / 3")
+        compose.onNode(hasContentDescription("Next, →")).assertExists()
+        compose.onNode(hasContentDescription("Previous, ←")).assertExists()
+        compose.onNodeWithTag("back_hint").assertExists()
+    }
+
+    /** Hints are chrome-gated: hiding controls must remove them from the tree, not merely visually hide them. */
+    @Test fun hiddenChromeNeverExposesInputHints() {
+        awaitLibrary()
+        read("test-pdf")
+        awaitPage("1 / 3")
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BUTTON_R1)
+        awaitPage("2 / 3")
+        compose.onNodeWithTag("back_hint").assertExists()
+        compose.onNodeWithText("Hide controls").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("page_number").fetchSemanticsNodes().isEmpty() }
+        compose.onAllNodesWithTag("back_hint").assertCountEquals(0)
+        compose.onAllNodes(hasContentDescription("Next, R1")).assertCountEquals(0)
+    }
+
+    /** The decorative Back hint must not become its own noisy accessibility stop. */
+    @Test fun decorativeBackHintIsNotItsOwnAccessibilityStop() {
+        awaitLibrary()
+        read("test-pdf")
+        awaitPage("1 / 3")
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BUTTON_R1)
+        awaitPage("2 / 3")
+        compose.onNodeWithTag("back_hint").assertExists() // Present in the tree (so tests can locate it)…
+        // The default (merged) tree is what accessibility services actually see; clearAndSetSemantics wipes
+        // the "Back" text from it (useUnmergedTree would defeat this check by exposing the pre-merge node).
+        compose.onAllNodesWithText("Back").assertCountEquals(0)
+        compose.onNodeWithTag("back_hint").assert(!hasClickAction()) // …and is not an actionable duplicate.
+    }
+
+    /** Keyboard hints in the EPUB reader, matching the same command-derived contract as the Original reader. */
+    @Test fun keyboardInputShowsKeyboardHintsInEpubReader() {
+        awaitLibrary()
+        read("test-epub")
+        awaitTag("epub_reader", 30_000)
+        compose.waitUntil(30_000) { compose.onAllNodesWithTag("epub_library").fetchSemanticsNodes().isNotEmpty() }
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_PAGE_DOWN)
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("back_hint").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasContentDescription("Next, →")).assertExists()
+        compose.onNode(hasContentDescription("Previous, ←")).assertExists()
+    }
+
     @Test fun mangaReadsRightToLeftWithKeyboardAndPageKeysStaySemantic() {
         awaitLibrary()
         compose.onNodeWithText("Manga").performClick()
