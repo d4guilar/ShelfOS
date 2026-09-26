@@ -53,7 +53,9 @@ class EpubRecreationTest {
             // Keys go to the focused window: the reader's window must have focus again now the dialog is gone.
             compose.waitUntil(5_000) { scenario.read { it.hasWindowFocus() } }
             // Hidden reader controls stay hidden through a real rotation, which the system performs by relaunching.
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            // Hide chrome via OPEN_MENU (KEYCODE_MENU), not Back: under ADR-0023, Back from visible chrome exits
+            // the reader instead of hiding it, which this test isn't exercising (see NavigationSmokeTest for that).
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_MENU)
             compose.waitUntil(5_000) { compose.onAllNodesWithTag("epub_library").fetchSemanticsNodes().isEmpty() }
             // Request whichever orientation the device is not already in, so this also rotates hardware that is
             // locked to landscape by default (for example handhelds with auto-rotate off).

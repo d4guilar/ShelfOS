@@ -1,5 +1,25 @@
 # Documentation Changelog
 
+## Post-merge maintenance: EpubRecreationTest Back-semantics test debt (2026-09-26)
+
+- Recorded Phase 2A.1 as **accepted and merged to `main`** (PR #5, squash
+  commit `44c8f10600f93f875a3cfb685c27f47c25929c29`), following final Codex
+  confirmation after the R3 cleanup below, in `PHASE_2_PLAN.md`, `ROADMAP.md`
+  and `VALIDATION.md`.
+- Fixed the stale Back-semantics assumption in `EpubRecreationTest.kt`'s
+  `readerUiStateSurvivesRecreationAndAppliedAppearanceReloads` test on branch
+  `maintenance/epub-recreation-back-test`: it pressed `KEYCODE_BACK` while
+  chrome was visible, expecting chrome to hide and the reader to stay open — a
+  pre-[ADR-0023](adr/0023-reader-chrome-back-semantics.md) assumption that
+  Phase 2A's accepted Back contract (visible chrome + Back → exit) had already
+  made stale, previously recorded as out-of-scope test debt in the R3 cleanup
+  below. Replaced with a `KEYCODE_MENU` press (`ShelfCommand.OPEN_MENU`),
+  matching the existing chrome-toggle pattern in `NavigationSmokeTest.kt`. No
+  production code changed; Back's reveal-then-exit contract is unchanged.
+- Reclassified this issue in `VALIDATION.md`/`PHASE_2_PLAN.md` as test debt
+  from Phase 2A's Back-contract change, now corrected — not an open item, and
+  never a Phase 2A.1 production defect.
+
 ## Phase 2A.1 R3 cleanup (2026-09-25)
 
 - Closed all four non-blocking findings from a second independent Codex
