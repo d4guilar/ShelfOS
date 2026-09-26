@@ -1,5 +1,32 @@
 # Validation
 
+## Phase 2A.1 owner physical-controller verification (2026-09-25)
+
+The owner manually pressed the Retroid Pocket 5's actual physical controller
+controls (not an ADB-injected key event) while a reader was open with chrome
+visible. The physical controller inputs activated the corresponding ShelfOS
+controller-hint badges/actions in the reader UI as expected.
+
+This is **owner-verified physical hardware evidence**, distinct from the
+Codex-side RP5 evidence recorded elsewhere in this document, which was real
+hardware *execution* driven through ADB-injected key events and screen taps,
+not physically pressing the device's own buttons by hand. Codex's review did
+not independently press the RP5's physical controls; that distinction stands
+as previously recorded.
+
+The owner's statement does not specify an exact per-button sequence (which
+buttons, which reader format, how many presses), so none is recorded here
+beyond what was actually stated: physical controller input worked and
+produced the expected controller-hint UI response.
+
+**Keyboard evidence remains unchanged by this note.** Keyboard hint/input
+behavior has automated (JVM) and injected-key (emulator and RP5, over ADB)
+validation only. No physical tablet keyboard has been tested, on the RP5 or
+otherwise. This owner physical-controller check does not extend to, and must
+not be read as implying, physical keyboard validation — controller and
+keyboard are independent input modalities in this feature and are evidenced
+separately.
+
 ## Phase 2A.1 R3 cleanup validation (2026-09-25)
 
 A second independent Codex review of the remediated 2A.1 implementation

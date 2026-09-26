@@ -290,7 +290,11 @@ for comics:
       match Next/Previous, a real touch tap clears hints, a controller press
       restores them, Escape establishes KEYBOARD hints, and raw Back reveals
       chrome while leaving the established modality untouched. See
-      `VALIDATION.md`.
+      `VALIDATION.md`. Separately, the owner has manually pressed the RP5's
+      actual physical controller controls and confirmed they activate the
+      corresponding controller-hint UI — owner-verified physical evidence,
+      distinct from the ADB-injected evidence above; see `VALIDATION.md`'s
+      "Phase 2A.1 owner physical-controller verification" entry.
 - [x] Keyboard hint validation: automated (emulator + RP5) via `PAGE_DOWN`/
       `PAGE_UP`/`ESCAPE` injection — `PAGE_DOWN`/`PAGE_UP` chosen over
       `DPAD_LEFT/RIGHT` for the page-turn cases specifically because the
