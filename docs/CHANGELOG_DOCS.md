@@ -29,9 +29,12 @@
   INPUT_SYSTEM.md` §10 after an independent Codex review found the initial
   2A.1 implementation's Back/modality fix itself incorrect: it filtered on
   the *resolved semantic command* (`ShelfCommand.BACK`), which suppressed
-  legitimate Escape/gamepad-B modality updates without addressing the actual
-  bug (raw system Back, which `InputMapper` maps to no command at all,
-  falling through to an unguarded `KEYBOARD` default).
+  legitimate Escape/gamepad-B modality updates. Raw system Back maps to no
+  `ShelfCommand` at all (`InputMapper` returns `null` for `InputKey.BACK`), so
+  it never entered that semantic-command branch in the first place, in either
+  the original implementation or this fix — the defect was Escape and
+  gamepad B, which do produce `ShelfCommand.BACK`, being wrongly excluded from
+  their legitimate `KEYBOARD`/`CONTROLLER` modality updates by that guard.
 - Narrowed the previously overstated "hints can never drift" wording to
   "validated against InputMapper for candidate bindings the catalog covers" —
   a future rebinding is not automatically discoverable unless also added to

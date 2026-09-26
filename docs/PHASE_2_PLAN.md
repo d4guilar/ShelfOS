@@ -39,9 +39,11 @@ reader.
 
 Phase 2 builds on the accepted Phase 1 reader foundation rather than
 reimplementing it. It is broken into five increments (2A, 2A.1, 2B, 2C, 2D),
-each independently mergeable and gated by its own acceptance criteria. Only 2A
-is implemented as of this document's latest revision; 2A.1 is documented as an
-accepted future direction but not implemented (see its section below).
+each independently mergeable and gated by its own acceptance criteria. 2A is
+accepted and merged. 2A.1's implementation is complete and has been through
+two independent review rounds (see its section below and `VALIDATION.md` for
+the full history) — not yet merged or accepted pending a final targeted
+confirmation. 2B/2C/2D remain planned only; none of their work has started.
 
 ## 3. Increments
 
@@ -515,8 +517,8 @@ field validation.**
 | Rapid repeated input | Rapidly toggle chrome and press Back/turn pages repeatedly; confirm no crash, no stuck state | Emulator, RP5 |
 | Resume/reopen | Open a publication, turn pages, exit via the new Back contract, reopen from Library, confirm position resumed | Emulator, RP5 |
 | Compact vs. expanded layout | Repeat chrome/Back checks in both phone (compact) and tablet (expanded) window sizes | Emulator |
-| Controller hint discovery | Press a gamepad button (R1/L1/B); confirm hints appear next to Previous/Next/Back, matching the actual binding | Emulator (injected), RP5 (real hardware) |
-| Keyboard hint discovery | Press a keyboard key (Page Down/Up, Escape); confirm hints appear as arrows/Esc, matching the actual binding, including under RTL | Emulator (injected), RP5 (real hardware) |
+| Controller hint discovery | Press a gamepad button (R1/L1/B); confirm hints appear next to Previous/Next/Back, matching the actual binding | Emulator (injected/instrumented), RP5 (real-device execution over ADB), RP5 (owner-verified physical controller buttons) |
+| Keyboard hint discovery | Press a keyboard key (Page Down/Up, Escape); confirm hints appear as arrows/Esc, matching the actual binding, including under RTL | Emulator (injected/simulated), RP5 (injected/simulated over ADB) — no physical keyboard tested yet, on RP5 or otherwise |
 | Modality switching | Alternate controller input, keyboard input and a real touch tap; confirm hints switch/clear correctly each time, including across a Back press | Emulator, RP5 |
 | Tablet reader layout sanity (optional/periodic) | Open each format, check chrome scale, interaction visibility, obvious performance regression | Galaxy Tab A |
 

@@ -257,10 +257,11 @@ class NavigationSmokeTest {
     }
 
     /**
-     * Codex remediation regression check: the original defect excluded ShelfCommand.BACK from updating modality,
-     * which incidentally also blocked Escape/gamepad B (see above) but did NOT stop the real bug — raw system
-     * Back defaulting to KEYBOARD, since it never reaches that branch at all (InputMapper maps it to no command).
-     * This asserts raw Back genuinely leaves an established CONTROLLER modality untouched.
+     * Codex remediation regression check: the original semantic-level exclusion (skip modality updates when the
+     * resolved command equaled ShelfCommand.BACK) incorrectly suppressed Escape/gamepad B's legitimate
+     * KEYBOARD/CONTROLLER modality updates (see above) — raw system Back itself maps to no ShelfCommand at all
+     * (InputMapper returns null for InputKey.BACK) and so never entered that branch in either version. This test
+     * asserts raw Back preserves an already-established CONTROLLER modality rather than disturbing it.
      */
     @Test fun rawSystemBackNeverChangesModalityInFixedReader() {
         awaitLibrary()
