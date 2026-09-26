@@ -76,6 +76,26 @@ object OriginalFixtures {
         } }
         return item(file, "test-epub-chapters", PublicationFormat.EPUB)
     }
+    /** One resource, two real TOC entries pointing into it at different anchors — for Phase 2B.1's secondary-
+     * fragment/duplicate-row-identity coverage. Exercises the real Readium path (`locatorFromLink`/navigator
+     * `currentLocator`) for the case a synthetic string-only unit test cannot: whether Readium's own real
+     * fragment resolution actually agrees between a TOC entry and the position reached by navigating to it. */
+    fun epubWithFragmentedChapter(context: Context): LibraryItem {
+        val file = File(context.filesDir, "publications/test-original-fragments.epub").also { it.parentFile!!.mkdirs() }
+        val sectionOne = (1..30).joinToString("") { "<p>Section One paragraph $it. Original ShelfOS test content before the second section.</p>" }
+        val sectionTwo = (1..30).joinToString("") { "<p>Section Two paragraph $it. Original ShelfOS test content after the first section.</p>" }
+        val entries = mapOf(
+            "mimetype" to "application/epub+zip",
+            "META-INF/container.xml" to """<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>""",
+            "content.opf" to """<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:shelfos-fragments-test</dc:identifier><dc:title>Fragments Test Book</dc:title><dc:language>en</dc:language><meta property="dcterms:modified">2026-09-26T00:00:00Z</meta></metadata><manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/></manifest><spine><itemref idref="chapter"/></spine></package>""",
+            "chapter.xhtml" to """<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter</title></head><body><h1 id="section-one">Section One</h1>$sectionOne<h1 id="section-two">Section Two</h1>$sectionTwo</body></html>""",
+            "nav.xhtml" to """<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Contents</title></head><body><nav epub:type="toc"><ol><li><a href="chapter.xhtml#section-one">Section One</a></li><li><a href="chapter.xhtml#section-two">Section Two</a></li></ol></nav></body></html>""",
+        )
+        ZipOutputStream(file.outputStream()).use { zip -> entries.forEach { (name, text) ->
+            zip.putNextEntry(ZipEntry(name)); zip.write(text.toByteArray()); zip.closeEntry()
+        } }
+        return item(file, "test-epub-fragments", PublicationFormat.EPUB)
+    }
     private fun item(file: File, id: String, format: PublicationFormat) = LibraryItem(id, "Original ${format.name} fixture", "ShelfOS test",
         MediaCategory.BOOK, "test:$id", format, file.name, file.length(), managedPath = file.path)
 }

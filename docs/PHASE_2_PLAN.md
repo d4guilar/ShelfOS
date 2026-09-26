@@ -965,6 +965,89 @@ INDEPENDENT REVIEW, not yet accepted:**
   Room migration, `SearchService` UI, custom fonts, or any other 2B.2–2B.4
   work.
 
+**2B.1 R2/R3 remediation (2026-09-26, same branch, after independent Codex
+review returned CHANGES REQUIRED) — still IMPLEMENTED, PENDING INDEPENDENT
+REVIEW, not accepted:**
+
+- **R2.1 — secondary locator fragments were ignored.** `matchChapter` checked
+  only `currentFragments.firstOrNull()`. `Locator.Locations.fragments` is not
+  guaranteed to put the fragment that actually corresponds to a TOC entry
+  first, so a real match could be missed. Fixed: every locator fragment is
+  now checked, in order, and the first one that exactly matches a
+  same-resource chapter's own fragment wins; only once *none* of them match
+  does the accepted fallback (no-fragment entry, else first same-resource
+  entry) run. Proven with a new JVM test,
+  `laterLocatorFragmentsAreConsideredWhenEarlierOnesDoNotMatchAnyChapter`
+  (`EpubChapterMatchTest`), which fails against the old, pre-fix logic and
+  passes against the corrected version.
+- **R2.2 — raw href was not a unique chapter-row identity.** `matchChapter`
+  returned only a raw `href`, and `EpubActivity` compared rows by
+  `chapter.href == currentChapterHref` — two flattened TOC rows sharing one
+  href (a redundant/duplicate TOC entry, or two entries that happen to carry
+  the same fragment) could therefore both read as "current." Fixed:
+  `EpubChapter` gained `id: Int`, the row's ordinal position in the flattened
+  TOC walk — ephemeral, in-memory only, never persisted (not Room, not
+  `rememberSaveable`) — assigned via the same `size`-before-`add()` idiom the
+  existing `"Chapter ${size + 1}"` title fallback already used. `matchChapter`
+  is otherwise unchanged in shape (still returns the matched `EpubChapter`,
+  which now carries a reliable `id`); `EpubSession.currentChapterHref(...)`
+  was renamed to `currentChapterId(...)` and now returns `.id`; `EpubActivity`
+  compares `chapter.id == currentChapterId`. Chapter navigation is
+  unaffected — `EpubSession.chapter(href)`/`EpubController.chapter()` still
+  resolve navigation by the TOC link's own raw href, exactly as before.
+  Proven with a new JVM test,
+  `duplicateHrefRowsResolveToExactlyOneStableIdNotBothByHrefEquality`, which
+  constructs two rows with an identical `href` and asserts they still have
+  distinct `id`s and that exactly one is selected by the fixed comparison
+  (while explicitly showing the *old* href-based comparison would have
+  wrongly counted both as current).
+- **R3.1 — fragment behavior lacked real integration coverage; empirically
+  confirmed navigator limitation, not assumed away.** Added
+  `OriginalFixtures.epubWithFragmentedChapter` (one real XHTML resource, two
+  real TOC entries pointing into it at different anchors,
+  `chapter.xhtml#section-one`/`#section-two`, with matching element `id`s in
+  the markup) and an instrumented test exercising it,
+  `EpubChapterHighlightTest.sameResourceFragmentedChapterAlwaysHasExactlyOneCurrentRowAndNavigationStillWorks`.
+  **Direct investigation during this remediation** (real `Locator` JSON
+  logged from `EpubSurface`'s `onLocation`, for both the `Navigator.go(Link,
+  animated)` and `Navigator.go(Locator, animated)` overloads) found that the
+  pinned Readium 3.4.0 EPUB navigator's own `currentLocator`, in its default
+  paginated (non-scroll) mode, **never populates `Locations.fragments` after
+  navigating to a fragment** — it reports only `progression`/`position`/
+  `totalProgression`. `Publication.locatorFromLink(link)` *does* correctly
+  resolve each TOC entry's own fragment (verified: the two fixture links
+  round-tripped to `fragments = ["section-one"]`/`["section-two"]` exactly as
+  expected) — the gap is specifically in what the live navigator reports back
+  after navigation, not in TOC resolution. This is a real, verified
+  constraint of the current navigator/configuration, not a ShelfOS matching
+  defect: the multi-fragment algorithm (R2.1 above) is correct and fully
+  proven by synthetic-locator JVM tests, ready for if/when a real locator
+  does carry fragments (a future Readium version, a different reading mode,
+  or a different code path). Building an HTML-position heuristic to work
+  around this now — inferring "nearest preceding heading" from
+  resource-relative `progression` without a comparable per-TOC-entry value —
+  would be exactly the positional-accuracy claim already ruled out in the
+  original implementation record above, so it was not attempted. **Practical
+  consequence:** for a same-resource, multi-fragment TOC, live in-app
+  navigation today lands on the fallback entry (the first same-resource
+  entry in TOC order) regardless of which same-resource fragment was
+  actually navigated to, until the navigator's own fragment reporting
+  changes. The instrumented test asserts what is honestly true given this —
+  exactly one row is ever marked current (the row-identity fix, R2.2,
+  verified against a *real* same-resource pair, not just synthetic strings),
+  and that selecting either same-resource entry still navigates and closes
+  the dialog correctly — rather than asserting the originally-hoped-for
+  "second fragment becomes current," which this investigation showed is not
+  presently true. See `matchChapter`'s doc comment
+  (`core.reader.EpubReader.kt`) and the test's own doc comment for the same
+  assessment recorded in code.
+- **R3.2 — `VALIDATION.md` now directly records the completed full Gradle
+  gate result** (see its own updated entry) instead of deferring to "see
+  final report."
+- **Scope unchanged:** no bookmarks, Room migration, `SearchService` UI,
+  custom fonts, new dependencies, or any other 2B.2–2B.4 work was added
+  during this remediation.
+
 **2B.2 — Bookmarks + Room v2 → v3 migration.**
 Room migration 2→3 (`bookmark` table), repository CRUD, "Add bookmark"/list/
 jump/delete UI in the EPUB reader chrome and/or a bookmarks sheet. The only
@@ -1175,11 +1258,24 @@ ship without unit tests for all five:**
    comment (`core.reader.EpubReader.kt`) for the full assessment.
 Also added beyond the plan's five: a different-resource never matches, an
 empty chapter list never matches, a fragment matching no TOC entry still uses
-the resource fallback rather than reporting no chapter, matching is
-deterministic across repeated calls, and only the first `Locations.fragments`
-entry is considered (11 JVM tests total, `EpubChapterMatchTest`, all pass).
-API 35: yes (`shelfos-phase0`). RP5: not required (no new chrome reachability
-surface, per §2B.7) and not performed in this pass.
+the resource fallback rather than reporting no chapter, and matching is
+deterministic across repeated calls (14 JVM tests total, `EpubChapterMatchTest`,
+all pass). **R2/R3 remediation (2026-09-26), after independent Codex review:**
+matching now checks every locator fragment in order rather than only the
+first (`laterLocatorFragmentsAreConsideredWhenEarlierOnesDoNotMatchAnyChapter`),
+current-chapter identity uses `EpubChapter.id` (stable, in-memory, flattened
+ordinal position) rather than `href` so duplicate-href rows cannot both read
+as current (`duplicateHrefRowsResolveToExactlyOneStableIdNotBothByHrefEquality`),
+and a real same-resource fragmented EPUB fixture
+(`OriginalFixtures.epubWithFragmentedChapter`) plus instrumented test now
+exist — which also empirically confirmed a real Readium navigator limitation
+(fragments are never reported back on `currentLocator` after navigation in
+this configuration), recorded above and in `matchChapter`'s doc comment
+rather than assumed away. Fallback remains unchanged: same-resource
+no-fragment entry, else first same-resource entry; still no
+nearest-preceding-heading positional claim is made. API 35: yes
+(`shelfos-phase0`). RP5: not required (no new chrome reachability surface,
+per §2B.7) and not performed in this pass.
 
 **2B.2 (bookmarks):**
 user-visible: add/list/jump/delete bookmarks for the open EPUB. persistence:

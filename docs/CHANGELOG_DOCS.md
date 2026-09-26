@@ -1,5 +1,50 @@
 # Documentation Changelog
 
+## Phase 2B.1 R2/R3 remediation (2026-09-26)
+
+- Fixed two independent-Codex-review findings on the same branch
+  (`phase-2/epub-chapters`), without resetting/dropping the prior commit:
+  (R2.1) `matchChapter` now checks every locator fragment in order, not just
+  the first, since `Locator.Locations.fragments` is not guaranteed to list
+  the corresponding fragment first; (R2.2) current-chapter identity now uses
+  a new `EpubChapter.id` (a stable, in-memory-only, flattened-TOC-position
+  ordinal) instead of `href`, so two rows that happen to share a raw href
+  (a redundant/duplicate TOC entry) can no longer both read as "current" —
+  chapter navigation itself is unaffected, still keyed on the raw href
+  exactly as before.
+- Added a real same-resource fragmented EPUB fixture
+  (`OriginalFixtures.epubWithFragmentedChapter`, two TOC entries into one
+  XHTML resource at different real anchors) and an instrumented test
+  exercising it, per the R3 finding that fragment behavior lacked real
+  integration coverage.
+- **Discovered and recorded a real, empirically-verified Readium navigator
+  limitation while building that fixture's test:** the pinned Readium 3.4.0
+  EPUB navigator's own `currentLocator`, in its default paginated mode, never
+  reports `Locations.fragments` after navigating to a fragment (verified
+  directly via logged real `Locator` JSON, for both the `Link`- and
+  `Locator`-based `Navigator.go(...)` overloads) — only
+  `Publication.locatorFromLink` resolves a TOC entry's own fragment
+  correctly. This means the (correctly implemented and unit-tested)
+  multi-fragment matching fix is not yet observably exercised by real
+  in-app navigation; documented in `matchChapter`'s doc comment
+  (`core.reader.EpubReader.kt`), the new instrumented test's own doc comment,
+  and `docs/PHASE_2_PLAN.md`'s 2B.1 R2/R3 remediation record, rather than
+  silently assumed away or hidden behind a test asserting the
+  originally-hoped-for (but not actually true) behavior. No HTML-position
+  heuristic was built to work around it, per this remediation's explicit
+  scope guard.
+- Directly recorded the completed full Gradle gate result in
+  `VALIDATION.md` (R3 finding: the prior entry deferred to "see final
+  report" instead of stating the result there).
+- Re-ran the full instrumented package; one flaky failure
+  (`NavigationSmokeTest.mangaReadsRightToLeftWithKeyboardAndPageKeysStaySemantic`,
+  an `ActivityScenario` teardown timeout after a 34-minute
+  `SyntheticLoadAcceptanceTest` in the same run exhausted emulator
+  resources) was confirmed as device-load flakiness, not a regression, by
+  re-running `NavigationSmokeTest` alone (26/26 passed).
+- 2B.1 remains implemented, not yet re-reviewed by Codex, not merged. 2B.2
+  (bookmarks)/2B.3 (search)/2B.4 (custom fonts) are untouched.
+
 ## Phase 2B.1: chapter-navigation polish + scroll/typography/page-color closure (2026-09-26)
 
 - Recorded 2B's discovery/implementation-planning pass as **accepted and

@@ -87,13 +87,16 @@ internal fun sanitizeEpubHtml(bytes: ByteArray): ByteArray {
 }
 
 /**
- * One flattened Chapters-dialog row. [href] is the TOC link's own raw href, used for navigation
- * (matches [EpubSession.chapter]/[EpubController.chapter] exactly as before this existed). [resource]/[fragment]
- * are Readium's own canonical resource/fragment split for this link (`Publication.locatorFromLink`), used only
- * for current-chapter matching against a live [Locator] — never for navigation, so navigation behavior is
- * unchanged. [depth] is nesting depth (capped), used for indentation only.
+ * One flattened Chapters-dialog row. [id] is this row's stable identity — its ordinal position in the flattened
+ * TOC walk, ephemeral/in-memory only (never persisted) — used so current-chapter matching can identify *one*
+ * specific row even when two rows share the same [href] (a redundant/duplicate TOC entry, or two entries using
+ * the same fragment); comparing by [href] alone cannot distinguish them. [href] is the TOC link's own raw href,
+ * used for navigation (matches [EpubSession.chapter]/[EpubController.chapter] exactly as before this existed) —
+ * navigation is unaffected by [id]. [resource]/[fragment] are Readium's own canonical resource/fragment split for
+ * this link (`Publication.locatorFromLink`), used only for current-chapter matching against a live [Locator].
+ * [depth] is nesting depth (capped), used for indentation only.
  */
-data class EpubChapter(val title: String, val href: String, val depth: Int, val resource: String, val fragment: String?)
+data class EpubChapter(val id: Int, val title: String, val href: String, val depth: Int, val resource: String, val fragment: String?)
 
 class EpubSession internal constructor(internal val publication: Publication) : AutoCloseable {
     val chapters: List<EpubChapter> = buildList {
@@ -105,7 +108,7 @@ class EpubSession internal constructor(internal val publication: Publication) : 
             // raw href (unaffected), it just falls back to that raw href for matching too, so it simply never
             // matches a live locator rather than crashing or being dropped from the list.
             val canonical = publication.locatorFromLink(link)
-            add(EpubChapter(link.title ?: "Chapter ${size + 1}", link.href.toString(), depth,
+            add(EpubChapter(size, link.title ?: "Chapter ${size + 1}", link.href.toString(), depth,
                 canonical?.href?.toString() ?: link.href.toString(), canonical?.locations?.fragments?.firstOrNull()))
             addLinks(link.children, (depth + 1).coerceAtMost(4))
         } }
@@ -128,30 +131,51 @@ class EpubSession internal constructor(internal val publication: Publication) : 
 
 /**
  * Matches the reader's current position to a TOC entry. Not simple href equality: several chapters can share one
- * resource at different fragments, and the current position may carry no fragment at all. When no fragment lets
- * us pick a specific same-resource entry, this prefers the resource-level entry (no fragment of its own) if one
- * exists, else the first same-resource entry in TOC order. A real position *within* the resource (e.g. "the
- * nearest preceding heading") cannot be determined from Locator/Link data alone without parsing the resource's
- * own HTML content — TOC order and resource-relative progression are not the same axis, and Link carries no
- * position of its own — so this never claims that finer-grained knowledge; see docs/PHASE_2_PLAN.md's 2B.1
- * section for the full assessment. Pure/plain so it is directly unit-testable without any Readium or Android
- * type, mirroring `core.input`'s `resolveInputSources`/`isGamepadSource`.
+ * resource at different fragments, and the current position may carry no fragment at all. `Locator.Locations
+ * .fragments` can itself carry more than one candidate — a pinned-navigator locator is not guaranteed to put the
+ * fragment that actually corresponds to a TOC entry first — so every locator fragment is checked, in order,
+ * before falling back; the first one that exactly matches a same-resource chapter's own fragment wins. Only once
+ * *none* of the locator's fragments match anything does the fallback run: this prefers the resource-level entry
+ * (no fragment of its own) if one exists, else the first same-resource entry in TOC order. A real position
+ * *within* the resource (e.g. "the nearest preceding heading") cannot be determined from Locator/Link data alone
+ * without parsing the resource's own HTML content — TOC order and resource-relative progression are not the same
+ * axis, and Link carries no position of its own — so this never claims that finer-grained knowledge; see
+ * docs/PHASE_2_PLAN.md's 2B.1 section for the full assessment. Pure/plain so it is directly unit-testable without
+ * any Readium or Android type, mirroring `core.input`'s `resolveInputSources`/`isGamepadSource`.
+ *
+ * **Empirically confirmed limitation (2026-09-26, Codex R2/R3 remediation):** `Publication.locatorFromLink(link)`
+ * *does* resolve each TOC entry's own fragment correctly (verified directly against the real pinned navigator —
+ * a two-fragment fixture's two `Link`s round-tripped to `locations.fragments = ["section-one"]`/`["section-two"]`
+ * as expected). But the live navigator's own `currentLocator`, after navigating to either fragment via *either*
+ * `Navigator.go(Link, animated)` or `Navigator.go(Locator, animated)` (both were tried), reports only
+ * `progression`/`position`/`totalProgression` — `locations.fragments` was empty in both cases, for this pinned
+ * Readium 3.4.0 EPUB navigator in its default paginated (non-scroll) mode. This is a real, verified constraint of
+ * the current navigator/configuration, not a ShelfOS defect: the multi-fragment matching above is still correct
+ * and exercised end-to-end by `EpubChapterMatchTest`'s synthetic-locator JVM tests, and remains the right, honest
+ * behavior if a future Readium version, a different reading mode, or a different code path ever does supply
+ * `currentLocator` fragments — but it is not yet observably exercised by real in-app navigation, so a same-
+ * resource, multi-fragment TOC's *live* current-chapter highlight currently tracks by the fallback rule (the
+ * first same-resource entry) regardless of which same-resource fragment was actually navigated to, until that
+ * navigator behavior changes. See `EpubChapterHighlightTest`'s fragmented-fixture test for what is honestly
+ * verified today given this constraint.
  */
 internal fun matchChapter(chapters: List<EpubChapter>, currentResource: String, currentFragments: List<String>): EpubChapter? {
-    val fragment = currentFragments.firstOrNull()
     val sameResource = chapters.filter { it.resource == currentResource }
     if (sameResource.isEmpty()) return null
-    fragment?.let { f -> sameResource.find { it.fragment == f }?.let { return it } }
+    currentFragments.forEach { fragment -> sameResource.find { it.fragment == fragment }?.let { return it } }
     return sameResource.find { it.fragment == null } ?: sameResource.first()
 }
 
 /**
- * Recomputes the highlighted chapter from the same persisted locator JSON `EpubReaderViewModel.location()`
- * already writes, so highlighting needs no separate storage and no second navigator/session reference.
+ * Recomputes the highlighted chapter's stable, in-memory-only row [EpubChapter.id] — never its [EpubChapter.href]
+ * — from the same persisted locator JSON `EpubReaderViewModel.location()` already writes, so highlighting needs
+ * no separate storage and no second navigator/session reference. Comparing by `href` cannot tell two rows with
+ * the same href apart (a redundant/duplicate TOC entry, or two entries sharing one fragment); comparing by this
+ * id can, since each flattened row gets its own regardless of what its href looks like.
  */
-fun EpubSession.currentChapterHref(locatorJson: String?): String? {
+fun EpubSession.currentChapterId(locatorJson: String?): Int? {
     val locator = locatorJson?.let { runCatching { Locator.fromJSON(JSONObject(it)) }.getOrNull() } ?: return null
-    return currentChapter(locator)?.href
+    return currentChapter(locator)?.id
 }
 
 internal fun epubPreferences(p: ReaderPreferences, dark: Boolean, category: MediaCategory): EpubPreferences {

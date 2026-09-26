@@ -93,8 +93,10 @@ class EpubActivity : AppCompatActivity() {
         // Phase 2B.1: the current chapter is derived from the live locator, never stored on its own (AGENTS.md's
         // "not independently stored" contract) — it recomputes on every position update and on recreation once
         // the navigator reports its restored position again, exactly like `item.progress` already does via Room.
+        // Compared by EpubChapter's stable row id, not href: two TOC rows can share one href (a redundant TOC
+        // entry, or two entries with the same fragment), and href-equality would then mark both "current".
         var currentLocatorJson by remember { mutableStateOf<String?>(null) }
-        val currentChapterHref = remember(session, currentLocatorJson) { session?.currentChapterHref(currentLocatorJson) }
+        val currentChapterId = remember(session, currentLocatorJson) { session?.currentChapterId(currentLocatorJson) }
         val rtl = readingDirection(item?.category ?: MediaCategory.BOOK, state.preferences.direction) == ReadingDirection.RTL
         val previousHint = InputHints.hint(ShelfCommand.PREVIOUS_PAGE, modality, rtl)
         val nextHint = InputHints.hint(ShelfCommand.NEXT_PAGE, modality, rtl)
@@ -200,7 +202,7 @@ class EpubActivity : AppCompatActivity() {
                         placeholder = { Text("Filter chapters") }, singleLine = true)
                     if (visible.isEmpty()) Text("No chapters match “$query”.", Modifier.padding(vertical = 16.dp))
                     else LazyColumn(Modifier.testTag("chapters_list")) { items(visible) { chapter ->
-                        val current = chapter.href == currentChapterHref
+                        val current = chapter.id == currentChapterId
                         // The checkmark is its own Text node (not interpolated into the title string) so the
                         // chapter's own title remains exact-matchable by anything that looks it up by title,
                         // current or not — matching how the existing Previous/Next hint keycaps sit beside their

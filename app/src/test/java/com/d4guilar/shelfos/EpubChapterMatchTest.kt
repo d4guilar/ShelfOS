@@ -13,10 +13,16 @@ import org.junit.Test
  * resolution Readium's own navigator uses for `currentLocator`, so these tests exercise `matchChapter` directly
  * with already-normalized resource/fragment strings rather than raw hrefs — that normalization step itself needs
  * a real `Publication`/`Locator` and is covered by instrumented tests instead (see EpubChapterHighlightTest).
+ *
+ * Also not simple href equality for a second reason (Codex R2): two rows can share one raw href, so
+ * [EpubChapter.id] — a stable, in-memory-only, flattened-position identity — is what a caller must compare, not
+ * `href`; see `duplicateHrefRowsResolveToExactlyOneStableIdNotBothByHrefEquality`. And `Locator.Locations
+ * .fragments` is not guaranteed to list the matching fragment first, so every locator fragment is checked in
+ * order; see `laterLocatorFragmentsAreConsideredWhenEarlierOnesDoNotMatchAnyChapter`.
  */
 class EpubChapterMatchTest {
-    private fun chapter(title: String, resource: String, fragment: String? = null, depth: Int = 0) =
-        EpubChapter(title, href = "$resource${fragment?.let { "#$it" } ?: ""}", depth = depth, resource = resource, fragment = fragment)
+    private fun chapter(title: String, resource: String, fragment: String? = null, depth: Int = 0, id: Int = 0) =
+        EpubChapter(id, title, href = "$resource${fragment?.let { "#$it" } ?: ""}", depth = depth, resource = resource, fragment = fragment)
 
     @Test fun chapterHrefWithoutFragmentMatchesByResourceAlone() {
         val chapters = listOf(chapter("Chapter One", "chapter1.xhtml"), chapter("Chapter Two", "chapter2.xhtml"))
@@ -97,10 +103,46 @@ class EpubChapterMatchTest {
         assertEquals(first, second)
     }
 
-    @Test fun onlyTheFirstLocatorFragmentIsConsidered() {
-        // Locator.Locations.fragments can carry more than one entry; matching uses the first, matching how the
-        // rest of this codebase treats it as the primary fragment (there is no documented meaning for "second").
+    @Test fun firstLocatorFragmentWinsWhenItMatches() {
+        // When the first fragment does match, it wins immediately — this is not itself proof that later fragments
+        // are ever consulted (that regression is the next test), only that the common, unambiguous case works.
         val chapters = listOf(chapter("Section A", "chapter3.xhtml", fragment = "sectionA"), chapter("Section B", "chapter3.xhtml", fragment = "sectionB"))
         assertEquals("Section A", matchChapter(chapters, "chapter3.xhtml", listOf("sectionA", "sectionB"))?.title)
+    }
+
+    @Test fun laterLocatorFragmentsAreConsideredWhenEarlierOnesDoNotMatchAnyChapter() {
+        // Codex R2: the pinned navigator's Locator.Locations.fragments is not guaranteed to put the fragment that
+        // actually corresponds to a TOC entry first (e.g. a synthetic/internal marker can precede it) — matching
+        // must check every locator fragment in order, not just the first, or a real match can be missed entirely.
+        val chapters = listOf(chapter("Matching Section", "chapter3.xhtml", fragment = "matching-fragment"),
+            chapter("Other Section", "chapter3.xhtml", fragment = "sectionB"))
+        assertEquals("Matching Section",
+            matchChapter(chapters, "chapter3.xhtml", listOf("unrelated-fragment", "matching-fragment"))?.title)
+    }
+
+    @Test fun noLocatorFragmentMatchingAnyChapterStillFallsBackDeterministically() {
+        // Several non-matching fragments (not just one) must still land on the same honest fallback, not null.
+        val chapters = listOf(chapter("Chapter Three", "chapter3.xhtml"), chapter("Section A", "chapter3.xhtml", fragment = "sectionA"))
+        assertEquals("Chapter Three", matchChapter(chapters, "chapter3.xhtml", listOf("nope-one", "nope-two"))?.title)
+    }
+
+    @Test fun duplicateHrefRowsResolveToExactlyOneStableIdNotBothByHrefEquality() {
+        // Codex R2: two flattened TOC rows can carry the identical raw href (a redundant/duplicate TOC entry, or
+        // two entries that happen to share a fragment) — href equality alone cannot then say which one is
+        // "current". EpubChapter.id (the row's flattened ordinal position) is unique per row regardless, so
+        // comparing by id — as EpubActivity now does — can never mark more than one such row current.
+        val first = chapter("First appearance", "chapter1.xhtml", id = 0)
+        val second = chapter("Second appearance", "chapter1.xhtml", id = 1)
+        assertEquals(first.href, second.href) // the defect's precondition: identical hrefs
+        assertNotEquals(first.id, second.id) // the fix's guarantee: distinct ids regardless
+
+        val matched = matchChapter(listOf(first, second), "chapter1.xhtml", emptyList())
+        assertEquals(0, matched?.id) // matchChapter returns exactly one row (Kotlin's find/first already ensure
+        // this structurally), and its id can be compared unambiguously even though both rows' hrefs are equal.
+        val rowsConsideredCurrentByStableId = listOf(first, second).count { it.id == matched?.id }
+        assertEquals(1, rowsConsideredCurrentByStableId)
+        // What the old, now-replaced comparison would have done, to document why it was wrong:
+        val rowsThatWouldHaveBeenCurrentByHrefEquality = listOf(first, second).count { it.href == matched?.href }
+        assertEquals(2, rowsThatWouldHaveBeenCurrentByHrefEquality)
     }
 }
