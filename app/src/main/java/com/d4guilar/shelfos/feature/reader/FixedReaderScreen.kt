@@ -86,12 +86,14 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize().background(t.colors.canvas).testTag("reader_screen").onPreviewKeyEvent { event ->
         val native = event.nativeKeyEvent
+        // Raw modality classification is independent of which (if any) ShelfCommand the event becomes: it must
+        // also apply to focus-navigation keys, CONFIRM and anything else that never reaches the branch below.
+        // inputModalityOrNull() itself excludes the raw system Back/Home keys (never a modality signal) rather
+        // than filtering by the resolved *semantic* command here, since Escape/gamepad B legitimately produce
+        // ShelfCommand.BACK while still being real, attributable keyboard/controller input.
+        native.inputModalityOrNull()?.let { modality = it }
         when (val command = native.readerCommand(rtl, controls && (topFocused || bottomFocused))) {
             ShelfCommand.NEXT_PAGE, ShelfCommand.PREVIOUS_PAGE, ShelfCommand.OPEN_MENU, ShelfCommand.BACK -> {
-                // Back is a universal dismissal action available identically from every modality; letting it
-                // update the tracked modality would flip an active controller/keyboard hint set away from
-                // itself on every Back press (confirmed on RP5 hardware: BACK defaults to KEYBOARD below).
-                if (command != ShelfCommand.BACK) modality = native.inputModality()
                 if (native.action == KeyEvent.ACTION_UP) when (command) {
                     ShelfCommand.NEXT_PAGE -> vm.turn(1)
                     ShelfCommand.PREVIOUS_PAGE -> vm.turn(-1)

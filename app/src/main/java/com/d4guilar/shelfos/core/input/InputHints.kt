@@ -11,19 +11,28 @@ enum class InputModality { TOUCH, KEYBOARD, CONTROLLER }
 private val gamepadOnlyKeys = setOf(InputKey.L1, InputKey.R1, InputKey.GAMEPAD_A, InputKey.GAMEPAD_B, InputKey.START)
 
 /** D-pad/enter keycodes a physical keyboard's arrow/Enter keys and a gamepad's D-pad both report identically;
- *  only the originating [InputDevice]'s reported sources tell them apart. */
+ *  only the reporting event/device's sources tell them apart. */
 private val ambiguousDirectionalKeys = setOf(InputKey.LEFT, InputKey.RIGHT, InputKey.UP, InputKey.DOWN, InputKey.CENTER, InputKey.ENTER)
 
+/** Keys with no meaningful, attributable input modality: system-owned (Back/Home) or unclassified. */
+private val noModalityKeys = setOf(InputKey.BACK, InputKey.HOME, InputKey.OTHER)
+
 /**
- * Classifies a real key event as KEYBOARD or CONTROLLER input. Never inspects device model/name: gamepad-exclusive
- * keycodes are always CONTROLLER, and the ambiguous D-pad/Enter keycodes fall back to the event's reported
- * InputDevice sources (SOURCE_GAMEPAD/SOURCE_JOYSTICK/SOURCE_DPAD vs. a plain keyboard).
+ * Classifies a real key event's raw input modality (KEYBOARD/CONTROLLER), independently of whether it becomes a
+ * ShelfCommand. Returns null for keys with no meaningful, attributable modality — system-owned Back/Home, and
+ * unclassified keys — so a caller can distinguish "no signal" from an actual modality and never mistake, say, the
+ * system Back key for keyboard input. Never inspects device model/name: gamepad-exclusive keycodes are always
+ * CONTROLLER, and the ambiguous D-pad/Enter keycodes are resolved from the reporting sources (SOURCE_GAMEPAD/
+ * SOURCE_JOYSTICK/SOURCE_DPAD vs. a plain keyboard) — the specific event's own source takes precedence, since a
+ * hybrid device's aggregate InputDevice sources can otherwise misclassify one of its plain keyboard events as a
+ * gamepad's D-pad; the aggregate is only a fallback when the event itself reports no source.
  */
-fun KeyEvent.inputModality(): InputModality {
+fun KeyEvent.inputModalityOrNull(): InputModality? {
     val key = keyStroke().key
+    if (key in noModalityKeys) return null
     if (key in gamepadOnlyKeys) return InputModality.CONTROLLER
     if (key in ambiguousDirectionalKeys) {
-        val sources = device?.sources ?: source
+        val sources = source.takeIf { it != InputDevice.SOURCE_UNKNOWN } ?: device?.sources ?: InputDevice.SOURCE_UNKNOWN
         val fromGamepad = sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
             sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK ||
             sources and InputDevice.SOURCE_DPAD == InputDevice.SOURCE_DPAD
@@ -33,10 +42,12 @@ fun KeyEvent.inputModality(): InputModality {
 }
 
 /**
- * Resolves the on-screen hint label for a reader command under a given modality, by asking the real
- * [InputMapper.command] which candidate physical key currently produces that command — so a displayed hint can
- * never drift out of sync with the binding it claims to describe. Returns null for TOUCH (no hint shown) or when
- * no candidate key under this modality currently maps to the command.
+ * Resolves the on-screen hint label for a reader command under a given modality. Hint labels are resolved from
+ * this centralized candidate catalog and validated against the real [InputMapper.command] before being shown, so a
+ * displayed hint can never disagree with [InputMapper]'s current behavior for a candidate binding it does cover.
+ * This does not make arbitrary future remapping automatically discoverable: a new or reassigned binding is only
+ * ever hinted if it is also added to [keyboardCandidates]/[controllerCandidates] here. Returns null for TOUCH (no
+ * hint shown) or when no candidate key under this modality currently maps to the command.
  */
 object InputHints {
     private val keyboardCandidates = listOf(InputKey.LEFT, InputKey.RIGHT, InputKey.ESCAPE)

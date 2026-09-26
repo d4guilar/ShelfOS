@@ -226,6 +226,108 @@ class NavigationSmokeTest {
         compose.onAllNodes(hasContentDescription("Next, R1")).assertCountEquals(0)
     }
 
+    /**
+     * Codex remediation: Escape/gamepad B must establish modality even though they also produce
+     * ShelfCommand.BACK. Pressed while chrome is visible they would exit the reader (ADR-0023), so each press
+     * here happens from hidden chrome, where the same key instead reveals chrome — letting the test observe the
+     * resulting hint style without leaving the reader. Covers TOUCH->Escape, CONTROLLER->Escape and
+     * KEYBOARD->GAMEPAD_B in one sequence.
+     */
+    @Test fun escapeAndGamepadBEstablishModalityWhileRevealingChromeInFixedReader() {
+        awaitLibrary()
+        read("test-pdf")
+        awaitPage("1 / 3")
+        compose.onNodeWithText("Hide controls").performClick() // still TOUCH
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("page_number").fetchSemanticsNodes().isEmpty() }
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ESCAPE) // TOUCH -> Escape => KEYBOARD, reveals chrome
+        awaitPage("1 / 3")
+        compose.onNode(hasContentDescription("Next, →")).assertExists()
+
+        compose.onNodeWithText("Hide controls").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("page_number").fetchSemanticsNodes().isEmpty() }
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ESCAPE) // KEYBOARD -> Escape (still KEYBOARD), reveals
+        awaitPage("1 / 3")
+        compose.onNode(hasContentDescription("Next, →")).assertExists()
+
+        compose.onNodeWithText("Hide controls").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("page_number").fetchSemanticsNodes().isEmpty() }
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BUTTON_B) // KEYBOARD -> GAMEPAD_B => CONTROLLER
+        awaitPage("1 / 3")
+        compose.onNode(hasContentDescription("Next, R1")).assertExists()
+    }
+
+    /**
+     * Codex remediation regression check: the original defect excluded ShelfCommand.BACK from updating modality,
+     * which incidentally also blocked Escape/gamepad B (see above) but did NOT stop the real bug — raw system
+     * Back defaulting to KEYBOARD, since it never reaches that branch at all (InputMapper maps it to no command).
+     * This asserts raw Back genuinely leaves an established CONTROLLER modality untouched.
+     */
+    @Test fun rawSystemBackNeverChangesModalityInFixedReader() {
+        awaitLibrary()
+        read("test-pdf")
+        awaitPage("1 / 3")
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BUTTON_R1)
+        awaitPage("2 / 3")
+        compose.onNodeWithText("Hide controls").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("page_number").fetchSemanticsNodes().isEmpty() }
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK) // hidden chrome + raw Back => reveal, not exit
+        awaitPage("2 / 3")
+        compose.onNode(hasContentDescription("Next, R1")).assertExists() // still controller-styled
+    }
+
+    /** Same Escape/gamepad-B modality-establishing contract as above, for the EPUB reader. */
+    @Test fun escapeAndGamepadBEstablishModalityInEpubReader() {
+        awaitLibrary()
+        read("test-epub")
+        awaitTag("epub_reader", 30_000)
+        compose.waitUntil(30_000) { compose.onAllNodesWithTag("epub_library").fetchSemanticsNodes().isNotEmpty() }
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_MENU) // hide chrome, still TOUCH
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("epub_library").fetchSemanticsNodes().isEmpty() }
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ESCAPE) // TOUCH -> Escape => KEYBOARD, reveals
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("epub_library").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasContentDescription("Next, →")).assertExists()
+
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_MENU)
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("epub_library").fetchSemanticsNodes().isEmpty() }
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK) // raw Back must not flip KEYBOARD away
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("epub_library").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasContentDescription("Next, →")).assertExists()
+
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_MENU)
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("epub_library").fetchSemanticsNodes().isEmpty() }
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BUTTON_B) // KEYBOARD -> GAMEPAD_B => CONTROLLER
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("epub_library").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasContentDescription("Next, R1")).assertExists()
+    }
+
+    /**
+     * Codex remediation: modality must update for keys that never become a reader ShelfCommand at all (e.g. pure
+     * Compose focus navigation), not only for the four commands the reader branch happens to match on.
+     */
+    @Test fun focusNavigationKeyStillUpdatesModalityWithoutBeingConsumed() {
+        awaitLibrary()
+        read("test-pdf")
+        awaitPage("1 / 3")
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BUTTON_R1)
+        awaitPage("2 / 3")
+        compose.onNode(hasContentDescription("Next, R1")).assertExists()
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_TAB) // Tab never maps to a reader ShelfCommand.
+        compose.waitUntil(5_000) { compose.onAllNodes(hasContentDescription("Next, →")).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    /** End-to-end (not just the JVM InputHints.hint() unit test): visible keyboard hints under RTL must match
+     *  the actual RTL semantic mapping, where Left/Right swap which arrow performs Next/Previous. */
+    @Test fun keyboardHintsReflectRtlSwapInMangaCbz() {
+        awaitLibrary()
+        compose.onNodeWithText("Manga").performClick()
+        read("test-cbz")
+        awaitPage("1 / 3")
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_PAGE_DOWN)
+        awaitPage("2 / 3")
+        compose.onNode(hasContentDescription("Next, ←")).assertExists()
+        compose.onNode(hasContentDescription("Previous, →")).assertExists()
+    }
+
     /** The decorative Back hint must not become its own noisy accessibility stop. */
     @Test fun decorativeBackHintIsNotItsOwnAccessibilityStop() {
         awaitLibrary()

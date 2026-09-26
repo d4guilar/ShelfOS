@@ -98,12 +98,14 @@ class EpubActivity : AppCompatActivity() {
             enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             // Reader commands apply unless a reader control holds focus, so keys work before the WebView is focused.
             readerKeys = { event ->
+                // Raw modality classification is independent of which (if any) ShelfCommand the event becomes: it
+                // must also apply to focus-navigation keys, CONFIRM and anything else that never reaches the
+                // branch below. inputModalityOrNull() itself excludes the raw system Back/Home keys (never a
+                // modality signal) rather than filtering by the resolved *semantic* command here, since Escape/
+                // gamepad B legitimately produce ShelfCommand.BACK while still being real, attributable input.
+                event.inputModalityOrNull()?.let { modality = it }
                 when (val command = event.readerCommand(rtl, controls && (topFocused || bottomFocused))) {
                     ShelfCommand.NEXT_PAGE, ShelfCommand.PREVIOUS_PAGE, ShelfCommand.OPEN_MENU, ShelfCommand.BACK -> {
-                        // Back is a universal dismissal action available identically from every modality; letting
-                        // it update the tracked modality would flip an active controller/keyboard hint set away
-                        // from itself on every Back press (confirmed on RP5 hardware: BACK defaults to KEYBOARD).
-                        if (command != ShelfCommand.BACK) modality = event.inputModality()
                         if (event.action == KeyEvent.ACTION_UP) when (command) {
                             ShelfCommand.NEXT_PAGE -> controller.next()
                             ShelfCommand.PREVIOUS_PAGE -> controller.previous()
