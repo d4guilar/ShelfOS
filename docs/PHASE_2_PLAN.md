@@ -1,13 +1,16 @@
 # Phase 2 plan: the Reading phase
 
 Status: **2A is accepted** (2026-09-24, merged to `main`; Codex verdict: PASS
-WITH NON-BLOCKING FINDINGS). **2A.1 implementation is complete; independent
-review pending.** A first Codex review (2026-09-25) returned CHANGES REQUIRED
-for a modality-tracking defect, since remediated (see below) — not yet
-re-reviewed or merged. See `VALIDATION.md`'s "Phase 2A.1 validation" section
-for evidence and explicitly-unclaimed items. 2B/2C/2D remain planned only;
-none of their work has started. This document is the canonical Phase 2
-planning location referenced by [`ROADMAP.md`](ROADMAP.md#phase-2--reading).
+WITH NON-BLOCKING FINDINGS). **2A.1 implementation is complete; a first Codex
+review (2026-09-25) returned CHANGES REQUIRED for a modality-tracking defect,
+which was remediated; a second Codex review then returned PASS WITH
+NON-BLOCKING FINDINGS.** A small R3 cleanup pass closes those findings (see
+below) — final cleanup complete, **not yet merged through the normal PR
+process, and not yet re-confirmed by Codex.** Do not mark 2A.1 accepted until
+that confirmation lands. See `VALIDATION.md`'s "Phase 2A.1" sections for
+evidence and explicitly-unclaimed items. 2B/2C/2D remain planned only; none of
+their work has started. This document is the canonical Phase 2 planning
+location referenced by [`ROADMAP.md`](ROADMAP.md#phase-2--reading).
 
 ## 1. Reconciling Phase 1 acceptance with the roadmap
 
@@ -179,27 +182,37 @@ visual system (`core.designsystem`/`core.theme` tokens) is used throughout.
   `InputMapper.command()`'s own RTL branch, so it can never disagree with it).
 
 **Remediation (2026-09-25), after independent Codex review returned CHANGES
-REQUIRED:** the first version filtered at the wrong level — it excluded
-modality updates when the *resolved semantic command* equaled
-`ShelfCommand.BACK`, reasoning that this would stop the raw system Back key
-from claiming a modality. It didn't: `InputMapper` maps `InputKey.BACK` to no
-command at all, so raw Back never reached that branch and instead fell through
-to an unguarded default of `KEYBOARD` — the actual bug reproduced on RP5
-hardware. Worse, the same filter incorrectly suppressed modality updates for
-Escape and gamepad B, which legitimately produce `ShelfCommand.BACK` while
-still being real, attributable keyboard/controller input. The fix separates
-"what command does this produce" from "what raw modality does this represent":
-`inputModalityOrNull()` now excludes only the raw system Back/Home keys
-(returning `null`), and both readers apply it unconditionally before dispatch,
-so Escape correctly establishes `KEYBOARD` and gamepad B correctly establishes
-`CONTROLLER` (each still also reveals hidden chrome per ADR-0023), while the
-raw system Back key/gesture still never claims a modality of its own. The
-ambiguous-source precedence was also corrected to prefer the specific event's
-own source over a hybrid device's aggregate sources. See
-`docs/design/INPUT_SYSTEM.md` §10 for the full explanation and
-`InputModalityClassificationTest.kt` (instrumented — real `KeyEvent`/
-`InputDevice` behavior isn't mockable in a plain JVM test) plus five new
-`NavigationSmokeTest` cases for the regression coverage.
+REQUIRED:** the first version excluded modality updates whenever the
+*resolved semantic command* equaled `ShelfCommand.BACK`
+(`if (command != ShelfCommand.BACK) modality = ...`), on the reasoning that
+this would stop the raw system Back key from claiming a modality. That
+reasoning was already moot: `InputMapper` maps `InputKey.BACK`/`InputKey.HOME`
+to no command at all (`null`), so raw Back never entered that branch in either
+version — this was true before the fix as well as after, and the comment
+claiming RP5 testing showed raw Back "defaulting to KEYBOARD" through this
+code path was inaccurate and has been corrected. The actual defect was
+simpler: `InputKey.ESCAPE` and `InputKey.GAMEPAD_B` both map to
+`ShelfCommand.BACK`, and excluding that resolved command from the modality
+update meant this real, attributable keyboard/controller input silently
+failed to update the displayed hint style, even though it correctly still
+revealed/exited the reader. The fix separates "what command does this
+produce" from "what raw modality does this represent": `inputModalityOrNull()`
+excludes only the raw system Back/Home keys directly, at the raw-key-
+classification layer, and both readers apply it unconditionally before
+dispatching any command — so Escape now correctly establishes `KEYBOARD` and
+gamepad B correctly establishes `CONTROLLER` (each still also reveals hidden
+chrome per ADR-0023), while the raw system Back key/gesture still never
+claims a modality of its own. The ambiguous-source precedence was also
+corrected to prefer the specific event's own source over a hybrid device's
+aggregate sources, via a small extracted `resolveInputSources`/
+`isGamepadSource` helper pair that is pure int-constant logic and directly
+unit-testable without any real or fake `InputDevice`. See `docs/design/
+INPUT_SYSTEM.md` §10 for the full explanation, `InputHintsTest` (JVM) for the
+deterministic source-precedence proof, `InputModalityClassificationTest.kt`
+(instrumented — real `KeyEvent` classification by keycode isn't mockable in a
+plain JVM test) for raw-key coverage, and the `NavigationSmokeTest` transition
+cases (including an explicit `CONTROLLER → Escape → KEYBOARD` sequence) for
+end-to-end regression coverage.
 
 **Known gap, honestly recorded, not fixed in this pass:** touch-modality
 detection for the EPUB reader is only fully reliable via the center tap.
@@ -265,14 +278,13 @@ for comics:
 - [x] `:app:assembleDebug`, `:app:testDebugUnitTest` (including `InputHintsTest`),
       `:app:lintDebug`, `:app:assembleDebugAndroidTest` pass.
 - [x] `:app:connectedDebugAndroidTest`: `NavigationSmokeTest` (26 tests, after
-      remediation added 5 modality-transition/RTL-hint cases) and the new
-      instrumented `InputModalityClassificationTest` (11 tests, real-`KeyEvent`
-      raw-classification coverage that a plain JVM test cannot exercise) both
-      pass on `shelfos-phase0` (API 35) — the known-good emulator for this
-      class of test, per the API 37 Espresso/InputManager tooling gap recorded
-      in 2A.
+      remediation added 5 modality-transition/RTL-hint cases) and the
+      instrumented `InputModalityClassificationTest` (10 tests, real-`KeyEvent`
+      raw-classification coverage a plain JVM test cannot exercise) both pass
+      on `shelfos-phase0` (API 35) — the known-good emulator for this class of
+      test, per the API 37 Espresso/InputManager tooling gap recorded in 2A.
 - [x] RP5 (Retroid Pocket 5, Android 13/API 33) physical validation: both test
-      classes pass on-device (26/26, 11/11), plus manual real-hardware
+      classes pass on-device (26/26, 10/10), plus manual real-hardware
       confirmation (screenshots) of the full requested sequence — TOUCH+B
       reveals chrome and establishes CONTROLLER hints without exiting, R1/L1
       match Next/Previous, a real touch tap clears hints, a controller press
@@ -287,9 +299,38 @@ for comics:
       this environment (see "Known limitations" in `VALIDATION.md`).
 - [ ] Galaxy Tab A physical validation. Optional/periodic per the device
       strategy in §7; not performed in this pass, documented as pending.
-- [x] First independent Codex review: **CHANGES REQUIRED** (a modality-tracking
-      defect described in the remediation note above). Remediated and
-      re-validated in this same pass; **not yet re-reviewed**.
+- [x] First independent Codex review: **CHANGES REQUIRED** (the modality-
+      tracking defect described in the remediation note above). Remediated and
+      re-validated.
+- [x] Second independent Codex review: **PASS WITH NON-BLOCKING FINDINGS**
+      (test-quality and documentation-accuracy items — see the R3 cleanup
+      note below). Closed in this same pass; **not yet re-confirmed by
+      Codex, not yet merged.**
+
+**R3 cleanup (2026-09-25), after the second Codex review:** four non-blocking
+findings, none touching production behavior beyond a pure refactor:
+1. The source-precedence regression test used a nonexistent device ID, so
+   `device == null` and it never actually exercised a real hybrid device's
+   aggregate sources. Fixed by extracting `resolveInputSources`/
+   `isGamepadSource` — pure int-constant logic, directly unit-testable in a
+   plain JVM test (`InputHintsTest`) without any real or fake `InputDevice`,
+   including a test that would fail if precedence reverted to
+   aggregate-device-first.
+2. The `escapeAndGamepadBEstablishModalityWhileRevealingChromeInFixedReader`
+   test claimed `CONTROLLER → Escape` coverage but never actually established
+   `CONTROLLER` immediately before pressing Escape. Fixed by replacing the
+   redundant `KEYBOARD → Escape → KEYBOARD` no-op step with an explicit
+   `TOUCH → GAMEPAD_B → CONTROLLER` step first.
+3. This document's own status line understated 2A.1's actual state after the
+   first remediation. Corrected above.
+4. The remediation history (here, `VALIDATION.md`, and `docs/design/
+   INPUT_SYSTEM.md` §10) claimed raw system Back "fell through to an
+   unguarded KEYBOARD default" as the observed defect. Re-verified against
+   the actual pre-remediation commit: `InputMapper` mapped `InputKey.BACK` to
+   no command in both the first implementation and the fix, so raw Back never
+   entered the affected branch in either version. The real defect was that
+   Escape/gamepad B — which do produce `ShelfCommand.BACK` — were wrongly
+   excluded from the modality update. Corrected in all three locations.
 
 ### 2B — EPUB everyday-reading improvements (planned, not started)
 

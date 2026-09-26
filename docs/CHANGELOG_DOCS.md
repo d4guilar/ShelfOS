@@ -1,5 +1,28 @@
 # Documentation Changelog
 
+## Phase 2A.1 R3 cleanup (2026-09-25)
+
+- Closed all four non-blocking findings from a second independent Codex
+  review (PASS WITH NON-BLOCKING FINDINGS): extracted a pure, unit-testable
+  `resolveInputSources`/`isGamepadSource` helper pair so source-precedence has
+  a deterministic JVM regression test (the prior instrumented test used a
+  nonexistent device ID and never actually exercised a real hybrid device's
+  aggregate); added an explicit `CONTROLLER → Escape → KEYBOARD` transition
+  step to the fixed-reader modality test, replacing a redundant no-op step;
+  corrected `PHASE_2_PLAN.md`'s stale status line; and corrected an inaccurate
+  historical claim, repeated in `PHASE_2_PLAN.md`, `VALIDATION.md` and
+  `docs/design/INPUT_SYSTEM.md` §10, that raw system Back "fell through to an
+  unguarded KEYBOARD default" — re-verified against the actual pre-remediation
+  commit, `InputMapper` mapped raw Back to no command in both the original
+  implementation and the first fix, so it never entered the affected branch
+  in either version; the real defect was Escape/gamepad B being wrongly
+  excluded from the modality update.
+- `EpubRecreationTest.kt` remains untouched, as instructed — separate,
+  pre-existing Phase 2A test debt, deferred to a follow-up after 2A.1 merges.
+- The only production change (the helper extraction) is a pure refactor with
+  identical logic; no RP5 re-certification was required or performed.
+- 2A.1 remains implemented, not yet re-confirmed by Codex, not merged.
+
 ## Phase 2A.1 modality-tracking remediation (2026-09-25)
 
 - Corrected `PHASE_2_PLAN.md`, `VALIDATION.md` and `docs/design/

@@ -184,26 +184,32 @@ from the reporting sources, with the *specific event's own* `source` taking
 precedence over the device's aggregate `sources` (a hybrid device's aggregate
 capabilities could otherwise misclassify one of its plain keyboard events as
 gamepad input; the aggregate is only consulted when the event itself reports
-none). The function returns `null` — no modality signal at all — for the raw
+none — via the small, pure, internal `resolveInputSources`/`isGamepadSource`
+helpers, which operate on plain `Int` bitmasks so the precedence rule itself
+is directly unit-testable without a real or fake `InputDevice`). The function
+returns `null` — no modality signal at all — for the raw
 system Back/Home keys and unclassified keys, and each reader applies that
 result unconditionally, before dispatching any semantic command, rather than
 gating on the *resolved command* being `ShelfCommand.BACK`.
 
 **This distinction was the subject of a real defect, found by independent
-review and confirmed on RP5 hardware.** `InputMapper` maps `InputKey.BACK` to
-no command at all (`null`) — only `InputKey.ESCAPE` and `InputKey.GAMEPAD_B`
-produce `ShelfCommand.BACK`. An earlier version of this feature filtered at
-the semantic level (`if (command != ShelfCommand.BACK) modality = ...`),
-which suppressed modality updates for Escape and gamepad B — real, attributable
-keyboard/controller input — while doing nothing to stop the raw system Back
-key, which never reached that branch in the first place and fell through to a
-default `KEYBOARD` classification regardless of its actual origin. The fix
-moved the exclusion to the raw-classification function itself
+review.** `InputMapper` maps `InputKey.BACK`/`InputKey.HOME` to no command at
+all (`null`) — only `InputKey.ESCAPE` and `InputKey.GAMEPAD_B` produce
+`ShelfCommand.BACK`. This was true of both the original implementation and an
+earlier attempted fix that filtered at the semantic level
+(`if (command != ShelfCommand.BACK) modality = ...`): raw system Back never
+entered the branch containing that line in either version, so the fix's own
+stated reasoning — that excluding `ShelfCommand.BACK` would stop raw Back from
+claiming a modality — was moot from the start. The actual defect was simpler:
+that same guard also excluded Escape and gamepad B, which legitimately
+produce `ShelfCommand.BACK` while being real, attributable keyboard/controller
+input, so pressing them correctly revealed/exited the reader (Back semantics
+were never wrong) but silently failed to update the displayed hint style. The
+fix moved the exclusion to the raw-classification function itself
 (`inputModalityOrNull()` returns `null` for `InputKey.BACK`/`InputKey.HOME`
-specifically), so Escape and gamepad B now correctly establish `KEYBOARD`/
-`CONTROLLER` modality (they still also produce `ShelfCommand.BACK` and reveal
-hidden chrome, per ADR-0023), while the raw system Back key/gesture still never
-claims a modality of its own.
+directly, independent of what command they produce), so Escape and gamepad B
+now correctly establish `KEYBOARD`/`CONTROLLER` modality, while the raw system
+Back key/gesture still never claims a modality of its own.
 
 Touch itself is still not routed through `ShelfCommand` (§6's open item
 remains open) — only the *hint display* is command-derived. Real touch
