@@ -52,6 +52,30 @@ object OriginalFixtures {
         } }
         return item(file, "test-epub", PublicationFormat.EPUB)
     }
+    /** Ten real chapters (distinct resources, no fragments) for Phase 2B.1 chapter-navigation/highlight/filter
+     * coverage — more chapters than [epub] needs, and above the Chapters dialog's filter-field threshold. */
+    fun epubWithChapters(context: Context): LibraryItem {
+        val file = File(context.filesDir, "publications/test-original-chapters.epub").also { it.parentFile!!.mkdirs() }
+        val chapterCount = 10
+        val manifestItems = (1..chapterCount).joinToString("") { n -> """<item id="chapter$n" href="chapter$n.xhtml" media-type="application/xhtml+xml"/>""" } +
+            """<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>"""
+        val spineItems = (1..chapterCount).joinToString("") { n -> """<itemref idref="chapter$n"/>""" }
+        val navEntries = (1..chapterCount).joinToString("") { n -> """<li><a href="chapter$n.xhtml">Chapter $n</a></li>""" }
+        val entries = mutableMapOf(
+            "mimetype" to "application/epub+zip",
+            "META-INF/container.xml" to """<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>""",
+            "content.opf" to """<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:shelfos-chapters-test</dc:identifier><dc:title>Chapters Test Book</dc:title><dc:language>en</dc:language><meta property="dcterms:modified">2026-09-26T00:00:00Z</meta></metadata><manifest>$manifestItems</manifest><spine>$spineItems</spine></package>""",
+            "nav.xhtml" to """<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Contents</title></head><body><nav epub:type="toc"><ol>$navEntries</ol></nav></body></html>""",
+        )
+        (1..chapterCount).forEach { n ->
+            val paragraphs = (1..40).joinToString("") { "<p>Chapter $n paragraph $it. Original ShelfOS test content for chapter navigation.</p>" }
+            entries["chapter$n.xhtml"] = """<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter $n</title></head><body><h1>Chapter $n</h1>$paragraphs</body></html>"""
+        }
+        ZipOutputStream(file.outputStream()).use { zip -> entries.forEach { (name, text) ->
+            zip.putNextEntry(ZipEntry(name)); zip.write(text.toByteArray()); zip.closeEntry()
+        } }
+        return item(file, "test-epub-chapters", PublicationFormat.EPUB)
+    }
     private fun item(file: File, id: String, format: PublicationFormat) = LibraryItem(id, "Original ${format.name} fixture", "ShelfOS test",
         MediaCategory.BOOK, "test:$id", format, file.name, file.length(), managedPath = file.path)
 }

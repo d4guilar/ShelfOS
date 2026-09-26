@@ -1,5 +1,104 @@
 # Validation
 
+## Phase 2B.1 validation (2026-09-26)
+
+Status: **2B planning is accepted and merged** (PR #7, `410ce4d6c4daa5d6fa65fb2787027d50d722822f`).
+**2B.1 (chapter-navigation polish + scroll/typography/page-color closure) is
+IMPLEMENTED, PENDING INDEPENDENT REVIEW** on branch `phase-2/epub-chapters`,
+base `main` at `410ce4d...`. Do not treat 2B.1 as accepted until Codex review
+lands. See `docs/PHASE_2_PLAN.md`'s 2B.1 implementation record and acceptance
+criteria for the full description of what was built; this entry records the
+evidence.
+
+### STATIC / BUILD
+
+| Check | Result |
+| --- | --- |
+| `:app:compileDebugKotlin` | Passed (one fix needed: `Publication.locatorFromLink(link)` is `Locator?`, not `Locator` — the plan's own bytecode-only research had not surfaced this method's nullability; handled with a null-safe fallback to the raw `Link.href` rather than assuming non-null) |
+| `:app:compileDebugAndroidTestKotlin` | Passed |
+| `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:assembleDebugAndroidTest` (`--rerun-tasks --offline`) | See this pass's final report for the actual run result |
+| `git diff --check` | Clean |
+| `git status --porcelain -- app/schemas` | Clean (no Room changes, as required — 2B.1 is schema-free) |
+
+### JVM / REGRESSION
+
+| Test class | Result |
+| --- | --- |
+| `EpubChapterMatchTest` (new) | 11/11 passed — the five plan-required scenarios plus six additional edge cases (different resource, empty list, unlisted fragment, determinism, multi-fragment precedence) |
+
+### INSTRUMENTED / EMULATOR (`shelfos-phase0`, API 35)
+
+| Test class | Result |
+| --- | --- |
+| `EpubChapterHighlightTest` (new) | 2/2 passed — current-chapter highlight + reopen-recompute, and the chapter-title filter (narrow/clear/zero-match) |
+| Full `connectedDebugAndroidTest` package | 54/54 passed (`AppearanceRestorationTest`, `EpubChapterHighlightTest`, `EpubRecreationTest`, `InputModalityClassificationTest`, `LibraryPersistenceTest`, `NavigationSmokeTest`, `ReaderStateTest`, `RoomPersistenceTest`, `SyntheticLoadAcceptanceTest`) |
+
+**A real regression was found and fixed during this pass, not merely
+documented as a risk.** The first implementation rendered the current-chapter
+indicator as a single interpolated string (`"✓ ${chapter.title}"`), which
+broke `NavigationSmokeTest.originalEpubOpensAndOffersTypographyAndChapters`
+(that fixture's one chapter, "Reading Room", is always the current one, so
+its exact-text lookup — `onNodeWithText("Reading Room")` — stopped matching
+once the rendered text became "✓ Reading Room"). Fixed by rendering the
+checkmark as its own sibling `Text` node instead of concatenating it into the
+title string, so the title itself remains exact-text-matchable everywhere it
+already was, while an explicit `contentDescription` override still gives an
+unambiguous accessible name — the same "override coexists with a separately
+matchable child `Text`" pattern the existing Previous/Next hint buttons
+already use. Re-ran the full instrumented package after the fix: 54/54 passed,
+confirming no other exact-text-dependent test was affected.
+
+### ACCESSIBILITY
+
+Current-chapter indication uses three independent, non-color signals: a
+leading "✓ " glyph, bold font weight, and a `contentDescription` override
+("<title>, current chapter"). No separate focus target was created for the
+checkmark — it is a plain decorative sibling `Text` inside the same
+`TextButton`, not its own semantics node. The filter field carries an
+explicit "Filter chapters" `contentDescription`. Not independently walked
+with TalkBack physically running, for the same reason recorded in prior
+Phase 2 entries (TalkBack unavailable on the test targets used).
+
+### KEYBOARD / CONTROLLER
+
+No new `ShelfCommand` mapping was added. The full `NavigationSmokeTest` suite
+(26/26, including its keyboard/gamepad/D-pad/Escape/modality-transition
+coverage) passed with behavior unchanged, confirming Phase 2A's Back
+semantics and Phase 2A.1's input hints are unaffected outside the Chapters
+dialog. RP5 physical re-certification was not performed and is not required
+for this slice — no new top-level reader-chrome entry point was added (the
+existing "Chapters" button is unchanged; only its dialog's contents changed).
+
+### RECREATION
+
+`EpubRecreationTest` (1/1) and the new `EpubChapterHighlightTest` reopen case
+confirm the current-chapter highlight is never stored in `rememberSaveable`
+or Room — it recomputes from the live/restored locator on every recomposition,
+exactly like `item.progress` already does via Room-backed state.
+
+### SCROLL / TYPOGRAPHY / PAGE-COLOR CLOSURE
+
+Verified by reading the unchanged production code paths (`ReaderPreferences`,
+`ReaderAppearance`, `epubPreferences()`) and by the full `NavigationSmokeTest`
+pass (which exercises Appearance apply/persist/recreation flows): pagination
+vs. continuous scrolling, the three typography presets plus sliders, and
+`PagePalette.THEME/LIGHT/DARK/PAPER` reading-surface colors are all already
+implemented and were not touched by this slice. `PagePalette.DARK` produces a
+genuinely dark reading surface (`Theme.DARK`, explicit `backgroundColor`/
+`textColor`) independent of the ShelfOS app theme; `PagePalette.THEME`
+deliberately does follow the app's dark/light state (`night = dark`), which is
+what a "Theme" page-color option is supposed to mean, not a bug; `PAPER` maps
+to `Theme.SEPIA`. No second/duplicate dark-mode setting exists. No paragraph/
+word/letter spacing, hyphenation, ligature or column/spread control was added.
+
+### FINAL ACCEPTANCE (2B.1) — pending
+
+2B.1 is implemented and self-validated (JVM + instrumented, full regression
+package green, one real regression found and fixed during this same pass, not
+after). **Not yet reviewed by Codex, not merged.** RP5 physical validation was
+correctly not attempted (not relevant to this slice's scope, per
+`docs/PHASE_2_PLAN.md`'s own testing-strategy section).
+
 ## Phase 2A.1 acceptance and post-merge maintenance (2026-09-26)
 
 2A.1 received final Codex confirmation after the R3 cleanup below and was

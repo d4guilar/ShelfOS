@@ -9,15 +9,18 @@ NON-BLOCKING FINDINGS, an R3 cleanup pass closing those findings, and final
 Codex confirmation). The post-merge maintenance pass
 (`maintenance/epub-recreation-back-test`, see its note under 2A.1 below)
 corrected stale Phase-2A test debt in `EpubRecreationTest.kt` and was itself
-**accepted and merged to `main` via PR #6**. See `VALIDATION.md`'s "Phase 2A.1"
-sections for evidence and explicitly-unclaimed items. **2B (EPUB everyday-reading
-improvements) is in discovery/implementation-planning** as of this pass
-(`phase-2/epub-everyday-reading`, base `8430566396e98196752d9ec9f33910a2e248b039`)
-— no 2B production code has been implemented yet; see §3's 2B section for the
-grounded capability findings and the proposed internal slice sequence. 2C/2D
-remain planned only; none of their work has started. This document is the
-canonical Phase 2 planning location referenced by
-[`ROADMAP.md`](ROADMAP.md#phase-2--reading).
+**accepted and merged to `main` via PR #6**. **2B's discovery/implementation-
+planning pass was itself accepted and merged to `main` via PR #7** at commit
+`410ce4d6c4daa5d6fa65fb2787027d50d722822f`. **2B.1 (chapter-navigation polish +
+scroll/typography/page-color closure) is IMPLEMENTED, PENDING INDEPENDENT
+REVIEW** as of this pass (`phase-2/epub-chapters`, base `410ce4d...`) — see
+its section under §3's 2B plan below for what was actually built and proved.
+Do not treat 2B.1 as accepted until that review lands. 2B.2/2B.3/2B.4 remain
+planned only, per 2B's own discovery pass; none of their work has started.
+2C/2D remain planned only; none of their work has started. See
+`VALIDATION.md`'s "Phase 2A.1"/"Phase 2B.1" sections for evidence and
+explicitly-unclaimed items. This document is the canonical Phase 2 planning
+location referenced by [`ROADMAP.md`](ROADMAP.md#phase-2--reading).
 
 ## 1. Reconciling Phase 1 acceptance with the roadmap
 
@@ -852,6 +855,116 @@ closing those two roadmap bullets without new code. Zero schema change, zero
 new Readium capability — pure reuse of APIs already wired, plus one new small
 matching helper.
 
+**2B.1 implementation record (2026-09-26, `phase-2/epub-chapters`, base `main`
+at `410ce4d6c4daa5d6fa65fb2787027d50d722822f`) — IMPLEMENTED, PENDING
+INDEPENDENT REVIEW, not yet accepted:**
+
+- **Chapter model.** `core.reader.EpubReader.kt`'s `EpubSession.chapters`
+  changed from `List<Pair<String, String>>` to `List<EpubChapter>` (`title`,
+  `href`, `depth`, `resource`, `fragment`). `href`/navigation are byte-for-byte
+  unchanged (`EpubSession.chapter(href)`/`EpubController.chapter()` still
+  match on the TOC link's own raw `href.toString()`, exactly as before this
+  slice) — only the highlight path uses the two new fields.
+- **Current-chapter matching, corrected from the plan's own wording.** Each
+  chapter's `resource`/`fragment` are computed once, at `EpubSession`
+  construction, via `Publication.locatorFromLink(link)` — the same resolution
+  Readium's own navigator uses to produce `currentLocator` — rather than the
+  raw, potentially differently-formatted TOC `href` string. The actual
+  matching (`internal fun matchChapter(...)`, `core.reader.EpubReader.kt`) is
+  a small, pure function over plain `String`/`List<String>` (no Readium or
+  Android type), mirroring `core.input`'s `resolveInputSources`/
+  `isGamepadSource` precedent, so it is directly unit-testable in a plain JVM
+  test without Robolectric — constructing a real Readium `Url` (which wraps
+  `android.net.Uri`) in a plain JVM unit test throws "not mocked" in this
+  project's unit-test configuration (`isReturnDefaultValues` is not set), the
+  same constraint `InputModalityClassificationTest` was created to work around
+  for raw `KeyEvent`s; extracting the pure comparison logic sidesteps it here
+  the same way.
+- **Positional-fallback limitation, assessed per this task's own instruction
+  before implementing (§6): STOP and report if the plan's literal fallback
+  cannot be faithfully determined, then implement the smallest honest
+  fallback.** The plan's wording ("fall back to the *last* same-resource TOC
+  entry at or before the current position") assumes a *within-resource
+  position* comparable between the current locator and each candidate TOC
+  entry. No such comparable value exists: `Link`/the TOC carry no position of
+  their own (only href/title/children), and `Locator.Locations.progression`
+  (a resource-relative fraction) has no corresponding per-TOC-entry value to
+  compare against without parsing the resource's own HTML to find each
+  fragment's position in the document flow — explicitly out of scope for this
+  slice (no EPUB HTML parsing without owner approval). **This part of the
+  plan's exact fallback is therefore not implemented as literally written.**
+  The implemented, honest fallback instead is: when no fragment identifies a
+  specific same-resource entry, prefer the same-resource TOC entry that
+  itself carries **no** fragment (the "whole chapter" entry, when one exists)
+  — a real, defensible choice, not a guessed position — else the first
+  same-resource entry in TOC order. This never claims positional knowledge
+  the data doesn't support. See `matchChapter`'s doc comment
+  (`core.reader.EpubReader.kt`) for the same assessment in the code.
+- **Current-position plumbing.** `EpubActivity`'s `onLocation` callback
+  (previously the bare `vm::location` method reference) is now a small lambda
+  that both persists the position (unchanged behavior, `vm.location(...)`)
+  and updates one new local `remember { mutableStateOf<String?>(null) }`
+  holding the latest locator JSON — no second `navigator.currentLocator`
+  collector was added; the existing single collection in `EpubSurface` now
+  feeds both consumers. The highlighted chapter is `remember`-derived from
+  that state on every recomposition, never stored in `rememberSaveable` or
+  Room, so it recomputes from the real position, including after recreation,
+  once the navigator reports it again — exactly as `item.progress` already
+  does via Room.
+- **Chapters dialog UX.** The current chapter shows a leading "✓ " *sibling*
+  Text node (not concatenated into the title string, so the title itself
+  remains exact-text-matchable everywhere it already was — this was caught by
+  a real regression in `NavigationSmokeTest.originalEpubOpensAndOffersTypographyAndChapters`
+  during this pass and fixed by separating the nodes) plus bold weight, and a
+  `contentDescription` override ("<title>, current chapter") on the row while
+  current — the same "explicit override coexists with a separately-matchable
+  child `Text`" pattern already used by the existing Previous/Next hint
+  buttons. Indentation moved from literal leading spaces in the title string
+  to `Modifier.padding(start = depth * 16.dp)`, which is both a minor
+  accessibility improvement (no stray whitespace read by TalkBack) and
+  preserves the hierarchy visually. Selecting a chapter still closes the
+  dialog exactly as before.
+- **Optional chapter-title filter: implemented.** An `OutlinedTextField`
+  ("Filter chapters" content description/placeholder) appears only when the
+  TOC has more than `CHAPTER_FILTER_THRESHOLD` (8) entries — case-insensitive,
+  whitespace-trimmed substring match against chapter titles, preserves
+  original TOC order, does not touch navigation data, a clear non-error
+  "No chapters match "…"." message when nothing matches, and clearing the
+  field restores the full list. The filter's own `rememberSaveable` state
+  lives inside the dialog's own conditional composition, so it resets on each
+  fresh dialog open (Compose discards that composition when the dialog
+  closes) but is preserved by `rememberSaveable` if recreation happens while
+  the dialog is already open, matching the existing Appearance-dialog-draft
+  precedent.
+- **Scroll/typography/page-color closure: verified, not re-implemented.**
+  `ReaderPreferences.scroll` → `ReaderAppearance`'s "Continuous scrolling"
+  checkbox → `epubPreferences()` → Readium's `EpubPreferences.scroll` remains
+  intact end-to-end (unchanged by this pass, confirmed by the full
+  `NavigationSmokeTest` regression pass including `fixedReaderZoomFitAndGlobalAppearancePersistAcrossRecreation`-style
+  appearance-persistence coverage). `PagePalette.DARK` maps to Readium
+  `Theme.DARK` with explicit `backgroundColor`/`textColor`, independent of the
+  ShelfOS app theme's own dark/light state; `PagePalette.THEME` maps `night =
+  dark` (i.e. it *does* follow the app theme, by design — that is what
+  "Theme" as a page-color option is supposed to mean); `PagePalette.PAPER`
+  maps to `Theme.SEPIA`. No second/duplicate dark-mode setting was added. No
+  paragraph/word/letter spacing, hyphenation, ligature or column/spread
+  control was added, per the plan's own explicit "do not add these" guidance.
+- **Accessibility.** The current-chapter indicator is never color-only (bold
+  weight + checkmark glyph + `contentDescription` addition, three independent
+  signals). No separate focus target was created for the checkmark — it is a
+  plain decorative sibling `Text`, not a separately focusable node. Chapter
+  buttons keep their title as an accessible name either way. The filter field
+  has an explicit "Filter chapters" label via `contentDescription`.
+- **Keyboard/controller.** No new `ShelfCommand` mapping was added. The
+  Chapters button/dialog remain ordinary Compose-focusable controls exactly
+  as before; the full `NavigationSmokeTest` suite (26/26, including its
+  keyboard/gamepad/D-pad/Escape/modality-transition coverage) re-passed
+  unmodified in behavior after this slice, confirming Phase 2A's Back
+  semantics and Phase 2A.1's input hints are unaffected outside the dialog.
+- **Not implemented in this slice** (per its own scope guard): bookmarks, any
+  Room migration, `SearchService` UI, custom fonts, or any other 2B.2–2B.4
+  work.
+
 **2B.2 — Bookmarks + Room v2 → v3 migration.**
 Room migration 2→3 (`bookmark` table), repository CRUD, "Add bookmark"/list/
 jump/delete UI in the EPUB reader chrome and/or a bookmarks sheet. The only
@@ -1014,30 +1127,59 @@ provider work, theme redesign).
 
 #### 2B.11 Acceptance criteria (per slice, to be met at implementation time — none met yet)
 
-**2B.1 (chapter/typography/page-color closure):**
-user-visible: current chapter visibly indicated in the Chapters dialog;
-optional TOC filter if implemented. persistence: none new. accessibility:
+**2B.1 (chapter/typography/page-color closure) — IMPLEMENTED, PENDING
+INDEPENDENT REVIEW (2026-09-26, `phase-2/epub-chapters`):**
+user-visible: current chapter visibly indicated in the Chapters dialog — done
+(checkmark + bold); optional TOC filter — done (above `CHAPTER_FILTER_THRESHOLD
+= 8` entries). persistence: none new — confirmed (no schema change). accessibility:
 highlighted chapter row must not rely on color alone (e.g. also a check mark
-or bold label). touch/keyboard/controller: dialog remains fully reachable
-exactly as today (TextButton-based list, already focusable). compact/
-expanded layout: dialog already scrolls via `LazyColumn`, no new layout
-concern. recreation/app restart: highlight recomputes from the restored
-locator, not stored separately. source preservation: n/a (read-only).
-offline: n/a (local-only). failure/recovery: empty/short TOC (already
-handled — dialog just lists what exists). **Explicit matching-helper gates
-(added 2026-09-26, Codex R3) — the highlight must not ship without unit tests
-for all five:**
-1. chapter href without a fragment (plain resource-level TOC entry);
-2. TOC href with a fragment, matched against a locator whose fragment agrees;
+or bold label) — done (checkmark + bold + `contentDescription`, three signals).
+touch/keyboard/controller: dialog remains fully reachable exactly as today
+(TextButton-based list, already focusable) — confirmed by the full,
+unmodified-behavior `NavigationSmokeTest` pass (26/26). compact/expanded
+layout: dialog already scrolls via `LazyColumn`, no new layout concern —
+unchanged. recreation/app restart: highlight recomputes from the restored
+locator, not stored separately — done (`remember`, not `rememberSaveable`/
+Room; confirmed by `EpubRecreationTest` and the new `EpubChapterHighlightTest`
+reopen-and-recompute case). source preservation: n/a (read-only) — confirmed,
+no production write path touches the EPUB. offline: n/a (local-only) — no
+network dependency introduced. failure/recovery: empty/short TOC (already
+handled — dialog just lists what exists) — unchanged. **Explicit
+matching-helper gates (added 2026-09-25, Codex R3) — the highlight must not
+ship without unit tests for all five:**
+1. chapter href without a fragment (plain resource-level TOC entry) — **done**
+   (`chapterHrefWithoutFragmentMatchesByResourceAlone`).
+2. TOC href with a fragment, matched against a locator whose fragment agrees —
+   **done** (`tocHrefWithFragmentMatchesWhenTheLocatorFragmentAgrees`).
 3. several chapter entries pointing into one XHTML resource at different
-   fragments — verify the correct one highlights, not all of them;
+   fragments — verify the correct one highlights, not all of them — **done**
+   (`severalTocEntriesSharingOneResourcePickTheMatchingFragmentNotAllOfThem`).
 4. a nested TOC (parent/child `Link.children`) — verify a deeply-nested entry
-   still matches correctly;
+   still matches correctly — **done** (`nestedTocEntryMatchesTheSameWayAsATopLevelOne`;
+   `EpubSession.chapters` is already the flattened, depth-walked list, so
+   nesting is not a special case for the matching rule itself).
 5. a locator with no usable fragment at all — verify the deterministic
-   same-resource fallback (last matching entry at/before position) is used,
-   not an arbitrary or unstable choice.
-API 35: yes. RP5: not required (no new chrome reachability surface, per
-§2B.7).
+   same-resource fallback is used, not an arbitrary or unstable choice —
+   **done, but not exactly as originally worded.** The plan's literal
+   "last matching entry at/before position" fallback assumes a within-resource
+   position comparable between the locator and each TOC entry, which no
+   available Readium/Link data actually provides without parsing the
+   resource's own HTML (explicitly out of scope). **Assessed and reported
+   per this task's own instruction before implementing**, then implemented
+   as the smallest honest fallback: prefer the same-resource entry with no
+   fragment of its own (the whole-chapter entry) when one exists, else the
+   first same-resource entry in TOC order — covered by
+   `locatorWithNoUsableFragmentFallsBackToTheResourceLevelEntryWhenOneExists`
+   and `...AndNoResourceLevelEntryFallsBackToTheFirstSameResourceEntry`. See
+   this plan's 2B.1 implementation record above and `matchChapter`'s doc
+   comment (`core.reader.EpubReader.kt`) for the full assessment.
+Also added beyond the plan's five: a different-resource never matches, an
+empty chapter list never matches, a fragment matching no TOC entry still uses
+the resource fallback rather than reporting no chapter, matching is
+deterministic across repeated calls, and only the first `Locations.fragments`
+entry is considered (11 JVM tests total, `EpubChapterMatchTest`, all pass).
+API 35: yes (`shelfos-phase0`). RP5: not required (no new chrome reachability
+surface, per §2B.7) and not performed in this pass.
 
 **2B.2 (bookmarks):**
 user-visible: add/list/jump/delete bookmarks for the open EPUB. persistence:
