@@ -1,11 +1,11 @@
 # Phase 2 plan: the Reading phase
 
-Status: **increment 2A is accepted (2026-09-25)** on branch `phase-2/reading`,
-not yet merged to `main`. Independent Codex review verdict: PASS WITH
-NON-BLOCKING FINDINGS — see `VALIDATION.md`'s "Phase 2A validation" section for
-the full evidence and explicitly-unclaimed items. 2A.1 is planned only (this
-document, not yet implemented). 2B/2C/2D remain planned only; none of their
-work has started. This document is the canonical Phase 2 planning location
+Status: **2A is accepted** (2026-09-24, merged to `main`; Codex verdict: PASS
+WITH NON-BLOCKING FINDINGS). **2A.1 is implemented (2026-09-25)** on branch
+`phase-2/input-hints`, not yet merged or reviewed by Codex — see
+`VALIDATION.md`'s "Phase 2A.1 validation" section for evidence and
+explicitly-unclaimed items. 2B/2C/2D remain planned only; none of their work
+has started. This document is the canonical Phase 2 planning location
 referenced by [`ROADMAP.md`](ROADMAP.md#phase-2--reading).
 
 ## 1. Reconciling Phase 1 acceptance with the roadmap
@@ -124,69 +124,84 @@ behavior as an open design question pending this increment.
       resolved by Codex re-review. A manual TalkBack walkthrough was still not
       performed — TalkBack was unavailable on the test targets used.
 
-### 2A.1 — Input Discovery & Controller Hint Polish (planning only, not implemented)
-
-**Do not implement this increment yet.** No `InputHint` composable, modality
-detector, controller badge, hard-coded "R1"/"L1"/"B" label, new binding, or
-remapping architecture exists in this branch. This section records the
-accepted future direction only, to be implemented in a fresh follow-up branch
-after Phase 2A is merged.
+### 2A.1 — Input Discovery & Controller/Keyboard Hint Polish (implemented 2026-09-25)
 
 **Purpose.** ShelfOS already supports controller/keyboard reader navigation
 (Phase 1's `ShelfCommand`/`InputMapper`, hardened in 2A), but nothing in the UI
-lets a user discover that capability without experimenting. Media frontends
+let a user discover that capability without experimenting. Media frontends
 such as Beacon and ES-DE demonstrate the value of subtle contextual input
-hints — they are interaction references only; ShelfOS must not copy their
-proprietary assets, controller artwork, layouts, branding or sounds, and must
-implement this using its own visual system.
+hints — they were used as interaction references only; no proprietary assets,
+controller artwork, layouts, branding or sounds were copied. ShelfOS's own
+visual system (`core.designsystem`/`core.theme` tokens) is used throughout.
 
-**Product direction.** When reader chrome is visible and controller input is
-the active/recent input modality, ShelfOS may show small contextual hints such
-as `[L1] Previous`, `[R1] Next`, `[B] Back` — small monochrome rounded
-keycaps/badges, subtle border/background, theme-aware, visually secondary to
-the publication, consistent with ShelfOS Classic, with no bright
-Xbox/PlayStation/Nintendo branding or proprietary controller glyphs. Hints
-disappear with reader chrome. The exact visual treatment is not frozen; the
-examples above are not pixel-perfect contracts.
+**Implemented scope:**
+- `core.input.InputModality` (`TOUCH`/`KEYBOARD`/`CONTROLLER`) and
+  `KeyEvent.inputModality()` (`core/input/InputHints.kt`): classifies a real
+  key event by keycode where unambiguous (`L1`/`R1`/`GAMEPAD_A`/`GAMEPAD_B`/
+  `START` are gamepad-exclusive keycodes a keyboard cannot generate) and by the
+  event's reported `InputDevice` sources (`SOURCE_GAMEPAD`/`SOURCE_JOYSTICK`/
+  `SOURCE_DPAD`) for the keys a keyboard's arrows/Enter and a gamepad's D-pad
+  report identically. Never inspects device model/name.
+- `core.input.InputHints.hint(command, modality, rightToLeft)`: resolves the
+  on-screen label by asking the *real* `InputMapper.command()` which candidate
+  physical key currently produces that command, so a displayed hint can never
+  drift out of sync with the binding it describes — this directly satisfies
+  the semantic-architecture requirement below without a separate hand-maintained
+  label table. Returns `null` for `TOUCH` (no hint shown).
+- `core.designsystem.InputKeycap`: the reusable monochrome keycap badge —
+  small, rounded, theme-aware (`t.colors.muted`/`t.colors.divider`/
+  `t.shapes.extraSmall`), visually secondary, no bright console branding.
+- Reader-chrome integration in both `FixedReaderScreen.kt` (PDF/CBZ, shared) and
+  `EpubActivity.kt` (EPUB): Previous/Next hints are merged into the existing
+  Previous/Next buttons' `contentDescription` (e.g. `"Next, R1"`) rather than
+  a separate node; the Back hint is a decorative, `clearAndSetSemantics`-only
+  keycap next to the Library button (no exact existing "Back" control to merge
+  into). All hints live inside the existing `if (controls) { ... }` chrome
+  blocks, so hiding chrome removes them from the tree automatically — no
+  separate visibility mechanism was needed.
+- Recent-modality tracking is local per-reader-screen state
+  (`rememberSaveable`), updated only by real touch gestures (tap/double-tap/
+  swipe-turn in `FixedReaderScreen`, center-tap in `EpubSurface`) and real key
+  events — never by a button `onClick`, since a click may itself have been
+  keyboard/gamepad-activated. **Real-hardware finding (RP5):** the system Back
+  key/gesture must *not* update modality — it is a universal dismissal action
+  available identically from every modality, and letting it flip the tracked
+  modality was observed live on RP5 hardware to yank an active controller hint
+  set back to keyboard on every Back press. Both readers exclude
+  `ShelfCommand.BACK` from the modality update.
+- Keyboard hints are first-class, not deferred: `←`/`→`/`Esc` render exactly
+  like controller hints, including the RTL swap (`InputHints.hint` reuses
+  `InputMapper.command()`'s own RTL branch, so it can never disagree with it).
 
-**Semantic architecture requirement.** The implementation must not hard-code
-display strings like `"R1"`/`"L1"`/`"B"` inside individual reader
-screens/buttons — that would regress the semantic-input architecture Phase 1
-and 2A both preserved. The intended shape is:
+**Known gap, honestly recorded, not fixed in this pass:** touch-modality
+detection for the EPUB reader is only fully reliable via the center tap.
+Edge taps that turn EPUB pages are handled entirely inside Readium's
+`DirectionalNavigationAdapter` and never reach `EpubActivity`'s Compose tree,
+so a user who turns EPUB pages purely by edge-tapping (without ever
+center-tapping) after a keyboard/controller session will keep seeing the
+stale hint set until they do center-tap or press a key. Fixing this would
+require hooking Readium's own gesture pipeline, which is out of scope for this
+increment's size.
 
-```
-Physical input -> current binding -> ShelfCommand -> InputHint representation
-```
+**Deferred, not part of this slice:** a shared `ReaderChrome` component (the
+Previous/Next/Back duplication between `FixedReaderScreen`/`EpubActivity`
+identified in 2A remains); unifying touch itself into the `ShelfCommand`
+semantic layer (touch still drives readers via raw `pointerInput`/Readium
+listeners, only the *hint* layer is command-derived); remapped-control
+reflection; alternate controller layouts. None of these were built
+speculatively ahead of need.
 
-e.g. `ShelfCommand.NEXT_PAGE -> current binding -> R1 -> rendered keycap`. The
-displayed hint must describe the actual current binding, not a label
-hard-coded by the reader UI, so future remapping/support stays possible. The
-concrete API/abstraction is not decided by this planning pass — do not build a
-speculative production abstraction ahead of the actual implementation work.
-
-**Input-modality-aware presentation:**
-- **Touch:** when touch is the active/recent modality, controller badges
-  generally should not occupy reader chrome — touch users should not see
-  unnecessary controller clutter.
-- **Controller:** after controller/D-pad/button input, relevant controller
-  hints may appear with reader chrome, making supported actions immediately
-  discoverable.
-- **Keyboard:** the same architecture should eventually support keyboard hints
-  (e.g. `[←] Previous`, `[→] Next`, `[Esc] Back`), but the first 2A.1 slice
-  does not need to include keyboard hints if that would make the increment
-  unnecessarily large.
-- **Immersive mode:** when reader chrome is hidden, input hints disappear with
-  it; the publication remains visually dominant.
-
-**Likely first-slice scope:** detect/reuse recent input modality; a reusable
-ShelfOS keycap/`InputHint` visual component; mapping semantic reader commands
-to their currently-relevant displayed bindings; reader-chrome integration for
-EPUB, PDF and CBZ; Previous/Next/Back as the minimum useful command set;
-Classic/Dark parity; accessibility semantics; reduced-motion compatibility;
-compact/expanded layout sanity; RP5 physical-controller validation. Potential
-future extension (not first-slice): keyboard hints, remapped-control
-reflection, alternate controllers/layouts. Do not expand the first slice into
-a complete remapping system.
+**Input-modality-aware presentation (as implemented):**
+- **Touch:** the active modality starts as `TOUCH`; no hints render, and a
+  real touch gesture always clears any previously-shown controller/keyboard
+  hints back to none.
+- **Controller:** a gamepad-exclusive key (`L1`/`R1`/`GAMEPAD_A`/`GAMEPAD_B`/
+  `START`) always switches to `CONTROLLER`; an ambiguous D-pad/Enter key
+  switches to `CONTROLLER` only if its `InputDevice` reports gamepad sources.
+- **Keyboard:** any other real key event (arrows/Escape/Page Up/Page Down/etc.
+  not from a gamepad-sourced device) switches to `KEYBOARD`.
+- **Immersive mode:** hidden chrome hides hints with it, confirmed both by
+  instrumented test and RP5 screenshot evidence.
 
 **UX principles:**
 1. Discoverability without clutter.
@@ -216,6 +231,30 @@ for comics:
 2C   — Original PDF hardening/fidelity
 2D   — continuity/accessibility/performance closure
 ```
+
+**Acceptance criteria:**
+- [x] Compiles (`:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`).
+- [x] `:app:assembleDebug`, `:app:testDebugUnitTest` (including the new
+      `InputHintsTest` JVM unit tests), `:app:lintDebug`,
+      `:app:assembleDebugAndroidTest` pass.
+- [x] `:app:connectedDebugAndroidTest` (`NavigationSmokeTest`, 21 tests) passes
+      on `shelfos-phase0` (API 35) — the known-good emulator for this class of
+      test, per the API 37 Espresso/InputManager tooling gap recorded in 2A.
+- [x] RP5 (Retroid Pocket 5, Android 13/API 33) physical validation: the full
+      21-test suite passes on-device, plus manual real-hardware confirmation
+      (screenshots) that controller hints appear on an `R1` press, persist
+      correctly across a Back-reveal (after the modality-tracking fix above),
+      and disappear with hidden chrome. See `VALIDATION.md`.
+- [x] Keyboard hint validation: automated (emulator + RP5) via
+      `PAGE_DOWN`/`PAGE_UP` injection, which are unambiguous keyboard-only
+      keycodes in the modality classifier (chosen over `DPAD_LEFT/RIGHT`
+      specifically because the emulator's/RP5's synthetic key injection made
+      D-pad-vs-keyboard ambiguous — a real physical tablet keyboard was not
+      available in this environment; see the "Known limitations" note in
+      `VALIDATION.md`).
+- [ ] Galaxy Tab A physical validation. Optional/periodic per the device
+      strategy in §7; not performed in this pass, documented as pending.
+- [ ] Independent Codex review of this increment. Not yet performed.
 
 ### 2B — EPUB everyday-reading improvements (planned, not started)
 
@@ -396,13 +435,17 @@ field validation.**
 | Rapid repeated input | Rapidly toggle chrome and press Back/turn pages repeatedly; confirm no crash, no stuck state | Emulator, RP5 |
 | Resume/reopen | Open a publication, turn pages, exit via the new Back contract, reopen from Library, confirm position resumed | Emulator, RP5 |
 | Compact vs. expanded layout | Repeat chrome/Back checks in both phone (compact) and tablet (expanded) window sizes | Emulator |
+| Controller hint discovery | Press a gamepad button (R1/L1/B); confirm hints appear next to Previous/Next/Back, matching the actual binding | Emulator (injected), RP5 (real hardware) |
+| Keyboard hint discovery | Press a keyboard key (Page Down/Up, Escape); confirm hints appear as arrows/Esc, matching the actual binding, including under RTL | Emulator (injected), RP5 (real hardware) |
+| Modality switching | Alternate controller input, keyboard input and a real touch tap; confirm hints switch/clear correctly each time, including across a Back press | Emulator, RP5 |
 | Tablet reader layout sanity (optional/periodic) | Open each format, check chrome scale, interaction visibility, obvious performance regression | Galaxy Tab A |
 
 ## 9. Explicit out-of-scope confirmation for this run
 
-Only 2A was implemented (and, in a later pass, remediated against independent
-Codex review — no new reader behavior beyond that remediation). 2A.1, 2B, 2C
-and 2D are planning-only in this document; no `InputHint` composable, modality
-detector, controller badge, hard-coded button label, new binding, remapping
-architecture, or any other 2A.1/2B/2C/2D code exists on this branch. No item
-from §4's out-of-scope list was touched.
+2A was implemented and remediated against independent Codex review, then
+accepted and merged to `main`. This pass implemented 2A.1 only, on top of that
+merge, on branch `phase-2/input-hints`. No code for user-editable bindings,
+a complete remapping UI, controller profiles, console-brand-specific glyph
+packs, controller detection by product/model database, platform-specific
+visual modes, or any 2B/2C/2D work exists on this branch. No item from §4's
+out-of-scope list was touched.

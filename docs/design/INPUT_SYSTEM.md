@@ -8,7 +8,8 @@ Ctrl+F opens Search, Escape/gamepad B use normal back behavior. Android Home is
 left to the system. Reader commands (`NEXT_PAGE`/`PREVIOUS_PAGE`/`OPEN_MENU`/`BACK`)
 are implemented and active in both the EPUB and Original (PDF/CBZ) readers as of
 Phase 1, covering keyboard and gamepad; see the Phase 2A note below for Back and
-touch. Focus rings are centralized in `shelfAction`; no remapping UI exists yet.
+touch, and §10 for the Phase 2A.1 input-discovery hint layer built on top of this
+mapper. Focus rings are centralized in `shelfAction`; no remapping UI exists yet.
 
 ## 1. Principle
 
@@ -156,6 +157,36 @@ Future stylus behavior should distinguish:
 - palm rejection where platform support permits
 
 Ink coordinates must be stored relative to page/content space.
+
+## 10. Input discovery hints (Phase 2A.1)
+
+Implemented on top of the existing `ShelfCommand`/`InputMapper` layer, not a
+parallel system: `core.input.InputModality` (`TOUCH`/`KEYBOARD`/`CONTROLLER`)
+tracks the user's recent input per reader screen, and
+`core.input.InputHints.hint(command, modality, rightToLeft)` resolves the
+on-screen label by asking `InputMapper.command()` itself which candidate
+physical key currently produces that command — so a displayed hint (`R1`,
+`←`, `Esc`, ...) can never drift out of sync with what the key actually does.
+`core.designsystem.InputKeycap` renders the small monochrome keycap badge.
+
+Modality classification (`KeyEvent.inputModality()`) never inspects device
+model/name: gamepad-exclusive keycodes (`L1`/`R1`/`GAMEPAD_A`/`GAMEPAD_B`/
+`START`) are always `CONTROLLER`; the keys a keyboard's arrows/Enter and a
+gamepad's D-pad report identically fall back to the event's reported
+`InputDevice` sources. The system Back key/gesture is deliberately excluded
+from updating modality — real RP5 hardware testing found that including it
+flipped an active controller hint set to keyboard on every Back press, since
+Back is a universal dismissal action common to every modality, not a signal
+of modality preference.
+
+Touch itself is still not routed through `ShelfCommand` (§6's open item
+remains open) — only the *hint display* is command-derived. Real touch
+gestures (tap/double-tap/swipe in the Original reader, center-tap in EPUB)
+clear the tracked modality back to `TOUCH`; a known gap is that EPUB page
+turns via edge-tap are handled entirely inside Readium's own navigator and
+never reach this tracking, so edge-tap-only EPUB reading after a keyboard/
+controller session can leave a stale hint showing until a center-tap or key
+press occurs.
 
 ## Future Series continuity
 

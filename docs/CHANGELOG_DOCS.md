@@ -1,5 +1,24 @@
 # Documentation Changelog
 
+## Phase 2A.1: input-discovery/controller-hint implementation (2026-09-25)
+
+- Recorded Phase 2A.1 as implemented in `PHASE_2_PLAN.md` and `VALIDATION.md`:
+  `core.input.InputModality`/`InputHints` (self-verifying against the real
+  `InputMapper` bindings) and `core.designsystem.InputKeycap`, integrated into
+  both readers' chrome, with keyboard hints as first-class (not deferred).
+- Recorded a real bug found via RP5 hardware testing and its fix: the system
+  Back key was unconditionally classified as keyboard modality, flipping an
+  active controller hint set on every Back press; Back is now excluded from
+  modality updates in both readers.
+- Recorded automated evidence (21/21 on the known-good API 35 emulator and on
+  real RP5 hardware) and the explicit limits: no manual TalkBack walkthrough,
+  no physical tablet keyboard available (keyboard validation used ADB-injected
+  keys), and a known gap where EPUB edge-tap-only reading doesn't clear a
+  stale controller/keyboard hint (only center-tap does).
+- Added `docs/design/INPUT_SYSTEM.md` §10 documenting the hint-resolution
+  architecture and the Back/modality interaction.
+- Phase 2A.1 is implemented but not yet reviewed by Codex or merged.
+
 ## Phase 2A acceptance and Phase 2A.1 planning (2026-09-25)
 
 - Recorded Phase 2A as accepted in `VALIDATION.md` and `PHASE_2_PLAN.md`,

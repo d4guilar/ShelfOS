@@ -1,14 +1,144 @@
 # Validation
 
+## Phase 2A.1 validation (2026-09-25)
+
+Status: 2A.1 (input-discovery/controller-hint polish, `docs/PHASE_2_PLAN.md`)
+implemented on branch `phase-2/input-hints`, based on the merged Phase 2A
+(`main`). Not yet reviewed by Codex; not yet merged.
+
+### STATIC / BUILD
+
+| Check | Result |
+| --- | --- |
+| `:app:compileDebugKotlin` | Passed |
+| `:app:compileDebugAndroidTestKotlin` | Passed |
+| `:app:assembleDebug` | Passed |
+| `:app:lintDebug` | Passed |
+| `:app:assembleDebugAndroidTest` | Passed |
+| Room schema cleanliness (`git status --porcelain -- app/schemas`) | Clean — no Room changes |
+| `git diff --check` | Clean |
+| Dependency check | No dependency added or changed (`gradle/libs.versions.toml`/`app/build.gradle.kts` diff is empty); the hint system uses only existing Compose/Android APIs |
+
+### JVM / REGRESSION
+
+| Check | Result |
+| --- | --- |
+| `:app:testDebugUnitTest` | Passed, including new `InputHintsTest` (touch→null, controller labels match the real `InputMapper` bindings, controller labels are not RTL-swapped, keyboard labels are and match the actual arrow/Escape bindings, no hint for a command without a candidate binding) |
+
+### INSTRUMENTED / EMULATOR
+
+`NavigationSmokeTest` grew from 16 to 21 tests with five new Phase 2A.1 tests
+(`controllerInputShowsControllerHintsThenTouchClearsThem`,
+`keyboardInputShowsKeyboardHintsInFixedReader`,
+`hiddenChromeNeverExposesInputHints`,
+`decorativeBackHintIsNotItsOwnAccessibilityStop`,
+`keyboardInputShowsKeyboardHintsInEpubReader`), run via
+`:app:connectedDebugAndroidTest` targeted explicitly at one device with
+`ANDROID_SERIAL` to avoid accidentally exercising a connected RP5 during
+routine emulator runs:
+
+| Device | Result |
+| --- | --- |
+| `shelfos-phase0` (AVD, API 35) | 21/21 passed |
+
+A test-design pitfall was found and fixed during this pass: `InputKeycap` is
+deliberately stripped of its own semantics (`clearAndSetSemantics {}`), so
+`onNodeWithText` queries against it always fail — Compose test APIs only see
+the semantics tree, not rendered pixels. Tests were corrected to check the
+merged `contentDescription` on Previous/Next (e.g. `"Next, R1"`) and a
+`testTag` on the decorative Back hint instead of raw keycap text. A second,
+real bug was found this way and independently confirmed on RP5 hardware (see
+PHYSICAL DEVICE below): the system Back key was unconditionally classified as
+`KEYBOARD` modality, flipping an active controller hint set on every Back
+press; fixed by excluding `ShelfCommand.BACK` from the modality update in both
+readers, since Back is a universal dismissal action common to every modality.
+
+The emulator's synthetic `DPAD_LEFT`/`DPAD_RIGHT` key injection was found to be
+ambiguous for modality classification (unclear whether the virtual keyboard
+device used by `Instrumentation.sendKeyDownUpSync` reports gamepad-like
+`SOURCE_DPAD`); the keyboard-hint tests use `PAGE_DOWN`/`PAGE_UP` instead,
+which are unambiguous keyboard-only keycodes in the classifier and produce the
+same displayed hint (`→`/`←`) via `InputHints`' candidate-based lookup
+regardless of which actual key triggered the modality.
+
+### PHYSICAL DEVICE
+
+**Retroid Pocket 5 (RP5), Android 13/API 33, ADB serial `d8f7f1b6`:**
+
+- Full 21-test `NavigationSmokeTest` suite: **21/21 passed**, run via
+  `ANDROID_SERIAL` targeting the RP5 specifically. One run hung for ~9 minutes
+  on `controllerInputShowsControllerHintsThenTouchClearsThem` (a
+  `performTouchInput` synthetic touch) and failed via an outer timeout; this
+  was traced to the device's screen timing out mid-test, not a code defect —
+  confirmed by extending `screen_off_timeout` and re-running cleanly at 52s
+  for all 21 tests. The device's screen timeout was restored to 30s afterward.
+- Manual real-hardware verification (screenshots, not merely the automated
+  suite): imported a real PDF through the actual SAF import UI, opened it,
+  pressed the physical-equivalent `R1` key over ADB — controller hints
+  (`L1 Previous`, `R1 Next`, `B Back`) rendered correctly and legibly on the
+  RP5's 1080×1920 screen, with no chrome overflow or clipping. Hid chrome —
+  hints disappeared with it. Pressed Back — chrome and hints both reappeared
+  (hidden-chrome contract from ADR-0023 held), and, after the fix above, the
+  hints correctly stayed in controller mode instead of flipping to keyboard.
+  Pressed Back again from visible chrome — reader exited to Library/details
+  correctly, position saved.
+- No ShelfOS crashes or navigation exceptions observed in RP5 logcat during
+  either the automated run or the manual pass.
+- No obvious performance regression observed.
+
+**Important distinction, preserved from the Phase 2A review:** the above is
+real RP5 hardware execution driven through ADB-injected key events and actual
+screen taps, not a record of physically pressing the handheld's own L1/R1/B
+buttons by hand. The owner's separate general confirmation that the RP5's
+physical controls work was not re-verified with a new specific per-button
+sequence in this pass.
+
+**Manual TalkBack:** not performed — TalkBack was unavailable on the test
+targets used, consistent with the Phase 2A record.
+
+**Samsung Galaxy Tab A (SM-T580):** not performed in this pass, per the device
+strategy in `PHASE_2_PLAN.md` §7 — optional/periodic and non-blocking.
+
+### ACCESSIBILITY
+
+Previous/Next hints are merged into the existing buttons'
+`contentDescription` (e.g. `"Next, R1"`, `"Previous, ←"`) rather than adding a
+new focusable node — verified by the automated tests checking for exactly that
+merged description. The Back hint, which has no single existing "Back"
+control to merge into, is fully decorative: `clearAndSetSemantics {}` removes
+it from the tree entirely (confirmed via `onAllNodesWithText("Back")` finding
+zero nodes in the default merged tree, and `assert(!hasClickAction())` on its
+`testTag`), so it cannot become a noisy duplicate stop. This was not
+independently walked through with TalkBack physically running, for the same
+reason recorded in the Phase 2A entry above.
+
+### MOTION
+
+No animation was added for hint appearance/disappearance — hints follow the
+same instant, unanimated pattern as chrome show/hide (2A). Reduced motion is
+honored trivially, as there is no motion to gate.
+
+### FINAL ACCEPTANCE (2A.1)
+
+2A.1 is **implemented and automated-tested on the known-good emulator (21/21)
+and on real RP5 hardware (21/21, plus manual real-hardware screenshot
+verification)**, including a genuine bug (Back flipping modality) found and
+fixed via that RP5 testing. It is **not yet reviewed by Codex** and **not
+merged**. Do not treat 2A.1 as accepted until Codex reviews it. Keyboard
+hint validation used ADB-injected key events on both the emulator and RP5, not
+a physical tablet keyboard — none was available in this environment; this is
+recorded here rather than claimed as physical keyboard validation.
+
 ## Phase 2A validation (2026-09-25)
 
 Status: **Phase 2A (reader chrome/Back semantics, `docs/PHASE_2_PLAN.md`) is
-accepted**, on branch `phase-2/reading`, not yet merged. Independent Codex
-review verdict: **PASS WITH NON-BLOCKING FINDINGS** (see FINAL ACCEPTANCE
-below for the full evidence summary and explicitly unclaimed items). Phase 1's
-acceptance (below) is unaffected; no Phase 1 code outside the reader
-Back-handling paths described in
-[ADR-0023](adr/0023-reader-chrome-back-semantics.md) was touched.
+accepted and merged to `main`.** Independent Codex review verdict: **PASS WITH
+NON-BLOCKING FINDINGS** (see FINAL ACCEPTANCE below for the full evidence
+summary and explicitly unclaimed items). Phase 1's acceptance (below) is
+unaffected; no Phase 1 code outside the reader Back-handling paths described
+in [ADR-0023](adr/0023-reader-chrome-back-semantics.md) was touched. 2A.1
+(input-discovery/controller-hint polish) builds on this merge — see the
+"Phase 2A.1 validation" section below.
 
 ### STATIC / BUILD
 
