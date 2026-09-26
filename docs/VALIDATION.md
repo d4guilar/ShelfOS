@@ -1,5 +1,42 @@
 # Validation
 
+## Phase 2A.1 acceptance and post-merge maintenance (2026-09-26)
+
+2A.1 received final Codex confirmation after the R3 cleanup below and was
+squash-merged to `main` via PR #5 at commit
+`44c8f10600f93f875a3cfb685c27f47c25929c29`. This supersedes the "Not yet
+re-confirmed by Codex; not merged" lines in the R3 cleanup and remediation
+entries below — 2A.1 is accepted.
+
+A separate, small `maintenance/epub-recreation-back-test` pass then corrected
+`EpubRecreationTest.kt`'s `readerUiStateSurvivesRecreationAndAppliedAppearanceReloads`
+test, which the R3 cleanup entry below correctly identified as out-of-scope,
+pre-existing Phase 2A test debt (never a 2A.1 production defect): the test
+pressed `KEYCODE_BACK` while chrome was visible, expecting chrome to hide and
+the reader to stay open — a pre-[ADR-0023](adr/0023-reader-chrome-back-semantics.md)
+assumption that Phase 2A's accepted Back contract (visible chrome + Back →
+exit) had already made stale. Fixed by hiding chrome via `KEYCODE_MENU`
+(`ShelfCommand.OPEN_MENU`) instead, matching the pattern already used in
+`NavigationSmokeTest.kt`. No production code changed; Back's reveal-then-exit
+behavior is untouched and remains covered by `NavigationSmokeTest`.
+
+**STATIC / BUILD:** `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`,
+`:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`,
+`:app:assembleDebugAndroidTest` (`--rerun-tasks --offline`) — see this pass's
+final report for the actual run results. `git diff --check` clean; `git status
+--porcelain -- app/schemas` clean (no Room changes).
+
+**INSTRUMENTED / EMULATOR:** `EpubRecreationTest` alone, then
+`EpubRecreationTest` + `NavigationSmokeTest` together, on `shelfos-phase0`
+(API 35) — see this pass's final report for pass counts.
+
+**PHYSICAL DEVICE:** no RP5 re-certification performed or required — no
+production code changed, test-only fix.
+
+**FINAL ACCEPTANCE:** Phase 2A and Phase 2A.1 are both accepted and merged to
+`main`. This maintenance pass closes the last known test debt from Phase 2A's
+Back-contract change. Phase 2B has not started.
+
 ## Phase 2A.1 owner physical-controller verification (2026-09-25)
 
 The owner manually pressed the Retroid Pocket 5's actual physical controller
@@ -115,12 +152,14 @@ functions, with no change to `inputModalityOrNull()`'s observable behavior —
 so per the review's own instruction, a focused RP5 sanity check is not
 required unless the extraction changed runtime logic, which it did not.
 
-### FINAL ACCEPTANCE (2A.1 R3 cleanup)
+### FINAL ACCEPTANCE (2A.1 R3 cleanup) — superseded, see acceptance entry at the top
 
 All four non-blocking findings are closed with evidence. `EpubRecreationTest.kt`
 remains untouched, as instructed — it is separate, pre-existing Phase 2A test
-debt, to be handled in a tiny follow-up after 2A.1 merges. **Not yet
-re-confirmed by Codex; not merged.**
+debt, handled in the `maintenance/epub-recreation-back-test` follow-up after
+2A.1 merged. 2A.1 subsequently received final Codex confirmation and was
+merged via PR #5 — see "Phase 2A.1 acceptance and post-merge maintenance"
+at the top of this document.
 
 ## Phase 2A.1 remediation validation (2026-09-25)
 
@@ -195,7 +234,10 @@ was last touched in the Phase 1 foundation commit and was never updated when
 Phase 2A's merge (`cb9df1a`) changed `EpubActivity`'s Back behavior — this is a
 **pre-existing gap from the Phase 2A merge, unrelated to 2A.1's modality
 remediation and outside this review's scope**. Recorded here, not fixed, per
-the instruction to avoid scope creep beyond the reviewed findings.
+the instruction to avoid scope creep beyond the reviewed findings. **Fixed in
+the `maintenance/epub-recreation-back-test` pass** after 2A.1 merged — see
+"Phase 2A.1 acceptance and post-merge maintenance" at the top of this
+document.
 
 ### PHYSICAL DEVICE
 

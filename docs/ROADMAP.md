@@ -211,8 +211,8 @@ that accepted foundation: chapter/search refinements, bookmarks, reader chrome a
 Back/immersive-mode hardening, controller/keyboard input-discovery hints, broader
 reading controls, and closure beyond the first usable reader. See
 [`PHASE_2_PLAN.md`](PHASE_2_PLAN.md) for the current increment breakdown
-(2A, accepted; 2A.1 input-discovery/controller-hint polish implemented,
-independent review in progress; 2B–2D planned) and acceptance criteria. The
+(2A accepted and merged; 2A.1 input-discovery/controller-hint polish accepted
+and merged via PR #5; 2B–2D planned, not started) and acceptance criteria. The
 original inventory below is retained for coverage; items already accepted in
 Phase 1 are marked accordingly.
 

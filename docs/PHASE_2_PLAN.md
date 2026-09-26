@@ -1,16 +1,18 @@
 # Phase 2 plan: the Reading phase
 
 Status: **2A is accepted** (2026-09-24, merged to `main`; Codex verdict: PASS
-WITH NON-BLOCKING FINDINGS). **2A.1 implementation is complete; a first Codex
-review (2026-09-25) returned CHANGES REQUIRED for a modality-tracking defect,
-which was remediated; a second Codex review then returned PASS WITH
-NON-BLOCKING FINDINGS.** A small R3 cleanup pass closes those findings (see
-below) — final cleanup complete, **not yet merged through the normal PR
-process, and not yet re-confirmed by Codex.** Do not mark 2A.1 accepted until
-that confirmation lands. See `VALIDATION.md`'s "Phase 2A.1" sections for
-evidence and explicitly-unclaimed items. 2B/2C/2D remain planned only; none of
-their work has started. This document is the canonical Phase 2 planning
-location referenced by [`ROADMAP.md`](ROADMAP.md#phase-2--reading).
+WITH NON-BLOCKING FINDINGS). **2A.1 is accepted and merged** (2026-09-25/26,
+squash-merged to `main` via PR #5 at commit `44c8f10600f93f875a3cfb685c27f47c25929c29`,
+after a first Codex review returned CHANGES REQUIRED for a modality-tracking
+defect, remediation, a second Codex review that returned PASS WITH
+NON-BLOCKING FINDINGS, an R3 cleanup pass closing those findings, and final
+Codex confirmation). A small post-merge maintenance pass
+(`maintenance/epub-recreation-back-test`, see its note under 2A.1 below)
+corrected stale Phase-2A test debt in `EpubRecreationTest.kt` that this
+acceptance surfaced. See `VALIDATION.md`'s "Phase 2A.1" sections for evidence
+and explicitly-unclaimed items. 2B/2C/2D remain planned only; none of their
+work has started. This document is the canonical Phase 2 planning location
+referenced by [`ROADMAP.md`](ROADMAP.md#phase-2--reading).
 
 ## 1. Reconciling Phase 1 acceptance with the roadmap
 
@@ -39,11 +41,10 @@ reader.
 
 Phase 2 builds on the accepted Phase 1 reader foundation rather than
 reimplementing it. It is broken into five increments (2A, 2A.1, 2B, 2C, 2D),
-each independently mergeable and gated by its own acceptance criteria. 2A is
-accepted and merged. 2A.1's implementation is complete and has been through
-two independent review rounds (see its section below and `VALIDATION.md` for
-the full history) — not yet merged or accepted pending a final targeted
-confirmation. 2B/2C/2D remain planned only; none of their work has started.
+each independently mergeable and gated by its own acceptance criteria. 2A and
+2A.1 are both accepted and merged (see their sections below and
+`VALIDATION.md` for the full history). 2B/2C/2D remain planned only; none of
+their work has started.
 
 ## 3. Increments
 
@@ -130,7 +131,7 @@ behavior as an open design question pending this increment.
       resolved by Codex re-review. A manual TalkBack walkthrough was still not
       performed — TalkBack was unavailable on the test targets used.
 
-### 2A.1 — Input Discovery & Controller/Keyboard Hint Polish (implemented 2026-09-25)
+### 2A.1 — Input Discovery & Controller/Keyboard Hint Polish (accepted 2026-09-26)
 
 **Purpose.** ShelfOS already supports controller/keyboard reader navigation
 (Phase 1's `ShelfCommand`/`InputMapper`, hardened in 2A), but nothing in the UI
@@ -310,8 +311,9 @@ for comics:
       re-validated.
 - [x] Second independent Codex review: **PASS WITH NON-BLOCKING FINDINGS**
       (test-quality and documentation-accuracy items — see the R3 cleanup
-      note below). Closed in this same pass; **not yet re-confirmed by
-      Codex, not yet merged.**
+      note below). Closed in the same pass, then **merged to `main` via PR #5**
+      (squash commit `44c8f10600f93f875a3cfb685c27f47c25929c29`) after final
+      Codex confirmation.
 
 **R3 cleanup (2026-09-25), after the second Codex review:** four non-blocking
 findings, none touching production behavior beyond a pure refactor:
@@ -337,6 +339,22 @@ findings, none touching production behavior beyond a pure refactor:
    entered the affected branch in either version. The real defect was that
    Escape/gamepad B — which do produce `ShelfCommand.BACK` — were wrongly
    excluded from the modality update. Corrected in all three locations.
+
+**Post-merge maintenance (2026-09-26), on `maintenance/epub-recreation-back-test`:**
+2A.1's merge surfaced stale test debt that actually predates 2A.1 itself:
+`EpubRecreationTest.kt`'s `readerUiStateSurvivesRecreationAndAppliedAppearanceReloads`
+test was last touched in Phase 1 and never updated when Phase 2A's
+[ADR-0023](adr/0023-reader-chrome-back-semantics.md) changed Back's contract —
+it pressed `KEYCODE_BACK` while chrome was visible expecting chrome to hide
+and the reader to stay open, but under the accepted ADR-0023 behavior,
+visible-chrome Back now exits the reader, which broke the test's later
+rotation/recreation assertions. This is Phase-2A-caused test debt, not a
+Phase 2A.1 production defect, and not a regression introduced by 2A.1's own
+work. Fixed by hiding chrome via `KEYCODE_MENU` (the `OPEN_MENU` semantic
+command already used for this exact purpose in `NavigationSmokeTest.kt`)
+instead of `KEYCODE_BACK`; Back's reveal-then-exit contract is unchanged and
+already covered separately by `NavigationSmokeTest`. No production code
+changed.
 
 ### 2B — EPUB everyday-reading improvements (planned, not started)
 
@@ -524,10 +542,13 @@ field validation.**
 
 ## 9. Explicit out-of-scope confirmation for this run
 
-2A was implemented and remediated against independent Codex review, then
-accepted and merged to `main`. This pass implemented 2A.1 only, on top of that
-merge, on branch `phase-2/input-hints`. No code for user-editable bindings,
-a complete remapping UI, controller profiles, console-brand-specific glyph
-packs, controller detection by product/model database, platform-specific
-visual modes, or any 2B/2C/2D work exists on this branch. No item from §4's
-out-of-scope list was touched.
+2A and 2A.1 were each implemented and remediated against independent Codex
+review, then accepted and merged to `main` (2A.1 via PR #5, commit
+`44c8f10600f93f875a3cfb685c27f47c25929c29`). The subsequent
+`maintenance/epub-recreation-back-test` pass corrected only the stale
+`EpubRecreationTest.kt` assumption described above and this document's/
+`VALIDATION.md`'s/`ROADMAP.md`'s/`CHANGELOG_DOCS.md`'s acceptance wording. No
+code for user-editable bindings, a complete remapping UI, controller
+profiles, console-brand-specific glyph packs, controller detection by
+product/model database, platform-specific visual modes, or any 2B/2C/2D work
+exists on that branch. No item from §4's out-of-scope list was touched.
