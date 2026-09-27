@@ -21,11 +21,19 @@
   `EpubBookmarkTest` 5/5, persistence 7/7, navigation 26/26, recreation 1/1,
   chapter highlighting 3/3, full connected suite 67/67, and the 86-task
   offline Gradle gate with 93/93 JVM tests and zero lint issues.
-- Preserved the owner's earlier physical RP5 PASS as evidence for `25612d5`
-  only. Production changed, the RP5 was not connected for reinstall, and the
-  new APK (`cfa17e5d469452af44ac8644340f1ba183c40d29b81b473b0eaeaab27361b9df`)
-  still requires `adb install -r` plus the affected physical Add/Bookmarked
-  recheck before final physical acceptance. Nothing was pushed.
+- Installed the exact fixed `264d6f4` APK (SHA-256
+  `cfa17e5d469452af44ac8644340f1ba183c40d29b81b473b0eaeaab27361b9df`)
+  successfully on Retroid Pocket 5 `d8f7f1b6` using `adb install -r`, without
+  uninstalling ShelfOS or clearing app data, and launched `.MainActivity`.
+- Recorded the owner's **RP5 FIXED BUILD PASS**: Add remained recognized as
+  "Bookmarked" after the reader settled; another location was not falsely
+  matched; bookmark jump returned to and recognized the saved location;
+  Delete restored Add; and physical B passed dialog-dismiss, hidden-chrome
+  reveal, and visible-chrome exit behavior. The earlier `25612d5` physical
+  pass is historical evidence only and is superseded for final readiness.
+- Phase 2B.2 is now **IMPLEMENTED**, **INDEPENDENT REVIEW PASSED**,
+  **AUTOMATED ACCEPTANCE PASSED**, **RP5 PHYSICAL ACCEPTANCE PASSED**, and
+  **READY FOR PR**. It is not merged; nothing was pushed and no PR was opened.
 
 ## Phase 2B.2 pre-remediation final-gate and RP5 validation (2026-09-27)
 

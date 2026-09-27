@@ -1519,7 +1519,8 @@ positional claim is made at any point. API 35: yes (`shelfos-phase0`). RP5:
 not required (no new chrome reachability surface, per §2B.7) and not
 performed in this pass.
 
-**2B.2 (bookmarks) — IMPLEMENTED, AUTOMATED REMEDIATION VALIDATED, NOT YET
+**2B.2 (bookmarks) — IMPLEMENTED, INDEPENDENT REVIEW PASSED, AUTOMATED
+ACCEPTANCE PASSED, RP5 PHYSICAL ACCEPTANCE PASSED, READY FOR PR, NOT YET
 MERGED (2026-09-27, `phase-2/epub-bookmarks-ready`):**
 user-visible: add/list/jump/delete bookmarks for the open EPUB — done, one
 "Bookmarks" chrome entry point. persistence: new `bookmark` table survives
@@ -1590,10 +1591,15 @@ unchanged. The failing method passed twice, all focused classes passed, and
 the full connected suite passed 67/67. Stored locators did not reliably carry
 publication position at Add time, so 2B.2 retains chapter plus percentage and
 does not invent "Location N" or an EPUB page number. Production changed after
-the owner's PASS on `25612d5`; the fixed APK is built and automated acceptance
-is green, but the RP5 was unavailable for reinstall, so final physical
-acceptance of the changed binary remains pending. It is not merged or pushed,
-and 2B.3/2B.4 remain untouched.
+the owner's PASS on `25612d5`, so that result is historical evidence only.
+The exact fixed `264d6f4` APK (SHA-256
+`cfa17e5d469452af44ac8644340f1ba183c40d29b81b473b0eaeaab27361b9df`)
+was subsequently installed successfully on RP5 `d8f7f1b6` with
+`adb install -r`, without uninstalling or clearing data. The owner reported
+**RP5 FIXED BUILD PASS** after physically confirming persistent "Bookmarked"
+state at the saved location, no false match elsewhere, jump and Delete, and
+physical B dialog/reveal/exit behavior. Phase 2B.2 is therefore ready for PR.
+It is not merged or pushed, and 2B.3/2B.4 remain untouched.
 
 **2B.3 (search):**
 user-visible: query input, results with snippets, jump to a result.

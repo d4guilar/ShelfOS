@@ -58,15 +58,36 @@ label reflowable visual pagination as "Page N."
 - `git diff --check` and `git status --porcelain -- app/schemas` are clean. No
   schema, migration, dependency, or Phase 2B.3/2B.4 change was introduced.
 
-Because production code changed, the APK previously installed on the RP5 is
-no longer the exact fixed build. The fixed debug APK has SHA-256
-`cfa17e5d469452af44ac8644340f1ba183c40d29b81b473b0eaeaab27361b9df`.
-Only the emulator was connected after the fix, so the fixed APK could not be
-installed on RP5 in this pass. The owner's prior physical **RP5 PASS** remains
-valid evidence for `25612d5`, recorded separately below, but final physical
-acceptance of the changed binary is pending an `adb install -r` and repetition
-of the affected Add/Bookmarked path. Automated acceptance is green; PR
-readiness remains pending that physical recheck. Nothing was pushed.
+### Fixed-build RP5 physical acceptance
+
+The exact debug APK built from fixed HEAD `264d6f4` (SHA-256
+`cfa17e5d469452af44ac8644340f1ba183c40d29b81b473b0eaeaab27361b9df`)
+was installed successfully on Retroid Pocket 5 `d8f7f1b6` with
+`adb install -r`. ShelfOS was not uninstalled, app data was not cleared, and
+the app launched through `.MainActivity` after replacement.
+
+The owner then reported **RP5 FIXED BUILD PASS** after physically exercising
+the focused checklist with the RP5 controls. Add created a bookmark and the
+same current location remained recognized as "Bookmarked" after the reader
+settled; moving elsewhere was not falsely recognized as the saved bookmark;
+jumping through the saved bookmark closed the dialog, returned to the saved
+location, and restored the recognized state; Delete removed the bookmark and
+made Add available again; and physical B dismissed Bookmarks first, revealed
+hidden reader chrome, and exited only with chrome visible. This is owner-
+reported physical-button evidence, distinct from emulator/ADB automation.
+The earlier physical PASS against `25612d5` remains historical evidence only;
+this fixed-build result supersedes it for final readiness.
+
+### Final Phase 2B.2 acceptance status
+
+- **IMPLEMENTED**
+- **INDEPENDENT REVIEW PASSED**
+- **AUTOMATED ACCEPTANCE PASSED**
+- **RP5 PHYSICAL ACCEPTANCE PASSED**
+- **READY FOR PR**
+
+Phase 2B.2 is not merged. Nothing was pushed and no PR was opened during this
+acceptance pass. Phase 2B.3 and 2B.4 remain untouched.
 
 ## Phase 2B.2 pre-remediation final-gate and RP5 validation (2026-09-27)
 
