@@ -9,12 +9,13 @@ import org.junit.Test
 /**
  * Phase 2B.2.1: bookmark location presentation. A bookmark should read as a place in a book, not merely a progress
  * meter, without ever fabricating a chapter or a "Location N" that cannot actually be determined — mirroring
- * [matchChapter]/[sameEpubBookmarkLocation]'s own honesty contracts. [resolveEpubLocation] and the two formatting
- * functions are pure and Readium-free, so they are directly unit-testable without a real Locator/Publication;
- * the Readium-touching boundary (`EpubSession.presentBookmark`/`epubPositions`) is covered instead by
- * `EpubBookmarkLocationInstrumentedTest` against a real fixture EPUB, since JVM unit tests in this project cannot
- * exercise `org.json.JSONObject`/Readium `Locator` parsing (no Robolectric, matching every other Room/Readium-
- * adjacent test here).
+ * [matchChapter]/[sameEpubBookmarkLocation]'s own honesty contracts. [resolveEpubLocation], [toEpubPositions], and
+ * the two formatting functions are pure and Readium-free, so they are directly unit-testable without a real
+ * Locator/Publication; only the trivial field-extraction step that builds [RawEpubPosition] from a real Readium
+ * `Locator` (`EpubSession.epubPositions`) and `presentBookmark`'s `Locator.fromJSON` parsing remain instrumented-
+ * only, covered instead by `EpubBookmarkLocationInstrumentedTest` against a real fixture EPUB, since JVM unit
+ * tests in this project cannot exercise `org.json.JSONObject`/Readium `Locator` construction (no Robolectric,
+ * matching every other Room/Readium-adjacent test here).
  */
 class EpubBookmarkPresentationTest {
     // --- resolveEpubLocation: segment-start / floor semantics (Codex R2) ---
@@ -97,6 +98,59 @@ class EpubBookmarkPresentationTest {
         val minimal = EpubBookmarkLocation("chapter1.xhtml", progression = 0.4)
         val enriched = EpubBookmarkLocation("chapter1.xhtml", progression = 0.4, position = 999)
         assertEquals(resolveEpubLocation(positions, minimal), resolveEpubLocation(positions, enriched))
+    }
+
+    // --- toEpubPositions: dropping malformed/incomplete catalog entries (Codex R3, final round) ---
+
+    @Test fun aCatalogEntryMissingProgressionIsDroppedRatherThanDefaultedToZero() {
+        val raw = listOf(RawEpubPosition("chapter1.xhtml", position = 1, progression = null))
+        assertEquals(emptyList<EpubPosition>(), toEpubPositions(raw))
+    }
+
+    @Test fun aCatalogEntryMissingPositionIsAlsoDropped() {
+        val raw = listOf(RawEpubPosition("chapter1.xhtml", position = null, progression = 0.5))
+        assertEquals(emptyList<EpubPosition>(), toEpubPositions(raw))
+    }
+
+    /** Before this fix, a missing progression defaulted to 0.0 — indistinguishable from a genuine first-segment
+     * start, so it could win resolveEpubLocation's floor comparison and become "Location 1" for any bookmark. */
+    @Test fun aDroppedEntryCannotBecomeLocationOneByDefault() {
+        val raw = listOf(
+            RawEpubPosition("chapter1.xhtml", position = 1, progression = null),
+            RawEpubPosition("chapter1.xhtml", position = 2, progression = 0.5),
+        )
+        val positions = toEpubPositions(raw)
+        assertEquals(listOf(2), positions.map { it.position })
+        assertNull(resolveEpubLocation(positions, EpubBookmarkLocation("chapter1.xhtml", progression = 0.0)))
+    }
+
+    @Test fun anotherValidCandidateStillResolvesCorrectlyWhenAMalformedEntryIsAlsoPresent() {
+        val raw = listOf(
+            RawEpubPosition("chapter1.xhtml", position = 1, progression = null),
+            RawEpubPosition("chapter1.xhtml", position = 2, progression = 0.5),
+        )
+        val positions = toEpubPositions(raw)
+        assertEquals(2, resolveEpubLocation(positions, EpubBookmarkLocation("chapter1.xhtml", progression = 0.9)))
+    }
+
+    @Test fun ifEveryCandidateIsUnusableNoLocationIsProduced() {
+        val raw = listOf(
+            RawEpubPosition("chapter1.xhtml", position = 1, progression = null),
+            RawEpubPosition("chapter1.xhtml", position = null, progression = 0.5),
+        )
+        val positions = toEpubPositions(raw)
+        assertTrue(positions.isEmpty())
+        assertNull(resolveEpubLocation(positions, EpubBookmarkLocation("chapter1.xhtml", progression = 0.5)))
+    }
+
+    /** A dropped entry's global position number is never handed to the entry after it — remaining entries keep
+     * Readium's own original index, they are not renumbered/compacted around the gap. */
+    @Test fun droppingAMalformedEntryDoesNotRenumberRemainingGlobalPositions() {
+        val raw = listOf(
+            RawEpubPosition("chapter1.xhtml", position = 5, progression = null),
+            RawEpubPosition("chapter1.xhtml", position = 6, progression = 0.5),
+        )
+        assertEquals(listOf(6), toEpubPositions(raw).map { it.position })
     }
 
     // --- bookmarkDisplayText / bookmarkAccessibilityText ---

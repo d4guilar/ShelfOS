@@ -138,10 +138,15 @@ class EpubSession internal constructor(internal val publication: Publication) : 
      * publication access in this reader. This function itself does not choose a dispatcher — `EpubReaderViewModel`
      * (its only caller) dispatches it onto `Dispatchers.IO` after the session is already open, so it never delays
      * showing the reader or blocks the caller's dispatcher; see that call site for the actual off-Main guarantee.
+     *
+     * A catalog entry missing `position` or `progression` is dropped, not defaulted — see [toEpubPositions]'s doc
+     * comment for why. The Readium-touching extraction here is a trivial field read into [RawEpubPosition]; the
+     * actual defensive filtering lives in [toEpubPositions], a pure function this is not, so that it is directly
+     * unit-testable (mirroring [EpubBookmarkLocation]'s own JSON-boundary split).
      */
-    suspend fun epubPositions(): List<EpubPosition> = epubPositionsCache ?: publication.positions()
-        .mapNotNull { locator -> locator.locations.position?.let { EpubPosition(locator.href.toString(), locator.locations.progression ?: 0.0, it) } }
-        .also { epubPositionsCache = it }
+    suspend fun epubPositions(): List<EpubPosition> = epubPositionsCache ?: toEpubPositions(
+        publication.positions().map { locator -> RawEpubPosition(locator.href.toString(), locator.locations.position, locator.locations.progression) }
+    ).also { epubPositionsCache = it }
     override fun close() = publication.close()
 }
 
@@ -282,6 +287,27 @@ internal fun sameEpubBookmarkLocation(firstJson: String, secondJson: String): Bo
  * reading order (never reset per resource).
  */
 data class EpubPosition(val resource: String, val progression: Double, val position: Int)
+
+/** One raw catalog entry as read off a Readium `Locator`, before validation — [position]/[progression] may be
+ * absent for a malformed/incomplete entry. Kept separate from [EpubPosition] (which guarantees both are present)
+ * so the defensive filtering in [toEpubPositions] is a plain, Readium-free, directly unit-testable function. */
+internal data class RawEpubPosition(val resource: String, val position: Int?, val progression: Double?)
+
+/**
+ * Converts raw catalog entries into [EpubPosition], dropping any entry missing [RawEpubPosition.position] or
+ * [RawEpubPosition.progression] rather than defaulting a missing progression to `0.0` (Codex R3, final round). The
+ * pinned Readium 3.4.0 `EpubPositionsService` always supplies both for a real EPUB, so this should not occur on
+ * the validated production path — but substituting `0.0` for a missing progression would make a malformed/
+ * incomplete entry indistinguishable from a genuine first-segment start at progression `0.0`, letting it silently
+ * win [resolveEpubLocation]'s floor comparison and become "Location 1" by default. Dropping it instead means it
+ * simply cannot be selected; [EpubPosition.position] (Readium's own global index) is never reassigned for the
+ * entries that remain, so numbering is not renumbered/compacted around a dropped entry.
+ */
+internal fun toEpubPositions(raw: List<RawEpubPosition>): List<EpubPosition> = raw.mapNotNull { entry ->
+    val position = entry.position ?: return@mapNotNull null
+    val progression = entry.progression ?: return@mapNotNull null
+    EpubPosition(entry.resource, progression, position)
+}
 
 /**
  * Resolves the stable "Location N" (see [EpubPosition]) for a stored bookmark's location, or null when it cannot

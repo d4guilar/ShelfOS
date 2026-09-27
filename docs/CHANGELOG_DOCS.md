@@ -1,5 +1,27 @@
 # Documentation Changelog
 
+## Phase 2B.2.1 final R3 closure (2026-09-27)
+
+- Closed the last open finding from the "PASS WITH NON-BLOCKING FINDINGS"
+  review of `7f8eef9`: `epubPositions()` defaulted a missing
+  `locations.progression` to `0.0`, indistinguishable from a genuine
+  first-segment start. Extracted the catalog conversion into a pure
+  `toEpubPositions(List<RawEpubPosition>)` that now drops any entry missing
+  `position` or `progression` instead of defaulting it. Floor/segment-start
+  semantics, valid-range handling, global one-based numbering, and the
+  chapter/progress fallback are unchanged.
+- Added 6 focused JVM tests (`EpubBookmarkPresentationTest`, 31/31 total):
+  missing progression dropped, missing position dropped, a dropped entry
+  cannot become Location 1 by default, another valid candidate still
+  resolves when a malformed entry is present, no Location when every
+  candidate is unusable, no renumbering of remaining global positions.
+- Validated: `EpubBookmarkPresentationTest` 31/31,
+  `EpubBookmarkLocationInstrumentedTest` 6/6, `EpubBookmarkTest` 5/5, full
+  Gradle gate BUILD SUCCESSFUL. No schema/dependency change; no bookmark
+  persistence/navigation/equivalence code touched.
+- Updated `PHASE_2_PLAN.md` and `VALIDATION.md` with a concise closure
+  record. 2B.2.2/2B.3/2B.4/Notes work: none added.
+
 ## Phase 2B.2.1 R2/R3 remediation (2026-09-27)
 
 - Fixed two independent-Codex-review findings on `f43e70d` (2B.2.1's

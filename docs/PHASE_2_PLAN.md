@@ -22,15 +22,17 @@ commit `b1ad0290fa6a4e7b5148a9cd068a4913ac616704`, after an independent
 Codex review (PASS WITH NON-BLOCKING FINDINGS) and an R3 remediation
 (deterministic bookmark ordering, keyboard/D-pad focus evidence) folded in
 before merge. **2B.2.1 (bookmark location polish) is IMPLEMENTED /
-REMEDIATED / PENDING FINAL INDEPENDENT REVIEW** as of this pass
-(`phase-2/bookmark-location-polish`, base `b1ad029...`) — a small,
-presentation-only follow-up that does not reopen 2B.2's persistence/
-migration architecture. An independent Codex review of the first
-implementation (`f43e70d`) returned CHANGES REQUIRED (a location-resolution
-defect and dispatcher/cancellation/documentation findings); both rounds are
-recorded under §3's 2B plan below, with the remediation record superseding
-the original implementation record for current status. Do not treat 2B.2.1
-as accepted until final review lands. 2B.2.2 (reading flow), 2B.3, 2B.4
+REMEDIATED — all independent review findings closed, status pending final
+sign-off** as of this pass (`phase-2/bookmark-location-polish`, base
+`b1ad029...`) — a small, presentation-only follow-up that does not reopen
+2B.2's persistence/migration architecture. An independent Codex review of
+the first implementation (`f43e70d`) returned CHANGES REQUIRED (a location-
+resolution defect and dispatcher/cancellation/documentation findings); a
+second review of the remediation (`7f8eef9`) returned PASS WITH
+NON-BLOCKING FINDINGS with one remaining R3 (a catalog-conversion
+defensiveness gap), closed in a third round. All three rounds are recorded
+under §3's 2B plan below. Do not treat 2B.2.1 as accepted until the user's
+own final sign-off. 2B.2.2 (reading flow), 2B.3, 2B.4
 remain planned only; none of their work has started. 2C/2D remain planned only;
 none of their work has started. See `VALIDATION.md`'s "Phase 2A.1"/
 "Phase 2B.1"/"Phase 2B.2"/"Phase 2B.2.1" sections for evidence and
@@ -1870,6 +1872,19 @@ schema, `Bookmark` domain model, stored locator format, navigation authority
 `sameEpubBookmarkLocation`, bookmark ordering, `matchChapter`, the source
 EPUB, and the reader's resume model. Derived Location N remains presentation
 only. No 2B.2.2/2B.3/2B.4/Notes work was added.
+
+**2B.2.1 final R3 closure (2026-09-27, `7f8eef9` -> new commit):** final
+review of `7f8eef9` returned PASS WITH NON-BLOCKING FINDINGS, one remaining
+R3: `epubPositions()` defaulted a missing `locations.progression` to `0.0`,
+indistinguishable from a genuine first-segment start. Fixed by extracting
+the catalog conversion into a pure `toEpubPositions(List<RawEpubPosition>)`
+that drops any entry missing `position` or `progression` instead of
+defaulting it; floor semantics, range validation, and global numbering are
+unchanged. 6 new focused JVM tests added (31/31 total in
+`EpubBookmarkPresentationTest`). `EpubBookmarkLocationInstrumentedTest` 6/6,
+`EpubBookmarkTest` 5/5, full Gradle gate BUILD SUCCESSFUL — see
+`VALIDATION.md`'s "Phase 2B.2.1 final R3 closure" for detail. No schema/
+dependency change; no bookmark persistence/navigation/equivalence touched.
 
 **2B.3 (search):**
 user-visible: query input, results with snippets, jump to a result.
