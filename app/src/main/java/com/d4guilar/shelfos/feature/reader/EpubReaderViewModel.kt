@@ -4,6 +4,7 @@ package com.d4guilar.shelfos.feature.reader
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.d4guilar.shelfos.core.reader.*
+import com.d4guilar.shelfos.data.library.BookmarkRepository
 import com.d4guilar.shelfos.data.library.LibraryRepository
 import com.d4guilar.shelfos.domain.library.*
 import kotlinx.coroutines.*
@@ -11,11 +12,11 @@ import kotlinx.coroutines.flow.*
 
 data class EpubReaderState(val item: LibraryItem? = null, val session: EpubSession? = null,
     val preferences: ReaderPreferences = ReaderPreferences.DEFAULT, val globalPreferences: String? = null,
-    val error: String? = null)
+    val bookmarks: List<Bookmark> = emptyList(), val error: String? = null)
 
 /** Owns one EPUB session for one title; it survives configuration changes and closes when cleared. */
 class EpubReaderViewModel(private val id: String, private val repository: LibraryRepository,
-    private val factory: EpubReaderFactory, private val appScope: CoroutineScope) : ViewModel() {
+    private val bookmarks: BookmarkRepository, private val factory: EpubReaderFactory, private val appScope: CoroutineScope) : ViewModel() {
     private val _state = MutableStateFlow(EpubReaderState())
     val state = _state.asStateFlow()
     private val positions = PositionWriter<Pair<String, Int>>(appScope, write = { (locator, progress) ->
@@ -32,6 +33,8 @@ class EpubReaderViewModel(private val id: String, private val repository: Librar
                 if (!opening) { opening = true; launch { open(item) } }
             }
         }
+        // Independent of session opening, so bookmarks never gate or delay reader startup.
+        viewModelScope.launch { bookmarks.bookmarks(id).collect { list -> _state.update { it.copy(bookmarks = list) } } }
     }
 
     private suspend fun open(item: LibraryItem) {
@@ -59,6 +62,19 @@ class EpubReaderViewModel(private val id: String, private val repository: Librar
 
     fun resetAppearance(globally: Boolean) = persistPreferences {
         repository.resetAppearance(id, _state.value.item?.preferences ?: "{}", globally)
+    }
+
+    /** Snapshots the reader's live locator/progress (owned by the caller, not this ViewModel — see EpubActivity's
+     * currentLocatorJson) into a new bookmark row. A bookmark at the exact same locator is a safe no-op, handled
+     * by the repository, not here. */
+    fun addBookmark(locator: String, progress: Int) = viewModelScope.launch {
+        try { bookmarks.addBookmark(id, locator, progress) } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { _state.update { it.copy(error = "This bookmark could not be saved.") } }
+    }
+
+    fun deleteBookmark(bookmarkId: String) = viewModelScope.launch {
+        try { bookmarks.deleteBookmark(bookmarkId) } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { _state.update { it.copy(error = "This bookmark could not be deleted.") } }
     }
 
     private fun persistPreferences(block: suspend () -> Unit) { viewModelScope.launch {

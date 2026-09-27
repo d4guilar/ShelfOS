@@ -26,7 +26,7 @@ interface AppearanceDao {
     suspend fun save(preference: AppearancePreference)
 }
 
-@Database(entities = [AppearancePreference::class, LibraryEntity::class, ReadingEntity::class, ReaderPreferenceEntity::class], version = 2, exportSchema = true)
+@Database(entities = [AppearancePreference::class, LibraryEntity::class, ReadingEntity::class, ReaderPreferenceEntity::class, BookmarkEntity::class], version = 3, exportSchema = true)
 abstract class ShelfDatabase : RoomDatabase() {
     abstract fun appearance(): AppearanceDao
     abstract fun library(): LibraryDao
@@ -40,8 +40,14 @@ abstract class ShelfDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS reader_preference (itemId TEXT NOT NULL PRIMARY KEY, json TEXT NOT NULL)")
             }
         }
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS bookmark (id TEXT NOT NULL PRIMARY KEY, itemId TEXT NOT NULL, locator TEXT NOT NULL, progress INTEGER NOT NULL, label TEXT, createdAt INTEGER NOT NULL, FOREIGN KEY(itemId) REFERENCES library_item(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_bookmark_itemId ON bookmark(itemId)")
+            }
+        }
         fun create(context: Context): ShelfDatabase = Room.databaseBuilder(
             context.applicationContext, ShelfDatabase::class.java, "shelfos.db",
-        ).addMigrations(MIGRATION_1_2).build()
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
     }
 }

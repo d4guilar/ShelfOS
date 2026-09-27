@@ -64,7 +64,7 @@ class EpubActivity : AppCompatActivity() {
         val container = (application as ShelfApplication).container
         setContent {
             val vm: EpubReaderViewModel = viewModel(factory = viewModelFactory { initializer {
-                EpubReaderViewModel(itemId, container.library, container.epubs, container.backgroundScope)
+                EpubReaderViewModel(itemId, container.library, container.library, container.epubs, container.backgroundScope)
             } })
             val theme by container.themes.theme.collectAsStateWithLifecycle(initialValue = null as ThemeId?)
             // Wait for the saved theme instead of flashing Classic first.
@@ -80,6 +80,7 @@ class EpubActivity : AppCompatActivity() {
         var controls by rememberSaveable { mutableStateOf(true) }
         var appearance by rememberSaveable { mutableStateOf(false) }
         var chapters by rememberSaveable { mutableStateOf(false) }
+        var bookmarks by rememberSaveable { mutableStateOf(false) }
         // Recent input modality (Phase 2A.1): only the real center-tap gesture and real key events update this,
         // never a button click, since a click may itself have been keyboard/gamepad-activated. Edge taps that
         // turn EPUB pages are handled entirely inside Readium's navigator and do not reach this callback.
@@ -97,6 +98,9 @@ class EpubActivity : AppCompatActivity() {
         // entry, or two entries with the same fragment), and href-equality would then mark both "current".
         var currentLocatorJson by remember { mutableStateOf<String?>(null) }
         val currentChapterId = remember(session, currentLocatorJson) { session?.currentChapterId(currentLocatorJson) }
+        // A bookmark at the exact current locator already exists — checked client-side against the already-
+        // observed list (small, per-title) rather than a separate repository round-trip for this alone.
+        val currentlyBookmarked = currentLocatorJson != null && state.bookmarks.any { it.locator == currentLocatorJson }
         val rtl = readingDirection(item?.category ?: MediaCategory.BOOK, state.preferences.direction) == ReadingDirection.RTL
         val previousHint = InputHints.hint(ShelfCommand.PREVIOUS_PAGE, modality, rtl)
         val nextHint = InputHints.hint(ShelfCommand.NEXT_PAGE, modality, rtl)
@@ -143,6 +147,7 @@ class EpubActivity : AppCompatActivity() {
                             verticalAlignment = Alignment.CenterVertically) { InputKeycap(it); Text("Back", color = tokens.colors.secondary, style = tokens.typography.labelSmall) } }
                     }
                     TextButton({ chapters = true }, enabled = session != null) { Text("Chapters") }
+                    TextButton({ bookmarks = true }, enabled = session != null) { Text("Bookmarks") }
                     TextButton({ appearance = true }, enabled = session != null) { Text("Appearance") }
                 }
                 if (session != null && item != null) {
@@ -216,6 +221,38 @@ class EpubActivity : AppCompatActivity() {
                     } }
                 }
             }, confirmButton = { TextButton({ chapters = false }) { Text("Close") } })
+        }
+        if (bookmarks && session != null) {
+            // Reset on each open, like the Chapters dialog's filter — a stale failure message from a previous
+            // open should not linger silently into the next one.
+            var jumpError by rememberSaveable { mutableStateOf<String?>(null) }
+            AlertDialog(onDismissRequest = { bookmarks = false }, title = { Text("Bookmarks") }, text = {
+                Column {
+                    TextButton(onClick = { currentLocatorJson?.let { vm.addBookmark(it, locatorProgress(it)) } },
+                        enabled = currentLocatorJson != null && !currentlyBookmarked,
+                        modifier = Modifier.semantics { contentDescription = when {
+                            currentLocatorJson == null -> "Add bookmark, not yet available"
+                            currentlyBookmarked -> "Current position already bookmarked"
+                            else -> "Add bookmark at current position"
+                        } }) { Text(if (currentlyBookmarked) "Bookmarked" else "Add bookmark") }
+                    jumpError?.let { Text(it, Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.error) }
+                    if (state.bookmarks.isEmpty()) Text("No bookmarks yet.", Modifier.padding(vertical = 16.dp))
+                    else LazyColumn(Modifier.testTag("bookmarks_list").padding(top = 8.dp)) {
+                        items(state.bookmarks, key = { it.id }) { bookmark ->
+                            val label = session.bookmarkLabel(bookmark.locator, bookmark.progress)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                TextButton({
+                                    jumpError = null
+                                    if (controller.goTo(bookmark.locator)) bookmarks = false
+                                    else jumpError = "This bookmark's saved location could not be opened. You can still delete it."
+                                }, Modifier.weight(1f).semantics { contentDescription = "Bookmark, $label" }) { Text(label) }
+                                TextButton({ vm.deleteBookmark(bookmark.id) },
+                                    Modifier.semantics { contentDescription = "Delete bookmark, $label" }) { Text("Delete") }
+                            }
+                        }
+                    }
+                }
+            }, confirmButton = { TextButton({ bookmarks = false }) { Text("Close") } })
         }
     }
 

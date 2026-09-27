@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import java.util.UUID
 
 interface LibraryRepository {
     val publications: Flow<List<LibraryItem>>
@@ -30,7 +31,14 @@ interface PrivateCopyStore {
     suspend fun deleteUnusedPrivateCopies(): PrivateCopyUsage
 }
 
-class RoomLibraryRepository(private val dao: LibraryDao, private val files: PublicationFiles? = null) : LibraryRepository, PrivateCopyStore {
+/** Discrete saved reading locations for one [LibraryItem], separate from its automatic resume position. */
+interface BookmarkRepository {
+    fun bookmarks(itemId: String): Flow<List<Bookmark>>
+    suspend fun addBookmark(itemId: String, locator: String, progress: Int, label: String? = null)
+    suspend fun deleteBookmark(id: String)
+}
+
+class RoomLibraryRepository(private val dao: LibraryDao, private val files: PublicationFiles? = null) : LibraryRepository, PrivateCopyStore, BookmarkRepository {
     override val publications = dao.observe().map { rows -> rows.map(::item) }
     override val globalPreferences = dao.globalPreferences()
     override fun publication(id: String) = dao.observeRecord(id).map { row -> row?.let(::item) }
@@ -63,6 +71,11 @@ class RoomLibraryRepository(private val dao: LibraryDao, private val files: Publ
     override suspend fun unusedPrivateCopies() = files?.unusedCopies(snapshot()) ?: PrivateCopyUsage(0, 0)
     override suspend fun deleteUnusedPrivateCopies() = files?.deleteUnusedCopies(snapshot()) ?: PrivateCopyUsage(0, 0)
 
+    override fun bookmarks(itemId: String) = dao.observeBookmarks(itemId).map { rows -> rows.map(::bookmark) }
+    override suspend fun addBookmark(itemId: String, locator: String, progress: Int, label: String?) =
+        dao.addBookmark(BookmarkEntity(UUID.randomUUID().toString(), itemId, locator, progress.coerceIn(0, 100), label, System.currentTimeMillis()))
+    override suspend fun deleteBookmark(id: String) = dao.deleteBookmark(id)
+
     private suspend fun snapshot() = dao.records().map(::item)
 
     private fun item(row: LibraryRecord): LibraryItem {
@@ -73,4 +86,6 @@ class RoomLibraryRepository(private val dao: LibraryDao, private val files: Publ
             row.reading?.progress ?: 0, row.reading?.lastRead ?: 0, row.reading?.locator,
             row.preferences?.json ?: "{}")
     }
+
+    private fun bookmark(e: BookmarkEntity) = Bookmark(e.id, e.itemId, e.locator, e.progress, e.label, e.createdAt)
 }

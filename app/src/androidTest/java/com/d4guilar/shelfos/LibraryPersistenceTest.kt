@@ -38,7 +38,8 @@ class LibraryPersistenceTest {
             db.execSQL("INSERT INTO appearance_preference VALUES(0, 'dark')")
             db.version = 1
         }
-        fun open() = Room.databaseBuilder(context, ShelfDatabase::class.java, name).addMigrations(ShelfDatabase.MIGRATION_1_2).build()
+        fun open() = Room.databaseBuilder(context, ShelfDatabase::class.java, name)
+            .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3).build()
         try {
             val db = open()
             try {

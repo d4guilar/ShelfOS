@@ -12,10 +12,12 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.withStarted
 import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.domain.library.MediaCategory
+import org.json.JSONObject
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.util.DirectionalNavigationAdapter
+import org.readium.r2.shared.publication.Locator
 
 class EpubController {
     internal var navigator: EpubNavigatorFragment? = null
@@ -24,6 +26,13 @@ class EpubController {
     fun next() { ready?.goForward(animated = false) }
     fun previous() { ready?.goBackward(animated = false) }
     fun chapter(session: EpubSession, href: String) { session.chapter(href)?.let { ready?.go(it, animated = false) } }
+    /** Navigates to a bookmark's stored locator JSON through the same navigator this controller already owns —
+     * no second navigator is created. Returns false, without crashing or touching any other bookmark, when the
+     * locator is malformed/unparseable or the navigator isn't attached yet; the caller decides how to surface that. */
+    fun goTo(locatorJson: String): Boolean {
+        val locator = runCatching { Locator.fromJSON(JSONObject(locatorJson)) }.getOrNull() ?: return false
+        return ready?.go(locator, animated = false) ?: false
+    }
 }
 
 /**
