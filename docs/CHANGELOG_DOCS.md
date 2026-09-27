@@ -1,5 +1,213 @@
 # Documentation Changelog
 
+## Phase 2B.2 bookmark-state blocker remediation (2026-09-27)
+
+- Corrected the earlier characterization of the post-Add "Bookmarked"
+  timeout. Final-gate runs reproduced it in the full suite, isolation, and
+  after emulator restart; it was a production live-state comparison defect,
+  not a non-reproducible emulator flake.
+- Recorded diagnostic evidence that Add fired once, the exact duplicate check
+  found no row, Room inserted successfully, and the bookmark Flow reached the
+  ViewModel and Compose. Readium then enriched the same location with title,
+  position, and total progression, invalidating the UI's exact JSON equality.
+- Documented the narrow remediation: live bookmark state now compares parsed
+  stable locator evidence while the DAO's exact duplicate-storage guard and
+  authoritative stored locator remain unchanged. Added six pure JVM
+  equivalence cases; no schema or dependency changed.
+- Recorded that stored bookmark locators do not reliably include Readium
+  publication position at Add time. Phase 2B.2 therefore retains chapter plus
+  percentage display and does not invent an EPUB page number or "Location N."
+- Recorded post-fix evidence: the failing method passed twice,
+  `EpubBookmarkTest` 5/5, persistence 7/7, navigation 26/26, recreation 1/1,
+  chapter highlighting 3/3, full connected suite 67/67, and the 86-task
+  offline Gradle gate with 93/93 JVM tests and zero lint issues.
+- Installed the exact fixed `264d6f4` APK (SHA-256
+  `cfa17e5d469452af44ac8644340f1ba183c40d29b81b473b0eaeaab27361b9df`)
+  successfully on Retroid Pocket 5 `d8f7f1b6` using `adb install -r`, without
+  uninstalling ShelfOS or clearing app data, and launched `.MainActivity`.
+- Recorded the owner's **RP5 FIXED BUILD PASS**: Add remained recognized as
+  "Bookmarked" after the reader settled; another location was not falsely
+  matched; bookmark jump returned to and recognized the saved location;
+  Delete restored Add; and physical B passed dialog-dismiss, hidden-chrome
+  reveal, and visible-chrome exit behavior. The earlier `25612d5` physical
+  pass is historical evidence only and is superseded for final readiness.
+- Phase 2B.2 is now **IMPLEMENTED**, **INDEPENDENT REVIEW PASSED**,
+  **AUTOMATED ACCEPTANCE PASSED**, **RP5 PHYSICAL ACCEPTANCE PASSED**, and
+  **READY FOR PR**. It is not merged; nothing was pushed and no PR was opened.
+
+## Phase 2B.2 pre-remediation final-gate and RP5 validation (2026-09-27)
+
+- Confirmed the clean PR branch `phase-2/epub-bookmarks-ready` contains only
+  `9d0d965` (Phase 2B.2) and `25612d5` (ordering remediation) above `main` at
+  `ac9476d5`; unrelated future Notes commit `90622a6` is absent.
+- Closed both review R3 findings in code/evidence: bookmark ordering now has
+  the final `id ASC` tie-breaker with an equal-time regression test, and the
+  Bookmarks UI has explicit-focus + real-key automated coverage for Add,
+  jump, Delete, and Back.
+- Built the exact `25612d5` debug APK and installed it on RP5 `d8f7f1b6`
+  using `adb install -r`. Installation succeeded without uninstalling ShelfOS
+  or clearing app data; the package's original `firstInstallTime` remained
+  unchanged. The app launched successfully. The library was empty before the
+  acceptance publication was added, so no pre-existing publication/progress
+  row was available for visual migration verification.
+- Recorded the owner's **RP5 PASS** using the handheld's physical controls:
+  Bookmarks was reachable; Add created a bookmark; jump returned to the saved
+  location and closed the dialog; Delete removed the correct bookmark and
+  restored the empty state; physical B dismissed the dialog first, revealed
+  hidden chrome, and exited only with chrome visible. This is owner physical
+  evidence, not Codex-injected input.
+- The static gate passed (86/86 tasks, 87/87 JVM tests, lint 0 errors/7
+  warnings), and the ordering, navigation, recreation, and chapter-highlight
+  focused classes passed. The final connected suite was **66/67**: the
+  existing add/list bookmark flow timed out waiting for "Bookmarked" after
+  Add. It failed again in isolation and after a fresh emulator restart, so
+  the earlier "confirmed non-reproducible" characterization no longer holds.
+- At that pre-remediation point, Phase 2B.2 was **not ready for PR** despite
+  independent review and the owner's physical RP5 acceptance. The blocker is
+  resolved in the current remediation record above. No Phase 2B.3, Phase
+  2B.4, Notes, push, or PR action was included in that documentation pass.
+
+## Phase 2B.2 R3 remediation (2026-09-26)
+
+- Fixed two R3 findings from an independent Codex review of 2B.2 (below,
+  verdict PASS WITH NON-BLOCKING FINDINGS, no R1/R2 findings), on the same
+  branch (`phase-2/epub-bookmarks`), without resetting or dropping `e1ab272`.
+- (R3.1) `LibraryDao.observeBookmarks`'s ordering gained a final deterministic
+  tie-breaker: `progress ASC, createdAt ASC, id ASC` (previously stopped at
+  `createdAt`). `progress`, `createdAt`, and locator authority are otherwise
+  unchanged — this is ordering only. Added
+  `BookmarkPersistenceTest.bookmarksWithIdenticalProgressAndCreatedAtStillSortDeterministicallyById`,
+  which inserts three bookmarks sharing one progress and one createdAt, with
+  explicit deterministic ids inserted out of id order (bypassing
+  `RoomLibraryRepository.addBookmark`'s random UUID generation), and asserts
+  the returned order matches the id tie-break exactly. All prior migration/
+  FK/duplicate/isolation/delete tests are preserved unchanged.
+- (R3.2) Added `EpubBookmarkTest.bookmarksDialogIsReachableAndOperableThroughKeyboardFocus`,
+  proving the Bookmarks chrome entry and dialog controls are reachable and
+  operable through real Compose focus (`RequestFocus`) plus real key events
+  (`Key.Enter`, `KEYCODE_BACK`) rather than semantic clicks alone — following
+  `NavigationSmokeTest`'s own established explicit-focus-then-key-press
+  convention instead of counting an arbitrary, focus-order-dependent number
+  of DPAD_RIGHT presses. Covers: opening Bookmarks, activating Add bookmark,
+  jumping via a bookmark row, dismissing the dialog with the real hardware
+  Back key without disturbing Phase 2A/ADR-0023 Back semantics, and Delete.
+  No new `ShelfCommand` mapping was added.
+- **RP5 physical controller acceptance remains pending before merge.** A
+  physical RP5 was connected to the environment during this remediation
+  pass, but no physical button-press interaction was performed; only
+  emulator key-event injection was used, which per this task's own
+  instruction is not a substitute for physical validation and is not claimed
+  as one.
+- Validation: `BookmarkPersistenceTest` 7/7, `EpubBookmarkTest` 5/5,
+  `NavigationSmokeTest` 26/26, `EpubRecreationTest` 1/1, all on a freshly
+  restarted `shelfos-phase0` emulator after a recurrence of the same ADB
+  transport-disconnection infrastructure issue seen during the original
+  2B.2 pass (resolved the same way: confirm no stale processes, restart ADB,
+  relaunch the emulator, poll for boot completion). Because DAO ordering
+  changed but the schema did not, a second full connected suite was not
+  required and was not re-run. Full local Gradle gate: BUILD SUCCESSFUL,
+  86/86 tasks. `git diff --check` clean; `git status --porcelain --
+  app/schemas` clean (no new schema revision).
+- Updated `PHASE_2_PLAN.md` and `VALIDATION.md` with the R3 remediation
+  record. 2B.2 remains **IMPLEMENTED, PENDING INDEPENDENT REVIEW** — not
+  accepted, not merged. No 2B.3/2B.4/Notes work was added.
+
+## Phase 2B.2 — durable EPUB bookmarks + Room v2→v3 migration (2026-09-26)
+
+- Implemented Phase 2B.2 on new branch `phase-2/epub-bookmarks`, based on
+  `main` at `ac9476d56f332c067aa39dc2b1e5533288103c12` (2B.1 accepted and
+  merged via PR #8). **2B.2 is IMPLEMENTED, PENDING INDEPENDENT REVIEW — not
+  accepted, not merged.**
+- Added a new `domain.library.Bookmark` model (`id`, `itemId`, `locator`,
+  `progress`, optional `label`, `createdAt`): a discrete saved location,
+  separate from resume position. The serialized Readium `Locator` JSON is the
+  sole source of truth for navigation; `progress` is a display/sort snapshot
+  only and is never read back for navigation; `label` is reserved, unused
+  this slice.
+- Added the one schema-changing migration of Phase 2B: `ShelfDatabase` v2→v3,
+  adding a `bookmark` table (FK to `library_item.id` with
+  `ON DELETE CASCADE`, indexed on `itemId`) via a new, additive-only
+  `MIGRATION_2_3`. No existing table, column, or index was altered or
+  dropped, and no `fallbackToDestructiveMigration` was used anywhere.
+- Added `BookmarkRepository` (observe/add/delete) implemented by the existing
+  `RoomLibraryRepository`/`LibraryDao`, following the project's established
+  one-interface-per-concern, shared-DAO pattern — no new DAO class, no Room
+  details leak into Compose.
+- Duplicate-add is handled at the DAO/repository layer (exact
+  `(itemId, locator)` string match inside a `@Transaction`), not via a
+  database `UNIQUE` constraint — the opaque locator JSON was not judged
+  stable enough to key a constraint on. Default ordering is
+  `progress ASC, createdAt ASC`.
+- "Add bookmark" reuses the single live-locator collector `EpubSurface`
+  already exposes (from 2B.1) via `EpubActivity`'s existing
+  `currentLocatorJson` — no second long-lived collector was added. If no live
+  locator is available yet, Add is disabled rather than creating an
+  empty/fake bookmark.
+- Added one reader-chrome entry point, "Bookmarks," opening a transient
+  dialog (matching the existing Chapters/Appearance dialog pattern) with: add
+  at current position (disabled once the current position is already
+  bookmarked), a list of existing bookmarks for the title, tap-to-jump,
+  delete, and an empty state. No separate top-level Add/List buttons, no
+  Notes screen, no folders/tags/colors/rename editor were added.
+- Bookmark rows display a derived label reusing 2B.1's `matchChapter`
+  ("Chapter title · progress%", or just "progress%" when the chapter is
+  ambiguous per 2B.1's own honesty rule) — no chapter title is persisted;
+  the stored locator remains authoritative.
+- Jump-to-bookmark parses the stored locator via `Locator.fromJSON` and
+  navigates through the existing navigator/controller ownership boundary
+  (`EpubController.goTo`) — no second navigator is created, and there is no
+  fallback to progress-percentage navigation. A malformed/unparseable
+  locator shows a readable in-dialog failure instead of crashing or
+  corrupting other data; the bad bookmark can still be deleted.
+- Delete removes only the selected bookmark; deleting a `LibraryItem` cascades
+  to delete its bookmarks purely through the Room FK's `ON DELETE CASCADE` —
+  `LibraryDao.remove(itemId)` itself was intentionally left unchanged.
+- Bookmarks are Room-backed only; no bookmark list or Readium object is ever
+  placed in `rememberSaveable`/`SavedState`. Verified surviving dialog
+  close/reopen, activity recreation, and publication close/reopen.
+- Accessibility: each row has one meaningful `contentDescription`
+  ("Bookmark, <label>"); the Add control's description states whether adding
+  is currently possible; the Delete control's description names its own
+  bookmark. No new `ShelfCommand` mapping was added; all controls are
+  ordinary focusable Compose buttons reachable by keyboard/D-pad exactly like
+  existing Chapters/Appearance controls, and Back/Escape/gamepad B closes the
+  dialog first via the existing dismiss handling. `INPUT_SYSTEM.md`'s
+  conceptual `TOGGLE_BOOKMARK` command was **not** wired, since no accepted
+  mapping contract for it exists yet.
+- No `androidx.room:room-testing`/`MigrationTestHelper` dependency was added.
+  The project's existing raw-SQL-schema-bootstrap migration-testing
+  convention (already used by `LibraryPersistenceTest`) covered the v2→v3
+  migration test's needs without a new dependency, per `AGENTS.md`'s
+  dependency-review rule.
+- Added `BookmarkPersistenceTest` (6 tests: migration+preservation+cascade,
+  duplicate no-op, deterministic ordering, FK rejection, per-item isolation,
+  single delete) and `EpubBookmarkTest` (4 tests: full add/list/jump/delete
+  flow across dialog reopens, activity recreation, publication reopen,
+  malformed-locator handling) — all instrumented against the real database
+  and the real `EpubReaderViewModel`/`EpubActivity` wiring.
+- **Fixed a real regression, caused directly by the intentional schema
+  version bump, in the pre-existing `LibraryPersistenceTest`:** its own
+  `open()` migration-test helper hardcoded only `MIGRATION_1_2` and needed
+  `MIGRATION_2_3` added once the database moved to version 3; production's
+  own `ShelfDatabase.create()` already had both and was unaffected. Confirmed
+  fixed: 10/10 `LibraryPersistenceTest` cases pass.
+- Recorded one `EpubBookmarkTest` timeout in this historical run, followed by
+  passing isolated and full-suite reruns. Later final-gate validation
+  reproduced it consistently and diagnosed a production live-locator
+  equality defect; the current remediation record above supersedes the old
+  flake interpretation. See `VALIDATION.md` for the full evidence trail.
+- Because this slice changes the persistent schema, the full
+  `connectedDebugAndroidTest` suite was run to completion: **65/65 passed, 0
+  failures, 0 errors.**
+- Updated `PHASE_2_PLAN.md`'s status and 2B.2 sections, `VALIDATION.md` with
+  a full Phase 2B.2 validation record, and `ROADMAP.md`'s Phase 2 status line
+  (2B.1 accepted/merged via PR #8, 2B.2 implemented pending review).
+- No 2B.3 (`SearchService` UI), 2B.4 (custom fonts), highlights, textual/
+  handwritten notes, note export, third-party integrations, PDF/CBZ changes,
+  Series, CBR, OCR, Adapted PDF, ShelfOS Home, cloud sync, or control
+  remapping work was added. 2B.2 remains implemented, not yet reviewed by
+  Codex, not merged, not pushed.
+
 ## Phase 2B.1 R2 second remediation round (2026-09-26)
 
 - Fixed two remaining findings from a second independent Codex review of the

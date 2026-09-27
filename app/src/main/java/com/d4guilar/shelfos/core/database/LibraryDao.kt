@@ -21,6 +21,13 @@ data class ReadingEntity(@PrimaryKey val itemId: String, val locator: String, va
 @Entity(tableName = "reader_preference")
 data class ReaderPreferenceEntity(@PrimaryKey val itemId: String, val json: String)
 
+/** [locator] (a serialized Readium Locator) is authoritative; [progress] is a display/sort snapshot only. Several
+ * rows may share one [itemId] — a bookmark is not a singleton per item like [ReadingEntity]/[ReaderPreferenceEntity]. */
+@Entity(tableName = "bookmark", foreignKeys = [ForeignKey(entity = LibraryEntity::class,
+    parentColumns = ["id"], childColumns = ["itemId"], onDelete = ForeignKey.CASCADE)], indices = [Index("itemId")])
+data class BookmarkEntity(@PrimaryKey val id: String, val itemId: String, val locator: String,
+    val progress: Int, val label: String?, val createdAt: Long)
+
 data class LibraryRecord(
     @Embedded val item: LibraryEntity,
     @Relation(parentColumn = "id", entityColumn = "itemId") val reading: ReadingEntity?,
@@ -52,4 +59,21 @@ abstract class LibraryDao {
     @Upsert abstract suspend fun saveReading(state: ReadingEntity)
     @Upsert abstract suspend fun savePreferences(state: ReaderPreferenceEntity)
     @Query("SELECT json FROM reader_preference WHERE itemId = ''") abstract fun globalPreferences(): Flow<String?>
+
+    // Progress ascending, createdAt then id as deterministic tie-breakers: a useful default reading order, not a
+    // claim that progress is authoritative — jumping to a bookmark always uses its stored locator, never this
+    // ordering. id is the final tie-breaker so two bookmarks sharing both progress and createdAt still sort
+    // deterministically instead of relying on unspecified SQLite row order.
+    @Query("SELECT * FROM bookmark WHERE itemId = :itemId ORDER BY progress ASC, createdAt ASC, id ASC")
+    abstract fun observeBookmarks(itemId: String): Flow<List<BookmarkEntity>>
+    @Query("SELECT * FROM bookmark WHERE itemId = :itemId AND locator = :locator LIMIT 1")
+    protected abstract suspend fun bookmarkAt(itemId: String, locator: String): BookmarkEntity?
+    @Insert protected abstract suspend fun insertBookmark(bookmark: BookmarkEntity)
+    @Query("DELETE FROM bookmark WHERE id = :id") abstract suspend fun deleteBookmark(id: String)
+    /** A bookmark at the exact same locator the item already has is a safe no-op, not a second identical row —
+     * chosen over a UNIQUE constraint on the opaque locator JSON, which would assume more about its stability
+     * than is verified. */
+    @Transaction open suspend fun addBookmark(bookmark: BookmarkEntity) {
+        if (bookmarkAt(bookmark.itemId, bookmark.locator) == null) insertBookmark(bookmark)
+    }
 }

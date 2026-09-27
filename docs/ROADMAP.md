@@ -212,9 +212,10 @@ Back/immersive-mode hardening, controller/keyboard input-discovery hints, broade
 reading controls, and closure beyond the first usable reader. See
 [`PHASE_2_PLAN.md`](PHASE_2_PLAN.md) for the current increment breakdown
 (2A accepted and merged; 2A.1 input-discovery/controller-hint polish accepted
-and merged via PR #5; 2B EPUB everyday-reading improvements in discovery/
-implementation planning, sequenced as four internal slices 2B.1–2B.4 with no
-production code yet; 2C–2D planned, not started) and acceptance criteria. The
+and merged via PR #5; 2B EPUB everyday-reading improvements sequenced as four
+internal slices 2B.1–2B.4 — 2B.1 chapter-navigation polish accepted and merged
+via PR #8, 2B.2 durable bookmarks implemented pending independent review,
+2B.3–2B.4 not started; 2C–2D planned, not started) and acceptance criteria. The
 original inventory below is retained for coverage; items already accepted in
 Phase 1 are marked accordingly.
 
