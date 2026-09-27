@@ -1,5 +1,90 @@
 # Validation
 
+## Phase 2B.1 R2 second remediation round validation (2026-09-26)
+
+A second independent Codex review of the R2/R3 remediation below returned
+**CHANGES REQUIRED** on two remaining points: (R2) the corrected fallback
+could still present a specific, named chapter as "current" in a genuinely
+ambiguous same-resource case rather than admitting the position could not be
+determined; (R3) this document's flaky-test wording overstated a full-suite
+teardown timeout as confirmed environmental flakiness rather than evidence
+consistent with it. Both are fixed on the same branch,
+`phase-2/epub-chapters`, without resetting/dropping either prior commit.
+**2B.1 remains IMPLEMENTED, PENDING INDEPENDENT REVIEW — not accepted.**
+
+### STATIC / BUILD
+
+| Check | Result |
+| --- | --- |
+| `:app:compileDebugKotlin` | **BUILD SUCCESSFUL** |
+| `:app:compileDebugAndroidTestKotlin` | **BUILD SUCCESSFUL** |
+| `:app:assembleDebug` | **BUILD SUCCESSFUL** |
+| `:app:testDebugUnitTest` | **BUILD SUCCESSFUL** |
+| `:app:lintDebug` | **BUILD SUCCESSFUL** |
+| `:app:assembleDebugAndroidTest` | **BUILD SUCCESSFUL** |
+| Full gate, one invocation (`--rerun-tasks --offline --console=plain`) | **BUILD SUCCESSFUL**, no failed tasks |
+| `git diff --check` | Clean |
+| `git status --porcelain -- app/schemas` | Clean (no Room changes) |
+
+### JVM / REGRESSION
+
+| Test class | Result |
+| --- | --- |
+| `EpubChapterMatchTest` | 16/16 passed — the prior 14 (one, the duplicate-href test, now asserts the corrected ambiguous/null outcome instead of "id 0 wins") plus 2 new: `twoFragmentOnlyCandidatesWithNoUsableLocatorFragmentAreAmbiguous`, `aSingleFragmentOnlyCandidateWinsByEliminationWhenNoOtherSameResourceEntryExists` — plus one existing test extended with a second, unrelated-fragment ambiguous case (`twoFragmentOnlyCandidatesWithAnUnrelatedLocatorFragmentAreStillAmbiguous`) |
+
+### INSTRUMENTED / EMULATOR (`shelfos-phase0`, API 35)
+
+| Test class | Result |
+| --- | --- |
+| `EpubChapterHighlightTest` | 3/3 passed — `currentChapterIsMarkedAndUpdatesAfterNavigatingElsewhere` (unambiguous case, unchanged) and `chapterTitleFilterNarrowsClearsAndHandlesNoMatches` (unchanged) plus the renamed, re-asserted `ambiguousSameResourceFragmentsShowNoCurrentRowButNavigationAndTheDialogStillWork` (zero current rows for the fragmented fixture's genuinely ambiguous case, both at initial open and after navigating to the other same-resource entry; navigation and the dialog itself remain fully functional) |
+| `NavigationSmokeTest` (run alone) | 26/26 passed |
+| `EpubRecreationTest` (run alone) | 1/1 passed |
+| Full `connectedDebugAndroidTest` package | Not re-run as a second complete pass — the three focused instrumented runs above are all green and nothing in this round's change (a pure narrowing of `matchChapter`'s fallback, no schema/dependency/other-file change) suggests a broader regression; per this task's own instruction, a second complete run is optional in that case |
+
+### ACCESSIBILITY
+
+Re-verified after the corrected fallback: when `currentChapterId` is null
+(the ambiguous case), no `Int` row id ever equals it, so **no row** receives
+the checkmark, bold weight, or "current chapter" `contentDescription` — every
+row remains a normal, navigable chapter button, confirmed directly by
+`ambiguousSameResourceFragmentsShowNoCurrentRowButNavigationAndTheDialogStillWork`'s
+zero-count assertions. No "current chapter unknown" text or warning was
+added — the plain absence of a marker is the intended, non-alarming signal.
+When a match is unambiguous, the existing three-signal treatment (checkmark +
+bold + `contentDescription`) is unchanged, confirmed by
+`currentChapterIsMarkedAndUpdatesAfterNavigatingElsewhere`.
+
+### REGRESSION CHECK
+
+Confirmed unchanged by this round: chapter navigation and the chapter filter,
+stable row identities, all-locator-fragment matching (order preserved),
+Back semantics and the accessibility "Show reader controls" action,
+keyboard/controller hints, touch modality, resume/progress persistence,
+appearance persistence, scrolling, typography, page colors
+(`NavigationSmokeTest`, 26/26), recreation (`EpubRecreationTest`, 1/1),
+offline reading (no network dependency anywhere in this change), and source
+preservation (read-only TOC/locator handling, no EPUB bytes touched).
+
+### FLAKY-TEST WORDING CORRECTION (R3)
+
+The prior round's entry (below) stated a full-connected-suite
+`ActivityScenario` teardown timeout was "confirming device-load flakiness."
+That overstated the evidence: the timeout was observed to follow immediately
+after a 34-minute `SyntheticLoadAcceptanceTest` run in the same session, and
+the affected test then passed 26/26 when re-run alone — both facts are
+consistent with load-related/environmental flakiness, but neither directly
+proves that cause. Corrected wording (also applied at the original entry
+below): *"The `ActivityScenario` teardown timeout occurred after the long
+`SyntheticLoadAcceptanceTest` run and is consistent with load-related/
+environmental flakiness. The affected `NavigationSmokeTest` subsequently
+passed 26/26 in isolation. No production regression was reproduced."*
+
+### FINAL ACCEPTANCE (2B.1 R2 second remediation round) — pending
+
+Both remaining Codex findings from the second review are closed with
+evidence. **Not yet re-reviewed by Codex, not merged.** 2B.2 (bookmarks)/2B.3
+(search)/2B.4 (custom fonts) remain untouched.
+
 ## Phase 2B.1 R2/R3 remediation validation (2026-09-26)
 
 Independent Codex review of the initial 2B.1 implementation (below) returned
@@ -37,7 +122,7 @@ remains IMPLEMENTED, PENDING INDEPENDENT REVIEW — not accepted.**
 | `EpubChapterHighlightTest` | 3/3 passed — the original 2 plus `sameResourceFragmentedChapterAlwaysHasExactlyOneCurrentRowAndNavigationStillWorks` (new, against `OriginalFixtures.epubWithFragmentedChapter`) |
 | `NavigationSmokeTest` (run alone) | 26/26 passed |
 | `EpubRecreationTest` (run alone) | 1/1 passed |
-| Full `connectedDebugAndroidTest` package (all 9 classes together) | 55/55 tests executed; 1 failure (`NavigationSmokeTest.mangaReadsRightToLeftWithKeyboardAndPageKeysStaySemantic`, `ActivityScenario` never reached `DESTROYED` after a 34-minute `SyntheticLoadAcceptanceTest` in the same run had exhausted emulator resources) — re-ran `NavigationSmokeTest` alone immediately after and it passed 26/26, confirming device-load flakiness, not a regression from this remediation |
+| Full `connectedDebugAndroidTest` package (all 9 classes together) | 55/55 tests executed; 1 failure (`NavigationSmokeTest.mangaReadsRightToLeftWithKeyboardAndPageKeysStaySemantic`, `ActivityScenario` teardown never reached `DESTROYED`). **Wording corrected in the second remediation round below:** this was originally stated as "confirmed device-load flakiness," which overstated what was actually shown — the teardown timeout occurred after a 34-minute `SyntheticLoadAcceptanceTest` run in the same session and is *consistent with* load-related/environmental flakiness, not directly proven to be caused by it. The affected test passed 26/26 when re-run alone immediately after, and no production regression was reproduced. |
 
 **Empirically confirmed Readium navigator limitation, discovered during this
 remediation while investigating R3's fragmented-fixture requirement.** Real
@@ -89,11 +174,14 @@ scroll/typography/page colors (`NavigationSmokeTest`, 26/26), recreation
 anywhere in this change), and source preservation (read-only TOC/locator
 handling, no EPUB bytes touched).
 
-### FINAL ACCEPTANCE (2B.1 R2/R3 remediation) — pending
+### FINAL ACCEPTANCE (2B.1 R2/R3 remediation) — superseded, see the second remediation round at the top
 
-All four Codex findings (R2.1, R2.2, R3.1, R3.2) are closed with evidence.
-**Not yet re-reviewed by Codex, not merged.** 2B.2 (bookmarks)/2B.3
-(search)/2B.4 (custom fonts) remain untouched.
+All four Codex findings (R2.1, R2.2, R3.1, R3.2) were closed with evidence,
+then a second independent Codex review found the fallback contract (R2.1's
+fix) still too confident in one ambiguous case, and this document's flaky-
+test wording overstated its own evidence (R3.2-adjacent) — see "Phase 2B.1
+R2 second remediation round validation" at the top of this document for the
+fixes. 2B.2 (bookmarks)/2B.3 (search)/2B.4 (custom fonts) remain untouched.
 
 ## Phase 2B.1 validation (2026-09-26)
 

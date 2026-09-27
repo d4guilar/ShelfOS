@@ -1,5 +1,54 @@
 # Documentation Changelog
 
+## Phase 2B.1 R2 second remediation round (2026-09-26)
+
+- Fixed two remaining findings from a second independent Codex review of the
+  R2/R3 remediation below, on the same branch (`phase-2/epub-chapters`),
+  without resetting/dropping either prior commit (`aa0a5d7`, `9ed363a`):
+  (R2) `matchChapter`'s fallback — corrected in the first remediation round
+  to prefer a lone no-fragment entry, else "the first same-resource entry" —
+  could still present a specific, named chapter as current in a genuinely
+  ambiguous case (several equally-plausible same-resource candidates, no
+  locator fragment to prefer one). Corrected again: the fallback now returns
+  the sole no-fragment entry, or the sole same-resource candidate by
+  elimination, and otherwise returns **null** — deliberately admitting the
+  position cannot be determined rather than guessing. `EpubActivity`'s
+  existing `chapter.id == currentChapterId` comparison already treats null
+  correctly with no UI code changes needed: no row shows a checkmark, bold
+  weight, or "current chapter" description when the result is ambiguous:
+  every row simply stays a normal, navigable chapter button. No "current
+  chapter unknown" text or warning was added.
+- Updated `EpubChapterMatchTest` (16 JVM tests, all pass) with explicit
+  ambiguous-case coverage (`twoFragmentOnlyCandidatesWithNoUsableLocatorFragmentAreAmbiguous`,
+  `twoFragmentOnlyCandidatesWithAnUnrelatedLocatorFragmentAreStillAmbiguous`,
+  `duplicateHrefRowsAreAmbiguousAndResolveToNoCurrentRowRatherThanAnArbitraryPick`)
+  and explicit unambiguous-case coverage
+  (`locatorWithNoUsableFragmentFallsBackToTheResourceLevelEntryWhenExactlyOneExists`,
+  `aSingleFragmentOnlyCandidateWinsByEliminationWhenNoOtherSameResourceEntryExists`).
+  The already-fixed multi-fragment-order test is untouched — this round only
+  changes what happens once no locator fragment produces an exact match.
+- Renamed and re-asserted the real fragmented-EPUB instrumented test
+  (`EpubChapterHighlightTest`) to
+  `ambiguousSameResourceFragmentsShowNoCurrentRowButNavigationAndTheDialogStillWork`:
+  against the real fixture (two fragment-only same-resource entries, no
+  resource-level sibling), it now asserts **zero** current rows both at
+  initial open and after navigating to the other entry and reopening the
+  dialog — while confirming navigation and the dialog itself remain fully
+  functional. The unambiguous-case instrumented test is unchanged and still
+  proves exactly one current row when a chapter is the sole entry for its
+  own resource.
+- (R3) Softened `VALIDATION.md`'s wording around the one full-connected-suite
+  teardown failure from earlier this pass: it previously stated the timeout
+  was "confirming device-load flakiness," which overstated the evidence.
+  Corrected to state only what was actually observed — the timeout followed
+  a long `SyntheticLoadAcceptanceTest` run and is consistent with load-
+  related/environmental flakiness, not directly proven to be caused by it;
+  the affected test passed 26/26 in isolation, and no production regression
+  was reproduced.
+- No bookmarks, Room migration, `SearchService` UI, custom fonts, new
+  dependencies, XHTML parsing, or other 2B.2–2B.4 work was added. 2B.1
+  remains implemented, not yet re-reviewed by Codex, not merged.
+
 ## Phase 2B.1 R2/R3 remediation (2026-09-26)
 
 - Fixed two independent-Codex-review findings on the same branch

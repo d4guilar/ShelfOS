@@ -1028,25 +1028,97 @@ REVIEW, not accepted:**
   resource-relative `progression` without a comparable per-TOC-entry value —
   would be exactly the positional-accuracy claim already ruled out in the
   original implementation record above, so it was not attempted. **Practical
-  consequence:** for a same-resource, multi-fragment TOC, live in-app
-  navigation today lands on the fallback entry (the first same-resource
-  entry in TOC order) regardless of which same-resource fragment was
-  actually navigated to, until the navigator's own fragment reporting
-  changes. The instrumented test asserts what is honestly true given this —
-  exactly one row is ever marked current (the row-identity fix, R2.2,
-  verified against a *real* same-resource pair, not just synthetic strings),
-  and that selecting either same-resource entry still navigates and closes
-  the dialog correctly — rather than asserting the originally-hoped-for
-  "second fragment becomes current," which this investigation showed is not
-  presently true. See `matchChapter`'s doc comment
-  (`core.reader.EpubReader.kt`) and the test's own doc comment for the same
-  assessment recorded in code.
+  consequence, corrected by the second remediation round below:** the
+  fallback this paragraph originally described ("lands on the first
+  same-resource entry regardless of which fragment was navigated to") was
+  itself replaced by a second independent Codex review — arbitrarily picking
+  "the first" when several same-resource entries are equally plausible is
+  exactly the kind of confidently-wrong behavior this project does not want.
+  See "2B.1 R2 second remediation round" below for the corrected fallback and
+  the instrumented test's actual current name/assertions (it now proves
+  *zero* rows are marked current in this fixture's genuinely ambiguous case,
+  not one).
 - **R3.2 — `VALIDATION.md` now directly records the completed full Gradle
   gate result** (see its own updated entry) instead of deferring to "see
   final report."
 - **Scope unchanged:** no bookmarks, Room migration, `SearchService` UI,
   custom fonts, new dependencies, or any other 2B.2–2B.4 work was added
   during this remediation.
+
+**2B.1 R2 second remediation round (2026-09-26, same branch, after a second
+independent Codex review of the R2/R3 remediation above returned CHANGES
+REQUIRED on two remaining points) — still IMPLEMENTED, PENDING INDEPENDENT
+REVIEW, not accepted:**
+
+- **R2 (round 2) — the fallback above was still too confident in one case.**
+  The first remediation round's fallback ("prefer the sole no-fragment entry,
+  else the first same-resource entry") could still present a *specific,
+  named* chapter as current when that was really a guess among several
+  equally-plausible same-resource candidates (e.g. `epubWithFragmentedChapter`'s
+  two fragment-only entries, with no locator fragment to prefer one). **The
+  fallback contract is corrected to distinguish unambiguous from ambiguous
+  cases, rather than always picking one:**
+  1. If exactly one same-resource chapter carries no fragment of its own (a
+     genuine "whole chapter" entry), that one wins — unambiguous.
+  2. Otherwise, if there is exactly one same-resource candidate at all, it
+     wins by elimination — still unambiguous.
+  3. Otherwise (several fragment-only candidates with nothing to prefer one,
+     or several indistinguishable resource-level entries) — `matchChapter`
+     returns **null**, deliberately, rather than arbitrarily picking "the
+     first." A confidently-wrong single highlighted chapter is worse than an
+     honestly unmarked list. See `matchChapter`'s doc comment
+     (`core.reader.EpubReader.kt`) for the full contract.
+  No code changed outside `matchChapter` itself — `EpubActivity`'s existing
+  `chapter.id == currentChapterId` comparison already treats `null` correctly
+  with no changes needed: when `currentChapterId` is null, no `Int` row id
+  ever equals it, so no row shows the checkmark, bold weight or "current
+  chapter" `contentDescription` — every row simply remains a normal,
+  navigable chapter button. No "current chapter unknown" text or warning was
+  added; the plain absence of a marker is the correct, non-alarming signal.
+  `EpubChapterMatchTest` gained/renamed cases for all five scenarios the
+  review specified: two fragment-only candidates with no usable locator
+  fragment (`twoFragmentOnlyCandidatesWithNoUsableLocatorFragmentAreAmbiguous`,
+  null), the same with an unrelated-but-present locator fragment
+  (`twoFragmentOnlyCandidatesWithAnUnrelatedLocatorFragmentAreStillAmbiguous`,
+  null), a lone resource-level entry alongside fragment-specific children
+  (`locatorWithNoUsableFragmentFallsBackToTheResourceLevelEntryWhenExactlyOneExists`,
+  that entry — unambiguous), a lone fragment-only candidate with no
+  resource-level sibling
+  (`aSingleFragmentOnlyCandidateWinsByEliminationWhenNoOtherSameResourceEntryExists`,
+  that candidate — unambiguous), and two duplicate no-fragment resource-level
+  entries (`duplicateHrefRowsAreAmbiguousAndResolveToNoCurrentRowRatherThanAnArbitraryPick`,
+  null — this replaces the first round's version of this test, which had
+  asserted "id 0 wins" under the since-replaced fallback). 16 JVM tests total
+  in `EpubChapterMatchTest`, all pass. The already-fixed multi-fragment-order
+  test (`laterLocatorFragmentsAreConsideredWhenEarlierOnesDoNotMatchAnyChapter`)
+  is unchanged — this round only touches what happens *after* no locator
+  fragment produces an exact match, not the exact-match search itself.
+- **The instrumented fragmented-fixture test was renamed and its assertions
+  corrected to match:**
+  `sameResourceFragmentedChapterAlwaysHasExactlyOneCurrentRowAndNavigationStillWorks`
+  → `ambiguousSameResourceFragmentsShowNoCurrentRowButNavigationAndTheDialogStillWork`
+  (`EpubChapterHighlightTest`). Against `epubWithFragmentedChapter` (two
+  fragment-only entries, no resource-level sibling), it now asserts **zero**
+  rows carry any "current chapter" `contentDescription`, both at initial
+  open (the real navigator's first-reported locator carries no fragment
+  either, confirmed in the first remediation round) and after navigating to
+  the other same-resource entry and reopening the dialog — while confirming
+  navigation and the dialog itself (open/select/close/reopen) remain fully
+  functional throughout. `currentChapterIsMarkedAndUpdatesAfterNavigatingElsewhere`
+  (against `epubWithChapters`, where every chapter is the sole entry for its
+  own distinct resource — always unambiguous) is unchanged and continues to
+  prove the *unambiguous* case still produces exactly one current row.
+- **R3 (round 2) — softened an overstated flaky-test attribution in
+  `VALIDATION.md`.** The prior entry stated the one full-connected-suite
+  teardown failure was caused by "device-load flakiness" as if directly
+  proven; corrected to state only what was actually observed — the timeout
+  followed a long `SyntheticLoadAcceptanceTest` run and is *consistent with*
+  load-related/environmental flakiness, and the affected test passed 26/26
+  when re-run in isolation, so no production regression was reproduced. See
+  `VALIDATION.md`'s updated wording.
+- **Scope unchanged:** no bookmarks, Room migration, `SearchService` UI,
+  custom fonts, new dependencies, XHTML parsing, or any other 2B.2–2B.4 work
+  was added during this second remediation round.
 
 **2B.2 — Bookmarks + Room v2 → v3 migration.**
 Room migration 2→3 (`bookmark` table), repository CRUD, "Add bookmark"/list/
@@ -1243,39 +1315,47 @@ ship without unit tests for all five:**
    nesting is not a special case for the matching rule itself).
 5. a locator with no usable fragment at all — verify the deterministic
    same-resource fallback is used, not an arbitrary or unstable choice —
-   **done, but not exactly as originally worded.** The plan's literal
-   "last matching entry at/before position" fallback assumes a within-resource
-   position comparable between the locator and each TOC entry, which no
-   available Readium/Link data actually provides without parsing the
-   resource's own HTML (explicitly out of scope). **Assessed and reported
-   per this task's own instruction before implementing**, then implemented
-   as the smallest honest fallback: prefer the same-resource entry with no
-   fragment of its own (the whole-chapter entry) when one exists, else the
-   first same-resource entry in TOC order — covered by
-   `locatorWithNoUsableFragmentFallsBackToTheResourceLevelEntryWhenOneExists`
-   and `...AndNoResourceLevelEntryFallsBackToTheFirstSameResourceEntry`. See
-   this plan's 2B.1 implementation record above and `matchChapter`'s doc
-   comment (`core.reader.EpubReader.kt`) for the full assessment.
+   **done, but not exactly as originally worded, and revised twice.** The
+   plan's literal "last matching entry at/before position" fallback assumes a
+   within-resource position comparable between the locator and each TOC
+   entry, which no available Readium/Link data actually provides without
+   parsing the resource's own HTML (explicitly out of scope). **Assessed and
+   reported per this task's own instruction before implementing.** The final
+   contract, after a second independent Codex review corrected the first
+   attempt (see "2B.1 R2 second remediation round" above for the full
+   history): a single no-fragment same-resource entry wins
+   (`locatorWithNoUsableFragmentFallsBackToTheResourceLevelEntryWhenExactlyOneExists`);
+   a single same-resource candidate of any kind wins by elimination
+   (`aSingleFragmentOnlyCandidateWinsByEliminationWhenNoOtherSameResourceEntryExists`);
+   otherwise — several equally-plausible same-resource candidates — matching
+   returns **null**, deliberately, rather than guessing
+   (`twoFragmentOnlyCandidatesWithNoUsableLocatorFragmentAreAmbiguous`,
+   `twoFragmentOnlyCandidatesWithAnUnrelatedLocatorFragmentAreStillAmbiguous`,
+   `duplicateHrefRowsAreAmbiguousAndResolveToNoCurrentRowRatherThanAnArbitraryPick`).
+   See `matchChapter`'s doc comment (`core.reader.EpubReader.kt`) for the
+   authoritative, current contract.
 Also added beyond the plan's five: a different-resource never matches, an
-empty chapter list never matches, a fragment matching no TOC entry still uses
-the resource fallback rather than reporting no chapter, and matching is
-deterministic across repeated calls (14 JVM tests total, `EpubChapterMatchTest`,
-all pass). **R2/R3 remediation (2026-09-26), after independent Codex review:**
-matching now checks every locator fragment in order rather than only the
-first (`laterLocatorFragmentsAreConsideredWhenEarlierOnesDoNotMatchAnyChapter`),
+empty chapter list never matches, and matching is deterministic across
+repeated calls, including the ambiguous/null case (16 JVM tests total,
+`EpubChapterMatchTest`, all pass). **R2/R3 remediation, first round
+(2026-09-26):** matching now checks every locator fragment in order rather
+than only the first
+(`laterLocatorFragmentsAreConsideredWhenEarlierOnesDoNotMatchAnyChapter`),
 current-chapter identity uses `EpubChapter.id` (stable, in-memory, flattened
-ordinal position) rather than `href` so duplicate-href rows cannot both read
-as current (`duplicateHrefRowsResolveToExactlyOneStableIdNotBothByHrefEquality`),
-and a real same-resource fragmented EPUB fixture
-(`OriginalFixtures.epubWithFragmentedChapter`) plus instrumented test now
-exist — which also empirically confirmed a real Readium navigator limitation
-(fragments are never reported back on `currentLocator` after navigation in
-this configuration), recorded above and in `matchChapter`'s doc comment
-rather than assumed away. Fallback remains unchanged: same-resource
-no-fragment entry, else first same-resource entry; still no
-nearest-preceding-heading positional claim is made. API 35: yes
-(`shelfos-phase0`). RP5: not required (no new chrome reachability surface,
-per §2B.7) and not performed in this pass.
+ordinal position) rather than `href`, and a real same-resource fragmented
+EPUB fixture (`OriginalFixtures.epubWithFragmentedChapter`) plus instrumented
+test now exist — which also empirically confirmed a real Readium navigator
+limitation (fragments are never reported back on `currentLocator` after
+navigation in this configuration), recorded in `matchChapter`'s doc comment
+rather than assumed away. **Second round (2026-09-26):** the fallback itself
+was corrected to distinguish unambiguous from ambiguous same-resource
+groups rather than always picking "the first" — see "2B.1 R2 second
+remediation round" above for the authoritative contract and rationale; the
+instrumented fragmented-fixture test now asserts zero current rows for the
+genuinely ambiguous fixture case, not one. No nearest-preceding-heading
+positional claim is made at any point. API 35: yes (`shelfos-phase0`). RP5:
+not required (no new chrome reachability surface, per §2B.7) and not
+performed in this pass.
 
 **2B.2 (bookmarks):**
 user-visible: add/list/jump/delete bookmarks for the open EPUB. persistence:

@@ -84,44 +84,46 @@ class EpubChapterHighlightTest {
     }
 
     /**
-     * Codex R2/R3: two real TOC entries pointing into the *same* XHTML resource at different fragments
-     * (`OriginalFixtures.epubWithFragmentedChapter`) — exercising the real `Publication.locatorFromLink` pipeline
-     * a synthetic-string JVM test cannot, and proving exactly one row is ever marked current even though both
-     * entries share the same underlying resource (the row-identity fix this pass adds; see [chapterRow]/
-     * `EpubChapter.id`).
+     * Codex R2 (second remediation round): two real TOC entries pointing into the *same* XHTML resource at
+     * different fragments (`OriginalFixtures.epubWithFragmentedChapter`, neither entry is a "whole chapter"
+     * resource-level entry) — exercising the real `Publication.locatorFromLink` pipeline a synthetic-string JVM
+     * test cannot.
      *
-     * **What this test does not (and, per empirical investigation during this remediation, currently cannot)
-     * assert:** that navigating to "Section Two" makes it the reported current chapter. Direct investigation
+     * **Why this asserts zero current rows, not one:** direct investigation during the first remediation round
      * (real `Locator` JSON logged from `EpubSurface`'s `onLocation`, for both the `Navigator.go(Link, animated)`
      * and `Navigator.go(Locator, animated)` overloads) showed the pinned Readium 3.4.0 EPUB navigator's own
      * `currentLocator`, in its default paginated (non-scroll) mode, never populates `Locations.fragments` after
-     * navigating to a fragment — only `progression`/`position`/`totalProgression`. `matchChapter`'s fallback (see
-     * its doc comment in `core.reader.EpubReader.kt`) therefore governs real same-resource, multi-fragment
-     * navigation today, landing on the same TOC entry (the first in TOC order, "Section One") regardless of which
-     * same-resource fragment was actually navigated to. This is a verified Readium/navigator-configuration
-     * constraint, not a ShelfOS matching defect — the multi-fragment algorithm itself is proven correct by
-     * `EpubChapterMatchTest`'s synthetic-locator JVM tests, ready for if/when a real locator ever does carry
-     * fragments. Building an HTML-position heuristic to work around this was explicitly out of this remediation's
+     * navigating to a fragment — only `progression`/`position`/`totalProgression`. With two fragment-only
+     * same-resource candidates and no locator fragment to distinguish them, `matchChapter`'s corrected fallback
+     * (see its doc comment in `core.reader.EpubReader.kt`) correctly returns null — genuinely ambiguous — rather
+     * than arbitrarily picking one. Showing *no* current chapter here is the intended, honest behavior, not a
+     * gap: a confidently-wrong single highlighted row would be worse than an unmarked list. This is a verified
+     * Readium/navigator-configuration constraint, not a ShelfOS matching defect — the multi-fragment algorithm
+     * itself is proven correct by `EpubChapterMatchTest`'s synthetic-locator JVM tests, ready for if/when a real
+     * locator ever does carry fragments. Building an HTML-position heuristic to work around this remains out of
      * scope. See `docs/PHASE_2_PLAN.md`'s 2B.1 section for the same assessment recorded for Codex re-review.
+     * `currentChapterIsMarkedAndUpdatesAfterNavigatingElsewhere` (above) retains coverage of the *unambiguous*
+     * case — every chapter there is the sole entry for its own resource — showing exactly one current row.
      */
-    @Test fun sameResourceFragmentedChapterAlwaysHasExactlyOneCurrentRowAndNavigationStillWorks() {
+    @Test fun ambiguousSameResourceFragmentsShowNoCurrentRowButNavigationAndTheDialogStillWork() {
         ActivityScenario.launch<EpubActivity>(EpubActivity.intent(context, "test-epub-fragments")).use {
             awaitReader()
-            // No persisted locator yet, and neither TOC entry here is fragment-free, so the documented fallback
-            // (first same-resource entry in TOC order) correctly lands on Section One — proven against the real
-            // navigator's actual first-reported locator, not a synthetic one.
+            // No persisted locator yet, and the real navigator's first-reported locator carries no fragment
+            // either (verified during the first remediation round) — with two fragment-only, no-resource-level
+            // candidates, this is ambiguous from the start: no row should be marked current.
             compose.onNodeWithText("Chapters").performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Section One, current chapter").fetchSemanticsNodes().isNotEmpty() }
-            compose.onAllNodes(hasContentDescription("current chapter", substring = true)).assertCountEquals(1)
+            compose.waitUntil(10_000) { compose.onAllNodes(chapterRow("Section One")).fetchSemanticsNodes().isNotEmpty() }
+            compose.onAllNodes(hasContentDescription("current chapter", substring = true)).assertCountEquals(0)
             // Selecting the other same-resource entry still navigates and closes the dialog exactly as any other
-            // chapter jump does — the interaction/wiring is unaffected by the two rows sharing one resource.
+            // chapter jump does — the interaction/wiring is unaffected by the ambiguity or by the two rows
+            // sharing one resource.
             compose.onNode(chapterRow("Section Two")).performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Chapters").fetchSemanticsNodes().size == 1 }
-            // Reopening still shows exactly one current row — never both, never neither — which is the concrete,
-            // durable guarantee EpubChapter's stable id (compared instead of href) exists to provide, independent
-            // of the fragment-tracking limitation documented above.
+            // Reopening remains stable and still honestly shows no current row (the live locator still carries no
+            // fragment after this navigation, per the documented Readium limitation) — never a wrong guess.
             compose.onNodeWithText("Chapters").performClick()
-            compose.waitUntil(10_000) { compose.onAllNodes(hasContentDescription("current chapter", substring = true)).fetchSemanticsNodes().size == 1 }
+            compose.waitUntil(10_000) { compose.onAllNodes(chapterRow("Section Two")).fetchSemanticsNodes().isNotEmpty() }
+            compose.onAllNodes(hasContentDescription("current chapter", substring = true)).assertCountEquals(0)
         }
     }
 }

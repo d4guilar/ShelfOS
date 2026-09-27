@@ -124,24 +124,40 @@ class EpubSession internal constructor(internal val publication: Publication) : 
         fun find(links: List<Link>): Link? = links.firstNotNullOfOrNull { if (it.href.toString() == href) it else find(it.children) }
         return find(publication.tableOfContents) ?: find(publication.readingOrder)
     }
-    /** The TOC entry the reader's current position belongs to, or null if the TOC has no matching resource. */
+    /** The TOC entry the reader's current position unambiguously belongs to, or null if the TOC has no matching
+     * resource *or* if more than one same-resource entry is equally plausible and none can be ruled out — see
+     * [matchChapter]'s doc comment for the exact fallback contract. Null is a legitimate result, not an error. */
     fun currentChapter(locator: Locator): EpubChapter? = matchChapter(chapters, locator.href.toString(), locator.locations.fragments)
     override fun close() = publication.close()
 }
 
 /**
- * Matches the reader's current position to a TOC entry. Not simple href equality: several chapters can share one
- * resource at different fragments, and the current position may carry no fragment at all. `Locator.Locations
- * .fragments` can itself carry more than one candidate — a pinned-navigator locator is not guaranteed to put the
- * fragment that actually corresponds to a TOC entry first — so every locator fragment is checked, in order,
- * before falling back; the first one that exactly matches a same-resource chapter's own fragment wins. Only once
- * *none* of the locator's fragments match anything does the fallback run: this prefers the resource-level entry
- * (no fragment of its own) if one exists, else the first same-resource entry in TOC order. A real position
- * *within* the resource (e.g. "the nearest preceding heading") cannot be determined from Locator/Link data alone
- * without parsing the resource's own HTML content — TOC order and resource-relative progression are not the same
- * axis, and Link carries no position of its own — so this never claims that finer-grained knowledge; see
- * docs/PHASE_2_PLAN.md's 2B.1 section for the full assessment. Pure/plain so it is directly unit-testable without
- * any Readium or Android type, mirroring `core.input`'s `resolveInputSources`/`isGamepadSource`.
+ * Matches the reader's current position to a TOC entry, or returns null when no entry can be identified *without
+ * guessing* — this is a legitimate, expected result, not an error (see [EpubSession.currentChapter]/
+ * [currentChapterId]'s callers). Not simple href equality: several chapters can share one resource at different
+ * fragments, and the current position may carry no fragment at all. `Locator.Locations.fragments` can itself
+ * carry more than one candidate — a pinned-navigator locator is not guaranteed to put the fragment that actually
+ * corresponds to a TOC entry first — so every locator fragment is checked, in order, before falling back; the
+ * first one that exactly matches a same-resource chapter's own fragment wins.
+ *
+ * **Fallback contract, once *none* of the locator's fragments produce an exact match (Codex R2, corrected
+ * 2026-09-26 after an earlier version of this fallback silently picked an arbitrary same-resource entry):**
+ * 1. If exactly one same-resource chapter carries no fragment of its own (a genuine "whole chapter" TOC entry),
+ *    that one is unambiguous and wins — this is a real, defensible choice, not a guessed position.
+ * 2. Otherwise, if there is exactly one same-resource candidate at all (regardless of whether it has a fragment),
+ *    it is unambiguous by elimination and wins.
+ * 3. Otherwise — multiple same-resource candidates, none identifiable as *the* one (several fragment-only
+ *    entries with no locator fragment to distinguish them, or several indistinguishable resource-level entries)
+ *    — this returns **null**, deliberately. Arbitrarily picking "the first one" here would present a specific,
+ *    named chapter as current when that is not actually known; a caller correctly showing *no* current chapter is
+ *    more honest than one confidently showing the wrong one.
+ *
+ * A real position *within* the resource (e.g. "the nearest preceding heading") cannot be determined from
+ * Locator/Link data alone without parsing the resource's own HTML content — TOC order and resource-relative
+ * progression are not the same axis, and Link carries no position of its own — so this never attempts that
+ * finer-grained inference either as a match or as a fallback; see docs/PHASE_2_PLAN.md's 2B.1 section for the
+ * full assessment. Pure/plain so it is directly unit-testable without any Readium or Android type, mirroring
+ * `core.input`'s `resolveInputSources`/`isGamepadSource`.
  *
  * **Empirically confirmed limitation (2026-09-26, Codex R2/R3 remediation):** `Publication.locatorFromLink(link)`
  * *does* resolve each TOC entry's own fragment correctly (verified directly against the real pinned navigator —
@@ -153,17 +169,20 @@ class EpubSession internal constructor(internal val publication: Publication) : 
  * the current navigator/configuration, not a ShelfOS defect: the multi-fragment matching above is still correct
  * and exercised end-to-end by `EpubChapterMatchTest`'s synthetic-locator JVM tests, and remains the right, honest
  * behavior if a future Readium version, a different reading mode, or a different code path ever does supply
- * `currentLocator` fragments — but it is not yet observably exercised by real in-app navigation, so a same-
- * resource, multi-fragment TOC's *live* current-chapter highlight currently tracks by the fallback rule (the
- * first same-resource entry) regardless of which same-resource fragment was actually navigated to, until that
- * navigator behavior changes. See `EpubChapterHighlightTest`'s fragmented-fixture test for what is honestly
- * verified today given this constraint.
+ * `currentLocator` fragments. Concretely, for a same-resource TOC with more than one fragment-only entry and no
+ * resource-level entry (exactly `epubWithFragmentedChapter`'s shape), real in-app navigation today lands on this
+ * function's ambiguous/null case rather than tracking the actually-navigated-to fragment — which, per the
+ * contract above, is the correct, honest outcome given what the navigator actually reports, not a bug to route
+ * around by guessing. See `EpubChapterHighlightTest`'s fragmented-fixture test for what is verified today.
  */
 internal fun matchChapter(chapters: List<EpubChapter>, currentResource: String, currentFragments: List<String>): EpubChapter? {
     val sameResource = chapters.filter { it.resource == currentResource }
     if (sameResource.isEmpty()) return null
     currentFragments.forEach { fragment -> sameResource.find { it.fragment == fragment }?.let { return it } }
-    return sameResource.find { it.fragment == null } ?: sameResource.first()
+    val resourceLevel = sameResource.filter { it.fragment == null }
+    if (resourceLevel.size == 1) return resourceLevel.first()
+    if (sameResource.size == 1) return sameResource.first()
+    return null
 }
 
 /**
@@ -171,7 +190,9 @@ internal fun matchChapter(chapters: List<EpubChapter>, currentResource: String, 
  * — from the same persisted locator JSON `EpubReaderViewModel.location()` already writes, so highlighting needs
  * no separate storage and no second navigator/session reference. Comparing by `href` cannot tell two rows with
  * the same href apart (a redundant/duplicate TOC entry, or two entries sharing one fragment); comparing by this
- * id can, since each flattened row gets its own regardless of what its href looks like.
+ * id can, since each flattened row gets its own regardless of what its href looks like. Returns null both when
+ * the locator has no persisted value yet and when [EpubSession.currentChapter] cannot identify one row
+ * unambiguously — either way, the correct UI response is to highlight nothing, not to guess.
  */
 fun EpubSession.currentChapterId(locatorJson: String?): Int? {
     val locator = locatorJson?.let { runCatching { Locator.fromJSON(JSONObject(it)) }.getOrNull() } ?: return null
