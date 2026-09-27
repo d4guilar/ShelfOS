@@ -1,5 +1,69 @@
 # Validation
 
+## Phase 2B.2 final pre-PR and RP5 validation (2026-09-27)
+
+Branch `phase-2/epub-bookmarks-ready` at commit `25612d5` was built and
+reviewed against `main` at `ac9476d56f332c067aa39dc2b1e5533288103c12`.
+The branch contains only the two Phase 2B.2 commits (`9d0d965`, `25612d5`);
+the unrelated future Notes interoperability commit `90622a6` and
+`docs/features/ANNOTATIONS.md` are absent. Historical schemas `1.json` and
+`2.json` are unchanged and `3.json` remains the only added schema artifact.
+
+The two independent-review R3 findings are closed:
+
+- Bookmark ordering is `progress ASC, createdAt ASC, id ASC`, with an
+  equal-progress/equal-created-time regression test proving the `id`
+  tie-breaker.
+- Automated keyboard/controller evidence uses explicit focus plus real key
+  events for Bookmarks, Add, jump, Delete, and Back. Owner physical acceptance
+  on the RP5 is recorded below; injected events are not presented as physical
+  evidence.
+
+### Automated final-gate evidence
+
+The static gate completed successfully: 86/86 tasks, 87/87 JVM tests, and
+lint with 0 errors and 7 warnings. `git diff --check` and the schema working
+tree check were clean. On the API 35 emulator,
+`BookmarkPersistenceTest` passed 7/7, `NavigationSmokeTest` 26/26,
+`EpubRecreationTest` 1/1, and `EpubChapterHighlightTest` 3/3.
+
+The final connected suite completed **66/67** tests. The only failure was
+`EpubBookmarkTest.addListJumpAndDeleteBookmarksAcrossDialogReopens`, which
+timed out after 10 seconds at `EpubBookmarkTest.kt:56` while waiting for the
+"Bookmarked" label after Add. The same test then failed at the same line in
+an isolated class run and again in an isolated run after fully restarting the
+emulator; `EpubBookmarkTest` was 4/5 in each isolated run. This final evidence
+supersedes the earlier description of that timeout as confirmed
+non-reproducible. It does not establish whether the defect is in production
+behavior or the assertion, so it remains an unresolved automated pre-PR
+blocker rather than being attributed to emulator load.
+
+### RP5 owner physical acceptance
+
+The exact debug APK built from `25612d5` (SHA-256
+`5a18f323038ff8f99e86633f91ae29e3147317cd9d5232041ea56ab45877eadf`)
+was installed on the Retroid Pocket 5 (`d8f7f1b6`) with `adb install -r`.
+Installation returned `Success`; ShelfOS was not uninstalled and app data was
+not cleared. The package's original `firstInstallTime` remained unchanged.
+The app launched successfully through its declared `.MainActivity`. The
+visible library was empty before the acceptance publication was added, so no
+pre-existing publication/progress row was available for a visual migration
+check; the automated migration tests remain authoritative.
+
+The owner then reported **RP5 PASS** after physically exercising the agreed
+checklist with the RP5's own controls: Bookmarks was reachable from reader
+chrome; Add created a visible bookmark; activating the bookmark closed the
+dialog and returned to the saved location; Delete removed the intended row
+and the final deletion restored the empty state; physical B dismissed the
+Bookmarks dialog first, revealed hidden reader chrome, and exited only when
+chrome was already visible. This is owner-reported physical-button evidence,
+distinct from Codex's ADB/Compose-injected automation.
+
+**Current status:** independent review passed and RP5 physical acceptance
+passed, but Phase 2B.2 is **not ready for PR** until the reproducible
+`EpubBookmarkTest` failure above is resolved and the final automated gate is
+green. It is not merged or pushed. Phase 2B.3 and 2B.4 remain untouched.
+
 ## Phase 2B.2 R3 remediation (2026-09-26)
 
 Independent Codex review of 2B.2 (below) returned **PASS WITH NON-BLOCKING

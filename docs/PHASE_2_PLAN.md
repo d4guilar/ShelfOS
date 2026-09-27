@@ -58,8 +58,9 @@ each independently mergeable and gated by its own acceptance criteria. 2A and
 2A.1 are both accepted and merged (see their sections below and
 `VALIDATION.md` for the full history). 2B is broken into four internal
 slices (2B.1–2B.4, see below) after a discovery/implementation-planning
-pass. 2B.1 is accepted and merged; 2B.2 is implemented, pending independent
-review; 2B.3/2B.4 remain planned only. 2C/2D remain planned only; none of
+pass. 2B.1 is accepted and merged; 2B.2 passed independent review and owner
+RP5 physical acceptance, but remains blocked from PR by one reproducible
+final-gate `EpubBookmarkTest` timeout; 2B.3/2B.4 remain planned only. 2C/2D remain planned only; none of
 their work has started.
 
 ## 3. Increments
@@ -1569,11 +1570,20 @@ jump, Delete, and the real hardware Back key's dialog-dismiss behavior, each
 via explicit `RequestFocus` + a real `KeyEvent` (`Key.Enter`/`KEYCODE_BACK`),
 following `NavigationSmokeTest`'s own established explicit-focus-then-key-
 press convention rather than counting an unspecified number of DPAD_RIGHT
-presses. This closes the automated half of the R3 finding; **physical RP5
-controller acceptance remains pending before merge** — adb-injected key
-events are real key events but are not a substitute for physical hardware
-interaction, and no such interaction was performed in this remediation pass.
-2B.2 remains **IMPLEMENTED, PENDING INDEPENDENT REVIEW**, not accepted.
+presses. This closes the automated half of the R3 finding. On 2026-09-27 the
+exact APK from `25612d5` was installed on RP5 `d8f7f1b6` with
+`adb install -r`, and the owner reported **RP5 PASS** for physical Bookmarks
+reachability, Add, jump, Delete, and dialog/reveal/exit Back behavior. This is
+owner physical-button evidence, distinct from injected key events.
+
+Final pre-PR automation nevertheless reproduced
+`EpubBookmarkTest.addListJumpAndDeleteBookmarksAcrossDialogReopens` timing out
+at its post-Add "Bookmarked" wait in the full suite, an isolated run, and an
+isolated run after a fresh emulator restart. The full suite was 66/67 and the
+isolated class was 4/5. Therefore 2B.2 has passed independent review and
+physical RP5 acceptance but remains **NOT READY FOR PR** until that automated
+blocker is resolved. It is not accepted as merged, not pushed, and 2B.3/2B.4
+remain untouched.
 
 **2B.3 (search):**
 user-visible: query input, results with snippets, jump to a result.

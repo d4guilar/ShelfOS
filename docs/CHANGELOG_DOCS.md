@@ -1,5 +1,37 @@
 # Documentation Changelog
 
+## Phase 2B.2 final pre-PR and RP5 validation (2026-09-27)
+
+- Confirmed the clean PR branch `phase-2/epub-bookmarks-ready` contains only
+  `9d0d965` (Phase 2B.2) and `25612d5` (ordering remediation) above `main` at
+  `ac9476d5`; unrelated future Notes commit `90622a6` is absent.
+- Closed both review R3 findings in code/evidence: bookmark ordering now has
+  the final `id ASC` tie-breaker with an equal-time regression test, and the
+  Bookmarks UI has explicit-focus + real-key automated coverage for Add,
+  jump, Delete, and Back.
+- Built the exact `25612d5` debug APK and installed it on RP5 `d8f7f1b6`
+  using `adb install -r`. Installation succeeded without uninstalling ShelfOS
+  or clearing app data; the package's original `firstInstallTime` remained
+  unchanged. The app launched successfully. The library was empty before the
+  acceptance publication was added, so no pre-existing publication/progress
+  row was available for visual migration verification.
+- Recorded the owner's **RP5 PASS** using the handheld's physical controls:
+  Bookmarks was reachable; Add created a bookmark; jump returned to the saved
+  location and closed the dialog; Delete removed the correct bookmark and
+  restored the empty state; physical B dismissed the dialog first, revealed
+  hidden chrome, and exited only with chrome visible. This is owner physical
+  evidence, not Codex-injected input.
+- The static gate passed (86/86 tasks, 87/87 JVM tests, lint 0 errors/7
+  warnings), and the ordering, navigation, recreation, and chapter-highlight
+  focused classes passed. The final connected suite was **66/67**: the
+  existing add/list bookmark flow timed out waiting for "Bookmarked" after
+  Add. It failed again in isolation and after a fresh emulator restart, so
+  the earlier "confirmed non-reproducible" characterization no longer holds.
+- Phase 2B.2 has passed independent review and physical RP5 acceptance but is
+  **not ready for PR** until this reproducible automated blocker is resolved.
+  No application code, Phase 2B.3, Phase 2B.4, Notes, push, or PR action was
+  included in this documentation pass.
+
 ## Phase 2B.2 R3 remediation (2026-09-26)
 
 - Fixed two R3 findings from an independent Codex review of 2B.2 (below,
