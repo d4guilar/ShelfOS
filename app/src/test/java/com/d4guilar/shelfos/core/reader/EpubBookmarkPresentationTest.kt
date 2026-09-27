@@ -17,43 +17,73 @@ import org.junit.Test
  * adjacent test here).
  */
 class EpubBookmarkPresentationTest {
-    // --- resolveEpubLocation ---
+    // --- resolveEpubLocation: segment-start / floor semantics (Codex R2) ---
+    // Shared fixture for cases A-G: one resource, three segment starts at 0.0 (pos 1), 0.4 (pos 2), 0.8 (pos 3).
+    private val abcdefgPositions = listOf(
+        EpubPosition("chapter.xhtml", progression = 0.0, position = 1),
+        EpubPosition("chapter.xhtml", progression = 0.4, position = 2),
+        EpubPosition("chapter.xhtml", progression = 0.8, position = 3),
+    )
+    private fun resolve(progression: Double) = resolveEpubLocation(abcdefgPositions, EpubBookmarkLocation("chapter.xhtml", progression = progression))
 
-    @Test fun resolvesUniquelyWhenExactlyOnePositionSharesTheResource() {
-        val positions = listOf(EpubPosition("chapter1.xhtml", progression = 0.0, position = 1))
-        assertEquals(1, resolveEpubLocation(positions, EpubBookmarkLocation("chapter1.xhtml")))
+    @Test fun a_exactFirstBoundaryResolvesToTheFirstSegment() = assertEquals(1, resolve(0.0))
+    @Test fun b_betweenFirstAndSecondResolvesToTheFirstSegment() = assertEquals(1, resolve(0.2))
+    @Test fun c_exactMiddleBoundaryResolvesToTheMiddleSegment() = assertEquals(2, resolve(0.4))
+    /** The critical regression Codex flagged: the old "nearest" implementation picked segment 3 (starts at 0.8,
+     * numerically closer to 0.7) instead of the segment the bookmark is actually inside (starts at 0.4). */
+    @Test fun d_betweenMiddleAndFinalResolvesToTheMiddleSegmentNotTheNearestOne() = assertEquals(2, resolve(0.7))
+    @Test fun e_exactFinalBoundaryResolvesToTheFinalSegment() = assertEquals(3, resolve(0.8))
+    @Test fun f_nearResourceEndResolvesToTheFinalSegment() = assertEquals(3, resolve(0.99))
+    @Test fun g_progressionOneResolvesToTheFinalValidSegment() = assertEquals(3, resolve(1.0))
+
+    @Test fun h_negativeProgressionIsUnresolved() = assertNull(resolve(-0.001))
+    @Test fun i_progressionAboveOneIsUnresolved() = assertNull(resolve(1.001))
+    @Test fun j_nanProgressionIsUnresolved() = assertNull(resolve(Double.NaN))
+    @Test fun j2_infiniteProgressionIsUnresolved() = assertNull(resolve(Double.POSITIVE_INFINITY))
+    @Test fun k_missingProgressionIsUnresolved() =
+        assertNull(resolveEpubLocation(abcdefgPositions, EpubBookmarkLocation("chapter.xhtml", progression = null)))
+    /** The old implementation resolved a lone same-resource candidate even without a progression to compare —
+     * that special case is deliberately removed: a missing progression is missing evidence regardless of how many
+     * candidates exist. */
+    @Test fun k2_missingProgressionIsUnresolvedEvenWithASingleCandidateResource() {
+        val onlyOne = listOf(EpubPosition("solo.xhtml", progression = 0.0, position = 1))
+        assertNull(resolveEpubLocation(onlyOne, EpubBookmarkLocation("solo.xhtml", progression = null)))
     }
+    @Test fun l_unmatchedHrefIsUnresolved() = assertNull(resolveEpubLocation(abcdefgPositions, EpubBookmarkLocation("other.xhtml", progression = 0.5)))
 
-    @Test fun noPositionSharesTheResourceIsUnresolved() {
-        val positions = listOf(EpubPosition("chapter1.xhtml", progression = 0.0, position = 1))
-        assertNull(resolveEpubLocation(positions, EpubBookmarkLocation("chapter2.xhtml", progression = 0.0)))
-    }
-
-    @Test fun severalCandidatesWithoutAProgressionToCompareAreUnresolvedRatherThanGuessed() {
+    /** Global, one-based numbering is preserved and never reset per resource: the second resource's segments
+     * continue numbering from where the first resource's left off. */
+    @Test fun m_globalOneBasedNumberingIsPreservedAcrossResources() {
         val positions = listOf(
             EpubPosition("chapter1.xhtml", progression = 0.0, position = 1),
             EpubPosition("chapter1.xhtml", progression = 0.5, position = 2),
+            EpubPosition("chapter2.xhtml", progression = 0.0, position = 3),
+            EpubPosition("chapter2.xhtml", progression = 0.5, position = 4),
         )
-        assertNull(resolveEpubLocation(positions, EpubBookmarkLocation("chapter1.xhtml", progression = null)))
+        assertEquals(3, resolveEpubLocation(positions, EpubBookmarkLocation("chapter2.xhtml", progression = 0.0)))
+        assertEquals(4, resolveEpubLocation(positions, EpubBookmarkLocation("chapter2.xhtml", progression = 0.5)))
     }
 
-    @Test fun severalCandidatesResolveToTheClosestProgression() {
+    /** Candidates with an invalid progression (should not occur in a real Readium catalog, but not assumed) are
+     * ignored rather than trusted — the valid candidate for the same resource still resolves normally. */
+    @Test fun invalidCandidatePositionsAreIgnoredRatherThanTrusted() {
         val positions = listOf(
-            EpubPosition("chapter1.xhtml", progression = 0.0, position = 1),
-            EpubPosition("chapter1.xhtml", progression = 0.4, position = 2),
-            EpubPosition("chapter1.xhtml", progression = 0.8, position = 3),
+            EpubPosition("chapter.xhtml", progression = Double.NaN, position = 1),
+            EpubPosition("chapter.xhtml", progression = 0.2, position = 2),
         )
-        assertEquals(2, resolveEpubLocation(positions, EpubBookmarkLocation("chapter1.xhtml", progression = 0.5)))
+        assertEquals(2, resolveEpubLocation(positions, EpubBookmarkLocation("chapter.xhtml", progression = 0.9)))
     }
 
-    /** 0.25/0.5/0.75 are exact in binary floating point, so both candidates are genuinely equidistant — not merely
-     * "close enough" — making this a real tie rather than an artifact of decimal/double rounding. */
-    @Test fun tiedDistancesFavorTheLowerPositionForDeterminism() {
+    /** When two positions for the same resource share the exact maximal qualifying progression (should not occur
+     * in a real Readium catalog, but not assumed), resolution is still deterministic: the earlier-encountered
+     * (lower, global-position-ordered) one wins rather than an arbitrary one. */
+    @Test fun tiedFloorCandidatesResolveDeterministicallyToTheEarlierPosition() {
         val positions = listOf(
-            EpubPosition("chapter1.xhtml", progression = 0.25, position = 5),
-            EpubPosition("chapter1.xhtml", progression = 0.75, position = 9),
+            EpubPosition("chapter.xhtml", progression = 0.0, position = 1),
+            EpubPosition("chapter.xhtml", progression = 0.4, position = 2),
+            EpubPosition("chapter.xhtml", progression = 0.4, position = 3),
         )
-        assertEquals(5, resolveEpubLocation(positions, EpubBookmarkLocation("chapter1.xhtml", progression = 0.5)))
+        assertEquals(2, resolveEpubLocation(positions, EpubBookmarkLocation("chapter.xhtml", progression = 0.6)))
     }
 
     /** A target enriched with a `position` value (simulating Readium enriching the same logical locator after it

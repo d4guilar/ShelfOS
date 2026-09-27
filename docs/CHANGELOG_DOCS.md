@@ -1,5 +1,75 @@
 # Documentation Changelog
 
+## Phase 2B.2.1 R2/R3 remediation (2026-09-27)
+
+- Fixed two independent-Codex-review findings on `f43e70d` (2B.2.1's
+  original implementation, below), on the same branch
+  (`phase-2/bookmark-location-polish`), without resetting or dropping it.
+  Verdict was CHANGES REQUIRED; 2B.2.1 remains implemented/remediated,
+  pending final independent review.
+- **R2 (location-resolution defect):** `resolveEpubLocation` picked the
+  numerically *nearest* Readium position instead of the correct
+  floor/segment-start match (Readium's catalog lists segment starts, not
+  midpoints) — a bookmark at progression 0.7 between segment starts 0.4 and
+  0.8 was wrongly resolved to 0.8. Fixed to select the greatest-progression
+  segment start `<=` the bookmark's own progression. Progression is now
+  validated conservatively (missing/negative/`>1`/NaN/infinite all yield no
+  Location, never a clamp or a guess); invalid candidate positions are
+  ignored. Global one-based numbering is unchanged.
+- Replaced `EpubBookmarkPresentationTest`'s old "nearest"/"tied distance"
+  tests (13 tests) with the full boundary matrix (25 tests): exact/mid
+  boundaries, the critical 0.7 regression, end-of-resource behavior,
+  invalid-progression rejection, unmatched href, cross-resource global
+  numbering, invalid-candidate filtering, deterministic floor tie-breaking.
+- Strengthened `EpubBookmarkLocationInstrumentedTest` (4 -> 6 tests) with
+  two real-fixture proofs: a later-resource bookmark resolves with Location
+  > 1 and no numbering reset; and, using a new fixture
+  (`OriginalFixtures.epubWithLongChapter`, seeded high-entropy content that
+  does not compress into a single position), the floor/segment-start
+  boundary behavior holds against real Readium-computed segment starts, not
+  only a synthetic list.
+- **R3 (off-Main dispatch):** `EpubReaderViewModel`'s position-catalog fetch
+  ran on `viewModelScope`'s own Main dispatcher. Fixed with
+  `withContext(Dispatchers.IO) { session.epubPositions() }`, matching this
+  codebase's existing dispatch convention; no new dispatcher abstraction.
+- **R3 (cancellation):** replaced a bare `runCatching {...}.getOrDefault(...)`
+  (which silently swallowed `CancellationException`) with explicit
+  `catch (e: CancellationException) { throw e } catch (e: Exception) {
+  emptyList() }` — cancellation now propagates; only a genuine failure
+  degrades to no Location N.
+- **R3 (documentation corrections):** archive-length wording now states the
+  real fallback (`Resource.properties().archive?.entryLength` when present,
+  else `Resource.length()`), re-verified via `javap` decompilation, rather
+  than universally "compressed length"; Compose-blocking language no longer
+  claims jank is "mathematically impossible," only that catalog computation
+  is dispatched off Main; the one observed `EpubBookmarkTest` timeout is now
+  recorded as "observed timing instability" with the full evidence trail
+  preserved, not a settled "confirmed flake" conclusion; the RP5
+  keyboard-focus finding is now recorded as the best-available evidence
+  without overstating a confirmed launcher-specific cause.
+- Validation: `EpubBookmarkPresentationTest` 25/25,
+  `EpubBookmarkLocationInstrumentedTest` 6/6, `EpubBookmarkTest` 5/5,
+  `BookmarkPersistenceTest` 7/7, `EpubChapterHighlightTest` 3/3,
+  `NavigationSmokeTest` 26/26, `EpubRecreationTest` 1/1. A first full
+  `connectedDebugAndroidTest` run stopped at 32/65 with two failures
+  factually diagnosed as the same ADB transport-disconnection emulator
+  infrastructure failure documented earlier in 2B.2's own history, not a
+  code defect (neither failing test touches this remediation's changes);
+  after the established recovery procedure, a complete re-run passed
+  73/73, 0 failures. Full local Gradle gate: BUILD SUCCESSFUL, 86/86 tasks.
+- Confirmed unchanged: bookmark Room schema, `Bookmark` model, stored
+  locator format, navigation authority, DAO duplicate guard,
+  `sameEpubBookmarkLocation`, bookmark ordering, `matchChapter`, source
+  EPUB, resume model, and the accepted 2B.2 keyboard-focus behavior (not
+  modified in this remediation, per its own scope).
+- Updated `PHASE_2_PLAN.md` (status block, §2, and a new R2/R3 remediation
+  record superseding the original 2B.2.1 record for current status) and
+  `VALIDATION.md` (new remediation section, with the original section
+  marked superseded rather than deleted).
+- No 2B.2.2 (reading flow), 2B.3 (search), 2B.4 (custom fonts), Notes/
+  highlights/export work was added. 2B.2.1 remains implemented/remediated,
+  not yet re-reviewed by Codex, not merged, not pushed.
+
 ## Phase 2B.2.1 — bookmark location polish (2026-09-27)
 
 - Implemented Phase 2B.2.1 on new branch `phase-2/bookmark-location-polish`,

@@ -135,9 +135,9 @@ class EpubSession internal constructor(internal val publication: Publication) : 
      * lifetime — at most one pass over the reading order's resource metadata. The pinned Readium 3.4.0
      * `EpubParser` wires a `PositionsService` (`EpubPositionsService`) onto every EPUB `Publication` by default; it
      * is Container/Resource-based, not `HttpClient`-based, so this works fully offline exactly like every other
-     * publication access in this reader. Never called during reader startup or directly from Compose: callers
-     * fetch it once the session is already open, in their own coroutine (see `EpubReaderViewModel`), so a slow or
-     * unusually large publication never delays showing the reader or opening the Bookmarks dialog.
+     * publication access in this reader. This function itself does not choose a dispatcher — `EpubReaderViewModel`
+     * (its only caller) dispatches it onto `Dispatchers.IO` after the session is already open, so it never delays
+     * showing the reader or blocks the caller's dispatcher; see that call site for the actual off-Main guarantee.
      */
     suspend fun epubPositions(): List<EpubPosition> = epubPositionsCache ?: publication.positions()
         .mapNotNull { locator -> locator.locations.position?.let { EpubPosition(locator.href.toString(), locator.locations.progression ?: 0.0, it) } }
@@ -266,15 +266,20 @@ internal fun sameEpubBookmarkLocation(firstJson: String, secondJson: String): Bo
 
 /**
  * One entry of Readium's publication-wide position list (`Publication.positions()`), reduced to the fields needed
- * to resolve a bookmark's stable "Location N" (see [resolveEpubLocation]). The pinned Readium 3.4.0
- * `EpubPositionsService` (wired automatically by `EpubParser`, confirmed via `javap` decompilation of the pinned
- * artifact — no source jar is available for this release) segments each resource by its archive-entry byte length
- * (1024 bytes per position, `ReflowableStrategy.recommended`'s default) — a purely structural division of the
- * unchanging EPUB file, computed entirely offline from container/resource metadata (no network, no navigator, no
- * rendering). Unlike the reader's own rendered page, it does not move with font size, line height, margins,
- * orientation, or screen size, which is what makes it safe to label "Location N" rather than a fabricated
- * "Page N" for a reflowable EPUB (Phase 2B.2.1). [position] is the global, 1-based index Readium itself assigns
- * across the whole reading order.
+ * to resolve a bookmark's stable "Location N" (see [resolveEpubLocation]). Each entry marks where a segment
+ * *starts* within its resource — [progression] is that segment's own starting resource-relative progression, not
+ * a midpoint (see [resolveEpubLocation]'s floor/segment-start semantics). The pinned Readium 3.4.0
+ * `EpubPositionsService` (wired automatically by `EpubParser`) computes these by dividing each resource into
+ * ~1024-byte segments (`ReflowableStrategy.recommended`'s default) using the resource's archive entry length when
+ * the container reports one, falling back to the resource's own decoded length otherwise — confirmed via `javap`
+ * decompilation of `ArchiveEntryLength.positionCount` on the pinned artifact (no source jar is available for this
+ * release): it reads `Resource.properties().archive?.entryLength`, and only calls `Resource.length()` when that is
+ * null. Either way this is computed entirely offline from container/resource metadata (no network, no navigator,
+ * no rendering) and is a purely structural division of the unchanging EPUB file: unlike the reader's own rendered
+ * page, it does not move with font size, line height, margins, orientation, or screen size for a given
+ * publication, which is what makes it safe to label "Location N" rather than a fabricated "Page N" for a
+ * reflowable EPUB (Phase 2B.2.1). [position] is the global, 1-based index Readium itself assigns across the whole
+ * reading order (never reset per resource).
  */
 data class EpubPosition(val resource: String, val progression: Double, val position: Int)
 
@@ -282,24 +287,31 @@ data class EpubPosition(val resource: String, val progression: Double, val posit
  * Resolves the stable "Location N" (see [EpubPosition]) for a stored bookmark's location, or null when it cannot
  * be identified without guessing — deliberately mirroring [matchChapter]'s honesty contract (the two are kept
  * separate functions since they resolve different Readium concepts: TOC entries vs. archive-derived positions).
- * - No entry shares [target]'s resource: null (the position list doesn't cover it — e.g. a different publication
- *   than the one currently open, which should not normally happen for a bookmark belonging to it).
- * - Exactly one entry shares the resource: it wins by elimination, even without [EpubBookmarkLocation.progression]
- *   to compare — there is nothing else it could be.
- * - Several entries share the resource: [target] must carry a progression to disambiguate among them, or this
- *   returns null rather than guessing; otherwise the entry with the closest progression wins (ties favor the
- *   lower position number, for determinism). Pure and Readium-free so it is directly unit-testable, mirroring
- *   [matchChapter]/[sameEpubBookmarkLocation].
+ *
+ * **Segment-start / floor semantics (Codex R2, corrected 2026-09-27 after an earlier version picked the
+ * numerically *nearest* position instead):** each [EpubPosition] marks where a segment *starts*, not its midpoint
+ * or center. The correct Location for a bookmark at some progression within a resource is therefore the position
+ * with the greatest `progression` that is still `<=` the bookmark's own progression — the segment the bookmark
+ * actually falls inside — never the numerically closest one. For same-resource segment starts `0.0 / 0.4 / 0.8`,
+ * a bookmark at progression `0.7` resolves to the `0.4` segment (it has not reached `0.8` yet), even though `0.8`
+ * is numerically closer; `0.99` and `1.0` both resolve to the final (`0.8`) segment, since no later segment start
+ * exists for that resource.
+ *
+ * [target]'s progression must be a valid, finite value in `0.0..1.0` inclusive (a real Readium progression can
+ * never legitimately fall outside that range); a missing, negative, `>1`, `NaN`, or infinite value yields null
+ * rather than a silently clamped or guessed result — this is genuinely missing/invalid evidence, not an edge case
+ * to paper over. Candidate [positions] with an invalid `progression` (should not occur in a real Readium catalog,
+ * but not assumed) are likewise ignored rather than trusted blindly. No entry sharing [target]'s resource, after
+ * that filtering, also yields null. Pure and Readium-free so it is directly unit-testable, mirroring
+ * [matchChapter]/[sameEpubBookmarkLocation].
  */
 internal fun resolveEpubLocation(positions: List<EpubPosition>, target: EpubBookmarkLocation): Int? {
-    val sameResource = positions.filter { it.resource == target.resource }
-    return when {
-        sameResource.isEmpty() -> null
-        sameResource.size == 1 -> sameResource.single().position
-        else -> target.progression?.let { progression ->
-            sameResource.minWith(compareBy({ kotlin.math.abs(it.progression - progression) }, { it.position })).position
-        }
-    }
+    val progression = target.progression?.takeIf { it.isFinite() && it in 0.0..1.0 } ?: return null
+    return positions.asSequence()
+        .filter { it.resource == target.resource && it.progression.isFinite() && it.progression in 0.0..1.0 }
+        .filter { it.progression <= progression }
+        .maxByOrNull { it.progression }
+        ?.position
 }
 
 /**

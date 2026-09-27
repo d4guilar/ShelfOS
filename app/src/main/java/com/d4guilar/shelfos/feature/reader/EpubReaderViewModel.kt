@@ -47,9 +47,15 @@ class EpubReaderViewModel(private val id: String, private val repository: Librar
             _state.update { it.copy(session = session) }; opened = null
             markAvailable(true)
             // Independent of session opening, so a slow/large publication never delays showing the reader: Location
-            // N (Phase 2B.2.1) is a presentation nicety, not something bookmark display can't work without.
+            // N (Phase 2B.2.1) is a presentation nicety, not something bookmark display can't work without. Dispatched
+            // onto Dispatchers.IO (Codex R3: viewModelScope's own dispatcher is Main, and Publication.positions()
+            // does not switch dispatchers itself) rather than the plain catch-all runCatching this replaced, which
+            // would have silently swallowed a real CancellationException along with an ordinary catalog-generation
+            // failure — cancellation now propagates normally; only a genuine failure degrades to no Location N.
             viewModelScope.launch {
-                val located = runCatching { session.epubPositions() }.getOrDefault(emptyList())
+                val located = try { withContext(Dispatchers.IO) { session.epubPositions() } }
+                catch (e: CancellationException) { throw e }
+                catch (_: Exception) { emptyList() }
                 _state.update { it.copy(epubPositions = located) }
             }
         } catch (e: CancellationException) { opened?.close(); throw e }
