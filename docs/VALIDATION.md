@@ -1,5 +1,289 @@
 # Validation
 
+## Phase 2B.1 R2 second remediation round validation (2026-09-26)
+
+A second independent Codex review of the R2/R3 remediation below returned
+**CHANGES REQUIRED** on two remaining points: (R2) the corrected fallback
+could still present a specific, named chapter as "current" in a genuinely
+ambiguous same-resource case rather than admitting the position could not be
+determined; (R3) this document's flaky-test wording overstated a full-suite
+teardown timeout as confirmed environmental flakiness rather than evidence
+consistent with it. Both are fixed on the same branch,
+`phase-2/epub-chapters`, without resetting/dropping either prior commit.
+**2B.1 remains IMPLEMENTED, PENDING INDEPENDENT REVIEW — not accepted.**
+
+### STATIC / BUILD
+
+| Check | Result |
+| --- | --- |
+| `:app:compileDebugKotlin` | **BUILD SUCCESSFUL** |
+| `:app:compileDebugAndroidTestKotlin` | **BUILD SUCCESSFUL** |
+| `:app:assembleDebug` | **BUILD SUCCESSFUL** |
+| `:app:testDebugUnitTest` | **BUILD SUCCESSFUL** |
+| `:app:lintDebug` | **BUILD SUCCESSFUL** |
+| `:app:assembleDebugAndroidTest` | **BUILD SUCCESSFUL** |
+| Full gate, one invocation (`--rerun-tasks --offline --console=plain`) | **BUILD SUCCESSFUL**, no failed tasks |
+| `git diff --check` | Clean |
+| `git status --porcelain -- app/schemas` | Clean (no Room changes) |
+
+### JVM / REGRESSION
+
+| Test class | Result |
+| --- | --- |
+| `EpubChapterMatchTest` | 16/16 passed — the prior 14 (one, the duplicate-href test, now asserts the corrected ambiguous/null outcome instead of "id 0 wins") plus 2 new: `twoFragmentOnlyCandidatesWithNoUsableLocatorFragmentAreAmbiguous`, `aSingleFragmentOnlyCandidateWinsByEliminationWhenNoOtherSameResourceEntryExists` — plus one existing test extended with a second, unrelated-fragment ambiguous case (`twoFragmentOnlyCandidatesWithAnUnrelatedLocatorFragmentAreStillAmbiguous`) |
+
+### INSTRUMENTED / EMULATOR (`shelfos-phase0`, API 35)
+
+| Test class | Result |
+| --- | --- |
+| `EpubChapterHighlightTest` | 3/3 passed — `currentChapterIsMarkedAndUpdatesAfterNavigatingElsewhere` (unambiguous case, unchanged) and `chapterTitleFilterNarrowsClearsAndHandlesNoMatches` (unchanged) plus the renamed, re-asserted `ambiguousSameResourceFragmentsShowNoCurrentRowButNavigationAndTheDialogStillWork` (zero current rows for the fragmented fixture's genuinely ambiguous case, both at initial open and after navigating to the other same-resource entry; navigation and the dialog itself remain fully functional) |
+| `NavigationSmokeTest` (run alone) | 26/26 passed |
+| `EpubRecreationTest` (run alone) | 1/1 passed |
+| Full `connectedDebugAndroidTest` package | Not re-run as a second complete pass — the three focused instrumented runs above are all green and nothing in this round's change (a pure narrowing of `matchChapter`'s fallback, no schema/dependency/other-file change) suggests a broader regression; per this task's own instruction, a second complete run is optional in that case |
+
+### ACCESSIBILITY
+
+Re-verified after the corrected fallback: when `currentChapterId` is null
+(the ambiguous case), no `Int` row id ever equals it, so **no row** receives
+the checkmark, bold weight, or "current chapter" `contentDescription` — every
+row remains a normal, navigable chapter button, confirmed directly by
+`ambiguousSameResourceFragmentsShowNoCurrentRowButNavigationAndTheDialogStillWork`'s
+zero-count assertions. No "current chapter unknown" text or warning was
+added — the plain absence of a marker is the intended, non-alarming signal.
+When a match is unambiguous, the existing three-signal treatment (checkmark +
+bold + `contentDescription`) is unchanged, confirmed by
+`currentChapterIsMarkedAndUpdatesAfterNavigatingElsewhere`.
+
+### REGRESSION CHECK
+
+Confirmed unchanged by this round: chapter navigation and the chapter filter,
+stable row identities, all-locator-fragment matching (order preserved),
+Back semantics and the accessibility "Show reader controls" action,
+keyboard/controller hints, touch modality, resume/progress persistence,
+appearance persistence, scrolling, typography, page colors
+(`NavigationSmokeTest`, 26/26), recreation (`EpubRecreationTest`, 1/1),
+offline reading (no network dependency anywhere in this change), and source
+preservation (read-only TOC/locator handling, no EPUB bytes touched).
+
+### FLAKY-TEST WORDING CORRECTION (R3)
+
+The prior round's entry (below) stated a full-connected-suite
+`ActivityScenario` teardown timeout was "confirming device-load flakiness."
+That overstated the evidence: the timeout was observed to follow immediately
+after a 34-minute `SyntheticLoadAcceptanceTest` run in the same session, and
+the affected test then passed 26/26 when re-run alone — both facts are
+consistent with load-related/environmental flakiness, but neither directly
+proves that cause. Corrected wording (also applied at the original entry
+below): *"The `ActivityScenario` teardown timeout occurred after the long
+`SyntheticLoadAcceptanceTest` run and is consistent with load-related/
+environmental flakiness. The affected `NavigationSmokeTest` subsequently
+passed 26/26 in isolation. No production regression was reproduced."*
+
+### FINAL ACCEPTANCE (2B.1 R2 second remediation round) — pending
+
+Both remaining Codex findings from the second review are closed with
+evidence. **Not yet re-reviewed by Codex, not merged.** 2B.2 (bookmarks)/2B.3
+(search)/2B.4 (custom fonts) remain untouched.
+
+## Phase 2B.1 R2/R3 remediation validation (2026-09-26)
+
+Independent Codex review of the initial 2B.1 implementation (below) returned
+**CHANGES REQUIRED**: two R2 findings (secondary locator fragments ignored;
+raw href not a unique chapter-row identity) and two R3 findings (fragment
+behavior lacked real integration coverage; this document didn't directly
+record the full Gradle gate result). All four are fixed on the same branch,
+`phase-2/epub-chapters`, without resetting/dropping the prior commit. **2B.1
+remains IMPLEMENTED, PENDING INDEPENDENT REVIEW — not accepted.**
+
+### STATIC / BUILD
+
+| Check | Result |
+| --- | --- |
+| `:app:compileDebugKotlin` | **BUILD SUCCESSFUL** |
+| `:app:compileDebugAndroidTestKotlin` | **BUILD SUCCESSFUL** |
+| `:app:assembleDebug` | **BUILD SUCCESSFUL** |
+| `:app:testDebugUnitTest` | **BUILD SUCCESSFUL** |
+| `:app:lintDebug` | **BUILD SUCCESSFUL** |
+| `:app:assembleDebugAndroidTest` | **BUILD SUCCESSFUL** |
+| Full gate, run together as one invocation (`--rerun-tasks --offline --console=plain`) | **BUILD SUCCESSFUL**, no failed tasks, run directly for this remediation (this is the record R3.2 asked for — not a pointer to a separate report) |
+| `git diff --check` | Clean |
+| `git status --porcelain -- app/schemas` | Clean (no Room changes) |
+
+### JVM / REGRESSION
+
+| Test class | Result |
+| --- | --- |
+| `EpubChapterMatchTest` | 14/14 passed — the original 11 plus 3 new: `laterLocatorFragmentsAreConsideredWhenEarlierOnesDoNotMatchAnyChapter` (R2.1), `duplicateHrefRowsResolveToExactlyOneStableIdNotBothByHrefEquality` (R2.2), `noLocatorFragmentMatchingAnyChapterStillFallsBackDeterministically`; the misleading `onlyTheFirstLocatorFragmentIsConsidered` test was renamed to `firstLocatorFragmentWinsWhenItMatches` (still valid coverage of the common case, no longer implying only the first fragment is ever checked) |
+
+### INSTRUMENTED / EMULATOR (`shelfos-phase0`, API 35)
+
+| Test class | Result |
+| --- | --- |
+| `EpubChapterHighlightTest` | 3/3 passed — the original 2 plus `sameResourceFragmentedChapterAlwaysHasExactlyOneCurrentRowAndNavigationStillWorks` (new, against `OriginalFixtures.epubWithFragmentedChapter`) |
+| `NavigationSmokeTest` (run alone) | 26/26 passed |
+| `EpubRecreationTest` (run alone) | 1/1 passed |
+| Full `connectedDebugAndroidTest` package (all 9 classes together) | 55/55 tests executed; 1 failure (`NavigationSmokeTest.mangaReadsRightToLeftWithKeyboardAndPageKeysStaySemantic`, `ActivityScenario` teardown never reached `DESTROYED`). **Wording corrected in the second remediation round below:** this was originally stated as "confirmed device-load flakiness," which overstated what was actually shown — the teardown timeout occurred after a 34-minute `SyntheticLoadAcceptanceTest` run in the same session and is *consistent with* load-related/environmental flakiness, not directly proven to be caused by it. The affected test passed 26/26 when re-run alone immediately after, and no production regression was reproduced. |
+
+**Empirically confirmed Readium navigator limitation, discovered during this
+remediation while investigating R3's fragmented-fixture requirement.** Real
+`Locator` JSON logged from `EpubSurface`'s `onLocation` callback, for a real
+two-fragment EPUB (`chapter.xhtml#section-one`/`#section-two`, matching
+element `id`s in the markup), showed:
+- `Publication.locatorFromLink(link)` correctly resolves each TOC link's own
+  fragment (`{"fragments":["section-one"]}` / `{"fragments":["section-two"]}`
+  respectively) — TOC-side resolution works exactly as designed.
+- The live navigator's own `currentLocator`, after navigating to either
+  fragment via **either** `Navigator.go(Link, animated)` or
+  `Navigator.go(Locator, animated)` (both were tried directly), reports only
+  `{"progression":0.333...,"position":1,"totalProgression":0}` —
+  **`locations.fragments` is absent from the navigator's own reported
+  locator in both cases**, for this pinned Readium 3.4.0 EPUB navigator in
+  its default paginated (non-scroll) mode.
+
+This is a real, verified constraint of the current navigator/configuration,
+not a ShelfOS matching defect. The multi-fragment-matching fix (R2.1) is
+correct and fully proven by synthetic-locator JVM tests; it simply is not yet
+observably exercised by real in-app navigation given this navigator
+behavior. No HTML-position heuristic was built to work around it (explicitly
+out of scope, and would have reintroduced the positional-accuracy claim
+already ruled out for the fallback rule). The instrumented fragmented-fixture
+test was designed around what is honestly verifiable given this finding: the
+row-identity fix (R2.2) holds for a real same-resource pair (exactly one row
+is ever marked current), and chapter-jump navigation/dialog-close still work
+correctly for same-resource entries — see the test's own doc comment
+(`EpubChapterHighlightTest.kt`) and `matchChapter`'s doc comment
+(`core.reader.EpubReader.kt`) for the full assessment, and
+`docs/PHASE_2_PLAN.md`'s 2B.1 R2/R3 remediation record for the summary.
+
+### ACCESSIBILITY
+
+Re-verified after the R2.2 identity fix: `EpubChapter.id` is never rendered
+in any `Text` or `contentDescription` — the accessible name remains
+`"<title>, current chapter"` for the current row, exactly as before. No new
+focus targets, no duplicate current-row indicators, no raw ordinal/index
+text anywhere in the UI or accessibility tree.
+
+### REGRESSION CHECK
+
+Confirmed unchanged by this remediation: chapter navigation and the chapter
+filter (`EpubChapterHighlightTest`, all passing), Back semantics and the
+accessibility "Show reader controls" action, contextual input hints, touch
+modality behavior, resume/progress persistence, appearance persistence,
+scroll/typography/page colors (`NavigationSmokeTest`, 26/26), recreation
+(`EpubRecreationTest`, 1/1), offline reading (no network dependency
+anywhere in this change), and source preservation (read-only TOC/locator
+handling, no EPUB bytes touched).
+
+### FINAL ACCEPTANCE (2B.1 R2/R3 remediation) — superseded, see the second remediation round at the top
+
+All four Codex findings (R2.1, R2.2, R3.1, R3.2) were closed with evidence,
+then a second independent Codex review found the fallback contract (R2.1's
+fix) still too confident in one ambiguous case, and this document's flaky-
+test wording overstated its own evidence (R3.2-adjacent) — see "Phase 2B.1
+R2 second remediation round validation" at the top of this document for the
+fixes. 2B.2 (bookmarks)/2B.3 (search)/2B.4 (custom fonts) remain untouched.
+
+## Phase 2B.1 validation (2026-09-26)
+
+Status: **2B planning is accepted and merged** (PR #7, `410ce4d6c4daa5d6fa65fb2787027d50d722822f`).
+**2B.1 (chapter-navigation polish + scroll/typography/page-color closure) is
+IMPLEMENTED, PENDING INDEPENDENT REVIEW** on branch `phase-2/epub-chapters`,
+base `main` at `410ce4d...`. Do not treat 2B.1 as accepted until Codex review
+lands. See `docs/PHASE_2_PLAN.md`'s 2B.1 implementation record and acceptance
+criteria for the full description of what was built; this entry records the
+evidence.
+
+### STATIC / BUILD
+
+| Check | Result |
+| --- | --- |
+| `:app:compileDebugKotlin` | Passed (one fix needed: `Publication.locatorFromLink(link)` is `Locator?`, not `Locator` — the plan's own bytecode-only research had not surfaced this method's nullability; handled with a null-safe fallback to the raw `Link.href` rather than assuming non-null) |
+| `:app:compileDebugAndroidTestKotlin` | Passed |
+| `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:assembleDebugAndroidTest` (`--rerun-tasks --offline`) | **BUILD SUCCESSFUL** — recorded directly in the "Phase 2B.1 R2/R3 remediation validation" entry above after a Codex R3 finding that this line originally deferred to "see final report" instead of stating the result here |
+| `git diff --check` | Clean |
+| `git status --porcelain -- app/schemas` | Clean (no Room changes, as required — 2B.1 is schema-free) |
+
+### JVM / REGRESSION
+
+| Test class | Result |
+| --- | --- |
+| `EpubChapterMatchTest` (new) | 11/11 passed — the five plan-required scenarios plus six additional edge cases (different resource, empty list, unlisted fragment, determinism, multi-fragment precedence) |
+
+### INSTRUMENTED / EMULATOR (`shelfos-phase0`, API 35)
+
+| Test class | Result |
+| --- | --- |
+| `EpubChapterHighlightTest` (new) | 2/2 passed — current-chapter highlight + reopen-recompute, and the chapter-title filter (narrow/clear/zero-match) |
+| Full `connectedDebugAndroidTest` package | 54/54 passed (`AppearanceRestorationTest`, `EpubChapterHighlightTest`, `EpubRecreationTest`, `InputModalityClassificationTest`, `LibraryPersistenceTest`, `NavigationSmokeTest`, `ReaderStateTest`, `RoomPersistenceTest`, `SyntheticLoadAcceptanceTest`) |
+
+**A real regression was found and fixed during this pass, not merely
+documented as a risk.** The first implementation rendered the current-chapter
+indicator as a single interpolated string (`"✓ ${chapter.title}"`), which
+broke `NavigationSmokeTest.originalEpubOpensAndOffersTypographyAndChapters`
+(that fixture's one chapter, "Reading Room", is always the current one, so
+its exact-text lookup — `onNodeWithText("Reading Room")` — stopped matching
+once the rendered text became "✓ Reading Room"). Fixed by rendering the
+checkmark as its own sibling `Text` node instead of concatenating it into the
+title string, so the title itself remains exact-text-matchable everywhere it
+already was, while an explicit `contentDescription` override still gives an
+unambiguous accessible name — the same "override coexists with a separately
+matchable child `Text`" pattern the existing Previous/Next hint buttons
+already use. Re-ran the full instrumented package after the fix: 54/54 passed,
+confirming no other exact-text-dependent test was affected.
+
+### ACCESSIBILITY
+
+Current-chapter indication uses three independent, non-color signals: a
+leading "✓ " glyph, bold font weight, and a `contentDescription` override
+("<title>, current chapter"). No separate focus target was created for the
+checkmark — it is a plain decorative sibling `Text` inside the same
+`TextButton`, not its own semantics node. The filter field carries an
+explicit "Filter chapters" `contentDescription`. Not independently walked
+with TalkBack physically running, for the same reason recorded in prior
+Phase 2 entries (TalkBack unavailable on the test targets used).
+
+### KEYBOARD / CONTROLLER
+
+No new `ShelfCommand` mapping was added. The full `NavigationSmokeTest` suite
+(26/26, including its keyboard/gamepad/D-pad/Escape/modality-transition
+coverage) passed with behavior unchanged, confirming Phase 2A's Back
+semantics and Phase 2A.1's input hints are unaffected outside the Chapters
+dialog. RP5 physical re-certification was not performed and is not required
+for this slice — no new top-level reader-chrome entry point was added (the
+existing "Chapters" button is unchanged; only its dialog's contents changed).
+
+### RECREATION
+
+`EpubRecreationTest` (1/1) and the new `EpubChapterHighlightTest` reopen case
+confirm the current-chapter highlight is never stored in `rememberSaveable`
+or Room — it recomputes from the live/restored locator on every recomposition,
+exactly like `item.progress` already does via Room-backed state.
+
+### SCROLL / TYPOGRAPHY / PAGE-COLOR CLOSURE
+
+Verified by reading the unchanged production code paths (`ReaderPreferences`,
+`ReaderAppearance`, `epubPreferences()`) and by the full `NavigationSmokeTest`
+pass (which exercises Appearance apply/persist/recreation flows): pagination
+vs. continuous scrolling, the three typography presets plus sliders, and
+`PagePalette.THEME/LIGHT/DARK/PAPER` reading-surface colors are all already
+implemented and were not touched by this slice. `PagePalette.DARK` produces a
+genuinely dark reading surface (`Theme.DARK`, explicit `backgroundColor`/
+`textColor`) independent of the ShelfOS app theme; `PagePalette.THEME`
+deliberately does follow the app's dark/light state (`night = dark`), which is
+what a "Theme" page-color option is supposed to mean, not a bug; `PAPER` maps
+to `Theme.SEPIA`. No second/duplicate dark-mode setting exists. No paragraph/
+word/letter spacing, hyphenation, ligature or column/spread control was added.
+
+### FINAL ACCEPTANCE (2B.1) — superseded, see the R2/R3 remediation entry at the top
+
+2B.1 was implemented and self-validated (JVM + instrumented, full regression
+package green, one real regression found and fixed during this same pass, not
+after), then received an independent Codex review returning CHANGES REQUIRED
+— see "Phase 2B.1 R2/R3 remediation validation" at the top of this document
+for the fixes and their evidence. RP5 physical validation was correctly not
+attempted (not relevant to this slice's scope, per `docs/PHASE_2_PLAN.md`'s
+own testing-strategy section).
+
 ## Phase 2A.1 acceptance and post-merge maintenance (2026-09-26)
 
 2A.1 received final Codex confirmation after the R3 cleanup below and was

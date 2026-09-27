@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -42,6 +43,9 @@ import com.d4guilar.shelfos.core.input.*
 import com.d4guilar.shelfos.core.reader.*
 import com.d4guilar.shelfos.core.theme.*
 import com.d4guilar.shelfos.domain.library.*
+
+/** Below this TOC size, a filter field adds a control without saving meaningful scanning effort. */
+private const val CHAPTER_FILTER_THRESHOLD = 8
 
 /**
  * Hosts Readium's fragment-based navigator. The navigator is rebuilt from the persisted locator rather than
@@ -86,6 +90,13 @@ class EpubActivity : AppCompatActivity() {
         val firstControl = remember { FocusRequester() }
         val item = state.item
         val session = state.session
+        // Phase 2B.1: the current chapter is derived from the live locator, never stored on its own (AGENTS.md's
+        // "not independently stored" contract) — it recomputes on every position update and on recreation once
+        // the navigator reports its restored position again, exactly like `item.progress` already does via Room.
+        // Compared by EpubChapter's stable row id, not href: two TOC rows can share one href (a redundant TOC
+        // entry, or two entries with the same fragment), and href-equality would then mark both "current".
+        var currentLocatorJson by remember { mutableStateOf<String?>(null) }
+        val currentChapterId = remember(session, currentLocatorJson) { session?.currentChapterId(currentLocatorJson) }
         val rtl = readingDirection(item?.category ?: MediaCategory.BOOK, state.preferences.direction) == ReadingDirection.RTL
         val previousHint = InputHints.hint(ShelfCommand.PREVIOUS_PAGE, modality, rtl)
         val nextHint = InputHints.hint(ShelfCommand.NEXT_PAGE, modality, rtl)
@@ -146,7 +157,8 @@ class EpubActivity : AppCompatActivity() {
                                     onClick(label = "Show reader controls") { controls = true; controlFocusRequests++; true }
                                 }
                             },
-                        onCenterTap = { modality = InputModality.TOUCH; controls = !controls }, onLocation = vm::location)
+                        onCenterTap = { modality = InputModality.TOUCH; controls = !controls },
+                        onLocation = { locator, progress -> vm.location(locator, progress); currentLocatorJson = locator })
                 } else Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     val error = state.error
                     if (error == null) CircularProgressIndicator()
@@ -175,9 +187,36 @@ class EpubActivity : AppCompatActivity() {
         }
         if (appearance && item != null) ReaderAppearance(state.preferences, capabilities(item.format), { appearance = false },
             vm::applyAppearance, vm::resetAppearance)
-        if (chapters && session != null) AlertDialog(onDismissRequest = { chapters = false }, title = { Text("Chapters") }, text = {
-            LazyColumn { items(session.chapters) { (title, href) -> TextButton({ controller.chapter(session, href); chapters = false }) { Text(title) } } }
-        }, confirmButton = { TextButton({ chapters = false }) { Text("Close") } })
+        if (chapters && session != null) {
+            // Reset on each open (this state lives inside the dialog's own composition, discarded when the
+            // dialog closes) but preserved by rememberSaveable while the dialog stays open across recreation.
+            var filter by rememberSaveable { mutableStateOf("") }
+            val query = filter.trim()
+            val visible = if (query.isEmpty()) session.chapters
+                else session.chapters.filter { it.title.contains(query, ignoreCase = true) }
+            AlertDialog(onDismissRequest = { chapters = false }, title = { Text("Chapters") }, text = {
+                Column {
+                    // Only worth the extra control on a TOC long enough that scanning it visually is a chore.
+                    if (session.chapters.size > CHAPTER_FILTER_THRESHOLD) OutlinedTextField(filter, { filter = it },
+                        Modifier.fillMaxWidth().padding(bottom = 8.dp).semantics { contentDescription = "Filter chapters" },
+                        placeholder = { Text("Filter chapters") }, singleLine = true)
+                    if (visible.isEmpty()) Text("No chapters match “$query”.", Modifier.padding(vertical = 16.dp))
+                    else LazyColumn(Modifier.testTag("chapters_list")) { items(visible) { chapter ->
+                        val current = chapter.id == currentChapterId
+                        // The checkmark is its own Text node (not interpolated into the title string) so the
+                        // chapter's own title remains exact-matchable by anything that looks it up by title,
+                        // current or not — matching how the existing Previous/Next hint keycaps sit beside their
+                        // own Text rather than being folded into it.
+                        TextButton({ controller.chapter(session, chapter.href); chapters = false },
+                            Modifier.padding(start = (chapter.depth * 16).dp)
+                                .semantics { if (current) contentDescription = "${chapter.title}, current chapter" }) {
+                            if (current) Text("✓ ")
+                            Text(chapter.title, fontWeight = if (current) FontWeight.Bold else FontWeight.Normal)
+                        }
+                    } }
+                }
+            }, confirmButton = { TextButton({ chapters = false }) { Text("Close") } })
+        }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean = readerKeys?.invoke(event) == true || super.dispatchKeyEvent(event)
