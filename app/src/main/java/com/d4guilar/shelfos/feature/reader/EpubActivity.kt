@@ -98,9 +98,12 @@ class EpubActivity : AppCompatActivity() {
         // entry, or two entries with the same fragment), and href-equality would then mark both "current".
         var currentLocatorJson by remember { mutableStateOf<String?>(null) }
         val currentChapterId = remember(session, currentLocatorJson) { session?.currentChapterId(currentLocatorJson) }
-        // A bookmark at the exact current locator already exists — checked client-side against the already-
-        // observed list (small, per-title) rather than a separate repository round-trip for this alone.
-        val currentlyBookmarked = currentLocatorJson != null && state.bookmarks.any { it.locator == currentLocatorJson }
+        // Readium can enrich the live locator after a bookmark is stored without moving the reader. Compare the
+        // stable location fields instead of the entire serialized snapshot. The DAO's exact duplicate guard is
+        // deliberately separate from this live UI state.
+        val currentlyBookmarked = remember(currentLocatorJson, state.bookmarks) {
+            currentLocatorJson?.let { live -> state.bookmarks.any { sameEpubBookmarkLocation(it.locator, live) } } == true
+        }
         val rtl = readingDirection(item?.category ?: MediaCategory.BOOK, state.preferences.direction) == ReadingDirection.RTL
         val previousHint = InputHints.hint(ShelfCommand.PREVIOUS_PAGE, modality, rtl)
         val nextHint = InputHints.hint(ShelfCommand.NEXT_PAGE, modality, rtl)

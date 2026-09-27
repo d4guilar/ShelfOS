@@ -208,6 +208,49 @@ fun locatorProgress(locatorJson: String): Int =
         ?.let { ((it.locations.totalProgression ?: 0.0) * 100).toInt() } ?: 0
 
 /**
+ * Stable fields used to decide whether two Readium locator snapshots describe the same EPUB reading location.
+ * Readium may add title, total progression, position, text, or other transient fields to a later snapshot without
+ * moving the reader, so complete serialized JSON equality is unsuitable for the live "already bookmarked" UI.
+ */
+internal data class EpubBookmarkLocation(
+    val resource: String,
+    val fragments: List<String> = emptyList(),
+    val progression: Double? = null,
+    val position: Int? = null,
+)
+
+/**
+ * Compares two normalized EPUB locations conservatively. A shared resource is mandatory. Two available Readium
+ * publication positions are authoritative; otherwise matching fragments are authoritative; otherwise identical
+ * resource-relative progression is the narrow fallback. No tolerance is applied without evidence that Readium
+ * jitters progression while the physical reading location remains unchanged.
+ */
+internal fun sameEpubBookmarkLocation(first: EpubBookmarkLocation, second: EpubBookmarkLocation): Boolean {
+    if (first.resource != second.resource) return false
+    if (first.position != null && second.position != null) return first.position == second.position
+    if (first.fragments.isNotEmpty() && second.fragments.isNotEmpty()) {
+        return first.fragments.any(second.fragments::contains)
+    }
+    return first.progression != null && second.progression != null && first.progression == second.progression
+}
+
+/** Parses stored/live Readium 3.4 locator snapshots and applies [sameEpubBookmarkLocation]. */
+internal fun sameEpubBookmarkLocation(firstJson: String, secondJson: String): Boolean {
+    fun parse(json: String): EpubBookmarkLocation? =
+        runCatching { Locator.fromJSON(JSONObject(json)) }.getOrNull()?.let { locator ->
+            EpubBookmarkLocation(
+                resource = locator.href.toString(),
+                fragments = locator.locations.fragments,
+                progression = locator.locations.progression,
+                position = locator.locations.position,
+            )
+        }
+    val first = parse(firstJson) ?: return false
+    val second = parse(secondJson) ?: return false
+    return sameEpubBookmarkLocation(first, second)
+}
+
+/**
  * A short, human-readable bookmark label: the chapter title, via the same 2B.1 matcher used for the Chapters
  * dialog's highlight, when unambiguously derivable from the stored locator — else just the progress percentage.
  * Never persisted; the stored [Bookmark.locator] remains authoritative and this is recomputed from it every time,

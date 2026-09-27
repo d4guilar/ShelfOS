@@ -1,6 +1,74 @@
 # Validation
 
-## Phase 2B.2 final pre-PR and RP5 validation (2026-09-27)
+## Phase 2B.2 bookmark-state blocker remediation (2026-09-27)
+
+The reproducible blocker was investigated on
+`phase-2/epub-bookmarks-ready`, starting from prior HEAD `46c821b` (the
+production implementation under test originated at `25612d5`). The failing
+method was reproduced again with temporary end-to-end diagnostics before any
+behavior changed. Add was enabled and activated once; the captured locator was
+`chapter1.xhtml` at resource progression `0`; the duplicate check returned
+false; Room inserted the row; the repository Flow emitted it; and the
+ViewModel and Compose state both received it.
+
+The failure was in production live-state comparison rather than persistence,
+Flow collection, test isolation, or a stale UI string. Immediately after the
+insert, the stored and live locators were identical and the intended
+"Bookmarked" disabled-button state appeared. Readium 3.4.0 then emitted the
+same physical reading location enriched with `title`, publication `position =
+1`, and `totalProgression = 0`. The stored snapshot contained none of those
+fields. Exact serialized JSON equality therefore became false and the UI
+incorrectly returned to "Add bookmark" even though the reader had not moved.
+
+The UI now compares parsed locators using stable location evidence: matching
+resource plus, in precedence order, an available position on both locators,
+matching fragments on both locators, or identical resource-relative
+progression. It deliberately ignores title, total progression, text, JSON key
+ordering, and other enrichment fields. No progression tolerance was added.
+The DAO's exact `(itemId, locator)` duplicate-storage guard remains unchanged
+and separate from this live UI equivalence rule. Temporary diagnostics were
+removed. `EpubBookmarkLocationTest` adds six pure JVM cases for the observed
+minimal-to-enriched transition and conservative negative cases; the existing
+end-to-end test remains unchanged and still asserts the intended
+"Bookmarked" state.
+
+### Bookmark location-display finding
+
+The authoritative locator captured at Add time did **not** reliably contain
+`Locator.Locations.position`; position appeared only in a later enriched live
+emission. ShelfOS therefore does not display or persist a fabricated EPUB
+page/location number in 2B.2. Bookmark rows retain chapter plus percentage,
+or percentage alone when chapter matching is ambiguous. A future "Location
+N" display can be reconsidered only when the locator actually stored for each
+bookmark reliably supplies a stable publication position. EPUB must never
+label reflowable visual pagination as "Page N."
+
+### Post-fix evidence
+
+- The formerly failing method passed twice in separate rerun-task
+  instrumentation invocations.
+- `EpubBookmarkTest` passed 5/5; `BookmarkPersistenceTest` 7/7;
+  `NavigationSmokeTest` 26/26; `EpubRecreationTest` 1/1; and
+  `EpubChapterHighlightTest` 3/3.
+- The unfiltered API 35 connected suite passed **67/67**, with zero failures,
+  errors, or skips. This replaces the pre-fix 66/67 result below.
+- The required offline static gate completed all 86 tasks successfully:
+  production and Android-test compilation, debug APKs, 93/93 JVM tests, and
+  lint with zero issues.
+- `git diff --check` and `git status --porcelain -- app/schemas` are clean. No
+  schema, migration, dependency, or Phase 2B.3/2B.4 change was introduced.
+
+Because production code changed, the APK previously installed on the RP5 is
+no longer the exact fixed build. The fixed debug APK has SHA-256
+`cfa17e5d469452af44ac8644340f1ba183c40d29b81b473b0eaeaab27361b9df`.
+Only the emulator was connected after the fix, so the fixed APK could not be
+installed on RP5 in this pass. The owner's prior physical **RP5 PASS** remains
+valid evidence for `25612d5`, recorded separately below, but final physical
+acceptance of the changed binary is pending an `adb install -r` and repetition
+of the affected Add/Bookmarked path. Automated acceptance is green; PR
+readiness remains pending that physical recheck. Nothing was pushed.
+
+## Phase 2B.2 pre-remediation final-gate and RP5 validation (2026-09-27)
 
 Branch `phase-2/epub-bookmarks-ready` at commit `25612d5` was built and
 reviewed against `main` at `ac9476d56f332c067aa39dc2b1e5533288103c12`.
@@ -59,10 +127,10 @@ Bookmarks dialog first, revealed hidden reader chrome, and exited only when
 chrome was already visible. This is owner-reported physical-button evidence,
 distinct from Codex's ADB/Compose-injected automation.
 
-**Current status:** independent review passed and RP5 physical acceptance
-passed, but Phase 2B.2 is **not ready for PR** until the reproducible
-`EpubBookmarkTest` failure above is resolved and the final automated gate is
-green. It is not merged or pushed. Phase 2B.3 and 2B.4 remain untouched.
+**Historical status at `46c821b`:** independent review and the owner's RP5
+check passed, but the reproducible automated failure still blocked PR
+readiness. The remediation and current status are recorded in the section
+above. Phase 2B.3 and 2B.4 remain untouched.
 
 ## Phase 2B.2 R3 remediation (2026-09-26)
 
@@ -127,7 +195,7 @@ instruction. No physical validation is claimed.
 | Test class | Result |
 | --- | --- |
 | `BookmarkPersistenceTest` | 7/7 passed (6 prior + 1 new ordering tie-break regression test) |
-| `EpubBookmarkTest` | 5/5 passed (4 prior + 1 new keyboard/D-pad focus test), on a clean run |
+| `EpubBookmarkTest` | 5/5 passed in this historical focused run (4 prior + 1 new keyboard/D-pad focus test); later reproduction and final remediation are recorded above |
 | `NavigationSmokeTest` | 26/26 passed |
 | `EpubRecreationTest` | 1/1 passed |
 
@@ -238,14 +306,14 @@ instance degrading under sustained load rather than a code issue — confirmed
 by checking for stale processes, restarting ADB and the emulator cleanly, and
 then observing the full suite complete much faster and without incident.
 
-**Confirmed non-reproducible flake:** in one full-suite run on the
-newly-restarted emulator, `EpubBookmarkTest.addListJumpAndDeleteBookmarksAcrossDialogReopens`
+**Historical timeout, subsequently reproduced and fixed:** in one full-suite
+run, `EpubBookmarkTest.addListJumpAndDeleteBookmarksAcrossDialogReopens`
 failed on a 10-second Compose wait for the "Bookmarked" label
-(`ComposeTimeoutException`). Re-run in isolation immediately after, all 4
-`EpubBookmarkTest` cases passed, including that one (7.987s). This is
-consistent with device-load timing flakiness rather than a real defect; the
-subsequent full-suite run recorded above (65/65) also passed it cleanly. No
-production regression was reproduced.
+(`ComposeTimeoutException`). An immediate isolated rerun and a subsequent
+65/65 suite happened to pass, but later final-gate runs reproduced the same
+failure repeatedly, including after an emulator restart. The blocker
+remediation section above records the production root cause and final 67/67
+evidence; the earlier passing reruns did not prove the timeout was a flake.
 
 **Real regression found and fixed:** the same full-suite run also failed
 `LibraryPersistenceTest.migrationPreservesAppearanceAndLibrarySurvivesReopen`

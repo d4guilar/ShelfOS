@@ -1,6 +1,33 @@
 # Documentation Changelog
 
-## Phase 2B.2 final pre-PR and RP5 validation (2026-09-27)
+## Phase 2B.2 bookmark-state blocker remediation (2026-09-27)
+
+- Corrected the earlier characterization of the post-Add "Bookmarked"
+  timeout. Final-gate runs reproduced it in the full suite, isolation, and
+  after emulator restart; it was a production live-state comparison defect,
+  not a non-reproducible emulator flake.
+- Recorded diagnostic evidence that Add fired once, the exact duplicate check
+  found no row, Room inserted successfully, and the bookmark Flow reached the
+  ViewModel and Compose. Readium then enriched the same location with title,
+  position, and total progression, invalidating the UI's exact JSON equality.
+- Documented the narrow remediation: live bookmark state now compares parsed
+  stable locator evidence while the DAO's exact duplicate-storage guard and
+  authoritative stored locator remain unchanged. Added six pure JVM
+  equivalence cases; no schema or dependency changed.
+- Recorded that stored bookmark locators do not reliably include Readium
+  publication position at Add time. Phase 2B.2 therefore retains chapter plus
+  percentage display and does not invent an EPUB page number or "Location N."
+- Recorded post-fix evidence: the failing method passed twice,
+  `EpubBookmarkTest` 5/5, persistence 7/7, navigation 26/26, recreation 1/1,
+  chapter highlighting 3/3, full connected suite 67/67, and the 86-task
+  offline Gradle gate with 93/93 JVM tests and zero lint issues.
+- Preserved the owner's earlier physical RP5 PASS as evidence for `25612d5`
+  only. Production changed, the RP5 was not connected for reinstall, and the
+  new APK (`cfa17e5d469452af44ac8644340f1ba183c40d29b81b473b0eaeaab27361b9df`)
+  still requires `adb install -r` plus the affected physical Add/Bookmarked
+  recheck before final physical acceptance. Nothing was pushed.
+
+## Phase 2B.2 pre-remediation final-gate and RP5 validation (2026-09-27)
 
 - Confirmed the clean PR branch `phase-2/epub-bookmarks-ready` contains only
   `9d0d965` (Phase 2B.2) and `25612d5` (ordering remediation) above `main` at
@@ -27,10 +54,10 @@
   existing add/list bookmark flow timed out waiting for "Bookmarked" after
   Add. It failed again in isolation and after a fresh emulator restart, so
   the earlier "confirmed non-reproducible" characterization no longer holds.
-- Phase 2B.2 has passed independent review and physical RP5 acceptance but is
-  **not ready for PR** until this reproducible automated blocker is resolved.
-  No application code, Phase 2B.3, Phase 2B.4, Notes, push, or PR action was
-  included in this documentation pass.
+- At that pre-remediation point, Phase 2B.2 was **not ready for PR** despite
+  independent review and the owner's physical RP5 acceptance. The blocker is
+  resolved in the current remediation record above. No Phase 2B.3, Phase
+  2B.4, Notes, push, or PR action was included in that documentation pass.
 
 ## Phase 2B.2 R3 remediation (2026-09-26)
 
@@ -156,12 +183,11 @@
   `MIGRATION_2_3` added once the database moved to version 3; production's
   own `ShelfDatabase.create()` already had both and was unaffected. Confirmed
   fixed: 10/10 `LibraryPersistenceTest` cases pass.
-- Recorded, then confirmed non-reproducible in isolation, one
-  `EpubBookmarkTest` timing flake seen on a single full-suite run under
-  emulator load (a 10s Compose wait timeout) — consistent with device-load
-  flakiness, not a defect; see `VALIDATION.md` for the full evidence trail,
-  including a separate emulator-infrastructure disconnection encountered and
-  resolved during this validation pass.
+- Recorded one `EpubBookmarkTest` timeout in this historical run, followed by
+  passing isolated and full-suite reruns. Later final-gate validation
+  reproduced it consistently and diagnosed a production live-locator
+  equality defect; the current remediation record above supersedes the old
+  flake interpretation. See `VALIDATION.md` for the full evidence trail.
 - Because this slice changes the persistent schema, the full
   `connectedDebugAndroidTest` suite was run to completion: **65/65 passed, 0
   failures, 0 errors.**

@@ -1519,8 +1519,8 @@ positional claim is made at any point. API 35: yes (`shelfos-phase0`). RP5:
 not required (no new chrome reachability surface, per §2B.7) and not
 performed in this pass.
 
-**2B.2 (bookmarks) — IMPLEMENTED, PENDING INDEPENDENT REVIEW (2026-09-27,
-`phase-2/epub-bookmarks`):**
+**2B.2 (bookmarks) — IMPLEMENTED, AUTOMATED REMEDIATION VALIDATED, NOT YET
+MERGED (2026-09-27, `phase-2/epub-bookmarks-ready`):**
 user-visible: add/list/jump/delete bookmarks for the open EPUB — done, one
 "Bookmarks" chrome entry point. persistence: new `bookmark` table survives
 app restart and recreation — done; deleting the `LibraryItem` cascades
@@ -1540,10 +1540,11 @@ EPUB. offline: fully local — confirmed, no network dependency. failure/
 recovery: deleting the last bookmark leaves an empty-state list, not an
 error — done; a malformed bookmark locator shows a readable message and
 remains deletable rather than crashing — done, proven end-to-end. unit
-tests: none in plain JVM — Room DAOs in this project are only testable
-instrumented (no Robolectric), matching every other Room-backed test here.
-instrumented tests: add/jump/delete flow (`EpubBookmarkTest`, 4 tests),
-migration test (`BookmarkPersistenceTest`, 6 tests) — **not**
+tests: Room behavior remains instrumented, while the post-review live-locator
+remediation adds six pure JVM tests for conservative bookmark-location
+equivalence. instrumented tests: add/jump/delete/focus flow
+(`EpubBookmarkTest`, 5 tests), migration/persistence test
+(`BookmarkPersistenceTest`, 7 tests) — **not**
 `MigrationTestHelper`; this plan's earlier acceptance criteria assumed that
 dependency would be needed, but the project's own existing migration-test
 convention (raw-SQL schema bootstrap + real Room migrations, already used
@@ -1576,14 +1577,23 @@ exact APK from `25612d5` was installed on RP5 `d8f7f1b6` with
 reachability, Add, jump, Delete, and dialog/reveal/exit Back behavior. This is
 owner physical-button evidence, distinct from injected key events.
 
-Final pre-PR automation nevertheless reproduced
+Final pre-PR automation reproduced
 `EpubBookmarkTest.addListJumpAndDeleteBookmarksAcrossDialogReopens` timing out
-at its post-Add "Bookmarked" wait in the full suite, an isolated run, and an
-isolated run after a fresh emulator restart. The full suite was 66/67 and the
-isolated class was 4/5. Therefore 2B.2 has passed independent review and
-physical RP5 acceptance but remains **NOT READY FOR PR** until that automated
-blocker is resolved. It is not accepted as merged, not pushed, and 2B.3/2B.4
-remain untouched.
+at its post-Add "Bookmarked" wait in the full suite, isolation, and after a
+fresh emulator restart. Diagnostics proved the insert and Room Flow were
+correct: Readium 3.4.0 enriched the same live location after insertion
+(adding title, position, and total progression), so exact serialized-locator
+equality incorrectly cleared the UI's already-bookmarked state. The UI now
+uses a conservative parsed equivalence rule over resource plus position,
+fragment, or exact resource progression; the exact DAO duplicate guard is
+unchanged. The failing method passed twice, all focused classes passed, and
+the full connected suite passed 67/67. Stored locators did not reliably carry
+publication position at Add time, so 2B.2 retains chapter plus percentage and
+does not invent "Location N" or an EPUB page number. Production changed after
+the owner's PASS on `25612d5`; the fixed APK is built and automated acceptance
+is green, but the RP5 was unavailable for reinstall, so final physical
+acceptance of the changed binary remains pending. It is not merged or pushed,
+and 2B.3/2B.4 remain untouched.
 
 **2B.3 (search):**
 user-visible: query input, results with snippets, jump to a result.
