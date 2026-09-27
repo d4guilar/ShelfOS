@@ -16,6 +16,7 @@ import org.readium.r2.navigator.preferences.*
 import org.readium.r2.navigator.preferences.ReadingProgression
 import org.readium.r2.shared.publication.*
 import org.readium.r2.shared.publication.services.isRestricted
+import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.util.*
 import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.http.*
@@ -128,6 +129,24 @@ class EpubSession internal constructor(internal val publication: Publication) : 
      * resource *or* if more than one same-resource entry is equally plausible and none can be ruled out — see
      * [matchChapter]'s doc comment for the exact fallback contract. Null is a legitimate result, not an error. */
     fun currentChapter(locator: Locator): EpubChapter? = matchChapter(chapters, locator.href.toString(), locator.locations.fragments)
+    private var epubPositionsCache: List<EpubPosition>? = null
+    /**
+     * Lazily computes and caches Readium's publication-wide position list (see [EpubPosition]) for this session's
+     * lifetime — at most one pass over the reading order's resource metadata. The pinned Readium 3.4.0
+     * `EpubParser` wires a `PositionsService` (`EpubPositionsService`) onto every EPUB `Publication` by default; it
+     * is Container/Resource-based, not `HttpClient`-based, so this works fully offline exactly like every other
+     * publication access in this reader. This function itself does not choose a dispatcher — `EpubReaderViewModel`
+     * (its only caller) dispatches it onto `Dispatchers.IO` after the session is already open, so it never delays
+     * showing the reader or blocks the caller's dispatcher; see that call site for the actual off-Main guarantee.
+     *
+     * A catalog entry missing `position` or `progression` is dropped, not defaulted — see [toEpubPositions]'s doc
+     * comment for why. The Readium-touching extraction here is a trivial field read into [RawEpubPosition]; the
+     * actual defensive filtering lives in [toEpubPositions], a pure function this is not, so that it is directly
+     * unit-testable (mirroring [EpubBookmarkLocation]'s own JSON-boundary split).
+     */
+    suspend fun epubPositions(): List<EpubPosition> = epubPositionsCache ?: toEpubPositions(
+        publication.positions().map { locator -> RawEpubPosition(locator.href.toString(), locator.locations.position, locator.locations.progression) }
+    ).also { epubPositionsCache = it }
     override fun close() = publication.close()
 }
 
@@ -251,16 +270,122 @@ internal fun sameEpubBookmarkLocation(firstJson: String, secondJson: String): Bo
 }
 
 /**
- * A short, human-readable bookmark label: the chapter title, via the same 2B.1 matcher used for the Chapters
- * dialog's highlight, when unambiguously derivable from the stored locator — else just the progress percentage.
- * Never persisted; the stored [Bookmark.locator] remains authoritative and this is recomputed from it every time,
- * exactly like the Chapters dialog never persists a chapter title either. [progress] is the bookmark's own stored
- * snapshot, not recomputed live, per its documented "display/sort snapshot, not a source of truth" contract.
+ * One entry of Readium's publication-wide position list (`Publication.positions()`), reduced to the fields needed
+ * to resolve a bookmark's stable "Location N" (see [resolveEpubLocation]). Each entry marks where a segment
+ * *starts* within its resource — [progression] is that segment's own starting resource-relative progression, not
+ * a midpoint (see [resolveEpubLocation]'s floor/segment-start semantics). The pinned Readium 3.4.0
+ * `EpubPositionsService` (wired automatically by `EpubParser`) computes these by dividing each resource into
+ * ~1024-byte segments (`ReflowableStrategy.recommended`'s default) using the resource's archive entry length when
+ * the container reports one, falling back to the resource's own decoded length otherwise — confirmed via `javap`
+ * decompilation of `ArchiveEntryLength.positionCount` on the pinned artifact (no source jar is available for this
+ * release): it reads `Resource.properties().archive?.entryLength`, and only calls `Resource.length()` when that is
+ * null. Either way this is computed entirely offline from container/resource metadata (no network, no navigator,
+ * no rendering) and is a purely structural division of the unchanging EPUB file: unlike the reader's own rendered
+ * page, it does not move with font size, line height, margins, orientation, or screen size for a given
+ * publication, which is what makes it safe to label "Location N" rather than a fabricated "Page N" for a
+ * reflowable EPUB (Phase 2B.2.1). [position] is the global, 1-based index Readium itself assigns across the whole
+ * reading order (never reset per resource).
  */
-fun EpubSession.bookmarkLabel(locatorJson: String, progress: Int): String {
-    val chapterTitle = runCatching { Locator.fromJSON(JSONObject(locatorJson)) }.getOrNull()?.let(::currentChapter)?.title
-    return if (chapterTitle != null) "$chapterTitle · $progress%" else "$progress%"
+data class EpubPosition(val resource: String, val progression: Double, val position: Int)
+
+/** One raw catalog entry as read off a Readium `Locator`, before validation — [position]/[progression] may be
+ * absent for a malformed/incomplete entry. Kept separate from [EpubPosition] (which guarantees both are present)
+ * so the defensive filtering in [toEpubPositions] is a plain, Readium-free, directly unit-testable function. */
+internal data class RawEpubPosition(val resource: String, val position: Int?, val progression: Double?)
+
+/**
+ * Converts raw catalog entries into [EpubPosition], dropping any entry missing [RawEpubPosition.position] or
+ * [RawEpubPosition.progression] rather than defaulting a missing progression to `0.0` (Codex R3, final round). The
+ * pinned Readium 3.4.0 `EpubPositionsService` always supplies both for a real EPUB, so this should not occur on
+ * the validated production path — but substituting `0.0` for a missing progression would make a malformed/
+ * incomplete entry indistinguishable from a genuine first-segment start at progression `0.0`, letting it silently
+ * win [resolveEpubLocation]'s floor comparison and become "Location 1" by default. Dropping it instead means it
+ * simply cannot be selected; [EpubPosition.position] (Readium's own global index) is never reassigned for the
+ * entries that remain, so numbering is not renumbered/compacted around a dropped entry.
+ */
+internal fun toEpubPositions(raw: List<RawEpubPosition>): List<EpubPosition> = raw.mapNotNull { entry ->
+    val position = entry.position ?: return@mapNotNull null
+    val progression = entry.progression ?: return@mapNotNull null
+    EpubPosition(entry.resource, progression, position)
 }
+
+/**
+ * Resolves the stable "Location N" (see [EpubPosition]) for a stored bookmark's location, or null when it cannot
+ * be identified without guessing — deliberately mirroring [matchChapter]'s honesty contract (the two are kept
+ * separate functions since they resolve different Readium concepts: TOC entries vs. archive-derived positions).
+ *
+ * **Segment-start / floor semantics (Codex R2, corrected 2026-09-27 after an earlier version picked the
+ * numerically *nearest* position instead):** each [EpubPosition] marks where a segment *starts*, not its midpoint
+ * or center. The correct Location for a bookmark at some progression within a resource is therefore the position
+ * with the greatest `progression` that is still `<=` the bookmark's own progression — the segment the bookmark
+ * actually falls inside — never the numerically closest one. For same-resource segment starts `0.0 / 0.4 / 0.8`,
+ * a bookmark at progression `0.7` resolves to the `0.4` segment (it has not reached `0.8` yet), even though `0.8`
+ * is numerically closer; `0.99` and `1.0` both resolve to the final (`0.8`) segment, since no later segment start
+ * exists for that resource.
+ *
+ * [target]'s progression must be a valid, finite value in `0.0..1.0` inclusive (a real Readium progression can
+ * never legitimately fall outside that range); a missing, negative, `>1`, `NaN`, or infinite value yields null
+ * rather than a silently clamped or guessed result — this is genuinely missing/invalid evidence, not an edge case
+ * to paper over. Candidate [positions] with an invalid `progression` (should not occur in a real Readium catalog,
+ * but not assumed) are likewise ignored rather than trusted blindly. No entry sharing [target]'s resource, after
+ * that filtering, also yields null. Pure and Readium-free so it is directly unit-testable, mirroring
+ * [matchChapter]/[sameEpubBookmarkLocation].
+ */
+internal fun resolveEpubLocation(positions: List<EpubPosition>, target: EpubBookmarkLocation): Int? {
+    val progression = target.progression?.takeIf { it.isFinite() && it in 0.0..1.0 } ?: return null
+    return positions.asSequence()
+        .filter { it.resource == target.resource && it.progression.isFinite() && it.progression in 0.0..1.0 }
+        .filter { it.progression <= progression }
+        .maxByOrNull { it.progression }
+        ?.position
+}
+
+/**
+ * The parts available to describe one EPUB bookmark's location to a reader, independent of how they are assembled
+ * into text (see [bookmarkDisplayText]/[bookmarkAccessibilityText]). [chapterTitle] and [location] are each
+ * independently allowed to be unavailable, per [matchChapter]'s and [resolveEpubLocation]'s own honesty contracts
+ * — never fabricated just to fill in a prettier row. [progress] is always present: the bookmark's own stored
+ * display/sort snapshot, not recomputed live.
+ */
+data class EpubBookmarkPresentation(val chapterTitle: String?, val location: Int?, val progress: Int)
+
+/**
+ * Builds one bookmark row's [EpubBookmarkPresentation] from its stored locator: the chapter title, via the same
+ * 2B.1 [matchChapter]-based lookup already used for the Chapters dialog's highlight, and the stable "Location N"
+ * (see [resolveEpubLocation]), each only when unambiguously derivable. Never persisted — the stored
+ * [Bookmark.locator] remains authoritative and both are recomputed from it every time, exactly like the Chapters
+ * dialog never persists a chapter title either. [positions] is supplied by the caller (see
+ * `EpubSession.epubPositions`) rather than fetched here, so this stays a plain, fast, synchronous call usable
+ * directly from Compose.
+ */
+fun EpubSession.presentBookmark(locatorJson: String, progress: Int, positions: List<EpubPosition>): EpubBookmarkPresentation {
+    val locator = runCatching { Locator.fromJSON(JSONObject(locatorJson)) }.getOrNull()
+    val chapterTitle = locator?.let(::currentChapter)?.title
+    val location = locator?.let { resolveEpubLocation(positions, EpubBookmarkLocation(it.href.toString(), progression = it.locations.progression)) }
+    return EpubBookmarkPresentation(chapterTitle, location, progress)
+}
+
+/**
+ * A bookmark row's visible text: a place in the book, not merely a progress meter. Never fabricates a location or
+ * chapter that could not be determined (see [EpubBookmarkPresentation]), and never says "Page N" — a reflowable
+ * EPUB's visual page count is unstable across typography, margins, screen size and orientation, unlike the
+ * structural "Location N" resolved by [resolveEpubLocation]. Two lines when a chapter title is available (it may
+ * be long), one line otherwise.
+ */
+internal fun bookmarkDisplayText(p: EpubBookmarkPresentation): String = when {
+    p.chapterTitle != null && p.location != null -> "${p.chapterTitle}\nLocation ${p.location} · ${p.progress}% through book"
+    p.chapterTitle != null -> "${p.chapterTitle}\n${p.progress}% through book"
+    p.location != null -> "Location ${p.location} · ${p.progress}% through book"
+    else -> "${p.progress}% through book"
+}
+
+/**
+ * A bookmark row's accessible description: one spoken sentence (used verbatim, prefixed with "Bookmark, "/"Delete
+ * bookmark, " at the call site) rather than [bookmarkDisplayText]'s two visual lines, with "%" spelled out as
+ * "percent" the way a screen reader would otherwise have to expand it anyway.
+ */
+internal fun bookmarkAccessibilityText(p: EpubBookmarkPresentation): String =
+    listOfNotNull(p.chapterTitle, p.location?.let { "Location $it" }, "${p.progress} percent through book").joinToString(", ")
 
 internal fun epubPreferences(p: ReaderPreferences, dark: Boolean, category: MediaCategory): EpubPreferences {
     val palette = p.palette ?: PagePalette.THEME

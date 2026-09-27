@@ -96,6 +96,28 @@ object OriginalFixtures {
         } }
         return item(file, "test-epub-fragments", PublicationFormat.EPUB)
     }
+    /** One resource with enough high-entropy, poorly-compressible content that Readium's default `EpubPositionsService`
+     * strategy (1024 bytes/position, keyed off the archive-stored/compressed length) yields several real positions
+     * for it — unlike `epubWithChapters`' repetitive text, which DEFLATE compresses down to a single position per
+     * chapter. Needed for Phase 2B.2.1's [resolveEpubLocation] floor/segment-start semantics to be provable against
+     * a real, non-fabricated Readium position catalog rather than only a synthetic `EpubPosition` list. The random
+     * text is seeded, so its size and content — and therefore the resulting position count — are deterministic. */
+    fun epubWithLongChapter(context: Context): LibraryItem {
+        val file = File(context.filesDir, "publications/test-original-long-chapter.epub").also { it.parentFile!!.mkdirs() }
+        val random = kotlin.random.Random(42)
+        val body = (1..16000).map { ('a' + random.nextInt(26)) }.joinToString("")
+        val entries = mapOf(
+            "mimetype" to "application/epub+zip",
+            "META-INF/container.xml" to """<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>""",
+            "content.opf" to """<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:shelfos-long-chapter-test</dc:identifier><dc:title>Long Chapter Test Book</dc:title><dc:language>en</dc:language><meta property="dcterms:modified">2026-09-27T00:00:00Z</meta></metadata><manifest><item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml"/><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/></manifest><spine><itemref idref="chapter1"/></spine></package>""",
+            "nav.xhtml" to """<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Contents</title></head><body><nav epub:type="toc"><ol><li><a href="chapter1.xhtml">Chapter 1</a></li></ol></nav></body></html>""",
+            "chapter1.xhtml" to """<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 1</title></head><body><h1>Chapter 1</h1><p>$body</p></body></html>""",
+        )
+        ZipOutputStream(file.outputStream()).use { zip -> entries.forEach { (name, text) ->
+            zip.putNextEntry(ZipEntry(name)); zip.write(text.toByteArray()); zip.closeEntry()
+        } }
+        return item(file, "test-epub-long-chapter", PublicationFormat.EPUB)
+    }
     private fun item(file: File, id: String, format: PublicationFormat) = LibraryItem(id, "Original ${format.name} fixture", "ShelfOS test",
         MediaCategory.BOOK, "test:$id", format, file.name, file.length(), managedPath = file.path)
 }
