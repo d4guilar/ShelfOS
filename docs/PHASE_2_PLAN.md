@@ -17,13 +17,19 @@ PR #8** at commit `ac9476d56f332c067aa39dc2b1e5533288103c12`, after two rounds
 of independent Codex remediation (multi-fragment matching order, stable
 chapter-row identity, ambiguous-match honesty) — see `VALIDATION.md`'s
 "Phase 2B.1" sections for the full history. **2B.2 (durable EPUB bookmarks +
-Room v2 → v3 migration) is IMPLEMENTED, PENDING INDEPENDENT REVIEW** as of
-this pass (`phase-2/epub-bookmarks`, base `ac9476d...`) — see its section
-under §3's 2B plan below for what was actually built and proved. Do not
-treat 2B.2 as accepted until that review lands. 2B.3/2B.4 remain planned
-only, per 2B's own discovery pass; none of their work has started. 2C/2D
-remain planned only; none of their work has started. See `VALIDATION.md`'s
-"Phase 2A.1"/"Phase 2B.1"/"Phase 2B.2" sections for evidence and
+Room v2 → v3 migration) is accepted and merged to `main` via PR #9** at
+commit `b1ad0290fa6a4e7b5148a9cd068a4913ac616704`, after an independent
+Codex review (PASS WITH NON-BLOCKING FINDINGS) and an R3 remediation
+(deterministic bookmark ordering, keyboard/D-pad focus evidence) folded in
+before merge. **2B.2.1 (bookmark location polish) is IMPLEMENTED, PENDING
+INDEPENDENT REVIEW** as of this pass (`phase-2/bookmark-location-polish`,
+base `b1ad029...`) — a small, presentation-only follow-up that does not
+reopen 2B.2's persistence/migration architecture; see its section under §3's
+2B plan below for what was actually built and proved. Do not treat 2B.2.1 as
+accepted until that review lands. 2B.2.2 (reading flow), 2B.3, 2B.4 remain
+planned only; none of their work has started. 2C/2D remain planned only;
+none of their work has started. See `VALIDATION.md`'s "Phase 2A.1"/
+"Phase 2B.1"/"Phase 2B.2"/"Phase 2B.2.1" sections for evidence and
 explicitly-unclaimed items. This document is the canonical Phase 2 planning
 location referenced by [`ROADMAP.md`](ROADMAP.md#phase-2--reading).
 
@@ -58,10 +64,11 @@ each independently mergeable and gated by its own acceptance criteria. 2A and
 2A.1 are both accepted and merged (see their sections below and
 `VALIDATION.md` for the full history). 2B is broken into four internal
 slices (2B.1–2B.4, see below) after a discovery/implementation-planning
-pass. 2B.1 is accepted and merged; 2B.2 passed independent review and owner
-RP5 physical acceptance, but remains blocked from PR by one reproducible
-final-gate `EpubBookmarkTest` timeout; 2B.3/2B.4 remain planned only. 2C/2D remain planned only; none of
-their work has started.
+pass. 2B.1 and 2B.2 are both accepted and merged (2B.2 via PR #9, after
+independent review and RP5 physical acceptance); 2B.2.1 (bookmark location
+polish, a small presentation-only follow-up) is implemented pending
+independent review; 2B.2.2/2B.3/2B.4 remain planned only. 2C/2D remain
+planned only; none of their work has started.
 
 ## 3. Increments
 
@@ -1600,6 +1607,124 @@ was subsequently installed successfully on RP5 `d8f7f1b6` with
 state at the saved location, no false match elsewhere, jump and Delete, and
 physical B dialog/reveal/exit behavior. Phase 2B.2 is therefore ready for PR.
 It is not merged or pushed, and 2B.3/2B.4 remain untouched.
+
+**2B.2.1 (bookmark location polish) — IMPLEMENTED, PENDING INDEPENDENT REVIEW
+(2026-09-27, `phase-2/bookmark-location-polish`, base `main` at
+`b1ad0290fa6a4e7b5148a9cd068a4913ac616704`, 2B.2 accepted/merged via PR #9):**
+a small, presentation-only follow-up to 2B.2 addressing the "retains chapter
+plus percentage and does not invent 'Location N'" gap recorded above — a
+bookmark should read as a place in a book, not merely a progress meter.
+
+*Readium position API investigation.* 2B.2's own finding was that the stored
+`Locator` does not reliably carry `locations.position` at Add time. Rather
+than trying to make it reliable, this slice never reads a bookmark's *own*
+stored position at all — instead it resolves a stable position by comparing
+the bookmark's resource+progression against Readium's independent,
+publication-wide position catalog. Investigated via `javap` decompilation of
+the pinned Readium 3.4.0 artifacts actually present in this repo's Gradle
+cache (no source jar exists for this pinned release, matching every prior
+Readium investigation in this plan):
+- `Publication.positions(): List<Locator>` (`PositionsServiceKt`, readium-shared)
+  is a suspend extension backed by a `PositionsService`. `EpubParser`
+  (readium-streamer) wires `EpubPositionsService.Companion.createFactory(...)`
+  onto every EPUB `Publication` by default (confirmed directly in
+  `EpubParser`'s decompiled bytecode) — so this is available for every EPUB
+  ShelfOS opens, with no configuration.
+- `EpubPositionsService` computes positions from `Container<Resource>`
+  metadata only — never `HttpClient` — so it works fully offline, exactly
+  like every other publication access in this reader. `EpubReaderFactory`'s
+  `offlineClient` (which fails all HTTP) is never touched by this path.
+- The default/recommended strategy (confirmed in `ReflowableStrategy`'s
+  static initializer) is `ArchiveEntryLength(1024)`: one position per 1024
+  bytes of a resource's *archive-stored* (i.e. compressed) length — a purely
+  structural property of the unchanging EPUB file. It does not depend on
+  font size, line height, margins, orientation, or screen size, which is
+  what makes "Location N" safe to show where "Page N" would not be (a
+  reflowable EPUB's visual page count is unstable across those). This was
+  empirically confirmed against a real fixture in
+  `EpubBookmarkLocationInstrumentedTest`, including one honestly-recorded
+  surprise: the fixture's highly repetitive synthetic text compresses to
+  under 1024 bytes per chapter, so it yields exactly one position per
+  chapter rather than several — the multi-position-per-resource
+  disambiguation path is instead proven via synthetic `EpubPosition` lists
+  in the pure `EpubBookmarkPresentationTest` (a real, less-compressible book
+  would exercise both paths).
+- Positions are global (1-based, contiguous, reading-order) — confirmed both
+  via bytecode (a single running counter threaded through the whole
+  reading-order loop) and empirically (`positions.map { it.position } ==
+  (1..positions.size).toList()` against the real fixture).
+- Cost/caching/lifecycle: computing positions reads each resource's
+  container metadata once; `EpubSession.epubPositions()` computes it at most
+  once per session (memoized) and is only ever called from
+  `EpubReaderViewModel`'s own coroutine, launched *after* the session is
+  already open — never during reader startup, never blocking Compose, never
+  a second navigator or a second `currentLocator` collector.
+- Never persisted: `epubPositions` never enters `Bookmark`/`BookmarkEntity`,
+  Room, or `rememberSaveable`/`SavedState` — it is recomputed from the live
+  `Publication` every session, exactly like the Chapters dialog never
+  persists a chapter title. No schema/migration change of any kind.
+
+*Display hierarchy (`EpubBookmarkPresentation`/`bookmarkDisplayText`/
+`bookmarkAccessibilityText` in `core.reader.EpubReader.kt`):*
+- Chapter + Location + progress: `"<chapter>\nLocation <N> · <p>% through book"`.
+- Location + progress, no chapter: `"Location <N> · <p>% through book"`.
+- Chapter + progress, no Location: `"<chapter>\n<p>% through book"`.
+- Progress only (neither available, or a malformed/unparseable locator):
+  `"<p>% through book"`.
+- Never a fabricated chapter or Location — both mirror the existing
+  `matchChapter`/`resolveEpubLocation` honesty contracts. Never "Page N".
+- Accessibility uses a separate, single spoken sentence (not the two visual
+  lines): `listOfNotNull(chapter, location?.let { "Location $it" }, "$p
+  percent through book").joinToString(", ")`, e.g. "Chapter Seven, Location
+  184, 56 percent through book" — matching the task's example exactly.
+
+*Bookmark identity/equivalence unchanged.* `sameEpubBookmarkLocation`
+(the "already bookmarked" UI check) and the DAO's exact-locator duplicate
+guard are untouched by this slice — `resolveEpubLocation` is a separate,
+read-only, presentation-only function that never influences either. No fake
+position is ever persisted; `resolveEpubLocation` returning null (ambiguous
+or resource not found) simply omits Location from the row, it never
+substitutes a guess.
+
+*Tests.* `EpubBookmarkPresentationTest` (13 pure JVM tests, no
+Locator/Android types — `resolveEpubLocation` disambiguation including a
+real floating-point tie, all four display/accessibility format branches,
+enriched-target equivalence, no-"Page" assertion, format-consistency) and
+`EpubBookmarkLocationInstrumentedTest` (4 tests against the real
+`epubWithChapters` fixture and the real Readium pipeline: offline/stable/
+contiguous position catalog, first-chapter resolution, enriched-locator
+equivalence against a real fixture, malformed-locator fallback). Regression:
+`EpubBookmarkTest` (5/5), `BookmarkPersistenceTest` (7/7),
+`EpubChapterHighlightTest` (3/3), `NavigationSmokeTest` (26/26),
+`EpubRecreationTest` (1/1) — all green on `shelfos-phase0` (API 35); one
+`EpubBookmarkTest.addListJumpAndDeleteBookmarksAcrossDialogReopens` timeout
+was observed on one full-class run under emulator load and passed cleanly
+in isolation immediately after, consistent with the same device-load
+flakiness pattern already documented for 2B.1/2B.2, not a regression from
+this slice. No schema change (`git status --porcelain -- app/schemas`
+clean); no new dependency.
+
+*RP5.* Production reader UI changed (the bookmark row's visible text), so
+RP5 was exercised: `EpubBookmarkTest` was run against the connected Retroid
+Pocket 5 (`d8f7f1b6`, Android 13/API 33) — 4/5 passed;
+`bookmarksDialogIsReachableAndOperableThroughKeyboardFocus` failed at its
+first `RequestFocus` assertion (a 2B.2 R3 test unrelated to this slice's own
+changes — no input/focus code was touched here), plausibly a device/launcher-
+specific touch-mode quirk on this handheld's customized Android build; not
+investigated further as out of scope for a presentation-only slice, and
+flagged here for separate follow-up rather than silently dropped. The other
+four tests, covering the full add/list/jump/delete flow, activity
+recreation, publication reopen, and malformed-locator handling, all passed
+on the real device. ShelfOS was tested on a Retroid Pocket 5, including a
+directly captured screenshot of the Bookmarks dialog confirming the new
+"Chapter 1 / Location 1 · 0% through book" wording renders legibly at the
+device's real resolution/DPI/theme. This is real hardware execution with a
+directly observed visual result, not a claim of manual physical controller
+button-pressing.
+
+*Out of scope, confirmed untouched:* 2B.2.2 (reading flow), 2B.3 (search),
+2B.4 (custom fonts), Notes/highlights/export, PDF/CBZ, and no new
+`ShelfCommand`/`TOGGLE_BOOKMARK` wiring.
 
 **2B.3 (search):**
 user-visible: query input, results with snippets, jump to a result.

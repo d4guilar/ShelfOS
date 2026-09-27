@@ -242,15 +242,17 @@ class EpubActivity : AppCompatActivity() {
                     if (state.bookmarks.isEmpty()) Text("No bookmarks yet.", Modifier.padding(vertical = 16.dp))
                     else LazyColumn(Modifier.testTag("bookmarks_list").padding(top = 8.dp)) {
                         items(state.bookmarks, key = { it.id }) { bookmark ->
-                            val label = session.bookmarkLabel(bookmark.locator, bookmark.progress)
+                            val presentation = session.presentBookmark(bookmark.locator, bookmark.progress, state.epubPositions)
+                            val display = bookmarkDisplayText(presentation)
+                            val accessible = bookmarkAccessibilityText(presentation)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 TextButton({
                                     jumpError = null
                                     if (controller.goTo(bookmark.locator)) bookmarks = false
                                     else jumpError = "This bookmark's saved location could not be opened. You can still delete it."
-                                }, Modifier.weight(1f).semantics { contentDescription = "Bookmark, $label" }) { Text(label) }
+                                }, Modifier.weight(1f).semantics { contentDescription = "Bookmark, $accessible" }) { Text(display) }
                                 TextButton({ vm.deleteBookmark(bookmark.id) },
-                                    Modifier.semantics { contentDescription = "Delete bookmark, $label" }) { Text("Delete") }
+                                    Modifier.semantics { contentDescription = "Delete bookmark, $accessible" }) { Text("Delete") }
                             }
                         }
                     }

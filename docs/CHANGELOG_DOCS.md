@@ -1,5 +1,79 @@
 # Documentation Changelog
 
+## Phase 2B.2.1 — bookmark location polish (2026-09-27)
+
+- Implemented Phase 2B.2.1 on new branch `phase-2/bookmark-location-polish`,
+  based on `main` at `b1ad0290fa6a4e7b5148a9cd068a4913ac616704` (2B.2
+  accepted/merged via PR #9). **2B.2.1 is IMPLEMENTED, PENDING INDEPENDENT
+  REVIEW — not accepted, not merged.** Presentation-only: 2B.2's persistence/
+  migration architecture was not reopened, and no schema or dependency
+  changed.
+- Investigated the pinned Readium 3.4.0 publication-position API via `javap`
+  decompilation (no source jar exists for this release): `EpubParser` wires
+  a `PositionsService` (`EpubPositionsService`) onto every EPUB `Publication`
+  by default, entirely offline (`Container`/`Resource`-based, never
+  `HttpClient`), memoized after first computation, and structurally stable
+  (the default `ArchiveEntryLength(1024)` strategy segments by each
+  resource's archive-*stored* byte length — independent of font, line
+  height, margins, orientation, and screen size). This directly addresses
+  2B.2's own documented finding that a bookmark's *stored* locator does not
+  reliably carry `position` at Add time: this slice never reads that field,
+  resolving instead against the independent position catalog by
+  resource+progression.
+- Added `EpubPosition`, `resolveEpubLocation` (pure position-resolution,
+  mirroring `matchChapter`'s honesty contract — never guesses when several
+  candidates share a resource with no progression to disambiguate),
+  `EpubBookmarkPresentation`, `bookmarkDisplayText`, and
+  `bookmarkAccessibilityText` in `core.reader.EpubReader.kt`, plus
+  `EpubSession.epubPositions()` (lazy, memoized, offline). Removed the old
+  single-line `bookmarkLabel` function it replaces.
+- New bookmark row wording: "Chapter 7 / Location 184 · 56% through book",
+  degrading through "Location 184 · 56% through book" (no chapter), "Chapter
+  7 / 56% through book" (no Location), down to "56% through book" (neither)
+  — never a fabricated chapter or Location, and never "Page N" for a
+  reflowable EPUB. Accessibility uses a separate single spoken sentence
+  ("Chapter Seven, Location 184, 56 percent through book").
+- `EpubReaderState` gained `epubPositions: List<EpubPosition>`, populated by
+  `EpubReaderViewModel` in its own coroutine after the session is already
+  open — never during reader startup, never a second navigator or a second
+  `currentLocator` collector.
+- Bookmark identity/equivalence (`sameEpubBookmarkLocation`, the DAO's
+  exact-locator duplicate guard) is byte-for-byte unchanged; no fake
+  position is ever persisted.
+- Added `EpubBookmarkPresentationTest` (13 pure JVM tests: resolution
+  disambiguation including a real floating-point tie, all four display/
+  accessibility format branches, enriched-target equivalence, no-"Page"
+  assertion, format consistency) and `EpubBookmarkLocationInstrumentedTest`
+  (4 tests against the real `epubWithChapters` fixture: offline/stable/
+  contiguous position catalog, first-chapter resolution, enriched-locator
+  equivalence against real data, malformed-locator fallback) — the latter
+  also empirically discovered and documented that this fixture's repetitive
+  text compresses under 1024 bytes/chapter, yielding one position per
+  chapter rather than several (the multi-position path is instead proven via
+  the pure JVM test's synthetic data).
+- Regression: `EpubBookmarkTest` (5/5), `BookmarkPersistenceTest` (7/7),
+  `EpubChapterHighlightTest` (3/3), `NavigationSmokeTest` (26/26),
+  `EpubRecreationTest` (1/1) all green; one
+  `addListJumpAndDeleteBookmarksAcrossDialogReopens` timeout under emulator
+  load was confirmed non-reproducible in isolation, consistent with prior
+  documented flakiness, not a regression from this slice.
+- **RP5**: production reader UI changed, so the Retroid Pocket 5 (`d8f7f1b6`)
+  was exercised, not skipped. After waking/unlocking the device,
+  `EpubBookmarkTest` scored 4/5 on real hardware (the one failure is an
+  unrelated 2B.2 R3 keyboard-focus test, flagged as a device-specific
+  finding rather than dropped silently). A direct `adb exec-out screencap`
+  captured the Bookmarks dialog showing the new wording rendering legibly on
+  the real device. ShelfOS was tested on a Retroid Pocket 5 — real hardware
+  execution with a directly observed visual result, not a claim of manual
+  physical controller button-pressing.
+- Updated `PHASE_2_PLAN.md` (status block, §2, and a new 2B.2.1 record) and
+  `VALIDATION.md` (full 2B.2.1 validation section, including the Readium
+  investigation findings table).
+- No 2B.2.2 (reading flow), 2B.3 (search), 2B.4 (custom fonts), Notes/
+  highlights/export, or PDF/CBZ work was added. No new `ShelfCommand`/
+  `TOGGLE_BOOKMARK` wiring. 2B.2.1 remains implemented, not yet reviewed by
+  Codex, not merged, not pushed.
+
 ## Phase 2B.2 bookmark-state blocker remediation (2026-09-27)
 
 - Corrected the earlier characterization of the post-Add "Bookmarked"

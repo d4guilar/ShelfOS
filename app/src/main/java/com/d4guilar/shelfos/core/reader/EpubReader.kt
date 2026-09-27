@@ -16,6 +16,7 @@ import org.readium.r2.navigator.preferences.*
 import org.readium.r2.navigator.preferences.ReadingProgression
 import org.readium.r2.shared.publication.*
 import org.readium.r2.shared.publication.services.isRestricted
+import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.util.*
 import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.http.*
@@ -128,6 +129,19 @@ class EpubSession internal constructor(internal val publication: Publication) : 
      * resource *or* if more than one same-resource entry is equally plausible and none can be ruled out — see
      * [matchChapter]'s doc comment for the exact fallback contract. Null is a legitimate result, not an error. */
     fun currentChapter(locator: Locator): EpubChapter? = matchChapter(chapters, locator.href.toString(), locator.locations.fragments)
+    private var epubPositionsCache: List<EpubPosition>? = null
+    /**
+     * Lazily computes and caches Readium's publication-wide position list (see [EpubPosition]) for this session's
+     * lifetime — at most one pass over the reading order's resource metadata. The pinned Readium 3.4.0
+     * `EpubParser` wires a `PositionsService` (`EpubPositionsService`) onto every EPUB `Publication` by default; it
+     * is Container/Resource-based, not `HttpClient`-based, so this works fully offline exactly like every other
+     * publication access in this reader. Never called during reader startup or directly from Compose: callers
+     * fetch it once the session is already open, in their own coroutine (see `EpubReaderViewModel`), so a slow or
+     * unusually large publication never delays showing the reader or opening the Bookmarks dialog.
+     */
+    suspend fun epubPositions(): List<EpubPosition> = epubPositionsCache ?: publication.positions()
+        .mapNotNull { locator -> locator.locations.position?.let { EpubPosition(locator.href.toString(), locator.locations.progression ?: 0.0, it) } }
+        .also { epubPositionsCache = it }
     override fun close() = publication.close()
 }
 
@@ -251,16 +265,89 @@ internal fun sameEpubBookmarkLocation(firstJson: String, secondJson: String): Bo
 }
 
 /**
- * A short, human-readable bookmark label: the chapter title, via the same 2B.1 matcher used for the Chapters
- * dialog's highlight, when unambiguously derivable from the stored locator — else just the progress percentage.
- * Never persisted; the stored [Bookmark.locator] remains authoritative and this is recomputed from it every time,
- * exactly like the Chapters dialog never persists a chapter title either. [progress] is the bookmark's own stored
- * snapshot, not recomputed live, per its documented "display/sort snapshot, not a source of truth" contract.
+ * One entry of Readium's publication-wide position list (`Publication.positions()`), reduced to the fields needed
+ * to resolve a bookmark's stable "Location N" (see [resolveEpubLocation]). The pinned Readium 3.4.0
+ * `EpubPositionsService` (wired automatically by `EpubParser`, confirmed via `javap` decompilation of the pinned
+ * artifact — no source jar is available for this release) segments each resource by its archive-entry byte length
+ * (1024 bytes per position, `ReflowableStrategy.recommended`'s default) — a purely structural division of the
+ * unchanging EPUB file, computed entirely offline from container/resource metadata (no network, no navigator, no
+ * rendering). Unlike the reader's own rendered page, it does not move with font size, line height, margins,
+ * orientation, or screen size, which is what makes it safe to label "Location N" rather than a fabricated
+ * "Page N" for a reflowable EPUB (Phase 2B.2.1). [position] is the global, 1-based index Readium itself assigns
+ * across the whole reading order.
  */
-fun EpubSession.bookmarkLabel(locatorJson: String, progress: Int): String {
-    val chapterTitle = runCatching { Locator.fromJSON(JSONObject(locatorJson)) }.getOrNull()?.let(::currentChapter)?.title
-    return if (chapterTitle != null) "$chapterTitle · $progress%" else "$progress%"
+data class EpubPosition(val resource: String, val progression: Double, val position: Int)
+
+/**
+ * Resolves the stable "Location N" (see [EpubPosition]) for a stored bookmark's location, or null when it cannot
+ * be identified without guessing — deliberately mirroring [matchChapter]'s honesty contract (the two are kept
+ * separate functions since they resolve different Readium concepts: TOC entries vs. archive-derived positions).
+ * - No entry shares [target]'s resource: null (the position list doesn't cover it — e.g. a different publication
+ *   than the one currently open, which should not normally happen for a bookmark belonging to it).
+ * - Exactly one entry shares the resource: it wins by elimination, even without [EpubBookmarkLocation.progression]
+ *   to compare — there is nothing else it could be.
+ * - Several entries share the resource: [target] must carry a progression to disambiguate among them, or this
+ *   returns null rather than guessing; otherwise the entry with the closest progression wins (ties favor the
+ *   lower position number, for determinism). Pure and Readium-free so it is directly unit-testable, mirroring
+ *   [matchChapter]/[sameEpubBookmarkLocation].
+ */
+internal fun resolveEpubLocation(positions: List<EpubPosition>, target: EpubBookmarkLocation): Int? {
+    val sameResource = positions.filter { it.resource == target.resource }
+    return when {
+        sameResource.isEmpty() -> null
+        sameResource.size == 1 -> sameResource.single().position
+        else -> target.progression?.let { progression ->
+            sameResource.minWith(compareBy({ kotlin.math.abs(it.progression - progression) }, { it.position })).position
+        }
+    }
 }
+
+/**
+ * The parts available to describe one EPUB bookmark's location to a reader, independent of how they are assembled
+ * into text (see [bookmarkDisplayText]/[bookmarkAccessibilityText]). [chapterTitle] and [location] are each
+ * independently allowed to be unavailable, per [matchChapter]'s and [resolveEpubLocation]'s own honesty contracts
+ * — never fabricated just to fill in a prettier row. [progress] is always present: the bookmark's own stored
+ * display/sort snapshot, not recomputed live.
+ */
+data class EpubBookmarkPresentation(val chapterTitle: String?, val location: Int?, val progress: Int)
+
+/**
+ * Builds one bookmark row's [EpubBookmarkPresentation] from its stored locator: the chapter title, via the same
+ * 2B.1 [matchChapter]-based lookup already used for the Chapters dialog's highlight, and the stable "Location N"
+ * (see [resolveEpubLocation]), each only when unambiguously derivable. Never persisted — the stored
+ * [Bookmark.locator] remains authoritative and both are recomputed from it every time, exactly like the Chapters
+ * dialog never persists a chapter title either. [positions] is supplied by the caller (see
+ * `EpubSession.epubPositions`) rather than fetched here, so this stays a plain, fast, synchronous call usable
+ * directly from Compose.
+ */
+fun EpubSession.presentBookmark(locatorJson: String, progress: Int, positions: List<EpubPosition>): EpubBookmarkPresentation {
+    val locator = runCatching { Locator.fromJSON(JSONObject(locatorJson)) }.getOrNull()
+    val chapterTitle = locator?.let(::currentChapter)?.title
+    val location = locator?.let { resolveEpubLocation(positions, EpubBookmarkLocation(it.href.toString(), progression = it.locations.progression)) }
+    return EpubBookmarkPresentation(chapterTitle, location, progress)
+}
+
+/**
+ * A bookmark row's visible text: a place in the book, not merely a progress meter. Never fabricates a location or
+ * chapter that could not be determined (see [EpubBookmarkPresentation]), and never says "Page N" — a reflowable
+ * EPUB's visual page count is unstable across typography, margins, screen size and orientation, unlike the
+ * structural "Location N" resolved by [resolveEpubLocation]. Two lines when a chapter title is available (it may
+ * be long), one line otherwise.
+ */
+internal fun bookmarkDisplayText(p: EpubBookmarkPresentation): String = when {
+    p.chapterTitle != null && p.location != null -> "${p.chapterTitle}\nLocation ${p.location} · ${p.progress}% through book"
+    p.chapterTitle != null -> "${p.chapterTitle}\n${p.progress}% through book"
+    p.location != null -> "Location ${p.location} · ${p.progress}% through book"
+    else -> "${p.progress}% through book"
+}
+
+/**
+ * A bookmark row's accessible description: one spoken sentence (used verbatim, prefixed with "Bookmark, "/"Delete
+ * bookmark, " at the call site) rather than [bookmarkDisplayText]'s two visual lines, with "%" spelled out as
+ * "percent" the way a screen reader would otherwise have to expand it anyway.
+ */
+internal fun bookmarkAccessibilityText(p: EpubBookmarkPresentation): String =
+    listOfNotNull(p.chapterTitle, p.location?.let { "Location $it" }, "${p.progress} percent through book").joinToString(", ")
 
 internal fun epubPreferences(p: ReaderPreferences, dark: Boolean, category: MediaCategory): EpubPreferences {
     val palette = p.palette ?: PagePalette.THEME

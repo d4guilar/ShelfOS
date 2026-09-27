@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.*
 
 data class EpubReaderState(val item: LibraryItem? = null, val session: EpubSession? = null,
     val preferences: ReaderPreferences = ReaderPreferences.DEFAULT, val globalPreferences: String? = null,
-    val bookmarks: List<Bookmark> = emptyList(), val error: String? = null)
+    val bookmarks: List<Bookmark> = emptyList(), val epubPositions: List<EpubPosition> = emptyList(), val error: String? = null)
 
 /** Owns one EPUB session for one title; it survives configuration changes and closes when cleared. */
 class EpubReaderViewModel(private val id: String, private val repository: LibraryRepository,
@@ -43,8 +43,15 @@ class EpubReaderViewModel(private val id: String, private val repository: Librar
             // Retain ownership even if cancellation arrives at the IO boundary.
             withContext(NonCancellable) { opened = factory.open(item) }
             currentCoroutineContext().ensureActive()
-            _state.update { it.copy(session = opened) }; opened = null
+            val session = requireNotNull(opened)
+            _state.update { it.copy(session = session) }; opened = null
             markAvailable(true)
+            // Independent of session opening, so a slow/large publication never delays showing the reader: Location
+            // N (Phase 2B.2.1) is a presentation nicety, not something bookmark display can't work without.
+            viewModelScope.launch {
+                val located = runCatching { session.epubPositions() }.getOrDefault(emptyList())
+                _state.update { it.copy(epubPositions = located) }
+            }
         } catch (e: CancellationException) { opened?.close(); throw e }
         catch (e: Exception) {
             opened?.close()

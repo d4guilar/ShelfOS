@@ -1,5 +1,163 @@
 # Validation
 
+## Phase 2B.2.1 validation — bookmark location polish (2026-09-27)
+
+Branch `phase-2/bookmark-location-polish`, base `main` at
+`b1ad0290fa6a4e7b5148a9cd068a4913ac616704` (2B.2 accepted/merged via PR #9).
+**2B.2.1 IMPLEMENTED, PENDING INDEPENDENT REVIEW — not accepted, not
+merged.** Presentation-only: no schema/migration change, no dependency
+change, no touch to bookmark identity/equivalence or DAO duplicate handling.
+
+### READIUM POSITION API — INVESTIGATION FINDINGS
+
+Investigated via `javap` decompilation of the pinned Readium 3.4.0 artifacts
+in this repo's Gradle cache (`readium-shared-3.4.0-runtime.jar`,
+`readium-streamer-3.4.0-runtime.jar`) — no source jar exists for this pinned
+release, consistent with every prior Readium investigation in this project.
+
+| Question | Finding |
+| --- | --- |
+| Can a stored Locator without `position` be resolved against Publication positions? | Yes — `Publication.positions(): List<Locator>` (suspend extension, `PositionsServiceKt`) returns a catalog independent of what the stored locator itself carries; resolution compares resource + progression, never the target's own `position` field |
+| Wired by default? | Yes — `EpubParser`'s constructor wires `EpubPositionsService.Companion.createFactory(ReflowableStrategy.Companion.recommended)` onto every EPUB `Publication`, confirmed directly in `EpubParser`'s decompiled bytecode |
+| Offline? | Yes — `EpubPositionsService` is `Container<Resource>`-based, never `HttpClient`-based; `EpubReaderFactory`'s always-failing `offlineClient` is never touched |
+| Stable across font/line-height/margins/orientation/screen size? | Yes — the default strategy (`ArchiveEntryLength(1024)`, confirmed in `ReflowableStrategy`'s static initializer) segments by each resource's *archive-stored* (compressed) byte length, a purely structural property of the unchanging EPUB file, entirely independent of rendering |
+| Expensive / blocking? | Reads container/resource metadata once; not free, not free of I/O, but cheap relative to opening the publication itself |
+| Cached by Readium? | Yes — `EpubPositionsService` (and `WebPositionsService`) both memoize in a private field after the first call |
+| Would it block reader startup/dialog opening? | Only if called incorrectly; this implementation calls it in `EpubReaderViewModel`'s own coroutine *after* the session is already open, never during startup |
+| Requires changing the persisted bookmark? | No — never persisted; recomputed from the live `Publication` every session |
+| Deterministic enough to label "Location N"? | Yes, for a fixed local EPUB file (ShelfOS never rewrites source publications) |
+
+**Conclusion: Location N is reliable enough to show**, via a mechanism
+independent of 2B.2's own documented finding that the stored locator does
+not reliably carry `position` at Add time — this slice never reads that
+field at all, resolving instead against the independent position catalog.
+
+### DISPLAY HIERARCHY
+
+`EpubBookmarkPresentation(chapterTitle, location, progress)` +
+`bookmarkDisplayText`/`bookmarkAccessibilityText` (pure, in
+`core.reader.EpubReader.kt`):
+
+| Chapter | Location | Display | Accessible |
+| --- | --- | --- | --- |
+| yes | yes | `Chapter 7\nLocation 184 · 56% through book` | `Chapter 7, Location 184, 56 percent through book` |
+| no | yes | `Location 184 · 56% through book` | `Location 184, 56 percent through book` |
+| yes | no | `Chapter 7\n56% through book` | `Chapter 7, 56 percent through book` |
+| no | no | `56% through book` | `56 percent through book` |
+
+Never "Page N" for a reflowable EPUB. Both parts independently allowed to be
+absent, per `matchChapter`/`resolveEpubLocation`'s own honesty contracts —
+neither is ever fabricated.
+
+### LOCATOR AUTHORITY / BOOKMARK-EQUIVALENCE CONFIRMATION
+
+`sameEpubBookmarkLocation` (the "already bookmarked" check) and
+`LibraryDao.addBookmark`'s exact-locator duplicate guard are byte-for-byte
+unchanged by this slice. `resolveEpubLocation` is a separate, read-only
+function with no write path and no influence on either — confirmed by
+inspection and by `git diff` showing no changes to `RoomLibraryRepository`,
+`LibraryDao`, or `ShelfDatabase`. No fake position is ever persisted:
+`EpubPosition`/`EpubBookmarkPresentation` never enter `Bookmark`,
+`BookmarkEntity`, Room, or `rememberSaveable`/`SavedState`.
+
+### JVM TESTS
+
+| Test class | Result |
+| --- | --- |
+| `EpubBookmarkPresentationTest` (new) | 13/13 passed — `resolveEpubLocation` (unique/no-match/ambiguous-without-progression/closest-progression/tied-distance-determinism using exact binary fractions/enriched-target equivalence), all four `bookmarkDisplayText`/`bookmarkAccessibilityText` format branches, format-consistency, no-"Page"-terminology assertion across all branches |
+
+### INSTRUMENTED TESTS (`shelfos-phase0`, API 35)
+
+| Test class | Result |
+| --- | --- |
+| `EpubBookmarkLocationInstrumentedTest` (new) | 4/4 passed against the real `epubWithChapters` fixture and the real Readium pipeline — see below |
+| `EpubBookmarkTest` | 5/5 passed |
+| `BookmarkPersistenceTest` | 7/7 passed |
+| `EpubChapterHighlightTest` | 3/3 passed |
+| `NavigationSmokeTest` | 26/26 passed |
+| `EpubRecreationTest` | 1/1 passed |
+
+**Real-fixture finding (empirically confirmed, not assumed):** the fixture's
+10 chapters (highly repetitive synthetic text, "Chapter N paragraph M...")
+each compress under 1024 bytes, so `ArchiveEntryLength`'s default yields
+exactly one position per chapter (10 positions total) rather than several —
+first observed as a genuine, initially-surprising test failure (an
+over-eager assertion expecting more than 10 positions), then corrected to
+assert what is actually true, with the finding recorded directly in the
+test's own doc comment. The multi-position-per-resource, closest-progression
+disambiguation path is instead proven via synthetic `EpubPosition` lists in
+`EpubBookmarkPresentationTest`; a real, less-compressible full-length book
+would exercise both paths together. Positions are confirmed global,
+1-based, and contiguous (`positions.map { it.position } ==
+(1..positions.size).toList()`), and a locator enriched with extra fields
+(`title`, `totalProgression`, an unrelated `position` value) resolves to the
+identical Location as the minimal one, against the real fixture — directly
+proving the equivalence `EpubBookmarkPresentationTest`'s pure-logic test
+already established.
+
+**One flake observed and confirmed non-reproducible:** a full-class
+`EpubBookmarkTest` run on the emulator recorded one
+`addListJumpAndDeleteBookmarksAcrossDialogReopens` Espresso idling timeout
+(70s vs. a normal 8–15s); re-run alone immediately after, it passed cleanly
+in 50s. Consistent with the same device-load flakiness pattern already
+documented for 2B.1/2B.2's own validation history, not a regression
+introduced by this slice (this slice touches only bookmark row *label*
+composition, not the add/jump/delete logic that test exercises).
+
+### RP5 (physical Retroid Pocket 5, `d8f7f1b6`, Android 13 / API 33)
+
+Production reader UI changed (the bookmark row's visible text), so RP5 was
+exercised, not skipped. `EpubBookmarkTest` was run against the connected
+device:
+
+- First attempt: all 5 failed with "No compose hierarchies found" — the
+  device's screen was dozing/locked (`mWakefulness=Dozing`, focus on the
+  device's own game launcher), so the test activity never actually gained
+  focus. Diagnosed via `dumpsys power`/`dumpsys window`, not assumed.
+- After waking and unlocking the device (`input keyevent KEYCODE_WAKEUP`,
+  `wm dismiss-keyguard`) and re-running: **4/5 passed** — the full add/
+  list/jump/delete flow, activity recreation, publication reopen, and
+  malformed-locator handling all passed on the real device.
+- `bookmarksDialogIsReachableAndOperableThroughKeyboardFocus` failed at its
+  first `RequestFocus`/`assertIsFocused` step (a 2B.2 R3 test, unrelated to
+  this slice — no input/focus code was touched in 2B.2.1). Plausibly a
+  device/launcher-specific touch-mode quirk on this handheld's customized
+  Android build, differing from the emulator where the same test passes.
+  Not investigated further — out of scope for a presentation-only slice —
+  and flagged here explicitly rather than silently dropped.
+- **Visual legibility confirmed by direct screenshot**, not assumed:
+  `adb exec-out screencap` captured the real device's screen while a test
+  held the Bookmarks dialog open, showing "Chapter 1" / "Location 1 · 0%
+  through book" rendered legibly at the device's real resolution, DPI, and
+  theme. The capture mechanism (a temporary `Thread.sleep` added to one
+  test to hold the dialog open for an external screenshot) was fully
+  reverted before commit — confirmed via `git diff` on
+  `EpubBookmarkTest.kt` showing no residual changes.
+
+ShelfOS was tested on a Retroid Pocket 5. This is real hardware execution
+(the real WebView/GPU/screen, not the emulator) with a directly observed
+visual result — not a claim of manual physical controller button-pressing,
+which was not performed in this pass.
+
+### STATIC / BUILD
+
+| Check | Result |
+| --- | --- |
+| `:app:compileDebugKotlin` | **BUILD SUCCESSFUL** |
+| `:app:compileDebugAndroidTestKotlin` | **BUILD SUCCESSFUL** |
+| Full gate (`:app:compileDebugKotlin :app:compileDebugAndroidTestKotlin :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest --rerun-tasks --offline --console=plain`) | **BUILD SUCCESSFUL**, 86/86 tasks executed |
+| `git diff --check` | Clean |
+| `git status --porcelain -- app/schemas` | Clean — no schema change |
+| `git status --porcelain -- app/build.gradle.kts gradle/libs.versions.toml` | Clean — no dependency change |
+
+### FINAL ACCEPTANCE (2B.2.1) — pending
+
+Implementation complete with the evidence above, including one explicitly
+flagged, out-of-scope, pre-existing device-specific finding
+(RP5 keyboard-focus quirk) rather than a silently-dropped gap. **Not yet
+reviewed by Codex, not merged, not pushed.** 2B.2.2, 2B.3, 2B.4 remain
+untouched and unstarted.
+
 ## Phase 2B.2 bookmark-state blocker remediation (2026-09-27)
 
 The reproducible blocker was investigated on
