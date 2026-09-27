@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos
 
+import android.view.KeyEvent
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
@@ -38,6 +41,8 @@ class EpubBookmarkTest {
         hasContentDescription("Bookmark, ", substring = true) and hasContentDescription(chapterTitle, substring = true) and hasClickAction()
     private fun awaitAddEnabled() = compose.waitUntil(10_000) { compose.onAllNodes(hasText("Add bookmark") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
     private fun bookmarkCount(n: Int) = compose.waitUntil(10_000) { compose.onAllNodes(hasContentDescription("Bookmark, ", substring = true)).fetchSemanticsNodes().size == n }
+    /** Real key injection leaves Android touch mode before requesting focus, matching NavigationSmokeTest's convention. */
+    private fun enterKeyboardMode() { instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_TAB); compose.waitForIdle() }
 
     @Test fun addListJumpAndDeleteBookmarksAcrossDialogReopens() {
         ActivityScenario.launch<EpubActivity>(EpubActivity.intent(context, "test-epub-chapters")).use {
@@ -90,6 +95,58 @@ class EpubBookmarkTest {
 
             // Delete the last remaining bookmark; a normal, non-error empty state appears.
             compose.onNodeWithText("Delete").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("No bookmarks yet.").fetchSemanticsNodes().isNotEmpty() }
+        }
+    }
+
+    /**
+     * R3 remediation: proves the Bookmarks chrome entry and its dialog controls are reachable and operable through
+     * real Compose focus + key-event activation (`RequestFocus` then a real `KeyEvent`), not merely semantic
+     * clicks — following the same explicit-focus-then-key-press convention `NavigationSmokeTest` already uses
+     * (`keyboardFocusCanActivateNavigation`, `dpadMovesBetweenGlobalDestinations`), rather than counting an
+     * arbitrary number of DPAD_RIGHT presses through an unspecified focus order.
+     */
+    @Test fun bookmarksDialogIsReachableAndOperableThroughKeyboardFocus() {
+        ActivityScenario.launch<EpubActivity>(EpubActivity.intent(context, "test-epub-chapters")).use {
+            awaitReader()
+            enterKeyboardMode()
+
+            // The chrome's Bookmarks entry is focusable and opens the dialog via a real key press, not a click.
+            val bookmarksButton = hasText("Bookmarks") and hasClickAction()
+            compose.onNode(bookmarksButton).performSemanticsAction(SemanticsActions.RequestFocus)
+            compose.onNode(bookmarksButton).assertIsFocused().performKeyInput { pressKey(Key.Enter) }
+            compose.onNodeWithText("No bookmarks yet.").assertExists()
+
+            // Add bookmark is focusable and activatable the same way.
+            awaitAddEnabled()
+            val addButton = hasText("Add bookmark") and hasClickAction()
+            compose.onNode(addButton).performSemanticsAction(SemanticsActions.RequestFocus)
+            compose.onNode(addButton).assertIsFocused().performKeyInput { pressKey(Key.Enter) }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Bookmarked").fetchSemanticsNodes().isNotEmpty() }
+            bookmarkCount(1)
+
+            // The bookmark row itself is focusable, and activating it performs the real jump (dialog closes only
+            // on a successful `EpubController.goTo`, not merely because a click handler ran).
+            val row = bookmarkRow("Chapter 1")
+            compose.onNode(row).performSemanticsAction(SemanticsActions.RequestFocus)
+            compose.onNode(row).assertIsFocused().performKeyInput { pressKey(Key.Enter) }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Bookmarks").fetchSemanticsNodes().size == 1 }
+
+            // Reopen, then confirm the dialog can be dismissed by the real hardware Back key without exiting the
+            // reader or otherwise disturbing Phase 2A/ADR-0023 Back semantics: the chrome and reader stay in place.
+            compose.onNodeWithText("Bookmarks").performClick()
+            bookmarkCount(1)
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            compose.waitUntil(5_000) { compose.onAllNodesWithText("Bookmarks").fetchSemanticsNodes().size == 1 }
+            compose.onNodeWithTag("epub_reader").assertExists()
+            compose.onNode(bookmarksButton).assertExists() // Chrome is still visible; the reader was not exited.
+
+            // Delete is reachable and activatable the same way, leaving a normal empty state.
+            compose.onNodeWithText("Bookmarks").performClick()
+            bookmarkCount(1)
+            val deleteButton = hasContentDescription("Delete bookmark, ", substring = true)
+            compose.onNode(deleteButton).performSemanticsAction(SemanticsActions.RequestFocus)
+            compose.onNode(deleteButton).assertIsFocused().performKeyInput { pressKey(Key.Enter) }
             compose.waitUntil(10_000) { compose.onAllNodesWithText("No bookmarks yet.").fetchSemanticsNodes().isNotEmpty() }
         }
     }

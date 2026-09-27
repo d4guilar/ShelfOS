@@ -60,9 +60,11 @@ abstract class LibraryDao {
     @Upsert abstract suspend fun savePreferences(state: ReaderPreferenceEntity)
     @Query("SELECT json FROM reader_preference WHERE itemId = ''") abstract fun globalPreferences(): Flow<String?>
 
-    // Progress ascending, createdAt as a deterministic tie-breaker: a useful default reading order, not a claim
-    // that progress is authoritative — jumping to a bookmark always uses its stored locator, never this ordering.
-    @Query("SELECT * FROM bookmark WHERE itemId = :itemId ORDER BY progress ASC, createdAt ASC")
+    // Progress ascending, createdAt then id as deterministic tie-breakers: a useful default reading order, not a
+    // claim that progress is authoritative — jumping to a bookmark always uses its stored locator, never this
+    // ordering. id is the final tie-breaker so two bookmarks sharing both progress and createdAt still sort
+    // deterministically instead of relying on unspecified SQLite row order.
+    @Query("SELECT * FROM bookmark WHERE itemId = :itemId ORDER BY progress ASC, createdAt ASC, id ASC")
     abstract fun observeBookmarks(itemId: String): Flow<List<BookmarkEntity>>
     @Query("SELECT * FROM bookmark WHERE itemId = :itemId AND locator = :locator LIMIT 1")
     protected abstract suspend fun bookmarkAt(itemId: String, locator: String): BookmarkEntity?

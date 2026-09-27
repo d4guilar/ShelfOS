@@ -1551,6 +1551,30 @@ yes (`shelfos-phase0`). RP5: relevant (a new top-level chrome entry point,
 unlike 2B.1) — **not performed in this pass; no physical RP5 was connected
 to this environment.** Recorded as pending, not fabricated.
 
+**2B.2 R3 remediation (2026-09-26, same branch, commits preserved):** an
+independent Codex review returned PASS WITH NON-BLOCKING FINDINGS and two R3
+findings, both closed here without resetting or dropping `e1ab272`:
+(1) bookmark ordering (`progress ASC, createdAt ASC`) lacked a final
+tie-breaker when both values are identical — `LibraryDao.observeBookmarks`
+now orders `progress ASC, createdAt ASC, id ASC`, covered by a new
+regression test (`bookmarksWithIdenticalProgressAndCreatedAtStillSortDeterministicallyById`)
+that inserts three bookmarks sharing one progress and one createdAt, with
+deterministic (not random-UUID) ids inserted out of id order, and asserts the
+returned order follows the id tie-break; (2) automated tests did not
+previously prove the Bookmarks UI is reachable/operable via keyboard/D-pad
+focus rather than semantic clicks — a new instrumented test
+(`EpubBookmarkTest.bookmarksDialogIsReachableAndOperableThroughKeyboardFocus`)
+now exercises the chrome Bookmarks entry, Add bookmark, a bookmark row's
+jump, Delete, and the real hardware Back key's dialog-dismiss behavior, each
+via explicit `RequestFocus` + a real `KeyEvent` (`Key.Enter`/`KEYCODE_BACK`),
+following `NavigationSmokeTest`'s own established explicit-focus-then-key-
+press convention rather than counting an unspecified number of DPAD_RIGHT
+presses. This closes the automated half of the R3 finding; **physical RP5
+controller acceptance remains pending before merge** — adb-injected key
+events are real key events but are not a substitute for physical hardware
+interaction, and no such interaction was performed in this remediation pass.
+2B.2 remains **IMPLEMENTED, PENDING INDEPENDENT REVIEW**, not accepted.
+
 **2B.3 (search):**
 user-visible: query input, results with snippets, jump to a result.
 persistence: none (search is not persisted; recent searches are explicitly

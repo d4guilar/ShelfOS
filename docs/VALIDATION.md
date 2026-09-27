@@ -1,5 +1,102 @@
 # Validation
 
+## Phase 2B.2 R3 remediation (2026-09-26)
+
+Independent Codex review of 2B.2 (below) returned **PASS WITH NON-BLOCKING
+FINDINGS** — no R1/R2 findings — with two R3 findings: (1) bookmark ordering
+lacked a final deterministic tie-breaker when both `progress` and `createdAt`
+are identical; (2) automated tests did not directly prove D-pad/controller
+focus traversal through the Bookmarks UI, and physical RP5 validation
+remained pending. Both are addressed here, on the same branch
+(`phase-2/epub-bookmarks`), without resetting or dropping `e1ab272`. **2B.2
+remains IMPLEMENTED, PENDING INDEPENDENT REVIEW — not accepted.**
+
+### R3.1 — deterministic ordering
+
+`LibraryDao.observeBookmarks` now orders `progress ASC, createdAt ASC, id
+ASC`. `progress`, `createdAt`, and locator authority are unchanged — this is
+ordering only. New regression test
+`BookmarkPersistenceTest.bookmarksWithIdenticalProgressAndCreatedAtStillSortDeterministicallyById`
+inserts three bookmarks sharing one `progress` and one `createdAt`, with
+explicit deterministic ids (`"a-bookmark"`, `"b-bookmark"`, `"c-bookmark"`)
+inserted directly via the DAO out of id order (not through
+`RoomLibraryRepository.addBookmark`, which always generates a random UUID
+and the current time), and asserts the returned order is exactly `a, b, c`.
+All prior migration/FK/duplicate/isolation/delete tests are preserved
+unchanged.
+
+### R3.2 — keyboard/controller focus evidence
+
+Inspected `NavigationSmokeTest`'s established convention for real input
+testing: explicit `performSemanticsAction(SemanticsActions.RequestFocus)` on
+a specific node followed by a real `performKeyInput { pressKey(...) }` or
+`instrumentation.sendKeyDownUpSync(...)`, rather than counting an arbitrary
+number of directional key presses through an unspecified focus order (which
+would be brittle, per the task's own explicit warning). This pattern
+transfers cleanly to the Bookmarks dialog, so a new instrumented test was
+added rather than declining to add one:
+
+`EpubBookmarkTest.bookmarksDialogIsReachableAndOperableThroughKeyboardFocus`
+verifies, all via explicit focus + a real key event (never a semantic
+click):
+- the chrome's Bookmarks entry is focusable and opens the dialog via `Key.Enter`
+- Add bookmark is focusable and activatable the same way (a real bookmark is created)
+- an existing bookmark row is focusable, and activating it performs the real jump (`EpubController.goTo`) — the dialog only closes on success, not merely because a handler ran
+- reopening the dialog and pressing the real hardware Back key (`KEYCODE_BACK`) dismisses it while leaving the reader chrome and `epub_reader` tag in place — Phase 2A/ADR-0023 Back semantics are undisturbed
+- Delete is focusable and activatable the same way, producing the normal empty state
+
+No new `ShelfCommand` mapping was added or needed. This closes the automated
+half of the R3.2 finding.
+
+### RP5 STATUS (unchanged, factual)
+
+**RP5 physical controller acceptance remains pending before merge.** A
+physical RP5 device was connected to this environment during this
+remediation pass (alongside the emulator), but no physical button-press
+interaction was performed — only `adb`-injected/Compose-injected key events
+on the emulator, which are real key events but are explicitly not a
+substitute for physical hardware interaction, per this task's own
+instruction. No physical validation is claimed.
+
+### FOCUSED TEST RESULTS (`shelfos-phase0`, API 35, freshly restarted emulator)
+
+| Test class | Result |
+| --- | --- |
+| `BookmarkPersistenceTest` | 7/7 passed (6 prior + 1 new ordering tie-break regression test) |
+| `EpubBookmarkTest` | 5/5 passed (4 prior + 1 new keyboard/D-pad focus test), on a clean run |
+| `NavigationSmokeTest` | 26/26 passed |
+| `EpubRecreationTest` | 1/1 passed |
+
+Because production DAO ordering changed but the schema did not, a second
+full `connectedDebugAndroidTest` pass was not required per this task's own
+instruction (all focused tests green) and was not run again in this
+remediation.
+
+**Emulator infrastructure note (recurrence):** the same class of ADB
+transport disconnection documented in the original 2B.2 validation recurred
+once during this remediation pass (`Failed to uninstall package ...: cmd:
+Can't find service: package`), again consistent with the AVD instance
+degrading under sustained load. Resolved with the same procedure as before
+(confirm no stale `emulator`/`qemu` processes, `adb kill-server`/
+`start-server`, fresh `emulator.exe -avd shelfos-phase0 -no-snapshot
+-no-boot-anim` launch, poll `sys.boot_completed`, verify `pm list packages`)
+before re-running; all runs after the restart were clean.
+
+### STATIC / BUILD
+
+| Check | Result |
+| --- | --- |
+| Full gate (`:app:compileDebugKotlin :app:compileDebugAndroidTestKotlin :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest --rerun-tasks --offline --console=plain`) | **BUILD SUCCESSFUL**, 86/86 tasks executed, no failed tasks |
+| `git diff --check` | Clean |
+| `git status --porcelain -- app/schemas` | Clean — no new/changed schema revision; still only the v3 schema added by the original 2B.2 commit |
+
+### FINAL ACCEPTANCE (2B.2 R3 remediation) — pending
+
+Both R3 findings are closed with evidence (ordering fully; keyboard/
+controller focus automated evidence added, with physical RP5 acceptance
+explicitly still pending). **Not yet re-reviewed by Codex, not merged, not
+pushed.** 2B.3 (search) and 2B.4 (custom fonts) remain untouched.
+
 ## Phase 2B.2 validation — durable EPUB bookmarks + Room v2→v3 migration (2026-09-26)
 
 Branch `phase-2/epub-bookmarks`, base `main` at `ac9476d56f332c067aa39dc2b1e5533288103c12`

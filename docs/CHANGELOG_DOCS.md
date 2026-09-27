@@ -1,5 +1,50 @@
 # Documentation Changelog
 
+## Phase 2B.2 R3 remediation (2026-09-26)
+
+- Fixed two R3 findings from an independent Codex review of 2B.2 (below,
+  verdict PASS WITH NON-BLOCKING FINDINGS, no R1/R2 findings), on the same
+  branch (`phase-2/epub-bookmarks`), without resetting or dropping `e1ab272`.
+- (R3.1) `LibraryDao.observeBookmarks`'s ordering gained a final deterministic
+  tie-breaker: `progress ASC, createdAt ASC, id ASC` (previously stopped at
+  `createdAt`). `progress`, `createdAt`, and locator authority are otherwise
+  unchanged — this is ordering only. Added
+  `BookmarkPersistenceTest.bookmarksWithIdenticalProgressAndCreatedAtStillSortDeterministicallyById`,
+  which inserts three bookmarks sharing one progress and one createdAt, with
+  explicit deterministic ids inserted out of id order (bypassing
+  `RoomLibraryRepository.addBookmark`'s random UUID generation), and asserts
+  the returned order matches the id tie-break exactly. All prior migration/
+  FK/duplicate/isolation/delete tests are preserved unchanged.
+- (R3.2) Added `EpubBookmarkTest.bookmarksDialogIsReachableAndOperableThroughKeyboardFocus`,
+  proving the Bookmarks chrome entry and dialog controls are reachable and
+  operable through real Compose focus (`RequestFocus`) plus real key events
+  (`Key.Enter`, `KEYCODE_BACK`) rather than semantic clicks alone — following
+  `NavigationSmokeTest`'s own established explicit-focus-then-key-press
+  convention instead of counting an arbitrary, focus-order-dependent number
+  of DPAD_RIGHT presses. Covers: opening Bookmarks, activating Add bookmark,
+  jumping via a bookmark row, dismissing the dialog with the real hardware
+  Back key without disturbing Phase 2A/ADR-0023 Back semantics, and Delete.
+  No new `ShelfCommand` mapping was added.
+- **RP5 physical controller acceptance remains pending before merge.** A
+  physical RP5 was connected to the environment during this remediation
+  pass, but no physical button-press interaction was performed; only
+  emulator key-event injection was used, which per this task's own
+  instruction is not a substitute for physical validation and is not claimed
+  as one.
+- Validation: `BookmarkPersistenceTest` 7/7, `EpubBookmarkTest` 5/5,
+  `NavigationSmokeTest` 26/26, `EpubRecreationTest` 1/1, all on a freshly
+  restarted `shelfos-phase0` emulator after a recurrence of the same ADB
+  transport-disconnection infrastructure issue seen during the original
+  2B.2 pass (resolved the same way: confirm no stale processes, restart ADB,
+  relaunch the emulator, poll for boot completion). Because DAO ordering
+  changed but the schema did not, a second full connected suite was not
+  required and was not re-run. Full local Gradle gate: BUILD SUCCESSFUL,
+  86/86 tasks. `git diff --check` clean; `git status --porcelain --
+  app/schemas` clean (no new schema revision).
+- Updated `PHASE_2_PLAN.md` and `VALIDATION.md` with the R3 remediation
+  record. 2B.2 remains **IMPLEMENTED, PENDING INDEPENDENT REVIEW** — not
+  accepted, not merged. No 2B.3/2B.4/Notes work was added.
+
 ## Phase 2B.2 — durable EPUB bookmarks + Room v2→v3 migration (2026-09-26)
 
 - Implemented Phase 2B.2 on new branch `phase-2/epub-bookmarks`, based on

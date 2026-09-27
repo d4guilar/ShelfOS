@@ -3,6 +3,7 @@ package com.d4guilar.shelfos
 
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
+import com.d4guilar.shelfos.core.database.BookmarkEntity
 import com.d4guilar.shelfos.core.database.ShelfDatabase
 import com.d4guilar.shelfos.data.library.RoomLibraryRepository
 import kotlinx.coroutines.flow.first
@@ -98,6 +99,25 @@ class BookmarkPersistenceTest {
             repository.addBookmark(item.id, """{"href":"c2.xhtml"}""", 50)
             val ordered = repository.bookmarks(item.id).first()
             assertEquals(listOf(10, 50, 80), ordered.map { it.progress })
+        } finally { db.close() }
+    }
+
+    /** When progress and createdAt are both identical (e.g. two bookmarks added in the same millisecond), id is the
+     * final deterministic tie-breaker rather than unspecified SQLite row order. Uses explicit deterministic ids and
+     * an explicit shared createdAt inserted directly through the DAO — not [RoomLibraryRepository.addBookmark],
+     * which always generates a random UUID and the current time — so the expected order is explicit, not incidental. */
+    @Test fun bookmarksWithIdenticalProgressAndCreatedAtStillSortDeterministicallyById() = runBlocking<Unit> {
+        val db = Room.inMemoryDatabaseBuilder(context, ShelfDatabase::class.java).build()
+        try {
+            val dao = db.library()
+            val item = OriginalFixtures.pdf(context)
+            RoomLibraryRepository(dao).add(item)
+            // Inserted out of id order; every row shares the same progress and createdAt.
+            dao.addBookmark(BookmarkEntity("c-bookmark", item.id, """{"href":"c3.xhtml"}""", 50, null, 1_000L))
+            dao.addBookmark(BookmarkEntity("a-bookmark", item.id, """{"href":"c1.xhtml"}""", 50, null, 1_000L))
+            dao.addBookmark(BookmarkEntity("b-bookmark", item.id, """{"href":"c2.xhtml"}""", 50, null, 1_000L))
+            val ordered = dao.observeBookmarks(item.id).first()
+            assertEquals(listOf("a-bookmark", "b-bookmark", "c-bookmark"), ordered.map { it.id })
         } finally { db.close() }
     }
 
