@@ -1,6 +1,138 @@
 # Validation
 
+## Phase 2B.2.2 R3 remediation (2026-09-28)
+
+Independent Codex review of `e1c92f0` (2B.2.2's original implementation,
+recorded below) returned **CHANGES REQUIRED**. **No R1 findings. No R2
+findings — the production implementation was found correct** (bookmark
+identity/equivalence, `sameEpubBookmarkLocation` authority, deletion via the
+matched persisted `Bookmark`, Add→Remove→Add behavior, Room `Flow`
+authority, Readium-locator navigation, Location N staying presentation-only,
+no input-binding change, accessibility semantics). Three R3 findings, all
+closed here on the same branch (`phase-2/epub-reading-flow`), without
+resetting or dropping `e1c92f0`, and — per the review's own instruction —
+without touching any production file. **2B.2.2 remains IMPLEMENTED, R3
+CLOSED, PENDING INDEPENDENT RE-REVIEW — not accepted, not merged.**
+
+### R3 #1 — RAPID-ACTIVATION COVERAGE WAS CLAIMED BUT NOT TESTED
+
+The original `addBookmarkControlTogglesToRemoveOnceBookmarkedAndBackAgain`
+labeled a fully-settled click→wait→click sequence a "rapid repeat tap." Two
+remediation attempts were tried, in order, with the first two's failures
+kept as evidence rather than discarded:
+
+1. **Two `performClick()` calls fired back to back, no wait between them —
+   failed empirically.** Compose's `performClick()` resyncs to Compose-idle
+   before dispatching a touch; on this real device that resync reliably
+   outlasts the Add action's Room-write-and-recompose round trip, so the
+   second call's "Add bookmark" matcher throws
+   `AssertionError: could not find any node that satisfies: ...`. Confirmed
+   by an actual failing run, not assumed.
+2. **Suspending `compose.mainClock.autoAdvance` around the two clicks —
+   avoided that error but corrupted shared state.** The two clicks
+   succeeded, but re-enabling `autoAdvance` left Compose's shared idling-
+   resource registry in a bad state badly enough to break a *different*,
+   previously-passing test in the same run:
+   `addListJumpAndDeleteBookmarksAcrossDialogReopens` failed with
+   `androidx.compose.ui.test.junit4.android.ComposeNotIdleException: Idling
+   resource timed out: possibly due to compose being busy`. Confirmed by an
+   actual failing run; confirmed fixed by removing the clock manipulation
+   entirely and re-running the full `EpubBookmarkTest` class clean, twice in
+   a row, for stability (9/9 both times).
+3. **Concurrent repository-level activation — the mechanism actually used.**
+   Per this task's own instruction that direct-repository simulation is
+   acceptable "unless the UI test framework makes the real action
+   impossible" (now demonstrated, not assumed), the new
+   `concurrentAddBookmarkActivationsForTheSameLocationPersistOnlyOneBookmark`
+   test performs one real, settled Add via the UI to capture the actual
+   live locator (not a fabricated one), removes it via the UI, then fires
+   two genuinely concurrent `addBookmark` calls (`kotlinx.coroutines.async`
+   + `awaitAll`, both started before either completes) for that exact real
+   locator, and asserts exactly one bookmark persists — a strictly stronger
+   concurrency proof than the existing sequential-call coverage in
+   `BookmarkPersistenceTest.addingTheSameLocatorTwiceDoesNotCreateADuplicateRow`.
+
+### R3 #2 — MISSING PERSISTENCE/STATE-TRANSITION REGRESSION COVERAGE
+
+Two new tests added:
+
+- **`removingTheCurrentBookmarkPersistsThroughPublicationReopen`** (§3 of
+  the review): add → confirm "Remove bookmark" → remove → confirm "Add
+  bookmark" → close the publication → reopen it → confirm the empty state
+  and "Add bookmark" persisted (not merely transient Compose state) →
+  confirm directly against `container.library.bookmarks(...)` that no
+  matching bookmark remains.
+- **`returningToAPreviouslyBookmarkedLocationShowsRemoveBookmarkAgain`**
+  (§4 of the review): bookmark location A (Chapter 1) → navigate to a
+  distinct location B (Chapter 5, confirmed "Add" there, not "Remove") →
+  return to A via the existing, already-proven bookmark-jump mechanism (not
+  chapter title or Location N, which are presentation only) → confirm
+  "Remove bookmark" is shown again, proving the control recomputes from the
+  live locator rather than retaining stale UI state.
+
+### R3 #3 — STALE STATUS WORDING
+
+Corrected in this file (new section above the superseded one below),
+`PHASE_2_PLAN.md` (top status block, §2 goal section, and the 2B.2.2
+section header — no longer described as only "discovery/implementation-
+planning" now that implementation exists and has been reviewed), and
+`ROADMAP.md`. Historical passages describing the earlier planning-only
+stage are left as accurate dated snapshots, not rewritten. Current truthful
+status: 2B.2.1 accepted/merged via PR #10 (`af5410c`); 2B.2.2 implementation
+complete, initial review CHANGES REQUIRED with no R1/R2 findings, R3
+remediation complete on this branch, not accepted, not merged, pending
+independent re-review and owner acceptance; 2B.3/2B.4 not started.
+
+### TEST NAMES KEPT HONEST
+
+The original toggle test's "rapid repeat tap" comment was corrected to
+describe what it actually demonstrates (a settled re-add after a settled
+remove); the genuine concurrency claim now lives only in the new, accurately
+named `concurrentAddBookmarkActivationsForTheSameLocationPersistOnlyOneBookmark`.
+
+### FOCUSED TEST RESULTS (`shelfos-phase0`, API 35)
+
+| Test class | Result |
+| --- | --- |
+| `EpubBookmarkTest` | 9/9 passed (up from 6) — run twice in a row for stability after the clock-corruption incident was fixed; both runs clean |
+| `EpubRecreationTest` | 1/1 passed |
+| `NavigationSmokeTest` | 26/26 passed |
+
+A full `connectedDebugAndroidTest` rerun was **not performed** — optional
+per this remediation's own instruction since production code remained
+untouched and the focused instrumented coverage above passed cleanly.
+
+### STATIC / BUILD
+
+| Check | Result |
+| --- | --- |
+| Full gate (`:app:compileDebugKotlin :app:compileDebugAndroidTestKotlin :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest --rerun-tasks --offline --console=plain`) | **BUILD SUCCESSFUL**, 86/86 tasks |
+| `git diff --check` | Clean |
+| `git status --porcelain -- app/schemas` | Clean — no schema change |
+
+### RP5
+
+**No RP5 re-certification performed because remediation changed only
+tests/docs.** `EpubActivity.kt` and every other production file are
+byte-for-byte unchanged from `e1c92f0`, which was already RP5-certified.
+
+### PRODUCTION-CODE STATUS
+
+**Unchanged.** `git status --porcelain` shows exactly one file modified:
+`app/src/androidTest/java/com/d4guilar/shelfos/EpubBookmarkTest.kt`. No
+production source file, schema, or dependency changed.
+
+### FINAL ACCEPTANCE (2B.2.2 R3 remediation) — pending
+
+All three R3 findings closed with evidence, including two genuine test-
+mechanism failures kept as part of the record rather than hidden. **Not yet
+re-reviewed by Codex, not merged, not pushed.** 2B.3, 2B.4 remain untouched
+and unstarted.
+
 ## Phase 2B.2.2 validation — EPUB reading flow, bookmark toggle (2026-09-28)
+
+**Superseded by the "Phase 2B.2.2 R3 remediation" section above, which is
+the current status.** Kept as the original evidence trail.
 
 Branch `phase-2/epub-reading-flow`, base `main` at
 `af5410cfe3219f566d00b17fa5604f52d7a9c228` (2B.2.1 accepted/merged via PR

@@ -30,12 +30,16 @@ before merge: the first implementation (`f43e70d`) returned CHANGES REQUIRED
 findings); the remediation (`7f8eef9`) returned PASS WITH NON-BLOCKING
 FINDINGS with one remaining R3 (a catalog-conversion defensiveness gap),
 closed in a third round before merge. All three rounds are recorded under
-§3's 2B plan below. **2B.2.2 (reading flow)** is now in
-discovery/implementation-planning (`phase-2/epub-reading-flow`, base
-`af5410c`) — see its section under §3 for the concrete scope this pass
-defined. 2B.3, 2B.4 remain planned only; none of their work has started.
-2C/2D remain planned only; none of their work has started. See
-`VALIDATION.md`'s "Phase 2A.1"/"Phase 2B.1"/"Phase 2B.2"/"Phase 2B.2.1"
+§3's 2B plan below. **2B.2.2 (reading flow) implementation is complete**
+(`phase-2/epub-reading-flow`, base `af5410c`) — the current-position
+bookmark control is a real Add/Remove toggle. An independent Codex review
+returned **CHANGES REQUIRED** with **no R1/R2 findings** (production
+behavior was found correct) and three R3 findings (test-coverage honesty
+and stale status wording); the R3 remediation is recorded under §3's 2B
+plan below. **2B.2.2 is NOT accepted, NOT merged — pending independent
+re-review and owner acceptance.** 2B.3, 2B.4 remain not started. 2C/2D
+remain planned only; none of their work has started. See `VALIDATION.md`'s
+"Phase 2A.1"/"Phase 2B.1"/"Phase 2B.2"/"Phase 2B.2.1"/"Phase 2B.2.2"
 sections for evidence and explicitly-unclaimed items. This document is the
 canonical Phase 2 planning location referenced by
 [`ROADMAP.md`](ROADMAP.md#phase-2--reading).
@@ -73,9 +77,10 @@ each independently mergeable and gated by its own acceptance criteria. 2A and
 slices (2B.1–2B.4, see below) after a discovery/implementation-planning
 pass. 2B.1, 2B.2, and 2B.2.1 are all accepted and merged (2B.2 via PR #9
 after independent review and RP5 physical acceptance; 2B.2.1 via PR #10
-after three independent-review rounds); 2B.2.2 (reading flow) is in
-discovery/implementation-planning; 2B.3/2B.4 remain planned only. 2C/2D
-remain planned only; none of their work has started.
+after three independent-review rounds); 2B.2.2 (reading flow) implementation
+is complete and in R3 remediation after an independent review (CHANGES
+REQUIRED, no R1/R2 findings) — not yet accepted or merged; 2B.3/2B.4 remain
+not started. 2C/2D remain planned only; none of their work has started.
 
 ## 3. Increments
 
@@ -1891,8 +1896,9 @@ subsequently **accepted and merged to `main` via PR #10** at commit
 `af5410cfe3219f566d00b17fa5604f52d7a9c228`. See the top status block for the
 current, authoritative statement of this.
 
-**2B.2.2 (reading flow) — discovery + implementation-planning pass
-(2026-09-28, `phase-2/epub-reading-flow`, base `main` at
+**2B.2.2 (reading flow) — discovery + implementation record, superseded by
+the R3 remediation below for current status (2026-09-28,
+`phase-2/epub-reading-flow`, base `main` at
 `af5410cfe3219f566d00b17fa5604f52d7a9c228`):**
 
 Before this pass, "2B.2.2 — Reading Flow" existed only as a placeholder name
@@ -2135,6 +2141,88 @@ implementation on `phase-2/epub-reading-flow` rather than stopping for an
 owner decision. The deferred items above are the ones that *would* need an
 owner decision, and are explicitly left for a future slice rather than
 guessed at here.
+
+**2B.2.2 R3 remediation (2026-09-28, same branch, `e1c92f0` preserved) —
+IMPLEMENTED / R3 CLOSED / PENDING INDEPENDENT RE-REVIEW:** an independent
+Codex review of `e1c92f0` returned **CHANGES REQUIRED**. **No R1 findings.
+No R2 findings — the production implementation itself was found correct**
+(bookmark identity/equivalence, `sameEpubBookmarkLocation` authority,
+deletion using the matched persisted `Bookmark`, the Add→Remove→Add cycle,
+Room `Flow` authority, Readium-locator-based navigation, Location N staying
+presentation-only, no input-binding change, accessibility semantics — all
+confirmed correct). Three R3 findings, all closed here without resetting or
+dropping `e1c92f0`, and — per the review's own instruction — **without
+touching `EpubActivity.kt` or any other production file**, since no test
+exposed a real production defect:
+
+1. **Rapid-activation coverage was claimed but not actually tested.** The
+   original `addBookmarkControlTogglesToRemoveOnceBookmarkedAndBackAgain`
+   commented a settled click-wait-click sequence as a "rapid repeat tap,"
+   which it was not. Two remediation attempts were made, in order, before
+   landing on the one that actually works:
+   - Two real `performClick()` calls fired back to back with no wait
+     between them: **empirically failed** — Compose's own `performClick()`
+     resyncs to idle before dispatching, and on this real device that
+     resync reliably outlasts the Room-write-and-recompose round trip, so
+     the second call's "Add bookmark" matcher throws
+     `AssertionError: could not find any node` (confirmed by an actual
+     failing test run, not assumed).
+   - Suspending the Compose test clock's `mainClock.autoAdvance` around the
+     two clicks avoided that specific error, but **corrupted shared Compose
+     idling-resource state badly enough to break an unrelated, already-
+     passing test in the same run**
+     (`addListJumpAndDeleteBookmarksAcrossDialogReopens` failed with
+     `ComposeNotIdleException: Idling resource timed out`) — confirmed by
+     an actual run, then confirmed fixed by removing the clock manipulation
+     and re-running the full class clean (twice, for stability).
+   - Per this task's own instruction that direct-repository simulation is
+     acceptable "unless the UI test framework makes the real action
+     impossible" — now proven, not assumed — the new
+     `concurrentAddBookmarkActivationsForTheSameLocationPersistOnlyOneBookmark`
+     test performs a real, settled Add via the UI to capture the actual
+     live locator, removes it via the UI, then fires two genuinely
+     concurrent `addBookmark` calls (`async`/`awaitAll`, started before
+     either completes) for that exact real locator, and asserts exactly one
+     bookmark persists. This is a strictly stronger concurrency proof than
+     the existing sequential-call coverage in
+     `BookmarkPersistenceTest.addingTheSameLocatorTwiceDoesNotCreateADuplicateRow`.
+2. **Missing persistence/state-transition regression coverage**, closed
+   with two new tests:
+   - `removingTheCurrentBookmarkPersistsThroughPublicationReopen`: add,
+     confirm "Remove bookmark", remove, confirm "Add bookmark", close the
+     publication, reopen it, confirm the empty state and "Add bookmark"
+     persisted (not merely transient Compose state), and confirm directly
+     against the repository that no matching bookmark remains.
+   - `returningToAPreviouslyBookmarkedLocationShowsRemoveBookmarkAgain`:
+     bookmark location A (Chapter 1), navigate to a distinct location B
+     (Chapter 5, confirmed "Add" there), return to A via the existing,
+     already-proven bookmark-jump mechanism (not chapter title or Location
+     N, which are presentation only), and confirm "Remove bookmark" is
+     shown again — proving the control recomputes from the live locator
+     rather than retaining stale UI state.
+3. **Stale status wording**, fixed in this document's top status block and
+   §2 goal section (this pass no longer described as only "discovery/
+   implementation-planning" now that implementation exists), and in
+   `ROADMAP.md`/`VALIDATION.md` (see those files and `CHANGELOG_DOCS.md`
+   for the exact corrections). Historical passages describing the earlier
+   planning-only stage are left as accurate dated snapshots, not rewritten.
+
+**Test names kept honest**: the original toggle test's misleading "rapid
+repeat tap" comment was corrected to describe what it actually
+demonstrates (a settled re-add after a settled remove), with an explicit
+pointer to the new dedicated concurrency test for the actual race claim.
+
+**Validation**: `EpubBookmarkTest` 9/9 (up from 6; passed twice in a row for
+stability, including after the clock-corruption incident was fixed),
+`EpubRecreationTest` 1/1, `NavigationSmokeTest` 26/26, full local Gradle
+gate BUILD SUCCESSFUL. `git diff --check` clean; no schema/dependency
+change; the only substantive file changed is
+`EpubBookmarkTest.kt` — no production source file was touched. A full
+connected-suite rerun and RP5 re-certification were not performed, per this
+remediation's own instruction, since production code remained untouched.
+
+**2B.2.2 is NOT accepted, NOT merged** — pending independent re-review and
+owner acceptance. No 2B.3/2B.4 work was added.
 
 **2B.3 (search):**
 user-visible: query input, results with snippets, jump to a result.

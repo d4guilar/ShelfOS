@@ -216,7 +216,8 @@ and merged via PR #5; 2B EPUB everyday-reading improvements sequenced as four
 internal slices 2B.1–2B.4 — 2B.1 chapter-navigation polish accepted and merged
 via PR #8, 2B.2 durable bookmarks accepted and merged via PR #9, 2B.2.1
 bookmark-location polish accepted and merged via PR #10, 2B.2.2 reading flow
-in discovery/implementation-planning, 2B.3–2B.4 not started; 2C–2D planned,
+implemented and in R3 remediation after independent review (not yet
+accepted or merged), 2B.3–2B.4 not started; 2C–2D planned,
 not started) and acceptance criteria. The
 original inventory below is retained for coverage; items already accepted in
 Phase 1 are marked accordingly.
