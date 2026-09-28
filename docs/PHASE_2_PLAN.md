@@ -21,23 +21,28 @@ Room v2 → v3 migration) is accepted and merged to `main` via PR #9** at
 commit `b1ad0290fa6a4e7b5148a9cd068a4913ac616704`, after an independent
 Codex review (PASS WITH NON-BLOCKING FINDINGS) and an R3 remediation
 (deterministic bookmark ordering, keyboard/D-pad focus evidence) folded in
-before merge. **2B.2.1 (bookmark location polish) is IMPLEMENTED /
-REMEDIATED — all independent review findings closed, status pending final
-sign-off** as of this pass (`phase-2/bookmark-location-polish`, base
-`b1ad029...`) — a small, presentation-only follow-up that does not reopen
-2B.2's persistence/migration architecture. An independent Codex review of
-the first implementation (`f43e70d`) returned CHANGES REQUIRED (a location-
-resolution defect and dispatcher/cancellation/documentation findings); a
-second review of the remediation (`7f8eef9`) returned PASS WITH
-NON-BLOCKING FINDINGS with one remaining R3 (a catalog-conversion
-defensiveness gap), closed in a third round. All three rounds are recorded
-under §3's 2B plan below. Do not treat 2B.2.1 as accepted until the user's
-own final sign-off. 2B.2.2 (reading flow), 2B.3, 2B.4
-remain planned only; none of their work has started. 2C/2D remain planned only;
-none of their work has started. See `VALIDATION.md`'s "Phase 2A.1"/
-"Phase 2B.1"/"Phase 2B.2"/"Phase 2B.2.1" sections for evidence and
-explicitly-unclaimed items. This document is the canonical Phase 2 planning
-location referenced by [`ROADMAP.md`](ROADMAP.md#phase-2--reading).
+before merge. **2B.2.1 (bookmark location polish) is accepted and merged to
+`main` via PR #10** at commit `af5410cfe3219f566d00b17fa5604f52d7a9c228` — a
+small, presentation-only follow-up that did not reopen 2B.2's persistence/
+migration architecture. It went through three independent-review rounds
+before merge: the first implementation (`f43e70d`) returned CHANGES REQUIRED
+(a location-resolution defect and dispatcher/cancellation/documentation
+findings); the remediation (`7f8eef9`) returned PASS WITH NON-BLOCKING
+FINDINGS with one remaining R3 (a catalog-conversion defensiveness gap),
+closed in a third round before merge. All three rounds are recorded under
+§3's 2B plan below. **2B.2.2 (reading flow) implementation is complete**
+(`phase-2/epub-reading-flow`, base `af5410c`) — the current-position
+bookmark control is a real Add/Remove toggle. An independent Codex review
+returned **CHANGES REQUIRED** with **no R1/R2 findings** (production
+behavior was found correct) and three R3 findings (test-coverage honesty
+and stale status wording); the R3 remediation is recorded under §3's 2B
+plan below. **2B.2.2 is NOT accepted, NOT merged — pending independent
+re-review and owner acceptance.** 2B.3, 2B.4 remain not started. 2C/2D
+remain planned only; none of their work has started. See `VALIDATION.md`'s
+"Phase 2A.1"/"Phase 2B.1"/"Phase 2B.2"/"Phase 2B.2.1"/"Phase 2B.2.2"
+sections for evidence and explicitly-unclaimed items. This document is the
+canonical Phase 2 planning location referenced by
+[`ROADMAP.md`](ROADMAP.md#phase-2--reading).
 
 ## 1. Reconciling Phase 1 acceptance with the roadmap
 
@@ -70,12 +75,12 @@ each independently mergeable and gated by its own acceptance criteria. 2A and
 2A.1 are both accepted and merged (see their sections below and
 `VALIDATION.md` for the full history). 2B is broken into four internal
 slices (2B.1–2B.4, see below) after a discovery/implementation-planning
-pass. 2B.1 and 2B.2 are both accepted and merged (2B.2 via PR #9, after
-independent review and RP5 physical acceptance); 2B.2.1 (bookmark location
-polish, a small presentation-only follow-up) is implemented, remediated
-after a CHANGES REQUIRED review, and pending final independent review;
-2B.2.2/2B.3/2B.4 remain planned only. 2C/2D remain planned only; none of
-their work has started.
+pass. 2B.1, 2B.2, and 2B.2.1 are all accepted and merged (2B.2 via PR #9
+after independent review and RP5 physical acceptance; 2B.2.1 via PR #10
+after three independent-review rounds); 2B.2.2 (reading flow) implementation
+is complete and in R3 remediation after an independent review (CHANGES
+REQUIRED, no R1/R2 findings) — not yet accepted or merged; 2B.3/2B.4 remain
+not started. 2C/2D remain planned only; none of their work has started.
 
 ## 3. Increments
 
@@ -1885,6 +1890,339 @@ unchanged. 6 new focused JVM tests added (31/31 total in
 `EpubBookmarkTest` 5/5, full Gradle gate BUILD SUCCESSFUL — see
 `VALIDATION.md`'s "Phase 2B.2.1 final R3 closure" for detail. No schema/
 dependency change; no bookmark persistence/navigation/equivalence touched.
+
+**2B.2.1 merged.** This closed the final open finding; 2B.2.1 was
+subsequently **accepted and merged to `main` via PR #10** at commit
+`af5410cfe3219f566d00b17fa5604f52d7a9c228`. See the top status block for the
+current, authoritative statement of this.
+
+**2B.2.2 (reading flow) — discovery + implementation record, superseded by
+the R3 remediation below for current status (2026-09-28,
+`phase-2/epub-reading-flow`, base `main` at
+`af5410cfe3219f566d00b17fa5604f52d7a9c228`):**
+
+Before this pass, "2B.2.2 — Reading Flow" existed only as a placeholder name
+in this plan and in `ROADMAP.md`, with no scope definition anywhere in the
+docs tree (confirmed by a full search of `PHASE_2_PLAN.md`, `ROADMAP.md`,
+`VALIDATION.md`, `docs/features/READER.md`, `docs/design/READER_UX.md`,
+`docs/design/INPUT_SYSTEM.md`, and every ADR through 0023 — no ADR exists
+numbered higher than 0023). This section turns it into a concrete, bounded,
+independently mergeable slice.
+
+*Current end-user reading/bookmark flow, traced through the real call paths
+(`EpubActivity.kt`, `EpubReaderViewModel.kt`, `EpubReader.kt`,
+`EpubSurface.kt`), not inferred from filenames:*
+
+- **Opening an EPUB**: `EpubActivity.onCreate` reads the item id, creates
+  `EpubReaderViewModel`, which opens the session asynchronously;
+  `CircularProgressIndicator` shows until `state.session` is set, or a
+  readable error with a "Back to Library" action on failure.
+- **Hiding/revealing chrome**: a center tap (`EpubSurface`'s `InputListener`)
+  or `ShelfCommand.OPEN_MENU` toggles `controls`; `BackHandler`/raw Back
+  reveal hidden chrome before ever exiting (ADR-0023) — confirmed unaffected
+  by this pass's own investigation (see below).
+- **Turning pages**: edge taps are handled entirely inside Readium's own
+  navigator (`DirectionalNavigationAdapter`) and never reach ShelfOS's
+  command layer; the Previous/Next `TextButton`s and
+  `ShelfCommand.NEXT_PAGE`/`PREVIOUS_PAGE` call `EpubController.next()`/
+  `previous()` on the one navigator this reader owns.
+- **Opening Chapters / jumping chapters**: the "Chapters" chrome button
+  opens an `AlertDialog` listing `session.chapters`; tapping a row calls
+  `controller.chapter(session, chapter.href)` and closes the dialog in the
+  same lambda.
+- **Adding a bookmark**: only reachable by first opening the "Bookmarks"
+  dialog, then tapping "Add bookmark" inside it — there is no bookmark
+  affordance anywhere in the main chrome row itself.
+- **Recognizing the current position is already bookmarked**: only visible
+  *after* opening the Bookmarks dialog, where the Add control is disabled
+  and reads "Bookmarked" (`currentlyBookmarked`, via
+  `sameEpubBookmarkLocation`). There is no indication of this while actually
+  reading, before opening the dialog.
+- **Opening Bookmarks / understanding location labels / jumping / deleting**:
+  the "Bookmarks" chrome button opens the management dialog; each row's
+  label comes from `presentBookmark`/`bookmarkDisplayText` (2B.2.1); tapping
+  a row calls `controller.goTo(bookmark.locator)` and closes the dialog only
+  on success (an inline error appears and the dialog stays open on
+  failure); a separate per-row "Delete" button calls
+  `vm.deleteBookmark(bookmark.id)`.
+- **Returning to reading**: "Close" on either dialog, or a successful
+  chapter/bookmark jump, which closes the dialog in the same action.
+- **Closing/reopening the publication, continuing from saved position**:
+  "Library" finishes the activity; resume locator/progress persist via Room
+  (`LibraryItem.locator`/`progress`), independent of bookmarks, and are
+  re-applied through `EpubSession.fragmentFactory`'s `initialLocator` on
+  next open.
+
+*Empirical investigation performed this pass (not guessed):*
+
+- **Keyboard/D-pad focus after dismissing a dialog**: tested directly
+  (temporary instrumented probe, reverted before commit): focused
+  "Bookmarks" via `RequestFocus`, opened it with `Key.Enter`, dismissed it
+  with the real hardware Back key, and confirmed the "Bookmarks" chrome
+  button regains focus afterward. **No defect found** — Android's own
+  window-focus-return behavior already handles this correctly for a dialog
+  (unlike the OPEN_MENU/reveal-chrome case, where the chrome Row actually
+  leaves and re-enters composition, which is why `controlFocusRequests`/
+  `firstControl.requestFocus()` exists as a deliberate fix for that
+  *different* case). This is a real "friction candidate" that this pass
+  investigated and *ruled out* rather than left unchecked.
+- **Reader chrome width, portrait phone vs. RP5**: captured real screenshots
+  on both a standard 1080×1920 portrait emulator and the connected Retroid
+  Pocket 5 (landscape, much wider). On the portrait phone, the four existing
+  chrome buttons (Library, Chapters, Bookmarks, Appearance) already span
+  nearly edge-to-edge with almost no breathing room — **a fifth standalone
+  text button does not safely fit** without wrapping/crowding. RP5's
+  landscape width, by contrast, has ample room; it is not the binding
+  constraint here — the portrait phone is. This directly rules out "add a
+  new always-visible quick-bookmark chrome button" as a REQUIRED-scope
+  design without a visual-redesign decision (see deferred items below).
+- **`ShelfCommand.TOGGLE_BOOKMARK`**: confirmed in `core/input/ShelfCommand.kt`
+  — `InputMapper.command()` already maps the physical keyboard key
+  `InputKey.B` (reader context) to `ShelfCommand.TOGGLE_BOOKMARK`. Confirmed
+  in `EpubActivity.kt`'s `readerKeys` that this command is never consumed
+  (`when` only handles `NEXT_PAGE`/`PREVIOUS_PAGE`/`OPEN_MENU`/`BACK`; every
+  other command, including `TOGGLE_BOOKMARK`, falls to `else -> false`).
+  `docs/design/INPUT_SYSTEM.md` lists `TOGGLE_BOOKMARK` in its conceptual
+  command set (§2) and a *suggested* (not committed) keyboard default
+  `B → Toggle bookmark` (§3), explicitly caveated "Shortcuts may be refined
+  after usability testing" (§3) — it is conspicuously absent from that same
+  doc's "implemented and active" list at the top. 2B.2.1 explicitly recorded
+  declining to wire it. **This pass also declines to wire it** — see the
+  input-constraint discussion below.
+- **Recreation/process-death, scroll-mode, RTL**: no new gap found beyond
+  what `EpubRecreationTest`, `EpubBookmarkTest`'s recreation/reopen cases,
+  and existing scroll/RTL coverage in `NavigationSmokeTest` already exercise;
+  this pass's own new work reuses those exact same code paths (the
+  bookmark repository, the live locator, the navigator) rather than
+  introducing new ones, so no new recreation/scroll/RTL risk is introduced.
+
+*The concrete friction point this pass identified and will fix:*
+
+Once a bookmark exists at the reader's current position, the Add control
+becomes permanently disabled ("Bookmarked") — a dead end with no next
+action. To remove *that* bookmark, the user must instead open the
+management list, visually find the row matching where they currently are
+(non-trivial once several bookmarks exist), and tap that row's Delete — an
+indirect path for undoing the single most recent, most contextually obvious
+action (un-bookmarking *here*).
+
+**Proposed behavior (REQUIRED):** turn the existing Add control into a real
+two-way toggle. Not bookmarked: "Add bookmark" (unchanged). Already
+bookmarked: **"Remove bookmark"** (enabled, not disabled), which deletes
+that specific bookmark via the already-computed match (extending the
+existing `sameEpubBookmarkLocation` lookup to also capture *which* bookmark
+matched, not only whether one did) and calls the existing
+`vm.deleteBookmark(id)` — no new repository method, no new persistence
+concept, no new UI surface.
+
+1. **Exact user problem**: removing a bookmark at the reader's current
+   position requires locating it in a list, when the reader already knows
+   exactly which one it is.
+2. **Current behavior**: Add control disables itself and reads "Bookmarked"
+   once the current position has a bookmark; removal requires the row list.
+3. **Proposed behavior**: the same control becomes "Remove bookmark"
+   (enabled) once bookmarked, deleting that exact bookmark on tap; "Add
+   bookmark" behavior for the not-yet-bookmarked case is unchanged.
+4. **Files likely affected**: `EpubActivity.kt` (the control's `onClick`/
+   label/`enabled`/`contentDescription`, and computing which bookmark
+   currently matches, not just whether one does), `EpubReaderViewModel.kt`
+   (none — reuses `deleteBookmark` as-is), possibly a small extraction in
+   `EpubReader.kt` if the "find the matching bookmark" logic is worth a
+   named, testable function rather than inline in Compose.
+5. **Data/persistence impact**: none — no schema change, no new Room
+   migration, no change to `Bookmark`/`BookmarkEntity`, no change to
+   ordering or the DAO's duplicate guard.
+6. **Readium impact**: none — no new navigator, no new locator collector;
+   still uses the one live `currentLocatorJson` already collected in
+   `EpubActivity`.
+7. **Input impact**: none — the control remains an ordinary focusable
+   `TextButton`, reachable by touch, keyboard Tab+Enter, and D-pad
+   RequestFocus+DirectionCenter exactly like every existing chrome control.
+   No new `ShelfCommand`, no physical key binding.
+8. **Accessibility behavior**: the control's `contentDescription` updates to
+   state which action is currently available ("Add bookmark at current
+   position" / "Remove bookmark at current position" / "Add bookmark, not
+   yet available"), matching the existing three-state pattern, not two.
+9. **Compact/RP5 behavior**: no layout change — same control, same
+   position, same width class; the portrait-phone crowding finding above is
+   why this design deliberately does *not* add a new button.
+10. **Expanded/tablet behavior**: unaffected — same dialog layout as today.
+11. **Scroll-mode behavior**: unaffected — the live locator/progress this
+    reuses is the same one continuous-scroll already reports correctly.
+12. **Pagination-mode behavior**: unaffected, same reasoning.
+13. **RTL considerations**: none — this control's position/behavior does not
+    depend on reading direction (unlike Previous/Next).
+14. **Recreation/process-death expectations**: unaffected — bookmarks remain
+    Room-backed; the toggle recomputes its state from `state.bookmarks` +
+    `currentLocatorJson` exactly like `currentlyBookmarked` already does
+    today, which is already proven to survive recreation.
+15. **Source-preservation statement**: unaffected — no publication bytes are
+    read, written, or touched by this change.
+16. **Offline statement**: unaffected — no network dependency anywhere in
+    this path, unchanged from today.
+17. **Explicit out-of-scope list**: 2B.2.2's REQUIRED scope does **not**
+    include: an always-visible ambient "this page is bookmarked" indicator
+    outside the Bookmarks dialog; a single-tap toggle reachable without
+    opening any dialog; wiring `ShelfCommand.TOGGLE_BOOKMARK`/`InputKey.B`
+    or any other physical/keyboard shortcut; unifying touch gestures into
+    the `ShelfCommand`/`InputMapper` semantic layer (ADR-0023's own flagged
+    open item — a much larger, ADR-worthy architectural change); 2B.2.2
+    also does not implement 2B.3 search, 2B.4 custom fonts, highlights,
+    notes, annotations, note export, TTS, PDF/CBZ changes, CBR, Series,
+    Shelves, Sources, OCR, Adapted PDF, metadata enrichment, cloud sync,
+    ShelfOS Home, billing, a themes redesign, or a reader-wide refactor for
+    its own sake.
+18. **Automated tests required**: extend `EpubBookmarkTest` with: current
+    location not bookmarked (existing coverage), current location already
+    bookmarked → "Remove bookmark" enabled and labeled correctly, tapping it
+    deletes exactly that bookmark and returns to the not-bookmarked state,
+    a rapid repeat tap does not create a duplicate/error, the toggle updates
+    correctly after a chapter jump or bookmark jump changes the current
+    locator, and the control's state survives activity recreation and
+    publication reopen. Existing coverage
+    (`BookmarkPersistenceTest`, `EpubBookmarkLocationInstrumentedTest`,
+    `EpubChapterHighlightTest`, `NavigationSmokeTest`, `EpubRecreationTest`)
+    must remain green unmodified, since this change does not touch their
+    subject matter.
+19. **Emulator acceptance**: `shelfos-phase0` (API 35), focused tests first,
+    full `connectedDebugAndroidTest` if production behavior changes (it
+    does here).
+20. **RP5 acceptance**: relevant, since production reader UI text/behavior
+    changes. Install the exact branch build, verify the toggle in both
+    directions, verify Bookmarks management (jump/delete of *other* rows)
+    is unaffected, verify chrome hide/reveal and Back semantics are
+    unaffected, verify no crowding/crash/logcat regression. Owner manual
+    physical-button evidence, if performed, is recorded separately from
+    ADB/instrumentation evidence and never fabricated.
+21. **Rollback/failure behavior**: identical to today's Add/Delete failure
+    handling — `vm.deleteBookmark`'s existing
+    `catch (_: Exception) { _state.update { it.copy(error = ...) } }`
+    degrades to a readable error, the reader remains usable, no partial/
+    corrupt state is possible since this issues one existing, already-
+    tested repository call.
+22. **Implementation sequence**: (1) extend the current-bookmark lookup to
+    return the matching `Bookmark`, not just a boolean; (2) update the
+    Add/Remove control's label, `enabled`, `onClick`, and
+    `contentDescription`; (3) add the new `EpubBookmarkTest` cases; (4) run
+    focused tests, then the full connected suite; (5) run the standard
+    Gradle gate; (6) update `PHASE_2_PLAN.md`/`VALIDATION.md`/
+    `CHANGELOG_DOCS.md`; (7) commit locally.
+
+**Explicitly deferred (NICE TO HAVE, needs an owner product/visual decision,
+not guessed):**
+
+- Any ambient "this page is bookmarked" indicator visible *outside* the
+  Bookmarks dialog while reading — confirmed there is no room for a new
+  standalone chrome button on a portrait phone (see the screenshot finding
+  above); doing this well would mean either a visual redesign of an
+  existing button (icon vs. text, badge, state-dependent label) or a
+  different chrome layout entirely, which is a product/visual-design call,
+  not an engineering one.
+- A genuinely single-tap "toggle bookmark without opening any dialog"
+  affordance — same reasoning as above.
+- Wiring `ShelfCommand.TOGGLE_BOOKMARK`/`InputKey.B` (or any other physical
+  key/gamepad button) to a reader action. `INPUT_SYSTEM.md`'s own "B →
+  Toggle bookmark" is stated as a suggestion pending usability testing, not
+  a commitment; per this task's own explicit instruction, semantic
+  capability and physical binding are being deliberately kept separate.
+- Unifying touch gestures into the `ShelfCommand`/`InputMapper` semantic
+  layer — ADR-0023's own Consequences section already flags this as "open
+  for a later increment"; it is a substantial architectural change
+  (touch is currently handled entirely outside that layer, in
+  `EpubSurface`'s own `InputListener`/`DirectionalNavigationAdapter`) that
+  would need its own ADR and is far larger than "reading flow polish."
+
+**Decision: no ADR required, implementation proceeds on this branch.** The
+REQUIRED scope above is small, uses only existing architecture and existing
+repository methods, requires no schema change, requires no new physical
+input binding, requires no reader-chrome redesign, and is independently
+testable — it meets every condition for proceeding directly to
+implementation on `phase-2/epub-reading-flow` rather than stopping for an
+owner decision. The deferred items above are the ones that *would* need an
+owner decision, and are explicitly left for a future slice rather than
+guessed at here.
+
+**2B.2.2 R3 remediation (2026-09-28, same branch, `e1c92f0` preserved) —
+IMPLEMENTED / R3 CLOSED / PENDING INDEPENDENT RE-REVIEW:** an independent
+Codex review of `e1c92f0` returned **CHANGES REQUIRED**. **No R1 findings.
+No R2 findings — the production implementation itself was found correct**
+(bookmark identity/equivalence, `sameEpubBookmarkLocation` authority,
+deletion using the matched persisted `Bookmark`, the Add→Remove→Add cycle,
+Room `Flow` authority, Readium-locator-based navigation, Location N staying
+presentation-only, no input-binding change, accessibility semantics — all
+confirmed correct). Three R3 findings, all closed here without resetting or
+dropping `e1c92f0`, and — per the review's own instruction — **without
+touching `EpubActivity.kt` or any other production file**, since no test
+exposed a real production defect:
+
+1. **Rapid-activation coverage was claimed but not actually tested.** The
+   original `addBookmarkControlTogglesToRemoveOnceBookmarkedAndBackAgain`
+   commented a settled click-wait-click sequence as a "rapid repeat tap,"
+   which it was not. Two remediation attempts were made, in order, before
+   landing on the one that actually works:
+   - Two real `performClick()` calls fired back to back with no wait
+     between them: **empirically failed** — Compose's own `performClick()`
+     resyncs to idle before dispatching, and on this real device that
+     resync reliably outlasts the Room-write-and-recompose round trip, so
+     the second call's "Add bookmark" matcher throws
+     `AssertionError: could not find any node` (confirmed by an actual
+     failing test run, not assumed).
+   - Suspending the Compose test clock's `mainClock.autoAdvance` around the
+     two clicks avoided that specific error, but **corrupted shared Compose
+     idling-resource state badly enough to break an unrelated, already-
+     passing test in the same run**
+     (`addListJumpAndDeleteBookmarksAcrossDialogReopens` failed with
+     `ComposeNotIdleException: Idling resource timed out`) — confirmed by
+     an actual run, then confirmed fixed by removing the clock manipulation
+     and re-running the full class clean (twice, for stability).
+   - Per this task's own instruction that direct-repository simulation is
+     acceptable "unless the UI test framework makes the real action
+     impossible" — now proven, not assumed — the new
+     `concurrentAddBookmarkActivationsForTheSameLocationPersistOnlyOneBookmark`
+     test performs a real, settled Add via the UI to capture the actual
+     live locator, removes it via the UI, then fires two genuinely
+     concurrent `addBookmark` calls (`async`/`awaitAll`, started before
+     either completes) for that exact real locator, and asserts exactly one
+     bookmark persists. This is a strictly stronger concurrency proof than
+     the existing sequential-call coverage in
+     `BookmarkPersistenceTest.addingTheSameLocatorTwiceDoesNotCreateADuplicateRow`.
+2. **Missing persistence/state-transition regression coverage**, closed
+   with two new tests:
+   - `removingTheCurrentBookmarkPersistsThroughPublicationReopen`: add,
+     confirm "Remove bookmark", remove, confirm "Add bookmark", close the
+     publication, reopen it, confirm the empty state and "Add bookmark"
+     persisted (not merely transient Compose state), and confirm directly
+     against the repository that no matching bookmark remains.
+   - `returningToAPreviouslyBookmarkedLocationShowsRemoveBookmarkAgain`:
+     bookmark location A (Chapter 1), navigate to a distinct location B
+     (Chapter 5, confirmed "Add" there), return to A via the existing,
+     already-proven bookmark-jump mechanism (not chapter title or Location
+     N, which are presentation only), and confirm "Remove bookmark" is
+     shown again — proving the control recomputes from the live locator
+     rather than retaining stale UI state.
+3. **Stale status wording**, fixed in this document's top status block and
+   §2 goal section (this pass no longer described as only "discovery/
+   implementation-planning" now that implementation exists), and in
+   `ROADMAP.md`/`VALIDATION.md` (see those files and `CHANGELOG_DOCS.md`
+   for the exact corrections). Historical passages describing the earlier
+   planning-only stage are left as accurate dated snapshots, not rewritten.
+
+**Test names kept honest**: the original toggle test's misleading "rapid
+repeat tap" comment was corrected to describe what it actually
+demonstrates (a settled re-add after a settled remove), with an explicit
+pointer to the new dedicated concurrency test for the actual race claim.
+
+**Validation**: `EpubBookmarkTest` 9/9 (up from 6; passed twice in a row for
+stability, including after the clock-corruption incident was fixed),
+`EpubRecreationTest` 1/1, `NavigationSmokeTest` 26/26, full local Gradle
+gate BUILD SUCCESSFUL. `git diff --check` clean; no schema/dependency
+change; the only substantive file changed is
+`EpubBookmarkTest.kt` — no production source file was touched. A full
+connected-suite rerun and RP5 re-certification were not performed, per this
+remediation's own instruction, since production code remained untouched.
+
+**2B.2.2 is NOT accepted, NOT merged** — pending independent re-review and
+owner acceptance. No 2B.3/2B.4 work was added.
 
 **2B.3 (search):**
 user-visible: query input, results with snippets, jump to a result.

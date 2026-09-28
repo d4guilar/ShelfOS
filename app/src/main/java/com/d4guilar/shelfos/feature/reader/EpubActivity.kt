@@ -100,10 +100,12 @@ class EpubActivity : AppCompatActivity() {
         val currentChapterId = remember(session, currentLocatorJson) { session?.currentChapterId(currentLocatorJson) }
         // Readium can enrich the live locator after a bookmark is stored without moving the reader. Compare the
         // stable location fields instead of the entire serialized snapshot. The DAO's exact duplicate guard is
-        // deliberately separate from this live UI state.
-        val currentlyBookmarked = remember(currentLocatorJson, state.bookmarks) {
-            currentLocatorJson?.let { live -> state.bookmarks.any { sameEpubBookmarkLocation(it.locator, live) } } == true
+        // deliberately separate from this live UI state. Phase 2B.2.2: keeping the matched Bookmark itself (not
+        // just whether one exists) lets the current-position control remove exactly that row, not merely disable.
+        val currentBookmark = remember(currentLocatorJson, state.bookmarks) {
+            currentLocatorJson?.let { live -> state.bookmarks.find { sameEpubBookmarkLocation(it.locator, live) } }
         }
+        val currentlyBookmarked = currentBookmark != null
         val rtl = readingDirection(item?.category ?: MediaCategory.BOOK, state.preferences.direction) == ReadingDirection.RTL
         val previousHint = InputHints.hint(ShelfCommand.PREVIOUS_PAGE, modality, rtl)
         val nextHint = InputHints.hint(ShelfCommand.NEXT_PAGE, modality, rtl)
@@ -231,13 +233,18 @@ class EpubActivity : AppCompatActivity() {
             var jumpError by rememberSaveable { mutableStateOf<String?>(null) }
             AlertDialog(onDismissRequest = { bookmarks = false }, title = { Text("Bookmarks") }, text = {
                 Column {
-                    TextButton(onClick = { currentLocatorJson?.let { vm.addBookmark(it, locatorProgress(it)) } },
-                        enabled = currentLocatorJson != null && !currentlyBookmarked,
+                    // Phase 2B.2.2: a real toggle, not a dead-end disabled state once bookmarked — removing the
+                    // bookmark at the reader's current position no longer requires finding its row in the list.
+                    TextButton(onClick = {
+                        val bookmark = currentBookmark
+                        if (bookmark != null) vm.deleteBookmark(bookmark.id)
+                        else currentLocatorJson?.let { vm.addBookmark(it, locatorProgress(it)) }
+                    }, enabled = currentLocatorJson != null,
                         modifier = Modifier.semantics { contentDescription = when {
                             currentLocatorJson == null -> "Add bookmark, not yet available"
-                            currentlyBookmarked -> "Current position already bookmarked"
+                            currentlyBookmarked -> "Remove bookmark at current position"
                             else -> "Add bookmark at current position"
-                        } }) { Text(if (currentlyBookmarked) "Bookmarked" else "Add bookmark") }
+                        } }) { Text(if (currentlyBookmarked) "Remove bookmark" else "Add bookmark") }
                     jumpError?.let { Text(it, Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.error) }
                     if (state.bookmarks.isEmpty()) Text("No bookmarks yet.", Modifier.padding(vertical = 16.dp))
                     else LazyColumn(Modifier.testTag("bookmarks_list").padding(top = 8.dp)) {
