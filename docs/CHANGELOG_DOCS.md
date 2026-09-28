@@ -1,5 +1,63 @@
 # Documentation Changelog
 
+## Phase 2B.3 final review and RP5 acceptance (2026-09-28)
+
+- Recorded the final targeted independent verdict for `e395ce7`: **PASS WITH
+  NON-BLOCKING FINDINGS**, with no R1/R2/R3 findings.
+- Recorded owner physical RP5 acceptance of Search reachability/activation,
+  known-query entry, result navigation, correct-passage jump, zero-results,
+  Search-dialog Back dismissal, hidden-chrome Back reveal-before-exit, and
+  compact-layout/focus sanity on the exact latest installed build.
+- Retained the two non-blocking R4 items: unbounded result accumulation is
+  deferred to later performance closure, and the debug-only opener is not
+  parallel-test-safe.
+- Phase 2B.3 is now accepted and ready for PR/merge, but is not yet merged or
+  pushed. No production code/tests, 2B.4, or 2C work was included.
+
+## Phase 2B.3 R3 lifecycle-evidence remediation (2026-09-28)
+
+- Recorded the first independent verdict accurately: CHANGES REQUIRED, no
+  R1/R2 findings, and one R3 gap in active-search recreation/teardown evidence;
+  production search architecture was confirmed correct.
+- Documented the deterministic controlled-cursor tests: acquisition and
+  suspension before recreation/exit, old-cursor closure, fresh acquisition and
+  valid result after recreation, Activity destruction, and coordinator-close
+  return only after cursor cleanup. Lifecycle instrumentation no longer claims
+  that a closed cursor can later return a stale page. Release search behavior
+  remains unchanged; direct session-close instrumentation is not claimed.
+- Added the actual generation-guard race: A returns a page and pauses before
+  publication, B becomes latest while waiting for A's cursor cleanup, A resumes
+  and its page is rejected, then B acquires its cursor and publishes normally.
+  Removing `id == requestId` made the test fail, confirming guard dependence.
+  Documented why mutex serialization and cancellable `withContext(worker)` make
+  the previously requested post-close stale-return sequence impossible.
+- Recorded final focused evidence (search 7/7, recreation 1/1, navigation
+  26/26, JVM search/presentation 11/11) and the 86-task offline Gradle gate,
+  while retaining the preceding lifecycle pass's complete API 35 connected-
+  suite result of 84/84; the full suite was not repeated for this behavior-
+  preserving guard-only correction.
+- Phase 2B.3 remains implemented/R3-remediated, pending targeted independent
+  re-review and owner RP5 acceptance, not accepted/merged/pushed. Unbounded
+  result accumulation remains a non-blocking R4 performance carry-forward with
+  no current failure evidence; the debug-only process-global opener remains
+  sequential-only and not parallel-test-safe. No 2B.4 or 2C scope was added.
+
+## Phase 2B.3 EPUB publication search implementation (2026-09-28)
+
+- Recorded 2B.2.2 as accepted and squash-merged via PR #11 at `ab612a46`, and
+  moved 2B.3 from active implementation to implemented/pending independent
+  review and owner acceptance. It is not described as accepted or merged.
+- Documented the parser-attached Readium 3.4.0 `SearchService` boundary,
+  ShelfOS value model, serialized iterator ownership/cleanup, rapid-query and
+  recreation policy, local/read-only/non-persistent behavior, locator-based
+  navigation, accessibility/focus behavior, and explicit exclusions.
+- Recorded actual evidence: 10/10 focused JVM tests, 7/7 search instrumentation
+  checks, required regressions 39/39, full connected suite 84/84, offline
+  airplane-mode pass, compact/expanded viewports, 909 ms largest-fixture
+  timing, unchanged source file, and the 86-task offline Gradle gate.
+- Recorded that RP5 was unavailable, so no real-device or owner physical-input
+  claim is made. No schema/dependency change and no 2B.4/2C implementation.
+
 ## Phase 2B.2.2 R3 remediation (2026-09-28)
 
 - Closed all three R3 findings from an independent Codex review of

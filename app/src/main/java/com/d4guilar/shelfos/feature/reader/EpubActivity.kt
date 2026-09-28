@@ -23,14 +23,18 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -52,8 +56,12 @@ private const val CHAPTER_FILTER_THRESHOLD = 8
  * restored from FragmentManager state, so rotation and process recreation resume the saved position. The rest of
  * the saved state restores normally: controls, open dialogs and unapplied Appearance changes survive recreation.
  */
-class EpubActivity : AppCompatActivity() {
+open class EpubActivity : AppCompatActivity() {
     private var readerKeys: ((KeyEvent) -> Boolean)? = null
+
+    /** Variant/test hosts may replace only the existing ShelfOS cursor boundary; release behavior uses Readium. */
+    protected open fun createSearchCursorOpener(): EpubSearchCursorOpener =
+        { session, query -> session.search(query) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         restoreEpubNavigatorAsPlaceholder()
@@ -62,9 +70,12 @@ class EpubActivity : AppCompatActivity() {
         enableEdgeToEdge()
         val itemId = intent.getStringExtra(EXTRA_ITEM_ID) ?: run { finish(); return }
         val container = (application as ShelfApplication).container
+        // Resolve once without retaining this Activity in the configuration-surviving ViewModel.
+        val searchCursorOpener = createSearchCursorOpener()
         setContent {
             val vm: EpubReaderViewModel = viewModel(factory = viewModelFactory { initializer {
-                EpubReaderViewModel(itemId, container.library, container.library, container.epubs, container.backgroundScope)
+                EpubReaderViewModel(itemId, container.library, container.library, container.epubs,
+                    container.backgroundScope, searchCursorOpener)
             } })
             val theme by container.themes.theme.collectAsStateWithLifecycle(initialValue = null as ThemeId?)
             // Wait for the saved theme instead of flashing Classic first.
@@ -72,15 +83,19 @@ class EpubActivity : AppCompatActivity() {
         }
     }
 
+    @OptIn(ExperimentalLayoutApi::class)
     @Composable
     private fun EpubReaderContent(vm: EpubReaderViewModel) {
         val state by vm.state.collectAsStateWithLifecycle()
+        val searchState by vm.searchState.collectAsStateWithLifecycle()
         val tokens = LocalShelfTokens.current
         val controller = remember { EpubController() }
         var controls by rememberSaveable { mutableStateOf(true) }
         var appearance by rememberSaveable { mutableStateOf(false) }
         var chapters by rememberSaveable { mutableStateOf(false) }
         var bookmarks by rememberSaveable { mutableStateOf(false) }
+        var search by rememberSaveable { mutableStateOf(false) }
+        var searchQuery by rememberSaveable { mutableStateOf("") }
         // Recent input modality (Phase 2A.1): only the real center-tap gesture and real key events update this,
         // never a button click, since a click may itself have been keyboard/gamepad-activated. Edge taps that
         // turn EPUB pages are handled entirely inside Readium's navigator and do not reach this callback.
@@ -112,6 +127,12 @@ class EpubActivity : AppCompatActivity() {
         val backHint = InputHints.hint(ShelfCommand.BACK, modality, rtl)
         // Back never leaves the reader from hidden chrome: it reveals controls first, then a second Back exits.
         fun backPress() { if (controls) finish() else { controls = true; controlFocusRequests++ } }
+        fun closeSearch() { search = false; searchQuery = ""; vm.clearSearch() }
+
+        // A configuration change disposes this Activity composition while retaining its ViewModel. Closing here
+        // ensures the old session-bound iterator cannot continue across recreation; rememberSaveable restores the
+        // plain query and the new composition deliberately reruns it against the same freshly attached session.
+        DisposableEffect(vm) { onDispose { vm.clearSearch() } }
 
         SideEffect {
             val style = if (tokens.dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
@@ -124,13 +145,15 @@ class EpubActivity : AppCompatActivity() {
                 // modality signal) rather than filtering by the resolved *semantic* command here, since Escape/
                 // gamepad B legitimately produce ShelfCommand.BACK while still being real, attributable input.
                 event.inputModalityOrNull()?.let { modality = it }
-                when (val command = event.readerCommand(rtl, controls && (topFocused || bottomFocused))) {
-                    ShelfCommand.NEXT_PAGE, ShelfCommand.PREVIOUS_PAGE, ShelfCommand.OPEN_MENU, ShelfCommand.BACK -> {
+                when (val command = event.readerCommand(rtl, search || (controls && (topFocused || bottomFocused)))) {
+                    ShelfCommand.NEXT_PAGE, ShelfCommand.PREVIOUS_PAGE, ShelfCommand.OPEN_MENU, ShelfCommand.BACK,
+                    ShelfCommand.SEARCH -> {
                         if (event.action == KeyEvent.ACTION_UP) when (command) {
                             ShelfCommand.NEXT_PAGE -> controller.next()
                             ShelfCommand.PREVIOUS_PAGE -> controller.previous()
                             ShelfCommand.OPEN_MENU -> if (controls) controls = false else { controls = true; controlFocusRequests++ }
-                            else -> backPress()
+                            ShelfCommand.SEARCH -> { controls = true; search = true }
+                            else -> if (search) closeSearch() else backPress()
                         }
                         true
                     }
@@ -143,7 +166,8 @@ class EpubActivity : AppCompatActivity() {
 
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().testTag("epub_reader")) {
-                if (controls) Row(Modifier.fillMaxWidth().onFocusChanged { topFocused = it.hasFocus }, horizontalArrangement = Arrangement.SpaceBetween) {
+                if (controls) FlowRow(Modifier.fillMaxWidth().onFocusChanged { topFocused = it.hasFocus },
+                    horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         TextButton({ finish() }, Modifier.focusRequester(firstControl).testTag("epub_library")) { Text("Library") }
                         // Input-discovery hint (Phase 2A.1): decorative only, since no single existing control is
@@ -153,6 +177,7 @@ class EpubActivity : AppCompatActivity() {
                     }
                     TextButton({ chapters = true }, enabled = session != null) { Text("Chapters") }
                     TextButton({ bookmarks = true }, enabled = session != null) { Text("Bookmarks") }
+                    TextButton({ search = true }, enabled = session != null) { Text("Search") }
                     TextButton({ appearance = true }, enabled = session != null) { Text("Appearance") }
                 }
                 if (session != null && item != null) {
@@ -226,6 +251,76 @@ class EpubActivity : AppCompatActivity() {
                     } }
                 }
             }, confirmButton = { TextButton({ chapters = false }) { Text("Close") } })
+        }
+        if (search && session != null) {
+            val searchField = remember { FocusRequester() }
+            var jumpError by rememberSaveable { mutableStateOf<String?>(null) }
+            LaunchedEffect(searchQuery, session) { vm.search(session, searchQuery) }
+            AlertDialog(onDismissRequest = ::closeSearch, title = { Text("Search this publication") }, text = {
+                // A Dialog owns a separate window. Request focus only after that window reports focus; requesting
+                // during its first composition can be dropped on a cold launch before the window is attached.
+                val searchWindow = LocalWindowInfo.current
+                LaunchedEffect(searchWindow.isWindowFocused) {
+                    if (searchWindow.isWindowFocused) searchField.requestFocus()
+                }
+                val normalizedQuery = normalizeSearchQuery(searchQuery)
+                // LaunchedEffect submits a replacement after composition. Until its state arrives, suppress the
+                // prior query's rows so they cannot flash under the newly typed query even for a single frame.
+                val visibleSearchState = searchState.takeIf { it.query == normalizedQuery }
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(searchQuery, { searchQuery = it; jumpError = null },
+                        Modifier.fillMaxWidth().focusRequester(searchField)
+                            .semantics { contentDescription = "Search this publication" },
+                        label = { Text("Search this publication") }, singleLine = true,
+                        trailingIcon = { if (searchQuery.isNotEmpty()) TextButton({ searchQuery = "" }) { Text("Clear") } })
+                    jumpError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    when {
+                        searchQuery.isBlank() -> Text("Enter a word or phrase to search this publication.",
+                            Modifier.padding(vertical = 16.dp))
+                        visibleSearchState == null -> CircularProgressIndicator(
+                            Modifier.align(Alignment.CenterHorizontally)
+                                .semantics { contentDescription = "Searching this publication" })
+                        visibleSearchState.error != null -> Text(visibleSearchState.error, Modifier.padding(vertical = 16.dp),
+                            color = MaterialTheme.colorScheme.error)
+                        visibleSearchState.complete && visibleSearchState.results.isEmpty() -> Text("No results for “$normalizedQuery”.",
+                            Modifier.padding(vertical = 16.dp).semantics { contentDescription = "No search results" })
+                        else -> {
+                            if (visibleSearchState.loading && visibleSearchState.results.isEmpty()) CircularProgressIndicator(
+                                Modifier.align(Alignment.CenterHorizontally).semantics { contentDescription = "Searching this publication" })
+                            if (visibleSearchState.results.isNotEmpty()) LazyColumn(
+                                Modifier.fillMaxWidth().heightIn(max = 360.dp).testTag("search_results")) {
+                                items(visibleSearchState.results) { result ->
+                                    val accessible = searchResultAccessibilityText(result)
+                                    TextButton(onClick = {
+                                        jumpError = null
+                                        if (controller.goTo(result.locator)) closeSearch()
+                                        else jumpError = "This search result could not be opened. Try another result."
+                                    }, modifier = Modifier.fillMaxWidth().testTag("search_result")
+                                        .semantics { contentDescription = "Search result, $accessible" }) {
+                                        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
+                                            result.title?.let { Text(it, fontWeight = FontWeight.Bold) }
+                                            Text(buildAnnotatedString {
+                                                val before = normalizeSearchText(result.before)
+                                                val highlight = normalizeSearchText(result.highlight)
+                                                val after = normalizeSearchText(result.after)
+                                                append(before)
+                                                if (before.isNotEmpty() && highlight.isNotEmpty() && result.before.lastOrNull()?.isWhitespace() == true) append(' ')
+                                                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(highlight) }
+                                                if (highlight.isNotEmpty() && after.isNotEmpty() && result.after.firstOrNull()?.isWhitespace() == true) append(' ')
+                                                append(after)
+                                            })
+                                            result.progression?.takeIf { it.isFinite() && it in 0.0..1.0 }?.let {
+                                                Text("${(it * 100).toInt()}% through book", color = tokens.colors.secondary,
+                                                    style = tokens.typography.labelSmall)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }, confirmButton = { TextButton(::closeSearch) { Text("Close") } })
         }
         if (bookmarks && session != null) {
             // Reset on each open, like the Chapters dialog's filter — a stale failure message from a previous

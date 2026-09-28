@@ -1,5 +1,168 @@
 # Validation
 
+## Phase 2B.3 final technical review and owner RP5 acceptance (2026-09-28)
+
+Phase 2B.3 is **accepted and ready for PR/merge, but is not yet merged or
+pushed**. The final targeted independent review of
+`e395ce7fc57c38072c806d577ec1095458663270` returned **PASS WITH NON-BLOCKING
+FINDINGS** with **no R1, R2, or R3 findings**. The two remaining R4 items are
+unbounded search-result accumulation, deferred to later performance closure,
+and the debug-only opener's lack of parallel-test safety.
+
+The owner physically tested the exact latest installed debug build on the
+Retroid Pocket 5 and reported **RP5 PASS** for the Phase 2B.3 acceptance flow:
+
+- reached and activated Search using the RP5 D-pad/controller;
+- entered a known query and navigated the result list;
+- opened a result and landed at the correct passage;
+- confirmed a real miss shows the zero-results state;
+- confirmed Back dismisses Search without leaving the reader;
+- confirmed Back with hidden chrome still reveals controls before exit; and
+- confirmed compact RP5 layout and focus behavior remained usable.
+
+This is owner-reported physical-button evidence, distinct from ADB/Compose
+automation. With technical review and physical acceptance complete, no Phase
+2B.3 gate remains before PR/merge. No merge is claimed here.
+
+## Phase 2B.3 R3 lifecycle-evidence remediation (2026-09-28)
+
+The first independent review of `bd50ad2` returned **CHANGES REQUIRED with no
+R1 or R2 findings**. Production search behavior and architecture were found
+correct; the only blocker was one R3 evidence gap: the recreation and teardown
+UI tests started real searches but did not positively observe an active cursor
+or its closure. That gap was remediated and subsequently accepted by the final
+targeted review recorded above.
+
+- A small factory/constructor seam exposes the existing `EpubSearchCursor`
+  boundary without changing release behavior: the default still calls
+  `EpubSession.search()`. A non-exported debug-only Activity accepts the
+  instrumentation-owned opener. No service locator, production debug flag,
+  dependency, or alternate Readium behavior was added.
+- `recreationWhileCursorIsActiveClosesItAndUsesAFreshCursor` uses two
+  controlled cursors. It observes the first cursor acquired and suspended in
+  `next()`, recreates before any result is released, observes that cursor close,
+  observes a second cursor acquired for the restored query, and releases the
+  second cursor to a valid result. This is lifecycle evidence; it does not claim
+  that a closed cursor can later return a page.
+- `leavingReaderWhileCursorIsActiveClosesItAndDestroysActivity` observes a
+  cursor acquired and suspended in `next()`, calls `ActivityScenario.close()`
+  without completing the search, observes cursor close, and requires the close
+  call's positive `DESTROYED` transition. The coordinator JVM test now also
+  records that `EpubSearchCoordinator.close()` returns only after cursor close;
+  the existing ViewModel ordering then closes `EpubSession` after that joined
+  coordinator barrier. Direct session-close instrumentation is not claimed.
+- Generation-guard evidence is separate and deterministic. The generic,
+  default-no-op `beforeStatePublication` seam pauses request A after its cursor
+  has returned a real page but before `publish()`. Request B then becomes the
+  latest request while A still owns `cursorMutex`. Resuming A leaves B's empty
+  loading state intact; after A closes and releases the mutex, B acquires its
+  cursor and publishes its result normally.
+- Negative control was performed locally: temporarily removing
+  `id == requestId` made
+  `returnedPageCannotPublishAfterReplacementBecomesLatest` fail at the
+  authoritative-query assertion. The guard was restored before final
+  validation. This proves the test depends on the generation check rather than
+  cancellation or its fake dropping output.
+- The corrected architecture finding is explicit: cursor serialization means
+  B cannot acquire a cursor before A closes. A cancellable
+  `withContext(worker)` also does not deliver a cursor value returned after
+  cancellation into normal processing. The real guard race is therefore a
+  page returned before replacement whose post-result/pre-publish processing
+  resumes after B becomes latest; production mutex and cancellation behavior
+  were not weakened to fabricate an impossible post-close return.
+- Final focused instrumentation: `EpubSearchTest` **6/6 PASS**,
+  `EpubSearchServiceInstrumentedTest` **1/1 PASS**, `EpubRecreationTest`
+  **1/1 PASS**, and `NavigationSmokeTest` **26/26 PASS**. The active-recreation
+  method also passed two additional isolated runs while diagnosing cleanup,
+  the final six-test class passed together, and both lifecycle cases passed
+  again in the complete connected suite.
+- Focused JVM search/presentation coverage: **11/11 PASS** (coordinator 9/9,
+  presentation 2/2), including cursor-close-before-return and the corrected
+  generation-guard race.
+- Full offline Gradle gate: **BUILD SUCCESSFUL in 1m 30s; 86/86 tasks
+  executed** (compile, Android-test compile, debug APK, all JVM tests, lint,
+  and Android-test APK).
+- The preceding lifecycle remediation's complete API 35 connected suite remains
+  **84/84 PASS**, with 678.328 cumulative testcase seconds. It was not repeated
+  for this corrected guard-only pass because release behavior is unchanged;
+  `EpubSearchTest` 6/6 and the real SearchService test 1/1 were rerun.
+- No Room schema, migration, or dependency changed. Production search
+  semantics are unchanged. Unbounded result accumulation remains the accepted
+  R4 carry-forward for later performance closure, with no current failure
+  evidence. The debug-only process-global opener remains acceptable for the
+  sequential instrumentation suite but is not parallel-test-safe. Physical
+  RP5 reachability was still pending at this remediation checkpoint; the later
+  acceptance record above supersedes that status.
+
+## Phase 2B.3 — EPUB publication search implementation (2026-09-28)
+
+Phase 2B.3 was implemented on `phase-2/epub-search`; its review and acceptance
+history is recorded in the newer sections above. Phase 2B.4, 2C, and 2D remain
+not started.
+
+- Verified the pinned Readium Kotlin Toolkit 3.4.0 artifacts directly:
+  `Publication.findService(SearchService::class)` returns the parser-attached
+  service; `SearchService.search()` returns a paged `SearchIterator`; and that
+  iterator has an explicit `close()` lifecycle. No parser registration,
+  dependency, HTML scraping, or parallel index was added.
+- Implemented a ShelfOS-owned search boundary and copied value result model.
+  The coordinator serializes iterator ownership, cancels superseded work,
+  blocks stale-generation writes, and explicitly closes on completion, error,
+  replacement, clear, cancellation, and teardown before the EPUB session is
+  closed. Only the dialog-open flag and query string survive recreation; the
+  query is rerun with a new service iterator.
+- UI evidence covers the reader Search entry point, cold-launch query-field
+  focus, readable and accessible snippets, explicit zero-results state,
+  Clear/Close, existing Ctrl+F, Compose keyboard focus, locator-authoritative
+  result jumps, recreation, rapid replacement, and leaving during active
+  search. Default compact 1080×1920 and forced expanded 2560×1600 emulator
+  viewports passed; the viewport was reset afterward.
+- Focused JVM: **10/10 PASS** (`EpubSearchPresentationTest` and
+  `EpubSearchCoordinatorTest`), including completion/error/replacement/clear/
+  teardown closure and a three-query ownership regression.
+- Search instrumentation: **7/7 PASS** (`EpubSearchTest` 6/6 plus
+  `EpubSearchServiceInstrumentedTest` 1/1) against real generated EPUBs and
+  Readium's actual attached service. The largest-fixture search completed in
+  **909 ms** in the final connected run and left the source file's length and
+  modification time unchanged.
+- Required regressions: **39/39 PASS** (`EpubBookmarkTest` 9,
+  `EpubRecreationTest` 1, `EpubChapterHighlightTest` 3,
+  `NavigationSmokeTest` 26).
+- Complete API 35 connected suite: **84/84 PASS in 164.364 seconds**. A prior
+  invalid run was interrupted by a host/emulator suspension lasting hours; its
+  two affected endpoints were rerun together 2/2 before the clean continuous
+  84/84 result. Ordinary search tests now dismiss their dialog before fixture
+  teardown, while the dedicated active-search teardown test still closes the
+  Activity with search running.
+- Offline evidence: airplane mode was set to `1`, the real parser search test
+  passed 1/1 in 1.311 seconds, and airplane mode was restored to `0` in a
+  `finally` block. Search uses only the already-open local publication.
+- Full offline Gradle gate: **BUILD SUCCESSFUL in 3m 1s, 86/86 tasks
+  executed** for compile, Android-test compile, debug APK, all JVM tests, lint,
+  and Android-test APK. The existing `ImportLeasesTest` unnecessary `!!`
+  compiler warning and debug-manifest removed-INTERNET warning remain
+  pre-existing, non-failing output.
+- No Room schema, migration, dependency, source publication, `LibraryItem`,
+  bookmark persistence, or search-history change. Normal navigator movement
+  after selecting a result remains the only reading-state effect.
+- RP5 was not connected during this pass. No RP5 execution or owner physical-
+  control evidence is claimed. API 24/API 37 limitations remain the existing
+  documented environment items; this slice did not claim to resolve them.
+
+## Phase 2B.2.2 acceptance and Phase 2B.3 start (2026-09-28)
+
+Phase 2B.2.2 is **accepted and squash-merged to `main` via PR #11** at
+`ab612a46cc929c1a5d32df0d9ed608d1792e7a95`. Its initial independent review
+returned CHANGES REQUIRED with no R1/R2 findings; the three R3 test/documentation
+findings were remediated, the final wording cleanup was completed, and the
+implementation is closed. The detailed entries below remain as the historical
+review and validation record.
+
+At this branch's starting point, Phase 2B.3 (local EPUB publication search)
+became the active implementation slice. Its completed implementation status
+and evidence are recorded in the newer section above. Phase 2B.4, 2C and 2D
+remain not started.
+
 ## Phase 2B.2.2 R3 remediation (2026-09-28)
 
 Independent Codex review of `e1c92f0` (2B.2.2's original implementation,
@@ -77,8 +240,8 @@ Corrected in this file (new section above the superseded one below),
 section header — no longer described as only "discovery/implementation-
 planning" now that implementation exists and has been reviewed), and
 `ROADMAP.md`. Historical passages describing the earlier planning-only
-stage are left as accurate dated snapshots, not rewritten. Current truthful
-status: 2B.2.1 accepted/merged via PR #10 (`af5410c`); 2B.2.2 implementation
+stage are left as accurate dated snapshots, not rewritten. Status at that
+remediation checkpoint: 2B.2.1 accepted/merged via PR #10 (`af5410c`); 2B.2.2 implementation
 complete, initial review CHANGES REQUIRED with no R1/R2 findings, R3
 remediation complete on this branch, not accepted, not merged, pending
 independent re-review and owner acceptance; 2B.3/2B.4 not started.
