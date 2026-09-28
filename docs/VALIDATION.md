@@ -1,10 +1,61 @@
 # Validation
 
+## Phase 2B.3 R3 lifecycle-evidence remediation (2026-09-28)
+
+The first independent review of `bd50ad2` returned **CHANGES REQUIRED with no
+R1 or R2 findings**. Production search behavior and architecture were found
+correct; the only blocker was one R3 evidence gap: the recreation and teardown
+UI tests started real searches but did not positively observe an active cursor
+or its closure. That gap is now remediated. Phase 2B.3 remains **implemented,
+R3 remediation complete, pending targeted independent re-review and owner RP5
+acceptance; it is not accepted, merged, or pushed**.
+
+- A small factory/constructor seam exposes the existing `EpubSearchCursor`
+  boundary without changing release behavior: the default still calls
+  `EpubSession.search()`. A non-exported debug-only Activity accepts the
+  instrumentation-owned opener. No service locator, production debug flag,
+  dependency, or alternate Readium behavior was added.
+- `recreationWhileCursorIsActiveClosesItAndUsesAFreshCursor` uses two
+  controlled cursors. It observes the first cursor acquired and suspended in
+  `next()`, recreates before any result is released, observes that cursor close,
+  observes a second cursor acquired for the restored query, releases only the
+  second cursor to a valid result, and confirms an adversarial page offered to
+  the closed old cursor cannot appear.
+- `leavingReaderWhileCursorIsActiveClosesItAndDestroysActivity` observes a
+  cursor acquired and suspended in `next()`, calls `ActivityScenario.close()`
+  without completing the search, observes cursor close, and requires the close
+  call's positive `DESTROYED` transition. The coordinator JVM test now also
+  records that `EpubSearchCoordinator.close()` returns only after cursor close;
+  the existing ViewModel ordering then closes `EpubSession` after that joined
+  coordinator barrier. Direct session-close instrumentation is not claimed.
+- Final focused instrumentation: `EpubSearchTest` **6/6 PASS**,
+  `EpubSearchServiceInstrumentedTest` **1/1 PASS**, `EpubRecreationTest`
+  **1/1 PASS**, and `NavigationSmokeTest` **26/26 PASS**. The active-recreation
+  method also passed two additional isolated runs while diagnosing cleanup,
+  the final six-test class passed together, and both lifecycle cases passed
+  again in the complete connected suite.
+- Focused JVM search/presentation coverage: **10/10 PASS**, including the
+  explicit cursor-close-before-coordinator-return ordering assertion.
+- Full offline Gradle gate: **BUILD SUCCESSFUL in 1m 54s; 86/86 tasks
+  executed** (compile, Android-test compile, debug APK, all JVM tests, lint,
+  and Android-test APK).
+- Complete API 35 connected suite: **84/84 PASS**, with 678.328 cumulative
+  testcase seconds and a successful 11m 39s Gradle invocation. This final run
+  includes both active-cursor lifecycle tests and the preserved debug content-
+  provider regressions.
+- No Room schema, migration, or dependency changed. Production search
+  semantics are unchanged. Unbounded result accumulation remains the accepted
+  R4 carry-forward for later performance closure, with no current failure
+  evidence. Owner physical RP5 reachability remains a separate pre-merge gate;
+  no RP5 acceptance is claimed here.
+
 ## Phase 2B.3 — EPUB publication search implementation (2026-09-28)
 
-Phase 2B.3 is **implemented on `phase-2/epub-search`, pending independent
-review and owner acceptance; it is not accepted, merged, or pushed**. Phase
-2B.4, 2C, and 2D remain not started.
+Phase 2B.3 is **implemented on `phase-2/epub-search`; its first independent
+review returned CHANGES REQUIRED with no R1/R2 findings and one R3 lifecycle-
+evidence gap, now remediated as recorded above. It remains pending targeted
+independent re-review and owner acceptance and is not accepted, merged, or
+pushed**. Phase 2B.4, 2C, and 2D remain not started.
 
 - Verified the pinned Readium Kotlin Toolkit 3.4.0 artifacts directly:
   `Publication.findService(SearchService::class)` returns the parser-attached

@@ -104,15 +104,18 @@ class EpubSearchCoordinatorTest {
         assertEquals(EpubSearchUiState(), coordinator.state.value)
     }
 
-    @Test fun readerTeardownClosesActiveIterator() = runTest {
-        val cursor = BlockingCursor("alpha")
+    @Test fun readerTeardownDoesNotReturnUntilActiveIteratorIsClosed() = runTest {
+        val events = mutableListOf<String>()
+        val cursor = BlockingCursor("alpha", events)
         val coordinator = EpubSearchCoordinator(this, StandardTestDispatcher(testScheduler))
         coordinator.search("alpha") { cursor }
         runCurrent()
 
         coordinator.close()
+        events += "coordinator close returned"
 
         assertTrue(cursor.closed)
+        assertEquals(listOf("close alpha", "coordinator close returned"), events)
         assertEquals(EpubSearchUiState(), coordinator.state.value)
     }
 

@@ -1,5 +1,24 @@
 # Documentation Changelog
 
+## Phase 2B.3 R3 lifecycle-evidence remediation (2026-09-28)
+
+- Recorded the first independent verdict accurately: CHANGES REQUIRED, no
+  R1/R2 findings, and one R3 gap in active-search recreation/teardown evidence;
+  production search architecture was confirmed correct.
+- Documented the deterministic controlled-cursor tests: acquisition and
+  suspension before recreation/exit, old-cursor closure, fresh acquisition and
+  valid result after recreation, stale-result exclusion, Activity destruction,
+  and coordinator-close return only after cursor cleanup. Release search
+  behavior remains unchanged; direct session-close instrumentation is not
+  claimed.
+- Recorded final focused evidence (search 7/7, recreation 1/1, navigation
+  26/26, JVM search/presentation 10/10) and the 86-task offline Gradle gate,
+  plus the final complete API 35 connected-suite result of 84/84.
+- Phase 2B.3 remains implemented/R3-remediated, pending targeted independent
+  re-review and owner RP5 acceptance, not accepted/merged/pushed. Unbounded
+  result accumulation remains a non-blocking R4 performance carry-forward with
+  no current failure evidence. No 2B.4 or 2C scope was added.
+
 ## Phase 2B.3 EPUB publication search implementation (2026-09-28)
 
 - Recorded 2B.2.2 as accepted and squash-merged via PR #11 at `ab612a46`, and

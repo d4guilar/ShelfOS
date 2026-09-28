@@ -56,8 +56,12 @@ private const val CHAPTER_FILTER_THRESHOLD = 8
  * restored from FragmentManager state, so rotation and process recreation resume the saved position. The rest of
  * the saved state restores normally: controls, open dialogs and unapplied Appearance changes survive recreation.
  */
-class EpubActivity : AppCompatActivity() {
+open class EpubActivity : AppCompatActivity() {
     private var readerKeys: ((KeyEvent) -> Boolean)? = null
+
+    /** Variant/test hosts may replace only the existing ShelfOS cursor boundary; release behavior uses Readium. */
+    protected open fun createSearchCursorOpener(): EpubSearchCursorOpener =
+        { session, query -> session.search(query) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         restoreEpubNavigatorAsPlaceholder()
@@ -66,9 +70,12 @@ class EpubActivity : AppCompatActivity() {
         enableEdgeToEdge()
         val itemId = intent.getStringExtra(EXTRA_ITEM_ID) ?: run { finish(); return }
         val container = (application as ShelfApplication).container
+        // Resolve once without retaining this Activity in the configuration-surviving ViewModel.
+        val searchCursorOpener = createSearchCursorOpener()
         setContent {
             val vm: EpubReaderViewModel = viewModel(factory = viewModelFactory { initializer {
-                EpubReaderViewModel(itemId, container.library, container.library, container.epubs, container.backgroundScope)
+                EpubReaderViewModel(itemId, container.library, container.library, container.epubs,
+                    container.backgroundScope, searchCursorOpener)
             } })
             val theme by container.themes.theme.collectAsStateWithLifecycle(initialValue = null as ThemeId?)
             // Wait for the saved theme instead of flashing Classic first.

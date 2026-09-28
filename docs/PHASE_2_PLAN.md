@@ -36,8 +36,10 @@ closed in a third round before merge. All three rounds are recorded under
 returned **CHANGES REQUIRED** with **no R1/R2 findings**; the three R3
 test/documentation findings were remediated and the final wording cleanup
 was completed before merge. **2B.3 (EPUB publication search) is implemented
-on `phase-2/epub-search` and pending independent review and owner acceptance;
-it is not accepted or merged.** 2B.4 remains not started. 2C/2D remain planned only;
+  on `phase-2/epub-search`. Its first independent review returned CHANGES
+  REQUIRED with no R1/R2 findings and one R3 lifecycle-evidence gap; that R3
+  remediation is complete. It is pending targeted independent re-review and
+  owner RP5 acceptance and is not accepted or merged.** 2B.4 remains not started. 2C/2D remain planned only;
 none of their work has started. See `VALIDATION.md`'s
 "Phase 2A.1"/"Phase 2B.1"/"Phase 2B.2"/"Phase 2B.2.1"/"Phase 2B.2.2"
 sections for evidence and explicitly-unclaimed items. This document is the
@@ -2272,9 +2274,11 @@ the new search entry point's reachability, same bar as 2B.2.
 
 #### 2B.3 implementation record (2026-09-28)
 
-**Status:** implementation complete on `phase-2/epub-search`, pending
-independent review and owner acceptance. It is not accepted, merged, pushed,
-or evidence that 2B.4/2C has started.
+**Status:** implementation complete on `phase-2/epub-search`; first independent
+review CHANGES REQUIRED with no R1/R2 findings; single R3 lifecycle-evidence
+gap remediated; pending targeted independent re-review and owner RP5
+acceptance. It is not accepted, merged, pushed, or evidence that 2B.4/2C has
+started.
 
 - `EpubSession.search()` consumes the `SearchService` already attached by the
   pinned Readium 3.4.0 EPUB parser. ShelfOS copies each result into a value
@@ -2315,6 +2319,27 @@ or evidence that 2B.4/2C has started.
   offline Gradle gate (86 tasks) all passed. Source size and modification time
   stayed unchanged. RP5 was not connected for this implementation pass, so no
   real-device or owner physical-control result is claimed.
+
+**R3 lifecycle-evidence remediation (2026-09-28):** the initial independent
+review confirmed the production architecture and found no R1/R2 issue, but the
+real-fixture UI tests completed their search before recreation and did not
+observe cursor ownership during teardown. A narrow opener factory/constructor
+seam now lets a non-exported debug-only Activity use instrumentation-owned
+controlled cursors; the release default remains `EpubSession.search()` and
+production search behavior is unchanged. The recreation test now observes the
+old cursor acquired and blocked in `next()`, recreates, observes its closure
+and a fresh cursor acquisition, then proves only the fresh result reaches the
+UI. The teardown test closes the Activity while its cursor is blocked, observes
+cursor closure, and requires `ActivityScenario.close()` to reach `DESTROYED`.
+The coordinator unit test separately proves `close()` returns only after cursor
+cleanup, matching the existing ViewModel order that closes the EPUB session
+after the coordinator barrier. Final focused results are search UI 6/6, real
+SearchService 1/1, recreation 1/1, navigation 26/26, and JVM search/
+presentation 10/10; the complete API 35 connected suite passed 84/84 and the
+86-task offline Gradle gate passed. See `VALIDATION.md` for exact evidence.
+2B.3 remains pending targeted independent re-review and owner RP5 acceptance.
+Unbounded result accumulation remains a non-blocking R4 item for later
+performance closure, with no current failure evidence.
 
 **Known limitation:** this slice searches EPUB publication text exposed by
 Readium's attached service. It does not add PDF/CBZ/global search, history,

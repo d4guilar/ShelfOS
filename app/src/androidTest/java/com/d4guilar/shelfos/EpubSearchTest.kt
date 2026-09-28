@@ -8,14 +8,26 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import com.d4guilar.shelfos.core.reader.EpubSearchCursor
+import com.d4guilar.shelfos.core.reader.EpubSearchRead
+import com.d4guilar.shelfos.core.reader.EpubSearchResult
 import com.d4guilar.shelfos.feature.reader.EpubActivity
+import com.d4guilar.shelfos.feature.reader.EpubSearchLifecycleTestActivity
+import com.d4guilar.shelfos.feature.reader.EpubSearchLifecycleTestBoundary
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
-/** Phase 2B.3 search UI against a real parser-opened EPUB and Readium's real StringSearchService. */
+/**
+ * Phase 2B.3 search UI against a real parser-opened EPUB and Readium's real StringSearchService. The two lifecycle
+ * cases use the debug-only Activity host so cursor acquisition/closure is observable rather than timing-dependent.
+ */
 class EpubSearchTest {
     @get:Rule val compose = createEmptyComposeRule()
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
@@ -23,7 +35,10 @@ class EpubSearchTest {
     private val container get() = (context.applicationContext as ShelfApplication).container
 
     @Before fun seedEpub() = runBlocking<Unit> { container.library.add(OriginalFixtures.epubWithChapters(context)) }
-    @After fun removeEpub() = runBlocking<Unit> { container.library.remove(ITEM_ID) }
+    @After fun removeEpub() = runBlocking<Unit> {
+        EpubSearchLifecycleTestBoundary.clear()
+        container.library.remove(ITEM_ID)
+    }
 
     private fun awaitReader() = compose.waitUntil(30_000) {
         compose.onAllNodes(hasText("Appearance") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
@@ -89,28 +104,56 @@ class EpubSearchTest {
         }
     }
 
-    @Test fun openQueryIsRestoredAndRerunAfterActivityRecreation() {
-        ActivityScenario.launch<EpubActivity>(EpubActivity.intent(context, ITEM_ID)).use { scenario ->
+    @Test fun recreationWhileCursorIsActiveClosesItAndUsesAFreshCursor() {
+        val old = ControlledCursor()
+        val fresh = ControlledCursor()
+        val boundary = ControlledBoundary(old, fresh)
+        EpubSearchLifecycleTestBoundary.install { _, query -> boundary.open(query) }
+
+        ActivityScenario.launch<EpubSearchLifecycleTestActivity>(lifecycleIntent()).use { scenario ->
             awaitReader()
             openSearch()
-            compose.onNode(searchField()).performTextInput(UNIQUE_QUERY)
-            awaitResults()
+            compose.onNode(searchField()).performTextInput(LIFECYCLE_QUERY)
+            awaitActive(old)
 
+            // Recreate before the first cursor can produce anything. The old composition clears the active query;
+            // rememberSaveable then restores it and the new composition opens a second cursor.
             scenario.recreate()
             awaitReader()
-            compose.onNode(searchField()).assertTextContains(UNIQUE_QUERY)
+            compose.onNode(searchField()).assertTextContains(LIFECYCLE_QUERY)
+            compose.waitUntil(10_000) { old.closed.get() }
+            awaitActive(fresh)
+            org.junit.Assert.assertEquals(listOf(LIFECYCLE_QUERY, LIFECYCLE_QUERY), boundary.queries)
+
+            fresh.emit(EpubSearchRead.Page(listOf(result(FRESH_RESULT))), EpubSearchRead.Complete)
             awaitResults()
-            compose.onNode(resultRow() and hasText(UNIQUE_QUERY, substring = true)).assertExists()
+            compose.onNode(resultRow() and hasText(FRESH_RESULT, substring = true)).assertExists()
+            compose.waitUntil(10_000) { fresh.closed.get() }
+
+            // Even an adversarial page offered to the already-closed source cannot reach the recreated UI.
+            old.emit(EpubSearchRead.Page(listOf(result(STALE_RESULT))), EpubSearchRead.Complete)
+            compose.waitForIdle()
+            compose.onAllNodes(hasText(STALE_RESULT, substring = true)).assertCountEquals(0)
+            org.junit.Assert.assertEquals(1, old.closeCalls.get())
             dismissSearch()
         }
     }
 
-    @Test fun leavingReaderDuringSearchDoesNotLeaveTheActivityAlive() {
-        val scenario = ActivityScenario.launch<EpubActivity>(EpubActivity.intent(context, ITEM_ID))
+    @Test fun leavingReaderWhileCursorIsActiveClosesItAndDestroysActivity() {
+        val cursor = ControlledCursor()
+        val boundary = ControlledBoundary(cursor)
+        EpubSearchLifecycleTestBoundary.install { _, query -> boundary.open(query) }
+        val scenario = ActivityScenario.launch<EpubSearchLifecycleTestActivity>(lifecycleIntent())
         awaitReader()
         openSearch()
-        compose.onNode(searchField()).performTextInput("Original")
-        scenario.close()
+        compose.onNode(searchField()).performTextInput(LIFECYCLE_QUERY)
+        awaitActive(cursor)
+
+        // The cursor is blocked inside next(): it cannot complete before teardown closes the reader.
+        scenario.close() // A successful return is ActivityScenario's positive DESTROYED-state observation.
+        compose.waitUntil(10_000) { cursor.closed.get() }
+        org.junit.Assert.assertEquals(1, cursor.closeCalls.get())
+        org.junit.Assert.assertEquals(listOf(LIFECYCLE_QUERY), boundary.queries)
     }
 
     @Test fun acceptedCtrlFAndKeyboardFocusCanOpenSearchAndActivateAResult() {
@@ -144,8 +187,64 @@ class EpubSearchTest {
         compose.waitUntil(10_000) { compose.onAllNodes(searchField()).fetchSemanticsNodes().isEmpty() }
     }
 
+    private fun lifecycleIntent() = EpubActivity.intent(context, ITEM_ID)
+        .setClass(context, EpubSearchLifecycleTestActivity::class.java)
+
+    private fun awaitActive(cursor: ControlledCursor) = compose.waitUntil(10_000) {
+        cursor.acquired.get() && cursor.nextStarted.get() && !cursor.closed.get()
+    }
+
+    private fun result(highlight: String) = EpubSearchResult(
+        locator = "{\"href\":\"chapter-7.xhtml\",\"type\":\"application/xhtml+xml\",\"locations\":{\"progression\":0.5}}",
+        href = "chapter-7.xhtml",
+        title = "Lifecycle result",
+        progression = 0.5,
+        before = "before ",
+        highlight = highlight,
+        after = " after",
+    )
+
+    private class ControlledBoundary(vararg cursors: ControlledCursor) {
+        private val remaining = ArrayDeque(cursors.toList())
+        val queries = CopyOnWriteArrayList<String>()
+
+        fun open(query: String): EpubSearchCursor {
+            val cursor = synchronized(remaining) {
+                check(remaining.isNotEmpty()) { "Unexpected extra search cursor request for $query" }
+                remaining.removeFirst()
+            }
+            queries += query
+            cursor.acquired.set(true)
+            return cursor
+        }
+    }
+
+    /** A cursor that remains suspended after acquisition until the test emits a read. */
+    private class ControlledCursor : EpubSearchCursor {
+        private val reads = Channel<EpubSearchRead>(Channel.UNLIMITED)
+        val acquired = AtomicBoolean()
+        val nextStarted = AtomicBoolean()
+        val closed = AtomicBoolean()
+        val closeCalls = AtomicInteger()
+
+        override suspend fun next(): EpubSearchRead {
+            nextStarted.set(true)
+            return reads.receive()
+        }
+
+        fun emit(vararg values: EpubSearchRead) = values.forEach { check(reads.trySend(it).isSuccess) }
+
+        override fun close() {
+            closeCalls.incrementAndGet()
+            closed.set(true)
+        }
+    }
+
     private companion object {
         const val ITEM_ID = "test-epub-chapters"
         const val UNIQUE_QUERY = "Chapter 7 paragraph 31"
+        const val LIFECYCLE_QUERY = "active lifecycle query"
+        const val FRESH_RESULT = "fresh lifecycle result"
+        const val STALE_RESULT = "stale old cursor result"
     }
 }
