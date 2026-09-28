@@ -118,9 +118,10 @@ byte-for-byte unchanged from `e1c92f0`, which was already RP5-certified.
 
 ### PRODUCTION-CODE STATUS
 
-**Unchanged.** `git status --porcelain` shows exactly one file modified:
-`app/src/androidTest/java/com/d4guilar/shelfos/EpubBookmarkTest.kt`. No
-production source file, schema, or dependency changed.
+**Unchanged.** The remediation diff contains one instrumentation-test file
+(`app/src/androidTest/java/com/d4guilar/shelfos/EpubBookmarkTest.kt`) plus four
+documentation files. After commit, the working tree is clean. No production
+source file, schema, or dependency changed.
 
 ### FINAL ACCEPTANCE (2B.2.2 R3 remediation) — pending
 
@@ -185,7 +186,7 @@ instrumented against the real dialog and real Room-backed repository.
 
 | Test class | Result |
 | --- | --- |
-| `EpubBookmarkTest` | 6/6 passed (up from 5) — new `addBookmarkControlTogglesToRemoveOnceBookmarkedAndBackAgain` (not-bookmarked → bookmarked → not-bookmarked via the same control, rapid repeat tap produces no duplicate, toggle reflects the current position after a chapter jump); existing tests updated for the new "Remove bookmark" label; recreation and reopen tests extended to assert the toggle state itself survives, not only the row count |
+| `EpubBookmarkTest` | 6/6 passed (up from 5) — new `addBookmarkControlTogglesToRemoveOnceBookmarkedAndBackAgain` (not-bookmarked → bookmarked → not-bookmarked via the same control, a settled re-add after removal produces no duplicate, toggle reflects the current position after a chapter jump); existing tests updated for the new "Remove bookmark" label; recreation and reopen tests extended to assert the toggle state itself survives, not only the row count. This historical run did not exercise rapid UI double-click input; the current remediation record above supersedes that earlier wording. |
 | `BookmarkPersistenceTest` | 7/7 passed (untouched — no persistence/ordering/equivalence change) |
 | `EpubBookmarkLocationInstrumentedTest` | 6/6 passed (untouched) |
 | `EpubChapterHighlightTest` | 3/3 passed (untouched) |

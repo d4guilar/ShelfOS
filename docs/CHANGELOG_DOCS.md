@@ -7,22 +7,19 @@
   implementation confirmed correct**), on the same branch
   (`phase-2/epub-reading-flow`), without resetting or dropping `e1c92f0`
   and **without touching any production source file**.
-- **R3.1 (rapid-activation coverage claimed but not tested):** replaced the
-  misleadingly-labeled "rapid repeat tap" assertion with a genuine test,
-  after two failed mechanisms were tried and their failures recorded
-  honestly rather than discarded — two real back-to-back `performClick()`
-  calls (failed: Compose's own click dispatch resyncs to idle first,
-  confirmed via an actual `AssertionError`), then suspending the Compose
-  test clock's `autoAdvance` (avoided that error but corrupted shared
-  idling state and broke an unrelated, previously-passing test in the same
-  run — confirmed via an actual `ComposeNotIdleException`, then confirmed
-  fixed by removing it). Landed on
+- **R3.1 (rapid-activation coverage claimed but not tested):** removed the
+  misleading "rapid repeat tap" claim. Compose test input synchronizes around
+  idleness, so two back-to-back `performClick()` calls could not faithfully
+  represent two UI activations before the first state update; suspending the
+  Compose test clock instead corrupted shared idling state. The final
+  regression therefore exercises the underlying concurrency/persistence
+  invariant through
   `concurrentAddBookmarkActivationsForTheSameLocationPersistOnlyOneBookmark`:
-  a real settled UI Add captures the actual live locator, then two genuinely
-  concurrent `addBookmark` calls for that exact locator prove the DAO's
-  duplicate guard holds — per this task's own instruction that direct-
-  repository simulation is acceptable once the UI-only path is proven
-  impossible, which it now is, empirically.
+  a real settled UI Add captures the actual live locator, then two concurrent
+  `addBookmark` requests for that exact locator result in exactly one
+  persisted bookmark. Separate UI-state tests verify the persisted bookmark
+  is reflected by the "Remove bookmark" control. No rapid UI double-click
+  coverage is claimed.
 - **R3.2 (missing persistence/state-transition regression coverage):**
   added `removingTheCurrentBookmarkPersistsThroughPublicationReopen`
   (a quick-toggle removal survives publication reopen, confirmed both via
@@ -39,8 +36,9 @@
   REQUIRED review with no R1/R2 findings, R3 remediation complete, not
   accepted, not merged, pending independent re-review and owner acceptance.
   Historical dated sections describing earlier stages were left untouched.
-- Test names corrected to match what they actually verify — the "rapid
-  repeat tap" claim now lives only on the test that genuinely proves it.
+- Test names and comments now distinguish the UI toggle coverage from the
+  repository-level concurrent-add persistence regression; no rapid UI tap
+  coverage is claimed.
 - Validated: `EpubBookmarkTest` 9/9 (twice, for stability),
   `EpubRecreationTest` 1/1, `NavigationSmokeTest` 26/26, full Gradle gate
   BUILD SUCCESSFUL. No schema/dependency change. Full connected-suite rerun

@@ -159,9 +159,10 @@ class EpubBookmarkTest {
      * Phase 2B.2.2: the current-position control is a real two-way toggle, not a dead-end disabled state once
      * bookmarked — removing the bookmark at the reader's current position no longer requires locating its row in
      * the (potentially long) list. Covers: not-bookmarked -> bookmarked -> not-bookmarked via the same control, a
-     * settled re-add after that removal, and the toggle updating correctly after navigating elsewhere. The genuine
-     * *rapid, unsettled* repeated-activation race is a separate, dedicated test below
-     * (`rapidRepeatedActivationOfAddBookmarkCreatesOnlyOneBookmark`) — this test does not itself claim that.
+     * settled re-add after that removal, and the toggle updating correctly after navigating elsewhere. Duplicate
+     * protection under concurrent requests is covered separately by
+     * `concurrentAddBookmarkActivationsForTheSameLocationPersistOnlyOneBookmark`; that repository-level test does
+     * not claim to perform rapid UI taps.
      */
     @Test fun addBookmarkControlTogglesToRemoveOnceBookmarkedAndBackAgain() {
         ActivityScenario.launch<EpubActivity>(EpubActivity.intent(context, "test-epub-chapters")).use {
