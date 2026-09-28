@@ -1,5 +1,129 @@
 # Validation
 
+## Phase 2B.2.2 validation — EPUB reading flow, bookmark toggle (2026-09-28)
+
+Branch `phase-2/epub-reading-flow`, base `main` at
+`af5410cfe3219f566d00b17fa5604f52d7a9c228` (2B.2.1 accepted/merged via PR
+#10). **2B.2.2 IMPLEMENTED, PENDING INDEPENDENT REVIEW — not accepted, not
+merged.** See `PHASE_2_PLAN.md`'s "2B.2.2 (reading flow)" section for the
+full discovery pass (current-flow walkthrough, friction analysis, deferred
+items, and the decision that no ADR/owner sign-off is required for this
+REQUIRED scope).
+
+### DISCOVERY FINDINGS (empirical, not guessed)
+
+- **Keyboard/D-pad focus after dialog dismiss**: tested directly with a
+  temporary instrumented probe (reverted before commit) — focused
+  "Bookmarks" via `RequestFocus`, opened it with `Key.Enter`, dismissed with
+  the real hardware Back key, confirmed focus returns to the "Bookmarks"
+  chrome button. **No defect found**; not in scope for a fix.
+- **Chrome width**: real screenshots captured on a standard 1080×1920
+  portrait emulator and the connected Retroid Pocket 5 (landscape). On the
+  portrait phone, the four existing chrome buttons already span nearly
+  edge-to-edge with almost no room — **a fifth standalone chrome button
+  does not safely fit** without a visual-redesign decision. RP5's landscape
+  width is not the binding constraint. This directly shaped the REQUIRED
+  scope below (no new button).
+- **`ShelfCommand.TOGGLE_BOOKMARK`**: confirmed in code
+  (`core/input/ShelfCommand.kt`) to already map keyboard `InputKey.B` in
+  reader context, and confirmed in `EpubActivity.kt` to be unconsumed
+  (falls to `else -> false`). `docs/design/INPUT_SYSTEM.md` lists it only as
+  a conceptual command with a *suggested, not committed* keyboard default.
+  **Left unwired** — see "explicitly deferred" below.
+
+### PRODUCTION CHANGE
+
+`EpubActivity.kt`'s Bookmarks-dialog current-position control is now a real
+two-way toggle instead of Add/disabled-once-bookmarked:
+- Not bookmarked: "Add bookmark" (unchanged).
+- Already bookmarked: **"Remove bookmark"** (enabled, not disabled) — tapping
+  deletes that exact bookmark via the existing `vm.deleteBookmark(id)`.
+- The current-bookmark lookup (`sameEpubBookmarkLocation`-based) now returns
+  the matched `Bookmark` itself, not only a boolean, so the control knows
+  exactly which row to delete.
+- No new repository method, no schema change, no new `ShelfCommand`, no new
+  UI surface — same control, same position, same width.
+
+### JVM / REGRESSION
+
+No JVM-only test class needed; this is UI/repository-call wiring, exercised
+instrumented against the real dialog and real Room-backed repository.
+
+### INSTRUMENTED / EMULATOR (`shelfos-phase0`, API 35)
+
+| Test class | Result |
+| --- | --- |
+| `EpubBookmarkTest` | 6/6 passed (up from 5) — new `addBookmarkControlTogglesToRemoveOnceBookmarkedAndBackAgain` (not-bookmarked → bookmarked → not-bookmarked via the same control, rapid repeat tap produces no duplicate, toggle reflects the current position after a chapter jump); existing tests updated for the new "Remove bookmark" label; recreation and reopen tests extended to assert the toggle state itself survives, not only the row count |
+| `BookmarkPersistenceTest` | 7/7 passed (untouched — no persistence/ordering/equivalence change) |
+| `EpubBookmarkLocationInstrumentedTest` | 6/6 passed (untouched) |
+| `EpubChapterHighlightTest` | 3/3 passed (untouched) |
+| `NavigationSmokeTest` | 26/26 passed (untouched) |
+| `EpubRecreationTest` | 1/1 passed (untouched) |
+| Full `connectedDebugAndroidTest` suite | **74/74 passed, 0 failures, 0 errors**, all 12 classes complete — required because production reader UI/behavior changed |
+
+**Emulator infrastructure note (recurrence):** the same class of ADB
+transport-disconnection failure documented earlier in this project's history
+recurred once during an initial `EpubBookmarkTest` run (`Transport endpoint
+is not connected` / `cmd: Can't find service: package`). Resolved with the
+same established procedure (confirm no stale `emulator`/`qemu` processes,
+restart ADB, relaunch the emulator, poll for boot completion, verify
+`pm list packages`); all runs after the restart were clean, including one
+observed timing timeout in `bookmarksSurviveClosingAndReopeningThePublication`
+(a `ComposeTimeoutException` waiting for the reader session to open, on the
+freshly-restarted emulator's first run) that passed cleanly on immediate
+re-run — consistent with device-load timing instability, not a regression.
+
+### STATIC / BUILD
+
+| Check | Result |
+| --- | --- |
+| Full gate (`:app:compileDebugKotlin :app:compileDebugAndroidTestKotlin :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest --rerun-tasks --offline --console=plain`) | **BUILD SUCCESSFUL**, 86/86 tasks |
+| `git diff --check` | Clean |
+| `git status --porcelain -- app/schemas` | Clean — no schema change |
+
+### RP5 (physical Retroid Pocket 5, `d8f7f1b6`, Android 13 / API 33)
+
+Production reader UI changed, so RP5 was exercised, not skipped.
+`EpubBookmarkTest` was run against the connected device after waking/
+unlocking it: **6/6 passed**, including the toggle test and the keyboard-
+focus test (which had previously shown a device-specific quirk in 2B.2's R3
+remediation — it passed cleanly here, though a single pass does not itself
+prove that earlier finding was wrong, and is not claimed to). A direct
+`adb exec-out screencap` captured the real device's screen showing the
+"Remove bookmark" control rendering clearly and legibly. ShelfOS was tested
+on a Retroid Pocket 5. This is real hardware execution with a directly
+observed visual and functional result — not a claim of manual physical
+controller button-pressing, which was not performed in this pass.
+
+### PRESERVED ARCHITECTURE (confirmed unchanged)
+
+Bookmark Room schema, `Bookmark` domain model, stored locator format,
+navigation authority, the DAO's exact-locator duplicate guard,
+`sameEpubBookmarkLocation`, bookmark ordering, `matchChapter`, 2B.2.1's
+Location N presentation, source EPUB, resume model — confirmed via `git
+diff --stat` showing no changes to `LibraryDao.kt`, `ShelfDatabase.kt`,
+`RoomLibraryRepository.kt`, `Bookmark.kt`, or `core/reader/EpubReader.kt`.
+No new `ShelfCommand`/physical binding was wired.
+
+### FINAL ACCEPTANCE (2B.2.2) — pending
+
+Implementation complete with the evidence above, including explicit
+discovery findings for two friction candidates that were investigated and
+*ruled out* (dialog focus restoration, RP5-specific chrome width) rather
+than assumed. **Not yet reviewed by Codex, not merged, not pushed.** 2B.3,
+2B.4 remain untouched and unstarted; the deferred reading-flow items
+(ambient bookmark indicator, single-tap-without-dialog affordance,
+`TOGGLE_BOOKMARK` wiring) remain explicitly unimplemented pending an owner
+product/visual decision.
+
+## Phase 2B.2.1 — merged (2026-09-27)
+
+Following the final R3 closure below (`7f8eef9` + the R3 fix), **2B.2.1 was
+accepted and merged to `main` via PR #10** at commit
+`af5410cfe3219f566d00b17fa5604f52d7a9c228`. This is the current,
+authoritative status; the sections below (and the superseded section
+further down) are the evidence trail, preserved as written at the time.
+
 ## Phase 2B.2.1 final R3 closure (2026-09-27)
 
 Final independent review of `7f8eef9` returned **PASS WITH NON-BLOCKING

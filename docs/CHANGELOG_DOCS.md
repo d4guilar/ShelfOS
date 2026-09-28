@@ -1,5 +1,57 @@
 # Documentation Changelog
 
+## Phase 2B.2.2 — EPUB reading flow discovery + bookmark toggle (2026-09-28)
+
+- Reconciled stale documentation: `PHASE_2_PLAN.md`, `ROADMAP.md`, and
+  `VALIDATION.md` all still described Phase 2B.2.1 as pending independent
+  review/not merged, even though PR #10 (commit `af5410c`) had already
+  merged it to `main`. Updated the top status blocks in all three files to
+  state 2B.2.1 is accepted and merged, while leaving the dated, in-process
+  review-history sections themselves untouched (they were accurate
+  snapshots of the state at the time they were written).
+- Turned the previously undefined "2B.2.2 — Reading Flow" placeholder into
+  a concrete, bounded scope. Traced the real post-2B.2.1 reading/bookmark
+  flow through the actual call paths (not filenames) and investigated,
+  empirically, two friction candidates: whether keyboard/D-pad focus is
+  lost after a Chapters/Bookmarks dialog dismiss (tested directly — no
+  defect found) and whether the reader chrome has room for a new
+  always-visible bookmark-state affordance (screenshotted on a portrait
+  phone emulator and the connected RP5 — confirmed a portrait phone's four
+  existing chrome buttons already leave no room for a fifth).
+- Identified the one concrete, safely-fixable friction point: the
+  current-position bookmark control became a permanently disabled dead end
+  ("Bookmarked") once a bookmark existed, forcing users to locate that
+  bookmark's row in the management list just to remove it.
+- Implemented the REQUIRED fix: the control is now a real two-way toggle
+  ("Add bookmark" ⟷ "Remove bookmark"), reusing the existing
+  `sameEpubBookmarkLocation` match and `deleteBookmark` repository call —
+  no schema change, no new `ShelfCommand`, no new UI surface, no new
+  physical input binding.
+- Explicitly deferred, with reasoning, three items that would need an owner
+  product/visual decision rather than an engineering guess: an ambient
+  "this page is bookmarked" indicator outside the dialog, a single-tap
+  toggle without opening any dialog, and wiring
+  `ShelfCommand.TOGGLE_BOOKMARK`/`InputKey.B` (already present in the
+  mapper but never consumed, and only ever a *suggested* keyboard default
+  in `INPUT_SYSTEM.md`) to any reader action. Also deferred: unifying touch
+  gestures into the `ShelfCommand`/`InputMapper` layer, an open item
+  ADR-0023 itself already flags as needing a future increment, not this
+  small slice.
+- Added `EpubBookmarkTest.addBookmarkControlTogglesToRemoveOnceBookmarkedAndBackAgain`
+  and extended the recreation/reopen tests to assert the toggle's own state
+  survives, not just the bookmark count. Updated existing assertions for
+  the "Bookmarked" → "Remove bookmark" label change.
+- Validated: `EpubBookmarkTest` 6/6, `BookmarkPersistenceTest` 7/7,
+  `EpubBookmarkLocationInstrumentedTest` 6/6, `EpubChapterHighlightTest`
+  3/3, `NavigationSmokeTest` 26/26, `EpubRecreationTest` 1/1, full
+  `connectedDebugAndroidTest` 74/74. Full Gradle gate BUILD SUCCESSFUL. RP5:
+  6/6 `EpubBookmarkTest` on the real device plus a direct screenshot
+  confirming the new control renders legibly. No schema/dependency change.
+- Updated `PHASE_2_PLAN.md` with the full discovery record (§9's 22-point
+  structure) and `VALIDATION.md` with the implementation/validation record.
+  2B.2.2 remains implemented, pending independent review, not merged, not
+  pushed. No 2B.3/2B.4 work was added.
+
 ## Phase 2B.2.1 final R3 closure (2026-09-27)
 
 - Closed the last open finding from the "PASS WITH NON-BLOCKING FINDINGS"

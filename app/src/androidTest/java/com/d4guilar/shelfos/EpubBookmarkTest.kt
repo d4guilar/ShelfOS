@@ -53,12 +53,12 @@ class EpubBookmarkTest {
             compose.onNodeWithText("No bookmarks yet.").assertExists()
             awaitAddEnabled()
             compose.onNodeWithText("Add bookmark").performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithText("Bookmarked").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Remove bookmark").fetchSemanticsNodes().isNotEmpty() }
             bookmarkCount(1)
             compose.onNode(bookmarkRow("Chapter 1")).assertExists()
-            // Adding again at the same, now-bookmarked position must not create a duplicate row: the Add control
-            // itself is disabled once bookmarked, so there is nothing left to (mis)click here — the duplicate-safe
-            // repository behavior itself is covered directly by BookmarkPersistenceTest.
+            // Phase 2B.2.2: the control is now a real toggle ("Remove bookmark"), not a disabled dead end — its
+            // own add/remove behavior is covered by EpubBookmarkTest's dedicated toggle tests below; this flow
+            // test does not re-click it here, so duplicate-add prevention remains covered by BookmarkPersistenceTest.
 
             // Close/reopen the dialog: the bookmark is Room-backed, not saved-instance-state.
             compose.onNodeWithText("Close").performClick()
@@ -122,7 +122,7 @@ class EpubBookmarkTest {
             val addButton = hasText("Add bookmark") and hasClickAction()
             compose.onNode(addButton).performSemanticsAction(SemanticsActions.RequestFocus)
             compose.onNode(addButton).assertIsFocused().performKeyInput { pressKey(Key.Enter) }
-            compose.waitUntil(10_000) { compose.onAllNodesWithText("Bookmarked").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Remove bookmark").fetchSemanticsNodes().isNotEmpty() }
             bookmarkCount(1)
 
             // The bookmark row itself is focusable, and activating it performs the real jump (dialog closes only
@@ -151,6 +151,47 @@ class EpubBookmarkTest {
         }
     }
 
+    /**
+     * Phase 2B.2.2: the current-position control is a real two-way toggle, not a dead-end disabled state once
+     * bookmarked — removing the bookmark at the reader's current position no longer requires locating its row in
+     * the (potentially long) list. Covers: not-bookmarked -> bookmarked -> not-bookmarked via the same control, a
+     * rapid repeat tap producing no duplicate/error, and the toggle updating correctly after navigating elsewhere.
+     */
+    @Test fun addBookmarkControlTogglesToRemoveOnceBookmarkedAndBackAgain() {
+        ActivityScenario.launch<EpubActivity>(EpubActivity.intent(context, "test-epub-chapters")).use {
+            awaitReader()
+            compose.onNodeWithText("Bookmarks").performClick()
+            awaitAddEnabled()
+
+            // Not bookmarked -> bookmarked: the control becomes "Remove bookmark", not a disabled "Bookmarked".
+            compose.onNodeWithText("Add bookmark").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodes(hasText("Remove bookmark") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+            bookmarkCount(1)
+
+            // Bookmarked -> not bookmarked, using the exact same control: the current bookmark is gone, not merely
+            // re-enabled — deleting via this control must not leave a stray duplicate behind.
+            compose.onNodeWithText("Remove bookmark").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("No bookmarks yet.").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Add bookmark").assertExists()
+
+            // A rapid repeat tap on "Add bookmark" (before the flow above, now re-add) must not create a duplicate
+            // row — the DAO's own exact-locator guard (BookmarkPersistenceTest) backs this, this proves the UI path.
+            compose.onNodeWithText("Add bookmark").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodes(hasText("Remove bookmark") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+            bookmarkCount(1)
+
+            // Navigate elsewhere via Chapters; the toggle must reflect the *new* current position, not the old one.
+            compose.onNodeWithText("Close").performClick()
+            compose.onNodeWithText("Chapters").performClick()
+            compose.onNode(chapterRow("Chapter 5")).performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Chapters").fetchSemanticsNodes().size == 1 }
+            compose.onNodeWithText("Bookmarks").performClick()
+            awaitAddEnabled()
+            compose.onNodeWithText("Add bookmark").assertExists() // Chapter 5 was never bookmarked: still "Add".
+            bookmarkCount(1) // The Chapter 1 bookmark from before is still there, untouched by this navigation.
+        }
+    }
+
     @Test fun bookmarksSurviveActivityRecreation() {
         ActivityScenario.launch<EpubActivity>(EpubActivity.intent(context, "test-epub-chapters")).use { scenario ->
             awaitReader()
@@ -164,6 +205,9 @@ class EpubBookmarkTest {
             awaitReader()
             compose.onNodeWithText("Bookmarks").performClick()
             bookmarkCount(1)
+            // Phase 2B.2.2: the toggle recomputes "currently bookmarked" from the restored locator + bookmarks
+            // after recreation, not merely that the row persisted — it must read "Remove bookmark", not "Add".
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Remove bookmark").fetchSemanticsNodes().isNotEmpty() }
         }
     }
 
@@ -179,6 +223,7 @@ class EpubBookmarkTest {
             awaitReader()
             compose.onNodeWithText("Bookmarks").performClick()
             bookmarkCount(1)
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Remove bookmark").fetchSemanticsNodes().isNotEmpty() }
         }
     }
 
