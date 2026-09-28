@@ -19,6 +19,9 @@ class EpubReaderViewModel(private val id: String, private val repository: Librar
     private val bookmarks: BookmarkRepository, private val factory: EpubReaderFactory, private val appScope: CoroutineScope) : ViewModel() {
     private val _state = MutableStateFlow(EpubReaderState())
     val state = _state.asStateFlow()
+    private val searchScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val searchCoordinator = EpubSearchCoordinator(searchScope)
+    val searchState = searchCoordinator.state
     private val positions = PositionWriter<Pair<String, Int>>(appScope, write = { (locator, progress) ->
         repository.reading(id, locator, progress)
     }, onFailure = { _state.update { it.copy(error = "Your reading position could not be saved.") } })
@@ -90,6 +93,10 @@ class EpubReaderViewModel(private val id: String, private val repository: Librar
         catch (_: Exception) { _state.update { it.copy(error = "This bookmark could not be deleted.") } }
     }
 
+    fun search(session: EpubSession, query: String) = searchCoordinator.search(query, session::search)
+
+    fun clearSearch() = searchCoordinator.clear()
+
     private fun persistPreferences(block: suspend () -> Unit) { viewModelScope.launch {
         try { block() } catch (e: CancellationException) { throw e }
         catch (_: Exception) { _state.update { it.copy(error = "Reading preferences could not be saved.") } }
@@ -101,6 +108,14 @@ class EpubReaderViewModel(private val id: String, private val repository: Librar
 
     override fun onCleared() {
         positions.close()
-        _state.value.session?.let { session -> appScope.launch { session.close() } }
+        val session = _state.value.session
+        // Search owns session-bound Readium iterators. Join its guaranteed cursor cleanup before closing the
+        // publication itself; this scope is independent of viewModelScope so framework cancellation cannot race
+        // past that ordering during teardown.
+        appScope.launch {
+            searchCoordinator.close()
+            searchScope.cancel()
+            session?.close()
+        }
     }
 }

@@ -1,5 +1,21 @@
 # Documentation Changelog
 
+## Phase 2B.3 EPUB publication search implementation (2026-09-28)
+
+- Recorded 2B.2.2 as accepted and squash-merged via PR #11 at `ab612a46`, and
+  moved 2B.3 from active implementation to implemented/pending independent
+  review and owner acceptance. It is not described as accepted or merged.
+- Documented the parser-attached Readium 3.4.0 `SearchService` boundary,
+  ShelfOS value model, serialized iterator ownership/cleanup, rapid-query and
+  recreation policy, local/read-only/non-persistent behavior, locator-based
+  navigation, accessibility/focus behavior, and explicit exclusions.
+- Recorded actual evidence: 10/10 focused JVM tests, 7/7 search instrumentation
+  checks, required regressions 39/39, full connected suite 84/84, offline
+  airplane-mode pass, compact/expanded viewports, 909 ms largest-fixture
+  timing, unchanged source file, and the 86-task offline Gradle gate.
+- Recorded that RP5 was unavailable, so no real-device or owner physical-input
+  claim is made. No schema/dependency change and no 2B.4/2C implementation.
+
 ## Phase 2B.2.2 R3 remediation (2026-09-28)
 
 - Closed all three R3 findings from an independent Codex review of

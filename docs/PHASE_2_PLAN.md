@@ -30,15 +30,15 @@ before merge: the first implementation (`f43e70d`) returned CHANGES REQUIRED
 findings); the remediation (`7f8eef9`) returned PASS WITH NON-BLOCKING
 FINDINGS with one remaining R3 (a catalog-conversion defensiveness gap),
 closed in a third round before merge. All three rounds are recorded under
-§3's 2B plan below. **2B.2.2 (reading flow) implementation is complete**
-(`phase-2/epub-reading-flow`, base `af5410c`) — the current-position
-bookmark control is a real Add/Remove toggle. An independent Codex review
-returned **CHANGES REQUIRED** with **no R1/R2 findings** (production
-behavior was found correct) and three R3 findings (test-coverage honesty
-and stale status wording); the R3 remediation is recorded under §3's 2B
-plan below. **2B.2.2 is NOT accepted, NOT merged — pending independent
-re-review and owner acceptance.** 2B.3, 2B.4 remain not started. 2C/2D
-remain planned only; none of their work has started. See `VALIDATION.md`'s
+§3's 2B plan below. **2B.2.2 (reading flow) is accepted and squash-merged to
+`main` via PR #11** at commit
+`ab612a46cc929c1a5d32df0d9ed608d1792e7a95`. Its initial independent review
+returned **CHANGES REQUIRED** with **no R1/R2 findings**; the three R3
+test/documentation findings were remediated and the final wording cleanup
+was completed before merge. **2B.3 (EPUB publication search) is implemented
+on `phase-2/epub-search` and pending independent review and owner acceptance;
+it is not accepted or merged.** 2B.4 remains not started. 2C/2D remain planned only;
+none of their work has started. See `VALIDATION.md`'s
 "Phase 2A.1"/"Phase 2B.1"/"Phase 2B.2"/"Phase 2B.2.1"/"Phase 2B.2.2"
 sections for evidence and explicitly-unclaimed items. This document is the
 canonical Phase 2 planning location referenced by
@@ -75,12 +75,12 @@ each independently mergeable and gated by its own acceptance criteria. 2A and
 2A.1 are both accepted and merged (see their sections below and
 `VALIDATION.md` for the full history). 2B is broken into four internal
 slices (2B.1–2B.4, see below) after a discovery/implementation-planning
-pass. 2B.1, 2B.2, and 2B.2.1 are all accepted and merged (2B.2 via PR #9
+pass. 2B.1, 2B.2, 2B.2.1 and 2B.2.2 are accepted and merged (2B.2 via PR #9
 after independent review and RP5 physical acceptance; 2B.2.1 via PR #10
-after three independent-review rounds); 2B.2.2 (reading flow) implementation
-is complete and in R3 remediation after an independent review (CHANGES
-REQUIRED, no R1/R2 findings) — not yet accepted or merged; 2B.3/2B.4 remain
-not started. 2C/2D remain planned only; none of their work has started.
+after three independent-review rounds; 2B.2.2 via PR #11 after R3 remediation
+and final wording cleanup). 2B.3 (EPUB publication search) is implemented and
+pending independent review and owner acceptance; 2B.4
+remains not started. 2C/2D remain planned only; none of their work has started.
 
 ## 3. Increments
 
@@ -537,7 +537,8 @@ parser's own, not fill a gap.**
   wholeWord, exact, language, regularExpression, otherOptions)` — real, usable
   knobs already available on the attached service.
 
-**NOT YET IMPLEMENTED IN SHELFOS (this is 2B.3's actual scope):**
+**NOT IMPLEMENTED AT DISCOVERY TIME (implemented by 2B.3; see the later
+implementation record):**
 - A search UI surface (query input, results list, jump-to-result).
 - Query state/orchestration (debouncing, superseding an in-flight query).
 - Result presentation (rendering `Locator.Text.before/highlight/after` and
@@ -2268,6 +2269,58 @@ flow against a real fixture EPUB with known text; the rapid-replacement,
 clear-query, recreation and leave-mid-search cases above; a timing check
 against the largest available fixture (§2B.8). API 35: yes. RP5: relevant for
 the new search entry point's reachability, same bar as 2B.2.
+
+#### 2B.3 implementation record (2026-09-28)
+
+**Status:** implementation complete on `phase-2/epub-search`, pending
+independent review and owner acceptance. It is not accepted, merged, pushed,
+or evidence that 2B.4/2C has started.
+
+- `EpubSession.search()` consumes the `SearchService` already attached by the
+  pinned Readium 3.4.0 EPUB parser. ShelfOS copies each result into a value
+  model containing serialized locator authority plus display-only href,
+  title, progression, and `before`/`highlight`/`after` text. No raw Readium
+  service or iterator enters saved UI state or persistence.
+- `EpubSearchCoordinator` owns latest-query UI state and performs service and
+  iterator work off the main thread. A mutex serializes cursor ownership from
+  acquisition through explicit close,
+  including bursts of three or more replacements. Completion, `SearchError`,
+  cancellation, clear, supersession, and reader teardown all close the
+  iterator; cancellation is rethrown rather than converted to a search error.
+  Teardown crosses the cursor-ownership boundary before `EpubSession.close()`.
+- The existing reader chrome now opens a compact `AlertDialog` search surface
+  with a labeled/focused query field, scrollable snippet results, explicit
+  no-results and readable error states, Clear and Close actions, and semantic
+  result descriptions. Selecting a row calls the existing navigator with its
+  captured locator. No page number, percentage, title, or string offset is
+  used as navigation authority.
+- The existing accepted Ctrl+F mapping is reused; no physical binding was
+  added. Touch and Compose focus activation work, the chrome wraps rather than
+  dropping controls at compact width, and the same surface is used at expanded
+  width. A dialog-window focus handoff avoids losing initial field focus on a
+  cold launch.
+- Recreation deliberately saves only whether the dialog is open and its plain
+  query string. The old iterator is cancelled/closed; the restored query is
+  rerun against the active session. Results themselves are ephemeral. Empty or
+  whitespace-only input opens no cursor, and stale rows are suppressed during
+  rapid query replacement.
+- Search remains publication-local, offline, read-only, and non-persistent.
+  There is no Room migration, search index, dependency, parser registration,
+  search history, global Library search change, or source-publication write.
+- Validation: 10 focused JVM tests; 7 real-fixture search instrumentation
+  checks; the required reader regressions 39/39; complete API 35 connected
+  suite 84/84 in 164.364 seconds; compact and forced 2560×1600 expanded
+  viewport checks; real parser search with airplane mode enabled (restored
+  afterward); largest-fixture search 909 ms in the final suite; and the full
+  offline Gradle gate (86 tasks) all passed. Source size and modification time
+  stayed unchanged. RP5 was not connected for this implementation pass, so no
+  real-device or owner physical-control result is claimed.
+
+**Known limitation:** this slice searches EPUB publication text exposed by
+Readium's attached service. It does not add PDF/CBZ/global search, history,
+saved results, annotations, or custom search options. Real `SearchError`
+presentation is covered through the deterministic ShelfOS cursor boundary;
+the real fixture exercises the parser's success, empty, and navigation paths.
 
 **2B.4 (custom-font feasibility + managed-font architecture):**
 **Phase 0 — proof gate (must pass before any of the user-facing criteria

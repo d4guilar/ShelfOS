@@ -1,5 +1,74 @@
 # Validation
 
+## Phase 2B.3 — EPUB publication search implementation (2026-09-28)
+
+Phase 2B.3 is **implemented on `phase-2/epub-search`, pending independent
+review and owner acceptance; it is not accepted, merged, or pushed**. Phase
+2B.4, 2C, and 2D remain not started.
+
+- Verified the pinned Readium Kotlin Toolkit 3.4.0 artifacts directly:
+  `Publication.findService(SearchService::class)` returns the parser-attached
+  service; `SearchService.search()` returns a paged `SearchIterator`; and that
+  iterator has an explicit `close()` lifecycle. No parser registration,
+  dependency, HTML scraping, or parallel index was added.
+- Implemented a ShelfOS-owned search boundary and copied value result model.
+  The coordinator serializes iterator ownership, cancels superseded work,
+  blocks stale-generation writes, and explicitly closes on completion, error,
+  replacement, clear, cancellation, and teardown before the EPUB session is
+  closed. Only the dialog-open flag and query string survive recreation; the
+  query is rerun with a new service iterator.
+- UI evidence covers the reader Search entry point, cold-launch query-field
+  focus, readable and accessible snippets, explicit zero-results state,
+  Clear/Close, existing Ctrl+F, Compose keyboard focus, locator-authoritative
+  result jumps, recreation, rapid replacement, and leaving during active
+  search. Default compact 1080×1920 and forced expanded 2560×1600 emulator
+  viewports passed; the viewport was reset afterward.
+- Focused JVM: **10/10 PASS** (`EpubSearchPresentationTest` and
+  `EpubSearchCoordinatorTest`), including completion/error/replacement/clear/
+  teardown closure and a three-query ownership regression.
+- Search instrumentation: **7/7 PASS** (`EpubSearchTest` 6/6 plus
+  `EpubSearchServiceInstrumentedTest` 1/1) against real generated EPUBs and
+  Readium's actual attached service. The largest-fixture search completed in
+  **909 ms** in the final connected run and left the source file's length and
+  modification time unchanged.
+- Required regressions: **39/39 PASS** (`EpubBookmarkTest` 9,
+  `EpubRecreationTest` 1, `EpubChapterHighlightTest` 3,
+  `NavigationSmokeTest` 26).
+- Complete API 35 connected suite: **84/84 PASS in 164.364 seconds**. A prior
+  invalid run was interrupted by a host/emulator suspension lasting hours; its
+  two affected endpoints were rerun together 2/2 before the clean continuous
+  84/84 result. Ordinary search tests now dismiss their dialog before fixture
+  teardown, while the dedicated active-search teardown test still closes the
+  Activity with search running.
+- Offline evidence: airplane mode was set to `1`, the real parser search test
+  passed 1/1 in 1.311 seconds, and airplane mode was restored to `0` in a
+  `finally` block. Search uses only the already-open local publication.
+- Full offline Gradle gate: **BUILD SUCCESSFUL in 3m 1s, 86/86 tasks
+  executed** for compile, Android-test compile, debug APK, all JVM tests, lint,
+  and Android-test APK. The existing `ImportLeasesTest` unnecessary `!!`
+  compiler warning and debug-manifest removed-INTERNET warning remain
+  pre-existing, non-failing output.
+- No Room schema, migration, dependency, source publication, `LibraryItem`,
+  bookmark persistence, or search-history change. Normal navigator movement
+  after selecting a result remains the only reading-state effect.
+- RP5 was not connected during this pass. No RP5 execution or owner physical-
+  control evidence is claimed. API 24/API 37 limitations remain the existing
+  documented environment items; this slice did not claim to resolve them.
+
+## Phase 2B.2.2 acceptance and Phase 2B.3 start (2026-09-28)
+
+Phase 2B.2.2 is **accepted and squash-merged to `main` via PR #11** at
+`ab612a46cc929c1a5d32df0d9ed608d1792e7a95`. Its initial independent review
+returned CHANGES REQUIRED with no R1/R2 findings; the three R3 test/documentation
+findings were remediated, the final wording cleanup was completed, and the
+implementation is closed. The detailed entries below remain as the historical
+review and validation record.
+
+At this branch's starting point, Phase 2B.3 (local EPUB publication search)
+became the active implementation slice. Its completed implementation status
+and evidence are recorded in the newer section above. Phase 2B.4, 2C and 2D
+remain not started.
+
 ## Phase 2B.2.2 R3 remediation (2026-09-28)
 
 Independent Codex review of `e1c92f0` (2B.2.2's original implementation,
@@ -77,8 +146,8 @@ Corrected in this file (new section above the superseded one below),
 section header — no longer described as only "discovery/implementation-
 planning" now that implementation exists and has been reviewed), and
 `ROADMAP.md`. Historical passages describing the earlier planning-only
-stage are left as accurate dated snapshots, not rewritten. Current truthful
-status: 2B.2.1 accepted/merged via PR #10 (`af5410c`); 2B.2.2 implementation
+stage are left as accurate dated snapshots, not rewritten. Status at that
+remediation checkpoint: 2B.2.1 accepted/merged via PR #10 (`af5410c`); 2B.2.2 implementation
 complete, initial review CHANGES REQUIRED with no R1/R2 findings, R3
 remediation complete on this branch, not accepted, not merged, pending
 independent re-review and owner acceptance; 2B.3/2B.4 not started.
