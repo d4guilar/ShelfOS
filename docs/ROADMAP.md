@@ -217,8 +217,8 @@ internal slices 2B.1–2B.4 — 2B.1 chapter-navigation polish accepted and merg
 via PR #8, 2B.2 durable bookmarks accepted and merged via PR #9, 2B.2.1
 bookmark-location polish accepted and merged via PR #10, and 2B.2.2 reading
 flow accepted and merged via PR #11 at `ab612a46`; 2B.3 EPUB publication
-search is implemented on its feature branch and pending independent review
-and owner acceptance (not accepted or merged), 2B.4 is not started; 2C–2D planned,
+search is accepted after final technical review and owner physical RP5
+validation, and is ready for PR/merge but not yet merged; 2B.4 is not started; 2C–2D planned,
 not started) and acceptance criteria. The
 original inventory below is retained for coverage; items already accepted in
 Phase 1 are marked accordingly.

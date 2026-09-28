@@ -1,5 +1,19 @@
 # Documentation Changelog
 
+## Phase 2B.3 final review and RP5 acceptance (2026-09-28)
+
+- Recorded the final targeted independent verdict for `e395ce7`: **PASS WITH
+  NON-BLOCKING FINDINGS**, with no R1/R2/R3 findings.
+- Recorded owner physical RP5 acceptance of Search reachability/activation,
+  known-query entry, result navigation, correct-passage jump, zero-results,
+  Search-dialog Back dismissal, hidden-chrome Back reveal-before-exit, and
+  compact-layout/focus sanity on the exact latest installed build.
+- Retained the two non-blocking R4 items: unbounded result accumulation is
+  deferred to later performance closure, and the debug-only opener is not
+  parallel-test-safe.
+- Phase 2B.3 is now accepted and ready for PR/merge, but is not yet merged or
+  pushed. No production code/tests, 2B.4, or 2C work was included.
+
 ## Phase 2B.3 R3 lifecycle-evidence remediation (2026-09-28)
 
 - Recorded the first independent verdict accurately: CHANGES REQUIRED, no

@@ -1,14 +1,37 @@
 # Validation
 
+## Phase 2B.3 final technical review and owner RP5 acceptance (2026-09-28)
+
+Phase 2B.3 is **accepted and ready for PR/merge, but is not yet merged or
+pushed**. The final targeted independent review of
+`e395ce7fc57c38072c806d577ec1095458663270` returned **PASS WITH NON-BLOCKING
+FINDINGS** with **no R1, R2, or R3 findings**. The two remaining R4 items are
+unbounded search-result accumulation, deferred to later performance closure,
+and the debug-only opener's lack of parallel-test safety.
+
+The owner physically tested the exact latest installed debug build on the
+Retroid Pocket 5 and reported **RP5 PASS** for the Phase 2B.3 acceptance flow:
+
+- reached and activated Search using the RP5 D-pad/controller;
+- entered a known query and navigated the result list;
+- opened a result and landed at the correct passage;
+- confirmed a real miss shows the zero-results state;
+- confirmed Back dismisses Search without leaving the reader;
+- confirmed Back with hidden chrome still reveals controls before exit; and
+- confirmed compact RP5 layout and focus behavior remained usable.
+
+This is owner-reported physical-button evidence, distinct from ADB/Compose
+automation. With technical review and physical acceptance complete, no Phase
+2B.3 gate remains before PR/merge. No merge is claimed here.
+
 ## Phase 2B.3 R3 lifecycle-evidence remediation (2026-09-28)
 
 The first independent review of `bd50ad2` returned **CHANGES REQUIRED with no
 R1 or R2 findings**. Production search behavior and architecture were found
 correct; the only blocker was one R3 evidence gap: the recreation and teardown
 UI tests started real searches but did not positively observe an active cursor
-or its closure. That gap is now remediated. Phase 2B.3 remains **implemented,
-R3 remediation complete, pending targeted independent re-review and owner RP5
-acceptance; it is not accepted, merged, or pushed**.
+or its closure. That gap was remediated and subsequently accepted by the final
+targeted review recorded above.
 
 - A small factory/constructor seam exposes the existing `EpubSearchCursor`
   boundary without changing release behavior: the default still calls
@@ -67,17 +90,15 @@ acceptance; it is not accepted, merged, or pushed**.
   semantics are unchanged. Unbounded result accumulation remains the accepted
   R4 carry-forward for later performance closure, with no current failure
   evidence. The debug-only process-global opener remains acceptable for the
-  sequential instrumentation suite but is not parallel-test-safe. Owner
-  physical RP5 reachability remains a separate pre-merge gate; no RP5
-  acceptance is claimed here.
+  sequential instrumentation suite but is not parallel-test-safe. Physical
+  RP5 reachability was still pending at this remediation checkpoint; the later
+  acceptance record above supersedes that status.
 
 ## Phase 2B.3 — EPUB publication search implementation (2026-09-28)
 
-Phase 2B.3 is **implemented on `phase-2/epub-search`; its first independent
-review returned CHANGES REQUIRED with no R1/R2 findings and one R3 lifecycle-
-evidence gap, now remediated as recorded above. It remains pending targeted
-independent re-review and owner acceptance and is not accepted, merged, or
-pushed**. Phase 2B.4, 2C, and 2D remain not started.
+Phase 2B.3 was implemented on `phase-2/epub-search`; its review and acceptance
+history is recorded in the newer sections above. Phase 2B.4, 2C, and 2D remain
+not started.
 
 - Verified the pinned Readium Kotlin Toolkit 3.4.0 artifacts directly:
   `Publication.findService(SearchService::class)` returns the parser-attached

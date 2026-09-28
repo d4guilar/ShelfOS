@@ -35,11 +35,11 @@ closed in a third round before merge. All three rounds are recorded under
 `ab612a46cc929c1a5d32df0d9ed608d1792e7a95`. Its initial independent review
 returned **CHANGES REQUIRED** with **no R1/R2 findings**; the three R3
 test/documentation findings were remediated and the final wording cleanup
-was completed before merge. **2B.3 (EPUB publication search) is implemented
-  on `phase-2/epub-search`. Its first independent review returned CHANGES
-  REQUIRED with no R1/R2 findings and one R3 lifecycle-evidence gap; that R3
-  remediation is complete. It is pending targeted independent re-review and
-  owner RP5 acceptance and is not accepted or merged.** 2B.4 remains not started. 2C/2D remain planned only;
+was completed before merge. **2B.3 (EPUB publication search) is accepted and
+  ready for PR/merge on `phase-2/epub-search`.** Its final targeted independent
+  review returned **PASS WITH NON-BLOCKING FINDINGS** with no R1/R2/R3
+  findings, and owner physical RP5 acceptance passed on the exact reviewed
+  build. It is not yet merged. 2B.4 remains not started. 2C/2D remain planned only;
 none of their work has started. See `VALIDATION.md`'s
 "Phase 2A.1"/"Phase 2B.1"/"Phase 2B.2"/"Phase 2B.2.1"/"Phase 2B.2.2"
 sections for evidence and explicitly-unclaimed items. This document is the
@@ -80,8 +80,8 @@ slices (2B.1–2B.4, see below) after a discovery/implementation-planning
 pass. 2B.1, 2B.2, 2B.2.1 and 2B.2.2 are accepted and merged (2B.2 via PR #9
 after independent review and RP5 physical acceptance; 2B.2.1 via PR #10
 after three independent-review rounds; 2B.2.2 via PR #11 after R3 remediation
-and final wording cleanup). 2B.3 (EPUB publication search) is implemented and
-pending independent review and owner acceptance; 2B.4
+and final wording cleanup). 2B.3 (EPUB publication search) is accepted and
+ready for PR/merge after final technical review and owner RP5 acceptance; 2B.4
 remains not started. 2C/2D remain planned only; none of their work has started.
 
 ## 3. Increments
@@ -2274,11 +2274,11 @@ the new search entry point's reachability, same bar as 2B.2.
 
 #### 2B.3 implementation record (2026-09-28)
 
-**Status:** implementation complete on `phase-2/epub-search`; first independent
-review CHANGES REQUIRED with no R1/R2 findings; single R3 lifecycle-evidence
-gap remediated; pending targeted independent re-review and owner RP5
-acceptance. It is not accepted, merged, pushed, or evidence that 2B.4/2C has
-started.
+**Status:** accepted and ready for PR/merge on `phase-2/epub-search`; final
+targeted independent review **PASS WITH NON-BLOCKING FINDINGS**, with no
+R1/R2/R3 findings, followed by owner physical RP5 acceptance on the exact
+reviewed build. It is not merged or pushed, and is not evidence that 2B.4/2C
+has started.
 
 - `EpubSession.search()` consumes the `SearchService` already attached by the
   pinned Readium 3.4.0 EPUB parser. ShelfOS copies each result into a value
@@ -2355,7 +2355,12 @@ presentation 11/11; focused search instrumentation passed 7/7 and the 86-task
 offline Gradle gate passed. The preceding lifecycle pass's complete connected
 suite remains 84/84; it was not repeated because release behavior is unchanged.
 See `VALIDATION.md` for exact evidence.
-2B.3 remains pending targeted independent re-review and owner RP5 acceptance.
+Owner physical RP5 acceptance passed: Search was reachable and activatable by
+D-pad/controller; a known query could be entered; results were navigable; a
+selected result jumped to the correct passage; zero-results behavior was clear;
+Back dismissed Search without leaving the reader; hidden-chrome Back still
+revealed controls before exit; and compact-layout/focus behavior remained sane.
+2B.3 is ready for PR/merge but is not yet merged.
 Unbounded result accumulation remains a non-blocking R4 item for later
 performance closure, with no current failure evidence. The debug-only process-
 global opener remains acceptable for sequential instrumentation and is not
