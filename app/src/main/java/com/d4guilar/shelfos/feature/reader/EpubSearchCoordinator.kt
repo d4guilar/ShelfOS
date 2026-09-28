@@ -36,6 +36,8 @@ data class EpubSearchUiState(
 class EpubSearchCoordinator(
     private val scope: CoroutineScope,
     private val worker: CoroutineDispatcher = Dispatchers.IO,
+    /** Generic observation seam; the release path uses the immediate no-op default. */
+    private val beforeStatePublication: suspend (EpubSearchUiState) -> Unit = {},
 ) {
     private val _state = MutableStateFlow(EpubSearchUiState())
     val state = _state.asStateFlow()
@@ -105,7 +107,8 @@ class EpubSearchCoordinator(
         _state.value = EpubSearchUiState()
     }
 
-    private fun publish(id: Long, value: EpubSearchUiState) {
+    private suspend fun publish(id: Long, value: EpubSearchUiState) {
+        beforeStatePublication(value)
         if (id == requestId) _state.value = value
     }
 }

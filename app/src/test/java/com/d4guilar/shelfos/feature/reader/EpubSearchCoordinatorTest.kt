@@ -6,11 +6,13 @@ import com.d4guilar.shelfos.core.reader.EpubSearchRead
 import com.d4guilar.shelfos.core.reader.EpubSearchResult
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -142,6 +144,48 @@ class EpubSearchCoordinatorTest {
         assertEquals(listOf("beta"), coordinator.state.value.results.map { it.highlight })
     }
 
+    @Test fun returnedPageCannotPublishAfterReplacementBecomesLatest() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val alphaAtPublication = CompletableDeferred<Unit>()
+        val releaseAlphaPublication = CompletableDeferred<Unit>()
+        val alphaResumed = CompletableDeferred<Unit>()
+        val alpha = ControlledPageCursor(result("stale alpha"), initiallyReleased = true)
+        val beta = ControlledPageCursor(result("beta"))
+        val coordinator = EpubSearchCoordinator(this, dispatcher) { candidate ->
+            if (candidate.query == "alpha" && candidate.results.isNotEmpty()) {
+                alphaAtPublication.complete(Unit)
+                // Deliberately let post-result processing resume after replacement cancellation. This is test-only;
+                // production cursor reads and cancellation remain fully cooperative.
+                withContext(NonCancellable) { releaseAlphaPublication.await() }
+                alphaResumed.complete(Unit)
+            }
+        }
+
+        coordinator.search("alpha") { alpha }
+        runCurrent()
+        assertTrue(alpha.returned.isCompleted)
+        assertTrue(alphaAtPublication.isCompleted)
+
+        coordinator.search("beta") { beta }
+        assertEquals("beta", coordinator.state.value.query)
+        assertTrue(coordinator.state.value.results.isEmpty())
+
+        releaseAlphaPublication.complete(Unit)
+        runCurrent()
+        assertTrue(alphaResumed.isCompleted)
+        assertTrue(alpha.closed)
+        assertTrue("B waits for A cleanup before acquiring its cursor", beta.started.isCompleted)
+        assertEquals("beta", coordinator.state.value.query)
+        assertTrue("A's stale page must not replace B's authoritative state", coordinator.state.value.results.isEmpty())
+
+        beta.release.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(beta.returned.isCompleted)
+        assertTrue(beta.closed)
+        assertEquals("beta", coordinator.state.value.query)
+        assertEquals(listOf("beta"), coordinator.state.value.results.map { it.highlight })
+    }
+
     private fun result(highlight: String) = EpubSearchResult(
         locator = "{\"href\":\"chapter.xhtml\"}", href = "chapter.xhtml", title = null,
         progression = null, before = "before", highlight = highlight, after = "after",
@@ -168,5 +212,27 @@ class EpubSearchCoordinatorTest {
             awaitCancellation()
         }
         override fun close() { closed = true; events?.add("close $name") }
+    }
+
+    private class ControlledPageCursor(
+        private val result: EpubSearchResult,
+        initiallyReleased: Boolean = false,
+    ) : EpubSearchCursor {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>().apply { if (initiallyReleased) complete(Unit) }
+        val returned = CompletableDeferred<Unit>()
+        var closed = false
+        private var pagePending = true
+
+        override suspend fun next(): EpubSearchRead {
+            if (!pagePending) return EpubSearchRead.Complete
+            pagePending = false
+            started.complete(Unit)
+            release.await()
+            returned.complete(Unit)
+            return EpubSearchRead.Page(listOf(result))
+        }
+
+        override fun close() { closed = true }
     }
 }

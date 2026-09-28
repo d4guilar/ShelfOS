@@ -18,9 +18,9 @@ acceptance; it is not accepted, merged, or pushed**.
 - `recreationWhileCursorIsActiveClosesItAndUsesAFreshCursor` uses two
   controlled cursors. It observes the first cursor acquired and suspended in
   `next()`, recreates before any result is released, observes that cursor close,
-  observes a second cursor acquired for the restored query, releases only the
-  second cursor to a valid result, and confirms an adversarial page offered to
-  the closed old cursor cannot appear.
+  observes a second cursor acquired for the restored query, and releases the
+  second cursor to a valid result. This is lifecycle evidence; it does not claim
+  that a closed cursor can later return a page.
 - `leavingReaderWhileCursorIsActiveClosesItAndDestroysActivity` observes a
   cursor acquired and suspended in `next()`, calls `ActivityScenario.close()`
   without completing the search, observes cursor close, and requires the close
@@ -28,26 +28,48 @@ acceptance; it is not accepted, merged, or pushed**.
   records that `EpubSearchCoordinator.close()` returns only after cursor close;
   the existing ViewModel ordering then closes `EpubSession` after that joined
   coordinator barrier. Direct session-close instrumentation is not claimed.
+- Generation-guard evidence is separate and deterministic. The generic,
+  default-no-op `beforeStatePublication` seam pauses request A after its cursor
+  has returned a real page but before `publish()`. Request B then becomes the
+  latest request while A still owns `cursorMutex`. Resuming A leaves B's empty
+  loading state intact; after A closes and releases the mutex, B acquires its
+  cursor and publishes its result normally.
+- Negative control was performed locally: temporarily removing
+  `id == requestId` made
+  `returnedPageCannotPublishAfterReplacementBecomesLatest` fail at the
+  authoritative-query assertion. The guard was restored before final
+  validation. This proves the test depends on the generation check rather than
+  cancellation or its fake dropping output.
+- The corrected architecture finding is explicit: cursor serialization means
+  B cannot acquire a cursor before A closes. A cancellable
+  `withContext(worker)` also does not deliver a cursor value returned after
+  cancellation into normal processing. The real guard race is therefore a
+  page returned before replacement whose post-result/pre-publish processing
+  resumes after B becomes latest; production mutex and cancellation behavior
+  were not weakened to fabricate an impossible post-close return.
 - Final focused instrumentation: `EpubSearchTest` **6/6 PASS**,
   `EpubSearchServiceInstrumentedTest` **1/1 PASS**, `EpubRecreationTest`
   **1/1 PASS**, and `NavigationSmokeTest` **26/26 PASS**. The active-recreation
   method also passed two additional isolated runs while diagnosing cleanup,
   the final six-test class passed together, and both lifecycle cases passed
   again in the complete connected suite.
-- Focused JVM search/presentation coverage: **10/10 PASS**, including the
-  explicit cursor-close-before-coordinator-return ordering assertion.
-- Full offline Gradle gate: **BUILD SUCCESSFUL in 1m 54s; 86/86 tasks
+- Focused JVM search/presentation coverage: **11/11 PASS** (coordinator 9/9,
+  presentation 2/2), including cursor-close-before-return and the corrected
+  generation-guard race.
+- Full offline Gradle gate: **BUILD SUCCESSFUL in 1m 30s; 86/86 tasks
   executed** (compile, Android-test compile, debug APK, all JVM tests, lint,
   and Android-test APK).
-- Complete API 35 connected suite: **84/84 PASS**, with 678.328 cumulative
-  testcase seconds and a successful 11m 39s Gradle invocation. This final run
-  includes both active-cursor lifecycle tests and the preserved debug content-
-  provider regressions.
+- The preceding lifecycle remediation's complete API 35 connected suite remains
+  **84/84 PASS**, with 678.328 cumulative testcase seconds. It was not repeated
+  for this corrected guard-only pass because release behavior is unchanged;
+  `EpubSearchTest` 6/6 and the real SearchService test 1/1 were rerun.
 - No Room schema, migration, or dependency changed. Production search
   semantics are unchanged. Unbounded result accumulation remains the accepted
   R4 carry-forward for later performance closure, with no current failure
-  evidence. Owner physical RP5 reachability remains a separate pre-merge gate;
-  no RP5 acceptance is claimed here.
+  evidence. The debug-only process-global opener remains acceptable for the
+  sequential instrumentation suite but is not parallel-test-safe. Owner
+  physical RP5 reachability remains a separate pre-merge gate; no RP5
+  acceptance is claimed here.
 
 ## Phase 2B.3 — EPUB publication search implementation (2026-09-28)
 

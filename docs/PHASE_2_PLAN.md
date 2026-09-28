@@ -2328,18 +2328,38 @@ seam now lets a non-exported debug-only Activity use instrumentation-owned
 controlled cursors; the release default remains `EpubSession.search()` and
 production search behavior is unchanged. The recreation test now observes the
 old cursor acquired and blocked in `next()`, recreates, observes its closure
-and a fresh cursor acquisition, then proves only the fresh result reaches the
-UI. The teardown test closes the Activity while its cursor is blocked, observes
+and a fresh cursor acquisition, then displays the fresh result. It is lifecycle
+evidence and does not claim a closed cursor can later return. The teardown test
+closes the Activity while its cursor is blocked, observes
 cursor closure, and requires `ActivityScenario.close()` to reach `DESTROYED`.
 The coordinator unit test separately proves `close()` returns only after cursor
 cleanup, matching the existing ViewModel order that closes the EPUB session
-after the coordinator barrier. Final focused results are search UI 6/6, real
+after the coordinator barrier.
+
+Generation-guard evidence is a separate JVM race. A generic, release-no-op
+pre-publication seam pauses A after its cursor returns a page but before state
+publication. B becomes the latest logical request while A still owns
+`cursorMutex`; A resumes, and `id == requestId` rejects its page. A then closes,
+B acquires the mutex/cursor, and B publishes normally. Temporarily removing the
+guard made this test fail at its authoritative-query assertion, after which the
+guard was restored. This preserves the real serialization contract: only one
+cursor owns the mutex, and a newer request may become latest before it can
+acquire a cursor. A post-cancellation value from cancellable
+`withContext(worker)` is not delivered into normal processing, and the same
+`next()` cannot return after its `finally` has closed the cursor; no production
+behavior was changed to manufacture that impossible sequence.
+
+Final focused results are search UI 6/6, real
 SearchService 1/1, recreation 1/1, navigation 26/26, and JVM search/
-presentation 10/10; the complete API 35 connected suite passed 84/84 and the
-86-task offline Gradle gate passed. See `VALIDATION.md` for exact evidence.
+presentation 11/11; focused search instrumentation passed 7/7 and the 86-task
+offline Gradle gate passed. The preceding lifecycle pass's complete connected
+suite remains 84/84; it was not repeated because release behavior is unchanged.
+See `VALIDATION.md` for exact evidence.
 2B.3 remains pending targeted independent re-review and owner RP5 acceptance.
 Unbounded result accumulation remains a non-blocking R4 item for later
-performance closure, with no current failure evidence.
+performance closure, with no current failure evidence. The debug-only process-
+global opener remains acceptable for sequential instrumentation and is not
+parallel-test-safe.
 
 **Known limitation:** this slice searches EPUB publication text exposed by
 Readium's attached service. It does not add PDF/CBZ/global search, history,

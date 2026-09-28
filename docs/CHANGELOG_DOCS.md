@@ -7,17 +7,26 @@
   production search architecture was confirmed correct.
 - Documented the deterministic controlled-cursor tests: acquisition and
   suspension before recreation/exit, old-cursor closure, fresh acquisition and
-  valid result after recreation, stale-result exclusion, Activity destruction,
-  and coordinator-close return only after cursor cleanup. Release search
-  behavior remains unchanged; direct session-close instrumentation is not
-  claimed.
+  valid result after recreation, Activity destruction, and coordinator-close
+  return only after cursor cleanup. Lifecycle instrumentation no longer claims
+  that a closed cursor can later return a stale page. Release search behavior
+  remains unchanged; direct session-close instrumentation is not claimed.
+- Added the actual generation-guard race: A returns a page and pauses before
+  publication, B becomes latest while waiting for A's cursor cleanup, A resumes
+  and its page is rejected, then B acquires its cursor and publishes normally.
+  Removing `id == requestId` made the test fail, confirming guard dependence.
+  Documented why mutex serialization and cancellable `withContext(worker)` make
+  the previously requested post-close stale-return sequence impossible.
 - Recorded final focused evidence (search 7/7, recreation 1/1, navigation
-  26/26, JVM search/presentation 10/10) and the 86-task offline Gradle gate,
-  plus the final complete API 35 connected-suite result of 84/84.
+  26/26, JVM search/presentation 11/11) and the 86-task offline Gradle gate,
+  while retaining the preceding lifecycle pass's complete API 35 connected-
+  suite result of 84/84; the full suite was not repeated for this behavior-
+  preserving guard-only correction.
 - Phase 2B.3 remains implemented/R3-remediated, pending targeted independent
   re-review and owner RP5 acceptance, not accepted/merged/pushed. Unbounded
   result accumulation remains a non-blocking R4 performance carry-forward with
-  no current failure evidence. No 2B.4 or 2C scope was added.
+  no current failure evidence; the debug-only process-global opener remains
+  sequential-only and not parallel-test-safe. No 2B.4 or 2C scope was added.
 
 ## Phase 2B.3 EPUB publication search implementation (2026-09-28)
 

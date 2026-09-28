@@ -130,10 +130,6 @@ class EpubSearchTest {
             compose.onNode(resultRow() and hasText(FRESH_RESULT, substring = true)).assertExists()
             compose.waitUntil(10_000) { fresh.closed.get() }
 
-            // Even an adversarial page offered to the already-closed source cannot reach the recreated UI.
-            old.emit(EpubSearchRead.Page(listOf(result(STALE_RESULT))), EpubSearchRead.Complete)
-            compose.waitForIdle()
-            compose.onAllNodes(hasText(STALE_RESULT, substring = true)).assertCountEquals(0)
             org.junit.Assert.assertEquals(1, old.closeCalls.get())
             dismissSearch()
         }
@@ -245,6 +241,5 @@ class EpubSearchTest {
         const val UNIQUE_QUERY = "Chapter 7 paragraph 31"
         const val LIFECYCLE_QUERY = "active lifecycle query"
         const val FRESH_RESULT = "fresh lifecycle result"
-        const val STALE_RESULT = "stale old cursor result"
     }
 }
