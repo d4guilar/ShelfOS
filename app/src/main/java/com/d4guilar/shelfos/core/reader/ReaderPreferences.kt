@@ -7,16 +7,20 @@ import org.json.JSONObject
 enum class BookFont { SERIF, SANS }
 enum class PagePalette { THEME, LIGHT, DARK, PAPER }
 enum class FitMode { PAGE, WIDTH }
+enum class PresentationMode { SHELFOS, PUBLISHER }
 
 /** One preference layer. Null fields are not set in this layer and inherit from the next one. */
 data class ReaderPreferences(
     val font: BookFont? = null, val fontSize: Double? = null, val lineHeight: Double? = null,
     val margins: Double? = null, val justified: Boolean? = null, val scroll: Boolean? = null,
     val palette: PagePalette? = null, val direction: ReadingDirection? = null, val fit: FitMode? = null,
+    val fontFamilyId: String? = null,
+    val presentationMode: PresentationMode? = null,
 ) {
     fun over(defaults: ReaderPreferences) = ReaderPreferences(font ?: defaults.font, fontSize ?: defaults.fontSize,
         lineHeight ?: defaults.lineHeight, margins ?: defaults.margins, justified ?: defaults.justified,
-        scroll ?: defaults.scroll, palette ?: defaults.palette, direction ?: defaults.direction, fit ?: defaults.fit)
+        scroll ?: defaults.scroll, palette ?: defaults.palette, direction ?: defaults.direction, fit ?: defaults.fit,
+        fontFamilyId ?: defaults.fontFamilyId, presentationMode ?: defaults.presentationMode)
 
     /** Copies only the fields that differ between [before] and [after] into this layer. */
     fun withChanges(before: ReaderPreferences, after: ReaderPreferences) = ReaderPreferences(
@@ -24,7 +28,8 @@ data class ReaderPreferences(
         pick(before.lineHeight, after.lineHeight, lineHeight), pick(before.margins, after.margins, margins),
         pick(before.justified, after.justified, justified), pick(before.scroll, after.scroll, scroll),
         pick(before.palette, after.palette, palette), pick(before.direction, after.direction, direction),
-        pick(before.fit, after.fit, fit))
+        pick(before.fit, after.fit, fit), pick(before.fontFamilyId, after.fontFamilyId, fontFamilyId),
+        pick(before.presentationMode, after.presentationMode, presentationMode))
 
     /** Clears this layer's values for fields that differ between [before] and [after]. */
     fun withoutChanges(before: ReaderPreferences, after: ReaderPreferences) = ReaderPreferences(
@@ -32,16 +37,19 @@ data class ReaderPreferences(
         lineHeight.unless(before.lineHeight != after.lineHeight), margins.unless(before.margins != after.margins),
         justified.unless(before.justified != after.justified), scroll.unless(before.scroll != after.scroll),
         palette.unless(before.palette != after.palette), direction.unless(before.direction != after.direction),
-        fit.unless(before.fit != after.fit))
+        fit.unless(before.fit != after.fit), fontFamilyId.unless(before.fontFamilyId != after.fontFamilyId),
+        presentationMode.unless(before.presentationMode != after.presentationMode))
 
     fun json(): String = JSONObject().apply {
-        put("version", 1); put("font", font?.name); put("fontSize", fontSize); put("lineHeight", lineHeight)
+        put("version", 2); put("font", font?.name); put("fontSize", fontSize); put("lineHeight", lineHeight)
         put("margins", margins); put("justified", justified); put("scroll", scroll); put("palette", palette?.name)
-        put("direction", direction?.name); put("fit", fit?.name)
+        put("direction", direction?.name); put("fit", fit?.name); put("fontFamilyId", fontFamilyId)
+        put("presentationMode", presentationMode?.name)
     }.toString()
 
     companion object {
-        val DEFAULT = ReaderPreferences(BookFont.SERIF, 1.0, 1.5, 1.0, false, false, PagePalette.THEME, null, FitMode.PAGE)
+        val DEFAULT = ReaderPreferences(BookFont.SERIF, 1.0, 1.5, 1.0, false, false, PagePalette.THEME, null,
+            FitMode.PAGE, presentationMode = PresentationMode.SHELFOS)
         fun parse(json: String?): ReaderPreferences = try {
             val obj = JSONObject(json ?: "{}")
             ReaderPreferences(
@@ -50,7 +58,9 @@ data class ReaderPreferences(
                 obj.number("margins")?.coerceIn(0.0, 3.0), obj.boolean("justified"), obj.boolean("scroll"),
                 PagePalette.entries.find { it.name == obj.optString("palette") },
                 ReadingDirection.entries.find { it.name == obj.optString("direction") },
-                FitMode.entries.find { it.name == obj.optString("fit") })
+                FitMode.entries.find { it.name == obj.optString("fit") },
+                obj.optString("fontFamilyId").takeIf { it.isNotBlank() },
+                PresentationMode.entries.find { it.name == obj.optString("presentationMode") })
         } catch (_: Exception) { ReaderPreferences() }
         private fun JSONObject.number(key: String) = if (has(key)) optDouble(key).takeIf { it.isFinite() } else null
         private fun JSONObject.boolean(key: String) = if (has(key) && !isNull(key)) optBoolean(key) else null

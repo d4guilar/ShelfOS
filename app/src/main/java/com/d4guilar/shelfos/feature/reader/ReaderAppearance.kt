@@ -27,7 +27,12 @@ import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 @Composable
 fun ReaderAppearance(preferences: ReaderPreferences, capabilities: ReaderCapabilities, onDismiss: () -> Unit,
     onApply: (before: ReaderPreferences, after: ReaderPreferences, globally: Boolean) -> Unit,
-    onReset: (globally: Boolean) -> Unit) {
+    onReset: (globally: Boolean) -> Unit,
+    fontFamilies: List<ManagedFontFamily> = emptyList(),
+    fontImportError: String? = null,
+    onImportFont: (() -> Unit)? = null,
+    onRemoveFont: ((String) -> Unit)? = null,
+) {
     val t = LocalShelfTokens.current
     val initial = rememberSaveable(saver = ReaderPreferencesSaver) { preferences }
     var draft by rememberSaveable(stateSaver = ReaderPreferencesSaver) { mutableStateOf(initial) }
@@ -35,10 +40,33 @@ fun ReaderAppearance(preferences: ReaderPreferences, capabilities: ReaderCapabil
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Reading appearance") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (capabilities.typography) {
+                Text("Presentation")
+                PresentationMode.entries.forEach { mode -> ShelfChoiceChip(draft.presentationMode == mode,
+                    { draft = draft.copy(presentationMode = mode) }, if (mode == PresentationMode.SHELFOS) "ShelfOS" else "Publisher") }
+                if (draft.presentationMode == PresentationMode.PUBLISHER) {
+                    Text("Publisher styles from the original EPUB are honored. The source file is unchanged.",
+                        color = t.colors.secondary, style = MaterialTheme.typography.bodySmall)
+                } else {
                 Text("Book style")
-                Row { TextButton({ draft = draft.copy(font = BookFont.SERIF, lineHeight = 1.5, margins = 1.0) }) { Text("Editorial") }
-                    TextButton({ draft = draft.copy(font = BookFont.SANS, lineHeight = 1.5, margins = 1.0) }) { Text("Clean") } }
-                TextButton({ draft = draft.copy(font = BookFont.SERIF, lineHeight = 1.9, margins = 1.5) }) { Text("Spacious") }
+                Row { TextButton({ draft = draft.copy(font = BookFont.SERIF, fontFamilyId = BUILTIN_SERIF_FONT_ID, lineHeight = 1.5, margins = 1.0) }) { Text("Editorial") }
+                    TextButton({ draft = draft.copy(font = BookFont.SANS, fontFamilyId = BUILTIN_SANS_FONT_ID, lineHeight = 1.5, margins = 1.0) }) { Text("Clean") } }
+                TextButton({ draft = draft.copy(font = BookFont.SERIF, fontFamilyId = BUILTIN_SERIF_FONT_ID, lineHeight = 1.9, margins = 1.5) }) { Text("Spacious") }
+                Text("Font")
+                fontFamilies.forEach { family ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ShelfChoiceChip(draft.effectiveFontFamilyId() == family.id, {
+                            draft = draft.copy(fontFamilyId = family.id, font = when (family.id) {
+                                BUILTIN_SANS_FONT_ID -> BookFont.SANS
+                                BUILTIN_SERIF_FONT_ID -> BookFont.SERIF
+                                else -> draft.font ?: BookFont.SERIF
+                            })
+                        }, family.displayName)
+                        if (family.source == ManagedFontSource.USER && onRemoveFont != null)
+                            TextButton({ onRemoveFont(family.id) }) { Text("Remove") }
+                    }
+                }
+                onImportFont?.let { TextButton(it) { Text("Import font…") } }
+                fontImportError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 Text("Text size: ${((draft.fontSize ?: 1.0) * 100).toInt()}%")
                 Slider((draft.fontSize ?: 1.0).toFloat(), { draft = draft.copy(fontSize = it.toDouble()) }, valueRange = .7f..2.5f)
                 Text("Line spacing")
@@ -50,6 +78,7 @@ fun ReaderAppearance(preferences: ReaderPreferences, capabilities: ReaderCapabil
                 Text("Page colors")
                 PagePalette.entries.forEach { palette -> ShelfChoiceChip(draft.palette == palette,
                     { draft = draft.copy(palette = palette) }, palette.name.lowercase().replaceFirstChar { it.uppercase() }) }
+                }
             } else {
                 Text("This publication uses fixed pages. Fonts, layout and artwork keep their original appearance.")
             }
@@ -75,10 +104,12 @@ fun ReaderAppearance(preferences: ReaderPreferences, capabilities: ReaderCapabil
 /** Saves a preference layer as plain values; unknown names from an older build restore as unset. */
 internal val ReaderPreferencesSaver = listSaver<ReaderPreferences, Any?>(
     save = { listOf(it.font?.name, it.fontSize, it.lineHeight, it.margins, it.justified, it.scroll, it.palette?.name,
-        it.direction?.name, it.fit?.name) },
+        it.direction?.name, it.fit?.name, it.fontFamilyId, it.presentationMode?.name) },
     restore = { saved ->
-        ReaderPreferences(BookFont.entries.find { it.name == saved[0] }, saved[1] as Double?, saved[2] as Double?,
-            saved[3] as Double?, saved[4] as Boolean?, saved[5] as Boolean?, PagePalette.entries.find { it.name == saved[6] },
-            ReadingDirection.entries.find { it.name == saved[7] }, FitMode.entries.find { it.name == saved[8] })
+        ReaderPreferences(BookFont.entries.find { it.name == saved.getOrNull(0) }, saved.getOrNull(1) as Double?, saved.getOrNull(2) as Double?,
+            saved.getOrNull(3) as Double?, saved.getOrNull(4) as Boolean?, saved.getOrNull(5) as Boolean?,
+            PagePalette.entries.find { it.name == saved.getOrNull(6) }, ReadingDirection.entries.find { it.name == saved.getOrNull(7) },
+            FitMode.entries.find { it.name == saved.getOrNull(8) }, saved.getOrNull(9) as String?,
+            PresentationMode.entries.find { it.name == saved.getOrNull(10) })
     },
 )

@@ -34,6 +34,11 @@ class ReadingPolicyTest {
         assertEquals(PagePalette.THEME, resolved.palette)
         assertNull(resolved.direction)
     }
+    @Test fun legacyBookFontsResolveToStableBuiltinFamilyIds() {
+        assertEquals(BUILTIN_SERIF_FONT_ID, ReaderPreferences(font = BookFont.SERIF).effectiveFontFamilyId())
+        assertEquals(BUILTIN_SANS_FONT_ID, ReaderPreferences(font = BookFont.SANS).effectiveFontFamilyId())
+        assertEquals("user:chosen", ReaderPreferences(font = BookFont.SANS, fontFamilyId = "user:chosen").effectiveFontFamilyId())
+    }
     @Test fun naturalPageOrderHandlesLongNumbersAndLeadingZeros() {
         val names = listOf("10.jpg", "2.jpg", "1.jpg", "999999999999999999999999.jpg", "02.jpg")
         assertEquals(listOf("1.jpg", "02.jpg", "2.jpg", "10.jpg", "999999999999999999999999.jpg"), names.sortedWith(::naturalCompare))
@@ -89,13 +94,27 @@ class ReadingPolicyTest {
 
     @Test fun unappliedAppearanceDraftsSaveAsPlainValues() {
         val scope = SaverScope { true }
-        val full = ReaderPreferences(BookFont.SANS, 1.3, 1.9, 0.5, true, false, PagePalette.PAPER, ReadingDirection.RTL, FitMode.WIDTH)
+        val full = ReaderPreferences(BookFont.SANS, 1.3, 1.9, 0.5, true, false, PagePalette.PAPER, ReadingDirection.RTL,
+            FitMode.WIDTH, "user:family", PresentationMode.PUBLISHER)
         listOf(full, ReaderPreferences(), ReaderPreferences(fontSize = 2.1, direction = ReadingDirection.LTR)).forEach { draft ->
             val saved = with(ReaderPreferencesSaver) { scope.save(draft) }!!
             assertEquals(draft, ReaderPreferencesSaver.restore(saved))
         }
         // A name saved by another build restores as unset rather than failing recreation.
         assertEquals(ReaderPreferences(), ReaderPreferencesSaver.restore(listOf("COMIC_SANS", null, null, null, null, null, "NEON", "UP", "ZOOM")))
+    }
+
+    @Test fun presentationAndLogicalFontParticipateInGlobalAndTitleInheritance() {
+        val title = ReaderPreferences(fontFamilyId = "user:title")
+        val global = ReaderPreferences(fontFamilyId = BUILTIN_SANS_FONT_ID, presentationMode = PresentationMode.PUBLISHER)
+        val before = resolveReaderPreferences(title, global)
+        assertEquals("user:title", before.fontFamilyId)
+        assertEquals(PresentationMode.PUBLISHER, before.presentationMode)
+        val update = appearanceUpdate(title, global, before,
+            before.copy(fontFamilyId = BUILTIN_SERIF_FONT_ID, presentationMode = PresentationMode.SHELFOS), globally = true)
+        assertEquals(BUILTIN_SERIF_FONT_ID, update.global?.fontFamilyId)
+        assertEquals(PresentationMode.SHELFOS, update.global?.presentationMode)
+        assertNull(update.title.fontFamilyId)
     }
 
     @Test fun resetClearsOnlyTheChosenLayer() {

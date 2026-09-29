@@ -11,5 +11,9 @@
             android:name=".feature.reader.EpubSearchLifecycleTestActivity"
             android:exported="false"
             android:theme="@style/Theme.ShelfOS.Reader" />
+        <activity
+            android:name=".feature.reader.EpubManagedFontProofActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ShelfOS.Reader" />
     </application>
 </manifest>

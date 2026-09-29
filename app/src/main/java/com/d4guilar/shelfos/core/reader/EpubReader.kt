@@ -12,6 +12,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.readium.r2.navigator.epub.*
+import org.readium.r2.navigator.epub.css.FontStyle
+import org.readium.r2.navigator.epub.css.FontWeight
 import org.readium.r2.navigator.preferences.*
 import org.readium.r2.navigator.preferences.ReadingProgression
 import org.readium.r2.shared.publication.*
@@ -22,11 +24,43 @@ import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.http.*
 import org.readium.r2.shared.util.resource.TransformingContainer
 import org.readium.r2.shared.util.resource.TransformingResource
+import org.readium.r2.shared.util.file.FileResource
+import org.readium.r2.shared.util.data.CompositeContainer
+import org.readium.r2.shared.util.data.Container
+import org.readium.r2.shared.util.resource.Resource
 import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.streamer.parser.epub.EpubParser
 import java.io.IOException
+import java.io.File
 
-class EpubReaderFactory(private val context: Context, private val files: PublicationFiles) {
+internal const val SHELFOS_FONT_NAMESPACE = "__shelfos/fonts"
+
+/** One private, explicitly registered font face exposed only inside this publication container. */
+data class EpubManagedFontResource(val familyId: String, val displayName: String, val file: File) {
+    val cssFamily: String get() = "ShelfOS-${familyId.replace(Regex("[^A-Za-z0-9_-]"), "-")}"
+    val entryPath: String get() = "$SHELFOS_FONT_NAMESPACE/${safeFontResourceId(familyId)}/regular.${file.extension.lowercase()}"
+    val servedUrl: String get() = "https://readium_package/$entryPath"
+}
+
+/**
+ * Exposes private font files through publication-local URLs. A fresh [FileResource] is returned for every
+ * request because Readium's WebView server can request the same face concurrently from multiple spine views,
+ * while [FileResource] owns a seekable file handle and is therefore not safe to share between those reads.
+ */
+private class ManagedFontContainer(private val resources: Map<Url, File>) : Container<Resource> {
+    override val entries: Set<Url> = resources.keys
+    override fun get(url: Url): Resource? = resources[url]?.let(::FileResource)
+    override fun close() = Unit
+}
+
+internal fun safeFontResourceId(id: String): String {
+    require(id.matches(Regex("[A-Za-z0-9][A-Za-z0-9:_-]{0,127}"))) { "Invalid font family id" }
+    require(!id.contains("..") && '/' !in id && '\\' !in id) { "Invalid font family id" }
+    return id.replace(':', '-')
+}
+
+class EpubReaderFactory(private val context: Context, private val files: PublicationFiles,
+    private val managedFonts: () -> List<EpubManagedFontResource> = { emptyList() }) {
     private val offlineClient = object : HttpClient {
         override suspend fun stream(request: HttpRequest): HttpTry<HttpStreamResponse> = Try.failure(HttpError.IO(IOException("Offline publication reader")))
     }
@@ -47,13 +81,19 @@ class EpubReaderFactory(private val context: Context, private val files: Publica
         val asset = AssetRetriever(context.contentResolver, offlineClient).retrieve(url)
             .getOrElse { throw PublicationException(PublicationProblem.UNREADABLE) }
         try {
-            val publication = PublicationOpener(EpubParser(offlineClient), onCreatePublication = {
-                container = TransformingContainer(container) { resourceUrl, resource ->
+            val fonts = managedFonts().filter { it.file.isFile && it.file.canRead() }.mapNotNull { font ->
+                runCatching { safeFontResourceId(font.familyId); font }.getOrNull()
+            }
+            val publication = PublicationOpener(EpubParser(offlineClient)).open(asset, allowUserInteraction = false,
+                onCreatePublication = {
+                val publicationContainer = TransformingContainer(container) { resourceUrl, resource ->
                     if (resourceUrl.toString().substringBefore('?').substringAfterLast('.').lowercase() in setOf("xhtml", "html", "htm", "svg"))
                         TransformingResource(resource) { data -> Try.success(sanitizeEpubHtml(data)) }
                     else resource
                 }
-            }).open(asset, allowUserInteraction = false).getOrElse { error ->
+                val fontResources = fonts.mapNotNull { font -> Url(font.servedUrl)?.let { it to font.file } }.toMap()
+                container = CompositeContainer(listOf(ManagedFontContainer(fontResources), publicationContainer))
+            }).getOrElse { error ->
                 throw if (error is PublicationOpener.OpenError.FormatNotSupported) PublicationException(PublicationProblem.CORRUPT, "This EPUB is invalid or unsupported.")
                 else PublicationException(PublicationProblem.UNREADABLE)
             }
@@ -65,7 +105,7 @@ class EpubReaderFactory(private val context: Context, private val files: Publica
                 publication.close()
                 throw PublicationException(PublicationProblem.UNSUPPORTED_LAYOUT)
             }
-            EpubSession(publication)
+            EpubSession(publication, fonts)
         } catch (error: Throwable) { asset.close(); throw error }
     }
 }
@@ -99,7 +139,10 @@ internal fun sanitizeEpubHtml(bytes: ByteArray): ByteArray {
  */
 data class EpubChapter(val id: Int, val title: String, val href: String, val depth: Int, val resource: String, val fragment: String?)
 
-class EpubSession internal constructor(internal val publication: Publication) : AutoCloseable {
+class EpubSession internal constructor(internal val publication: Publication,
+    private val managedFonts: List<EpubManagedFontResource> = emptyList()) : AutoCloseable {
+    internal fun managedFontCssFamily(id: String): String? = managedFonts.find { it.familyId == id }?.cssFamily
+    internal fun hasResource(url: String): Boolean = Url(url)?.let { publication.get(it) } != null
     val chapters: List<EpubChapter> = buildList {
         fun addLinks(links: List<Link>, depth: Int = 0) { links.forEach { link ->
             // locatorFromLink is the same resolution Readium's own navigator uses to produce currentLocator, so
@@ -115,12 +158,29 @@ class EpubSession internal constructor(internal val publication: Publication) : 
         } }
         addLinks(publication.tableOfContents.ifEmpty { publication.readingOrder })
     }
-    fun fragmentFactory(locator: String?, preferences: ReaderPreferences, dark: Boolean, category: MediaCategory): FragmentFactory =
-        EpubNavigatorFactory(publication).createFragmentFactory(
+    fun fragmentFactory(locator: String?, preferences: ReaderPreferences, dark: Boolean, category: MediaCategory): FragmentFactory {
+        val selectedFont = managedFonts.find { it.familyId == preferences.effectiveFontFamilyId() }
+        val configuration = EpubNavigatorFragment.Configuration {
+            shouldApplyInsetsPadding = false
+            selectedFont?.let { font ->
+                addFontFamilyDeclaration(FontFamily(font.cssFamily), listOf(FontFamily.SERIF)) {
+                    addFontFace {
+                        addSource(requireNotNull(Url(font.servedUrl)), preload = true)
+                        setFontStyle(FontStyle.NORMAL)
+                        setFontWeight(FontWeight.NORMAL)
+                    }
+                }
+            }
+        }
+        return EpubNavigatorFactory(publication).createFragmentFactory(
             initialLocator = try { locator?.let { Locator.fromJSON(JSONObject(it)) } } catch (_: Exception) { null },
-            initialPreferences = epubPreferences(preferences, dark, category),
-            configuration = EpubNavigatorFragment.Configuration(shouldApplyInsetsPadding = false),
+            initialPreferences = preferences(preferences, dark, category),
+            configuration = configuration,
         )
+    }
+    /** Resolves ShelfOS's logical family to this session's registered renderer resource, with built-in fallback. */
+    fun preferences(value: ReaderPreferences, dark: Boolean, category: MediaCategory): EpubPreferences =
+        epubPreferences(value, dark, category, managedFonts.find { it.familyId == value.effectiveFontFamilyId() }?.cssFamily)
     fun chapter(href: String): Link? {
         fun find(links: List<Link>): Link? = links.firstNotNullOfOrNull { if (it.href.toString() == href) it else find(it.children) }
         return find(publication.tableOfContents) ?: find(publication.readingOrder)
@@ -387,17 +447,23 @@ internal fun bookmarkDisplayText(p: EpubBookmarkPresentation): String = when {
 internal fun bookmarkAccessibilityText(p: EpubBookmarkPresentation): String =
     listOfNotNull(p.chapterTitle, p.location?.let { "Location $it" }, "${p.progress} percent through book").joinToString(", ")
 
-internal fun epubPreferences(p: ReaderPreferences, dark: Boolean, category: MediaCategory): EpubPreferences {
+internal fun epubPreferences(p: ReaderPreferences, dark: Boolean, category: MediaCategory, managedCssFamily: String? = null): EpubPreferences {
+    val progression = if (readingDirection(category, p.direction) == ReadingDirection.RTL) ReadingProgression.RTL else ReadingProgression.LTR
+    if (p.presentationMode == PresentationMode.PUBLISHER) return EpubPreferences(
+        publisherStyles = true,
+        scroll = p.scroll,
+        readingProgression = progression,
+    )
     val palette = p.palette ?: PagePalette.THEME
     val night = palette == PagePalette.DARK || (palette == PagePalette.THEME && dark)
     return EpubPreferences(
-        fontFamily = FontFamily(if (p.font == BookFont.SANS) "sans-serif" else "serif"),
+        fontFamily = FontFamily(managedCssFamily ?: if (p.effectiveFontFamilyId() == BUILTIN_SANS_FONT_ID) "sans-serif" else "serif"),
         fontSize = p.fontSize, lineHeight = p.lineHeight, pageMargins = p.margins,
         textAlign = if (p.justified == true) TextAlign.JUSTIFY else TextAlign.START,
         publisherStyles = false, scroll = p.scroll, columnCount = ColumnCount.ONE,
         theme = if (night) Theme.DARK else if (palette == PagePalette.PAPER) Theme.SEPIA else Theme.LIGHT,
         backgroundColor = Color(if (night) 0xFF0B0B0B.toInt() else if (palette == PagePalette.PAPER) 0xFFF2E8D0.toInt() else 0xFFF7F7F5.toInt()),
         textColor = Color(if (night) 0xFFF3F3EF.toInt() else 0xFF111111.toInt()),
-        readingProgression = if (readingDirection(category, p.direction) == ReadingDirection.RTL) ReadingProgression.RTL else ReadingProgression.LTR,
+        readingProgression = progression,
     )
 }

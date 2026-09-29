@@ -7,6 +7,7 @@ import com.d4guilar.shelfos.data.library.RoomLibraryRepository
 import com.d4guilar.shelfos.core.files.PublicationFiles
 import com.d4guilar.shelfos.core.reader.FixedReaderFactory
 import com.d4guilar.shelfos.core.reader.EpubReaderFactory
+import com.d4guilar.shelfos.core.reader.ManagedFontRepository
 import com.d4guilar.shelfos.domain.importing.ImportLeases
 import kotlinx.coroutines.*
 import com.d4guilar.shelfos.data.preferences.RoomThemeRepository
@@ -24,7 +25,8 @@ class AppContainer(application: Application) {
     val importLeases = ImportLeases()
     val library by lazy { RoomLibraryRepository(database.library(), files) }
     val fixedReaders = FixedReaderFactory(files)
-    val epubs = EpubReaderFactory(application, files)
+    val fonts = ManagedFontRepository(application)
+    val epubs = EpubReaderFactory(application, files, fonts::epubResources)
     /**
      * Cleans state an interrupted import may have left (partial copies, unneeded grants) and marks items whose
      * grant is gone as unavailable. Imports wait for it, so it can never release an in-flight import's grant.
