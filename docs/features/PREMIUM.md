@@ -31,9 +31,9 @@ Free should include:
 - basic highlights/notes when implemented
 - ShelfOS Classic
 - ShelfOS Dark
-- Retro Apple UI (working/internal name)
-- Retro Apple UI Dark (working/internal name)
-- Paper / Vintage Library
+- Pear Platinum
+- Pear Platinum Dark
+- Deckle
 - keyboard
 - gamepad
 - offline reading

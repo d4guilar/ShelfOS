@@ -61,7 +61,7 @@ ShelfOS boots, navigates, and has a stable engineering foundation.
 - basic dependency injection strategy
 - initial design system
 - theme infrastructure
-- theme infrastructure plus placeholder Classic / Dark / Retro Apple UI / Retro Apple UI Dark / Paper themes
+- theme infrastructure plus placeholder Classic / Dark / Pear Platinum / Pear Platinum Dark / Deckle themes
 - package architecture
 - logging strategy
 - basic test setup
@@ -388,9 +388,9 @@ Complete the public free visual system before monetized theme work.
 
 - ShelfOS Classic production polish
 - ShelfOS Dark parity
-- Retro Apple UI light implementation
-- Retro Apple UI dark implementation
-- Paper / Vintage Library implementation
+- Pear Platinum implementation
+- Pear Platinum Dark implementation
+- Deckle implementation
 - Grid / Compact / List / Showcase view architecture
 - shared theme token validation
 - keyboard/gamepad focus QA across all free themes

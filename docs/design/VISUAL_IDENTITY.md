@@ -243,11 +243,13 @@ ShelfOS launches with five polished free themes:
 
 1. ShelfOS Classic
 2. ShelfOS Dark
-3. Retro Apple UI (working/internal name; public naming requires trademark review)
-4. Retro Apple UI Dark (working/internal name; public naming requires trademark review)
-5. Paper / Vintage Library
+3. Pear Platinum
+4. Pear Platinum Dark
+5. Deckle
 
 Free themes are complete experiences, not intentionally inferior versions of Premium.
+None of the five is a Plus/Premium theme. Canonical theme descriptions, default
+accents and concept-image references live in `THEMES.md`.
 
 ## 13. Premium theme strategy
 

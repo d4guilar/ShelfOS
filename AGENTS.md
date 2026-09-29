@@ -31,7 +31,7 @@ This file is the primary behavioral contract for coding agents working in the Sh
 20. The canonical ShelfOS brand is monochrome; do not introduce required brand accent colors into Classic.
 21. ShelfOS Classic is cover-first and card-light: system chrome stays neutral while publication covers supply most visual color.
 22. Classic/Dark may borrow media-frontend interaction quality, but must not visually read as gaming/console frontends.
-23. Public free theme set: Classic, Dark, Retro Apple UI (working name), Retro Apple UI Dark (working name), and Paper / Vintage Library.
+23. Public free theme set: Classic, Dark, Pear Platinum, Pear Platinum Dark, and Deckle. None of these five is a Plus theme; see `docs/design/THEMES.md`.
 24. Trademark/franchise-inspired theme names and assets must be reviewed before public release; never copy proprietary visual/audio assets.
 
 ## Technical direction

@@ -424,15 +424,17 @@ ShelfTheme
 └── library presentation hints
 ```
 
-Free themes:
+Free themes ([canonical names and descriptions](design/THEMES.md)):
 
 - Classic
 - Dark
-- Retro Apple UI (working/internal name)
-- Retro Apple UI Dark (working/internal name)
-- Paper / Vintage Library
+- Pear Platinum
+- Pear Platinum Dark
+- Deckle
 
-This list follows accepted ADR-0012, which supersedes the earlier Night/Aqua naming.
+This list follows accepted ADR-0012 (five polished free themes over one monochrome
+core), which supersedes the earlier Night/Aqua naming. Naming for these five was
+finalized in `design/THEMES.md`.
 
 Future premium:
 

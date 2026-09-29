@@ -243,11 +243,12 @@ The ShelfOS logo remains primarily monochrome. The default Classic UI uses neutr
 
 1. **ShelfOS Classic** — monochrome, editorial, cover-first.
 2. **ShelfOS Dark** — near-black/ivory sibling of Classic.
-3. **Retro Apple UI** — nostalgic Aqua-era computing influence; working/internal name pending public trademark review.
-4. **Retro Apple UI Dark** — dark nostalgic counterpart; working/internal name pending public trademark review.
-5. **Paper / Vintage Library** — warm editorial paper/library-card atmosphere.
+3. **Pear Platinum** — light, tactile retro-computing/Platinum-inspired interpretation.
+4. **Pear Platinum Dark** — its graphite dark sibling.
+5. **Deckle** — paper/editorial/literary theme; interface neutral, collection in color.
 
-All five free themes must feel complete and premium.
+All five free themes must feel complete and premium, and none of the five is a
+Plus/Premium theme. Details: [themes](design/THEMES.md).
 
 ### Premium themes
 

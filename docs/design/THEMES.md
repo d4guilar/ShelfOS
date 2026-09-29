@@ -2,10 +2,15 @@
 
 ## Phase 0 implementation status
 
-Classic and Dark are implemented through shared Compose tokens. Retro Apple UI,
-Retro Apple UI Dark, and Paper / Vintage Library are registered but unavailable
-and marked Planned. Their eventual complete design is described below.
-No Premium themes are implemented. Theme selection is persisted locally in Room.
+Classic and Dark are implemented through shared Compose tokens. Pear Platinum,
+Pear Platinum Dark, and Deckle are registered but unavailable and marked Planned.
+Their eventual complete design is described below. No Premium themes are
+implemented. Theme selection is persisted locally in Room.
+
+The current placeholder registrations in `core.theme` still carry the earlier
+working IDs and labels (`RETRO_LIGHT`, `RETRO_DARK`, `PAPER`). Renaming them is
+part of the Phase 6.5 theme work, not a Phase 0 change; their persisted storage
+keys are migration-relevant.
 
 ## Planned reader presentation
 
@@ -59,10 +64,14 @@ Themes must not break:
 ## 1. ShelfOS Classic
 
 ### Role
-Default ShelfOS identity.
+Default ShelfOS identity: native, neutral, modern and collection-first.
 
 ### Principle
 **The interface is monochrome. The library is the color.**
+
+### Default accent
+ShelfOS Blue. A designed default used for selection, focus and progress; it never
+replaces the monochrome logo or the cover-first hierarchy.
 
 ### Characteristics
 
@@ -83,6 +92,10 @@ Borrow structural strengths from ES-DE-quality media browsers while avoiding gam
 
 See `CLASSIC_UI.md`.
 
+### Reference
+`references/ShelfOS_Classic_Library_v1.jpeg` — approved Classic library visual
+direction. Concept image only; see "Theme references" below.
+
 ---
 
 ## 2. ShelfOS Dark
@@ -96,74 +109,136 @@ Low-light sibling to Classic.
 - warm white text
 - graphite/gray surfaces
 - full-color covers
-- no required blue/neon accent
+- no required neon or fluorescent accent
 - identical geometry and navigation to Classic
 - calm OLED-friendly presentation
+
+### Default accent
+ShelfOS Blue, matching Classic.
 
 ### Rule
 Dark is not a separate visual concept. It is Classic under a dark material system.
 
 ---
 
-## 3. Retro Apple UI
-
-### Status
-Working/internal theme name. Final public naming must receive trademark review.
+## 3. Pear Platinum
 
 ### Role
-Free nostalgic computing theme.
+Pear Classic theme family: light retro-computing / Platinum-inspired aesthetic.
 
 ### Characteristics
 
-- Aqua-era optimism
 - tactile controls
-- soft blue/silver surfaces
-- gentle glass and depth
-- friendly system iconography
-- restrained skeuomorphism
+- restrained bevels
+- warm neutral surfaces
 - full-color covers
+- same ShelfOS structure as Classic; theme only, not a product redesign
+
+### Default accent
+Restrained Classic Blue.
 
 ### Rule
-Do not copy Apple assets, icons, wallpapers, sounds, or proprietary UI layouts.
+Do not copy third-party assets, icons, wallpapers, sounds, or proprietary UI
+layouts.
 
 ---
 
-## 4. Retro Apple UI Dark
-
-### Status
-Working/internal theme name. Final public naming must receive trademark review.
+## 4. Pear Platinum Dark
 
 ### Role
-Dark nostalgic counterpart.
+Dark sibling of Pear Platinum.
 
 ### Characteristics
 
-- deep blue / graphite
-- silver/ivory typography
-- restrained glass surfaces
-- subtle depth
-- reduced brightness
-- same nostalgic language without excessive glow
+- graphite / dark retro-computing interpretation
+- same ShelfOS structure and Pear material language as Pear Platinum
+- restrained bevels and tactile controls
+- reduced brightness without losing contrast
+
+### Default accent
+Cool restrained blue.
 
 ---
 
-## 5. Paper / Vintage Library
+## 5. Deckle
 
 ### Role
-Warm literary alternative.
+Paper / editorial / literary theme.
+
+### Principle
+**Interface is neutral. Collection is color.**
 
 ### Characteristics
 
-- cream/paper canvas
-- ink/brown typography
-- subtle paper grain
-- thin editorial rules
-- restrained serif headings paired with readable sans-serif controls
-- library-card / classic paperback influence
+- cream paper surfaces, warm ink
+- editorial typography
+- thin rules and restrained texture
+- identity carried by typography, spacing and paper surfaces rather than bevels
 - no fake wooden bookshelf
+
+### Default accent
+Oxblood.
 
 ### Target feeling
 Old Penguin paperback + quiet reading room + modern product usability.
+
+---
+
+## Theme accent personalization
+
+Each theme ships one carefully designed default accent.
+
+A future release may let users choose from a curated set of accents compatible
+with that theme's character. An unrestricted RGB picker is not the initial design,
+and a curated choice must preserve the theme's visual character.
+
+Accents recolor semantic roles (accent, selection, focus, progress) rather than
+hard-coded color values, so every choice still looks like that theme.
+
+| Theme | Default accent | Curated direction |
+|---|---|---|
+| Classic | ShelfOS Blue | Blue, Green, Purple, Amber, Red |
+| Dark | ShelfOS Blue | Blue, Teal, Green, Purple, Amber |
+| Pear Platinum | Restrained Classic Blue | Blue, Forest Green, Burgundy, Graphite, Amber |
+| Pear Platinum Dark | Cool restrained blue | Cool Blue, Emerald, Amber, Plum, Ice |
+| Deckle | Oxblood | Oxblood, Library Green, Navy Ink, Burnt Orange, Plum |
+
+This is a future implementation direction only. No accent architecture, storage
+model or settings UI is defined here.
+
+## App theme, reading profile and page palette
+
+The app theme/accent and the Reading Profile (page palette) are independent.
+
+A Deckle app theme with a Library Green accent can still read in a Paper, Sepia,
+Sage or Dark reading palette, and changing one never forces the other.
+
+Comics and Original PDF pages remain source-faithful: theme colors and reading
+palettes never recolor or replace authored artwork or embedded fonts.
+
+Reader behavior is owned by `READER_UX.md`; implemented page-color behavior is
+recorded in `../PHASE_2_PLAN.md`.
+
+## Theme references (concept images)
+
+Concept images are visual reference, not pixel-perfect implementation specs.
+
+- Classic: `references/ShelfOS_Classic_Library_v1.jpeg` (concept images are
+  local-only and excluded from Git; see `references/README.md`)
+- Pear Platinum, Pear Platinum Dark, Deckle: no approved concept image yet, so the
+  written specification on this page is authoritative
+
+Implementation preserves the real ShelfOS layout, the monochrome logo assets,
+accessibility requirements, semantic navigation and component behavior. If an
+image and a written specification conflict, the written specification wins.
+
+## Free-theme policy
+
+The five themes above are the initial free theme set, and none of them may be
+assigned to Plus/Premium in documentation or product messaging.
+
+Pear Platinum and Pear Platinum Dark are the canonical project names. The
+public-release naming review in `AGENTS.md` rule 24 still applies before launch.
 
 ---
 
@@ -409,9 +484,9 @@ ThemeRegistry
 ├── Free
 │   ├── Classic
 │   ├── Dark
-│   ├── RetroAppleLight   (working name)
-│   ├── RetroAppleDark    (working name)
-│   └── Paper
+│   ├── PearPlatinum
+│   ├── PearPlatinumDark
+│   └── Deckle
 └── Premium
     ├── FrutigerAero
     ├── Terminal
@@ -428,6 +503,9 @@ ThemeRegistry
 ```
 
 Do not hard-code theme branches across unrelated screens.
+
+Placeholder code registrations still use the earlier IDs and labels; see the
+status section above.
 
 ## Theme implementation rule
 

@@ -1,5 +1,26 @@
 # Documentation Changelog
 
+## Theme lineup finalized: five free themes (2026-09-28)
+
+- Recorded the canonical free theme lineup in `docs/design/THEMES.md`: Classic,
+  Dark, Pear Platinum, Pear Platinum Dark and Deckle, with each theme's designed
+  default accent (ShelfOS Blue, ShelfOS Blue, restrained Classic Blue, cool
+  restrained blue, Oxblood).
+- Recorded the accent-personalization direction: each theme ships one designed
+  default accent and may later offer a curated per-theme set that recolors
+  semantic roles (accent, selection, focus, progress) instead of hard-coded
+  values; an unrestricted RGB picker is explicitly not the initial design.
+- Recorded the separation between app theme/accent and Reading Profile/page
+  palette, including that Comics and Original PDFs stay source-faithful. Both
+  this and the accent direction are future direction only — no theme, accent,
+  reader or persistence code was changed.
+- Recorded that all five themes are free and may not be assigned to Plus, and
+  referenced the existing Classic concept image as visual reference only.
+- Reconciled the previous working names in `AGENTS.md`, `docs/PRODUCT.md`,
+  `docs/ARCHITECTURE.md`, `docs/design/VISUAL_IDENTITY.md`,
+  `docs/features/PREMIUM.md`, `docs/ROADMAP.md`,
+  `docs/SHELFOS_PRIVATE_LAUNCH_AND_AUDIENCE_STRATEGY.md`, ADR-0007 and ADR-0012.
+
 ## Phase 2B.3 final review and RP5 acceptance (2026-09-28)
 
 - Recorded the final targeted independent verdict for `e395ce7`: **PASS WITH
