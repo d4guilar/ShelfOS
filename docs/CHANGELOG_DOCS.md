@@ -1,5 +1,36 @@
 # Documentation Changelog
 
+## Supporter model, premium theme packs and post-launch sync direction (2026-09-28)
+
+- Recorded the monetization philosophy — "Free users should not feel limited. Paid users
+  should feel rewarded." — and the complete free core in `docs/features/PREMIUM.md`,
+  including the explicit list of artificial limits ShelfOS will not introduce.
+- Replaced the separate "Theme Pass" with **ShelfOS Plus** ($14.99 USD launch/founding
+  lifetime direction) and recorded the **$4.99 theme packs** (Retro Systems 5, Pop & Print
+  4, Dream Internet 4 = 13 themes), pack → Plus upgrade fairness, the lifetime promise
+  boundary (which excludes future hosted/cloud services with recurring costs), Labs/early
+  access, the no-marketplace/no-Store-tab rule and the Free-vs-Plus decision test.
+- Reconciled premium theme names and directions in `docs/design/THEMES.md` (including
+  Terminal, Pagestation, and the *PS2 WebXperience* / *OPL-Theme-PS2pops* references,
+  which stay inspiration only), plus the semantic accent model, optional theme effects
+  with the effects toggle and Reduced Motion rule, and community/custom themes as an
+  explicitly post-launch, demand-gated, free-if-shipped, "themes are data" feature.
+- Recorded Gallery / Grid / List as free organization views with per-category remembered
+  views in `docs/features/LIBRARY.md` and `docs/design/VISUAL_IDENTITY.md`.
+- Added the local-first synchronization guardrails to `docs/ARCHITECTURE.md`: no current
+  cloud commitment, the sustained post-launch demand gate, reading/library/source-file
+  separation, publication identity ≠ device-local source location, no raw Room database
+  sync, deletion/conflict principles, BYOC-before-managed-cloud ordering, no ShelfOS
+  account required for BYOC, accountless-vault research caveats, P2P as optional future
+  research, backup ≠ sync, cloud separate from Lifetime Plus, and uncommitted cloud
+  pricing.
+- Reconciled `docs/PRODUCT.md`, `docs/ROADMAP.md`, `docs/design/DESIGN_SYSTEM.md`,
+  `AGENTS.md` and ADR-0012 (a reconciliation note preserving the earlier premium backlog),
+  then deleted the temporary product-decision handoff once every unique decision had a
+  permanent home. No other accepted ADR contradicted these decisions.
+- Documentation only: no sync, cloud, billing, account, migration, UI, test, dependency or
+  theme implementation was added.
+
 ## Theme lineup finalized: five free themes (2026-09-28)
 
 - Recorded the canonical free theme lineup in `docs/design/THEMES.md`: Classic,

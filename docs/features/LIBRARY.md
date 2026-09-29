@@ -146,17 +146,36 @@ Do not surface provider mechanics throughout the main UI.
 
 ## 10. Views
 
-Initial:
+ShelfOS supports three primary library/home presentation modes, all **free core
+features**:
 
-- Grid
+### Gallery
 
-Planned:
+- large covers, collection-first, visually immersive
+- especially suitable for comics, manga and cover-focused libraries
+
+### Grid
+
+- balanced density, cover-forward, efficient default presentation
+
+### List
+
+- denser information layout, metadata-forward
+- particularly useful for books and documents
+
+Preferred behavior: the user chooses a global/default view, and ShelfOS may remember a
+preferred view per major category (for example Books → List, Comics → Gallery,
+Manga → Grid, Documents → List).
+
+Additional presentations remain planned rather than promised:
 
 - Compact
-- List
 - Showcase
 
-Showcase is the most frontend-inspired presentation but remains a library view, not a launcher mode.
+Showcase is the most frontend-inspired presentation but remains a library view, not a
+launcher mode.
+
+Exact persistence and UI implementation belongs to future implementation work.
 
 ## 11. Sorting
 

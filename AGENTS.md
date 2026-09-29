@@ -125,6 +125,10 @@ The following are future features and should not leak into early phases through 
 
 - ShelfOS accounts
 - mandatory cloud sync
+- optional cloud/synchronization services or storage providers (post-launch and
+  demand-gated; see the local-first section in `docs/ARCHITECTURE.md`)
+- community/custom theme import or a public theme format (post-launch and demand-gated;
+  see `docs/design/THEMES.md`)
 - iOS implementation
 - OCR
 - AI services

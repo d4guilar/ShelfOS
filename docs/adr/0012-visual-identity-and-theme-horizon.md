@@ -48,6 +48,14 @@ The initial Premium theme backlog contains at least ten themes and currently inc
 - Solarpunk
 - Ink
 
+Backlog reconciliation (2026-09-28): the shipped premium lineup is now 13 themes in three
+packs — **Retro Systems** (Terminal, Pagestation, Glassline, MonoDot, Deckwave),
+**Pop & Print** (Sprite Clash, Halftone Hero, Pocket Pixel, Manga Print) and
+**Dream Internet** (AeroBloom, Neo Shibuya, Sakura Mist, ClipPop 2000) — offered as $4.99
+theme packs or through the lifetime ShelfOS Plus entitlement, with a themed-pack upgrade
+path toward Plus. The list above is retained as the record of the earlier backlog; see
+`docs/design/THEMES.md` and `docs/features/PREMIUM.md`.
+
 ## Consequences
 
 Positive:

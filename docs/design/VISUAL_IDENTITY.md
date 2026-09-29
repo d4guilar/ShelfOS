@@ -207,7 +207,12 @@ On tablets/foldables, it may become a navigation rail or compact side navigation
 
 ## 10. Library view modes
 
-ShelfOS should eventually support multiple browsing modes.
+ShelfOS should eventually support multiple browsing modes. **Gallery, Grid and List are
+the canonical free modes** (see [Library views](../features/LIBRARY.md#10-views)).
+
+### Gallery
+Large covers, collection-first browsing; especially suited to comics, manga and
+cover-focused libraries.
 
 ### Grid
 Default cover-first browsing.
@@ -253,11 +258,14 @@ accents and concept-image references live in `THEMES.md`.
 
 ## 13. Premium theme strategy
 
-Premium themes are optional alternate worlds for the user's library.
+Premium themes are optional alternate worlds for the user's library, delivered as theme
+packs ($4.99 each) or through ShelfOS Plus ($14.99 lifetime launch direction). They may
+use stronger motion, custom presentation, optional effects and theme-specific browsing
+behavior while preserving the underlying ShelfOS navigation and accessibility model.
 
-They may use stronger motion, custom presentation, optional sounds, and theme-specific browsing behavior while preserving the underlying ShelfOS navigation and accessibility model.
-
-Premium theme concepts are documented in `THEMES.md`.
+They never gate core reading, and none of the five free themes may move behind Plus.
+Pack contents, upgrade fairness and the lifetime boundary live in
+[Premium](../features/PREMIUM.md); theme directions live in `THEMES.md`.
 
 ## 14. Platform consistency
 
