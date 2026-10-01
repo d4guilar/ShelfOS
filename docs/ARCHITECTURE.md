@@ -338,6 +338,28 @@ ReaderEngine
 - getCurrentLocator()
 ```
 
+Managed fonts (implemented in Phase 2B.4) sit behind the same abstraction:
+
+```text
+ManagedFontRepository
+- epubResources()          → publication-local managed-font resources (not paths)
+- import(uri)              → SAF pick, validate, app-private managed copy
+- replace(familyId, ...)   → managed face replaced, external source untouched
+- remove(familyId)
+```
+
+- Reader preferences persist a stable logical family id (`builtin:serif`,
+  `builtin:sans`, `user:<uuid>`), never a filesystem path.
+- Managed fonts are stored under app-private storage in a managed-font namespace;
+  resource lookup verifies a resolved file stays inside that namespace, so a request
+  cannot escape it.
+- A managed font reaches the navigator as a publication-local resource URL declared
+  through the engine's font-family declaration API, not as a raw path.
+- If a selected managed family cannot be resolved, the reader degrades to the
+  built-in serif family instead of failing.
+- The reader exposes a Publisher/ShelfOS presentation boundary; PDF and comic
+  source fidelity is unchanged and remains a separate concern.
+
 Specialized capability interfaces may be preferable to one giant interface.
 
 Potential implementations:

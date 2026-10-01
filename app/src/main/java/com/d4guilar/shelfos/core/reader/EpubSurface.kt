@@ -83,7 +83,7 @@ fun EpubSurface(activity: FragmentActivity, session: EpubSession, locator: Strin
     } }, modifier = modifier)
     // The factory applies the initial preferences; later changes wait until the fragment is attached and started.
     LaunchedEffect(navigator, preferences, dark) {
-        navigator.lifecycle.withStarted { navigator.submitPreferences(epubPreferences(preferences, dark, category)) }
+        navigator.lifecycle.withStarted { navigator.submitPreferences(session.preferences(preferences, dark, category)) }
     }
     LaunchedEffect(navigator) {
         navigator.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {

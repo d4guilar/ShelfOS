@@ -7,6 +7,8 @@ import android.graphics.Color
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -38,15 +40,18 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.d4guilar.shelfos.ShelfApplication
+import com.d4guilar.shelfos.AppContainer
 import com.d4guilar.shelfos.core.designsystem.InputKeycap
 import com.d4guilar.shelfos.core.input.*
 import com.d4guilar.shelfos.core.reader.*
 import com.d4guilar.shelfos.core.theme.*
 import com.d4guilar.shelfos.domain.library.*
+import kotlinx.coroutines.launch
 
 /** Below this TOC size, a filter field adds a control without saving meaningful scanning effort. */
 private const val CHAPTER_FILTER_THRESHOLD = 8
@@ -63,6 +68,9 @@ open class EpubActivity : AppCompatActivity() {
     protected open fun createSearchCursorOpener(): EpubSearchCursorOpener =
         { session, query -> session.search(query) }
 
+    /** Debug/test hosts can replace only the reader factory; release uses the application container. */
+    protected open fun createEpubReaderFactory(container: com.d4guilar.shelfos.AppContainer): EpubReaderFactory = container.epubs
+
     override fun onCreate(savedInstanceState: Bundle?) {
         restoreEpubNavigatorAsPlaceholder()
         super.onCreate(savedInstanceState)
@@ -74,18 +82,18 @@ open class EpubActivity : AppCompatActivity() {
         val searchCursorOpener = createSearchCursorOpener()
         setContent {
             val vm: EpubReaderViewModel = viewModel(factory = viewModelFactory { initializer {
-                EpubReaderViewModel(itemId, container.library, container.library, container.epubs,
+                EpubReaderViewModel(itemId, container.library, container.library, createEpubReaderFactory(container),
                     container.backgroundScope, searchCursorOpener)
             } })
             val theme by container.themes.theme.collectAsStateWithLifecycle(initialValue = null as ThemeId?)
             // Wait for the saved theme instead of flashing Classic first.
-            theme?.let { ShelfTheme(it) { EpubReaderContent(vm) } }
+            theme?.let { ShelfTheme(it) { EpubReaderContent(vm, container) } }
         }
     }
 
     @OptIn(ExperimentalLayoutApi::class)
     @Composable
-    private fun EpubReaderContent(vm: EpubReaderViewModel) {
+    private fun EpubReaderContent(vm: EpubReaderViewModel, container: AppContainer) {
         val state by vm.state.collectAsStateWithLifecycle()
         val searchState by vm.searchState.collectAsStateWithLifecycle()
         val tokens = LocalShelfTokens.current
@@ -96,6 +104,23 @@ open class EpubActivity : AppCompatActivity() {
         var bookmarks by rememberSaveable { mutableStateOf(false) }
         var search by rememberSaveable { mutableStateOf(false) }
         var searchQuery by rememberSaveable { mutableStateOf("") }
+        var fontImportError by rememberSaveable { mutableStateOf<String?>(null) }
+        val fontFamilies by container.fonts.families.collectAsStateWithLifecycle()
+        val importFont = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let {
+                lifecycleScope.launch {
+                    try {
+                        container.fonts.import(it)
+                        fontImportError = null
+                        // The navigator configuration declares the catalog available when its session opens.
+                        // Recreate once so a newly imported family can be selected immediately in this dialog.
+                        recreate()
+                    } catch (error: FontImportException) {
+                        fontImportError = error.userMessage
+                    }
+                }
+            }
+        }
         // Recent input modality (Phase 2A.1): only the real center-tap gesture and real key events update this,
         // never a button click, since a click may itself have been keyboard/gamepad-activated. Edge taps that
         // turn EPUB pages are handled entirely inside Readium's navigator and do not reach this callback.
@@ -221,7 +246,17 @@ open class EpubActivity : AppCompatActivity() {
             }
         }
         if (appearance && item != null) ReaderAppearance(state.preferences, capabilities(item.format), { appearance = false },
-            vm::applyAppearance, vm::resetAppearance)
+            vm::applyAppearance, vm::resetAppearance, fontFamilies, fontImportError,
+            onImportFont = {
+                fontImportError = null
+                importFont.launch(arrayOf("font/ttf", "font/otf", "application/vnd.ms-opentype", "application/octet-stream"))
+            },
+            onRemoveFont = { familyId ->
+                lifecycleScope.launch {
+                    if (container.fonts.remove(familyId)) { fontImportError = null; recreate() }
+                    else fontImportError = "ShelfOS could not remove that font."
+                }
+            })
         if (chapters && session != null) {
             // Reset on each open (this state lives inside the dialog's own composition, discarded when the
             // dialog closes) but preserved by rememberSaveable while the dialog stays open across recreation.

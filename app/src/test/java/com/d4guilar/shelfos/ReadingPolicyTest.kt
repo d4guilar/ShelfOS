@@ -34,6 +34,61 @@ class ReadingPolicyTest {
         assertEquals(PagePalette.THEME, resolved.palette)
         assertNull(resolved.direction)
     }
+    @Test fun legacyBookFontsResolveToStableBuiltinFamilyIds() {
+        assertEquals(BUILTIN_SERIF_FONT_ID, ReaderPreferences(font = BookFont.SERIF).effectiveFontFamilyId())
+        assertEquals(BUILTIN_SANS_FONT_ID, ReaderPreferences(font = BookFont.SANS).effectiveFontFamilyId())
+        assertEquals("user:chosen", ReaderPreferences(font = BookFont.SANS, fontFamilyId = "user:chosen").effectiveFontFamilyId())
+    }
+    /** Codex QA M1: a legacy per-title layer that only ever stored `font` (no `fontFamilyId`, saved before Phase
+     * 2B.4) must keep its own title-specific font choice even once a newer global managed-font choice exists —
+     * the global choice must not silently win just because the title layer's `fontFamilyId` was never populated.
+     * `backfillLegacyFontFamilyId` (called from `ReaderPreferences.parse`, per layer, before merging) is what
+     * fixes this; the full `.json()`/`.parse()` round-trip through `org.json.JSONObject` cannot be exercised in a
+     * plain JVM test in this project (no Robolectric — see every other JSON-boundary split here), so the
+     * end-to-end proof lives in `EpubManagedFontAppearanceTest` (instrumented) instead. This test proves the pure
+     * logic directly: a backfilled title layer's `fontFamilyId` wins over the merge, exactly as a real parsed
+     * legacy title would. */
+    @Test fun legacyTitleFontTakesPrecedenceOverANewerGlobalManagedFont() {
+        assertEquals(BUILTIN_SANS_FONT_ID, backfillLegacyFontFamilyId(BookFont.SANS, null))
+        assertEquals(BUILTIN_SERIF_FONT_ID, backfillLegacyFontFamilyId(BookFont.SERIF, null))
+        assertEquals("user:explicit", backfillLegacyFontFamilyId(BookFont.SANS, "user:explicit"))
+        assertNull(backfillLegacyFontFamilyId(null, null))
+
+        val legacyTitle = ReaderPreferences(font = BookFont.SANS, fontFamilyId = backfillLegacyFontFamilyId(BookFont.SANS, null))
+        val newerGlobal = ReaderPreferences(fontFamilyId = "user:chosen")
+        val resolved = resolveReaderPreferences(legacyTitle, newerGlobal)
+        assertEquals(BUILTIN_SANS_FONT_ID, resolved.effectiveFontFamilyId())
+    }
+    /** Final 2B.4 regression (independent targeted review): the M1 fix above is correct in isolation but
+     * interacted badly with [withoutChanges]. A title with its own explicit font (`font = SANS,
+     * fontFamilyId = builtin:sans`) that then has a *managed* (non-builtin) font applied globally keeps
+     * `font` unchanged, because the Appearance font-chip UI only changes `font` when the newly picked
+     * family is itself builtin (see ReaderAppearance.kt's chip onClick). Before this fix, `withoutChanges`
+     * only cleared `fontFamilyId` in that case, leaving a legacy-looking `font`-only title layer behind —
+     * which `backfillLegacyFontFamilyId` then resurrected into a stale `fontFamilyId = builtin:sans`
+     * override on the very next parse, reverting the global change on the exact title it was applied from.
+     * This drives the real [appearanceUpdate] used by `saveAppearance`, then reapplies
+     * [backfillLegacyFontFamilyId] to both resulting layers exactly as a later [ReaderPreferences.parse]
+     * would (a full `.json()`/`.parse()` round-trip cannot run in a plain JVM test here — see the M1 test
+     * above for why). Must fail against the pre-fix `withoutChanges` and pass once `font` is cleared
+     * alongside `fontFamilyId`. */
+    @Test fun globalManagedFontApplicationIsVisibleOnTheTitleItWasAppliedFrom() {
+        val storedTitle = ReaderPreferences(font = BookFont.SANS, fontFamilyId = BUILTIN_SANS_FONT_ID)
+        val storedGlobal = ReaderPreferences()
+
+        val before = resolveReaderPreferences(storedTitle, storedGlobal)
+        val after = before.copy(fontFamilyId = "user:x") // chip click on a managed font leaves `font` unchanged
+
+        val update = appearanceUpdate(storedTitle, storedGlobal, before, after, globally = true)
+        val newGlobal = requireNotNull(update.global)
+        val newTitle = update.title
+
+        val parsedTitle = newTitle.copy(fontFamilyId = backfillLegacyFontFamilyId(newTitle.font, newTitle.fontFamilyId))
+        val parsedGlobal = newGlobal.copy(fontFamilyId = backfillLegacyFontFamilyId(newGlobal.font, newGlobal.fontFamilyId))
+
+        val resolved = resolveReaderPreferences(parsedTitle, parsedGlobal)
+        assertEquals("user:x", resolved.effectiveFontFamilyId())
+    }
     @Test fun naturalPageOrderHandlesLongNumbersAndLeadingZeros() {
         val names = listOf("10.jpg", "2.jpg", "1.jpg", "999999999999999999999999.jpg", "02.jpg")
         assertEquals(listOf("1.jpg", "02.jpg", "2.jpg", "10.jpg", "999999999999999999999999.jpg"), names.sortedWith(::naturalCompare))
@@ -89,13 +144,27 @@ class ReadingPolicyTest {
 
     @Test fun unappliedAppearanceDraftsSaveAsPlainValues() {
         val scope = SaverScope { true }
-        val full = ReaderPreferences(BookFont.SANS, 1.3, 1.9, 0.5, true, false, PagePalette.PAPER, ReadingDirection.RTL, FitMode.WIDTH)
+        val full = ReaderPreferences(BookFont.SANS, 1.3, 1.9, 0.5, true, false, PagePalette.PAPER, ReadingDirection.RTL,
+            FitMode.WIDTH, "user:family", PresentationMode.PUBLISHER)
         listOf(full, ReaderPreferences(), ReaderPreferences(fontSize = 2.1, direction = ReadingDirection.LTR)).forEach { draft ->
             val saved = with(ReaderPreferencesSaver) { scope.save(draft) }!!
             assertEquals(draft, ReaderPreferencesSaver.restore(saved))
         }
         // A name saved by another build restores as unset rather than failing recreation.
         assertEquals(ReaderPreferences(), ReaderPreferencesSaver.restore(listOf("COMIC_SANS", null, null, null, null, null, "NEON", "UP", "ZOOM")))
+    }
+
+    @Test fun presentationAndLogicalFontParticipateInGlobalAndTitleInheritance() {
+        val title = ReaderPreferences(fontFamilyId = "user:title")
+        val global = ReaderPreferences(fontFamilyId = BUILTIN_SANS_FONT_ID, presentationMode = PresentationMode.PUBLISHER)
+        val before = resolveReaderPreferences(title, global)
+        assertEquals("user:title", before.fontFamilyId)
+        assertEquals(PresentationMode.PUBLISHER, before.presentationMode)
+        val update = appearanceUpdate(title, global, before,
+            before.copy(fontFamilyId = BUILTIN_SERIF_FONT_ID, presentationMode = PresentationMode.SHELFOS), globally = true)
+        assertEquals(BUILTIN_SERIF_FONT_ID, update.global?.fontFamilyId)
+        assertEquals(PresentationMode.SHELFOS, update.global?.presentationMode)
+        assertNull(update.title.fontFamilyId)
     }
 
     @Test fun resetClearsOnlyTheChosenLayer() {

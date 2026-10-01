@@ -17,11 +17,27 @@ class ReaderStateTest {
     }
 
     @Test fun preferenceLayersRoundTripAndIgnoreDamagedValues() {
-        val layer = ReaderPreferences(font = BookFont.SANS, fontSize = 1.3, direction = ReadingDirection.RTL, fit = FitMode.WIDTH)
+        val layer = ReaderPreferences(font = BookFont.SANS, fontSize = 1.3, direction = ReadingDirection.RTL,
+            fit = FitMode.WIDTH, fontFamilyId = "user:family", presentationMode = PresentationMode.PUBLISHER)
         assertEquals(layer, ReaderPreferences.parse(layer.json()))
         assertEquals(ReaderPreferences(), ReaderPreferences.parse(ReaderPreferences().json()))
         assertEquals(ReaderPreferences(), ReaderPreferences.parse("{broken"))
         assertEquals(2.5, ReaderPreferences.parse("""{"fontSize": 99}""").fontSize!!, .001)
         assertNull(ReaderPreferences.parse("""{"font": "COMIC_SANS", "direction": "UP"}""").font)
+        val legacy = ReaderPreferences.parse("""{"version":1,"font":"SANS","fontSize":1.2}""")
+        assertEquals(BUILTIN_SANS_FONT_ID, legacy.effectiveFontFamilyId())
+        assertEquals(PresentationMode.SHELFOS, resolveReaderPreferences(legacy, ReaderPreferences()).presentationMode)
+    }
+
+    @Test fun publisherPresentationHonorsPublisherStylesWithoutShelfTypographyOverrides() {
+        val publisher = epubPreferences(ReaderPreferences.DEFAULT.copy(presentationMode = PresentationMode.PUBLISHER), false,
+            com.d4guilar.shelfos.domain.library.MediaCategory.BOOK)
+        assertEquals(true, publisher.publisherStyles)
+        assertNull(publisher.fontFamily)
+        assertNull(publisher.fontSize)
+        val shelf = epubPreferences(ReaderPreferences.DEFAULT.copy(presentationMode = PresentationMode.SHELFOS), false,
+            com.d4guilar.shelfos.domain.library.MediaCategory.BOOK)
+        assertEquals(false, shelf.publisherStyles)
+        assertEquals("serif", shelf.fontFamily?.name)
     }
 }
