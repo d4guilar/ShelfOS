@@ -31,9 +31,14 @@ data class ReaderPreferences(
         pick(before.fit, after.fit, fit), pick(before.fontFamilyId, after.fontFamilyId, fontFamilyId),
         pick(before.presentationMode, after.presentationMode, presentationMode))
 
-    /** Clears this layer's values for fields that differ between [before] and [after]. */
+    /** Clears this layer's values for fields that differ between [before] and [after]. [font] and [fontFamilyId]
+     * are treated as one semantic unit here: a global `fontFamilyId` change must also clear this layer's own
+     * [font], even when [font] itself did not change in the edit. Otherwise a leftover legacy-looking `font` value
+     * (with no [fontFamilyId] of its own, since that half of the pair was correctly cleared) would be backfilled
+     * by [backfillLegacyFontFamilyId] on the very next parse into a *new* [fontFamilyId] override for this layer —
+     * resurrecting the stale title override the global application was supposed to clear. */
     fun withoutChanges(before: ReaderPreferences, after: ReaderPreferences) = ReaderPreferences(
-        font.unless(before.font != after.font), fontSize.unless(before.fontSize != after.fontSize),
+        font.unless(before.font != after.font || before.fontFamilyId != after.fontFamilyId), fontSize.unless(before.fontSize != after.fontSize),
         lineHeight.unless(before.lineHeight != after.lineHeight), margins.unless(before.margins != after.margins),
         justified.unless(before.justified != after.justified), scroll.unless(before.scroll != after.scroll),
         palette.unless(before.palette != after.palette), direction.unless(before.direction != after.direction),

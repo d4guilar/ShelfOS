@@ -59,6 +59,36 @@ class ReadingPolicyTest {
         val resolved = resolveReaderPreferences(legacyTitle, newerGlobal)
         assertEquals(BUILTIN_SANS_FONT_ID, resolved.effectiveFontFamilyId())
     }
+    /** Final 2B.4 regression (independent targeted review): the M1 fix above is correct in isolation but
+     * interacted badly with [withoutChanges]. A title with its own explicit font (`font = SANS,
+     * fontFamilyId = builtin:sans`) that then has a *managed* (non-builtin) font applied globally keeps
+     * `font` unchanged, because the Appearance font-chip UI only changes `font` when the newly picked
+     * family is itself builtin (see ReaderAppearance.kt's chip onClick). Before this fix, `withoutChanges`
+     * only cleared `fontFamilyId` in that case, leaving a legacy-looking `font`-only title layer behind —
+     * which `backfillLegacyFontFamilyId` then resurrected into a stale `fontFamilyId = builtin:sans`
+     * override on the very next parse, reverting the global change on the exact title it was applied from.
+     * This drives the real [appearanceUpdate] used by `saveAppearance`, then reapplies
+     * [backfillLegacyFontFamilyId] to both resulting layers exactly as a later [ReaderPreferences.parse]
+     * would (a full `.json()`/`.parse()` round-trip cannot run in a plain JVM test here — see the M1 test
+     * above for why). Must fail against the pre-fix `withoutChanges` and pass once `font` is cleared
+     * alongside `fontFamilyId`. */
+    @Test fun globalManagedFontApplicationIsVisibleOnTheTitleItWasAppliedFrom() {
+        val storedTitle = ReaderPreferences(font = BookFont.SANS, fontFamilyId = BUILTIN_SANS_FONT_ID)
+        val storedGlobal = ReaderPreferences()
+
+        val before = resolveReaderPreferences(storedTitle, storedGlobal)
+        val after = before.copy(fontFamilyId = "user:x") // chip click on a managed font leaves `font` unchanged
+
+        val update = appearanceUpdate(storedTitle, storedGlobal, before, after, globally = true)
+        val newGlobal = requireNotNull(update.global)
+        val newTitle = update.title
+
+        val parsedTitle = newTitle.copy(fontFamilyId = backfillLegacyFontFamilyId(newTitle.font, newTitle.fontFamilyId))
+        val parsedGlobal = newGlobal.copy(fontFamilyId = backfillLegacyFontFamilyId(newGlobal.font, newGlobal.fontFamilyId))
+
+        val resolved = resolveReaderPreferences(parsedTitle, parsedGlobal)
+        assertEquals("user:x", resolved.effectiveFontFamilyId())
+    }
     @Test fun naturalPageOrderHandlesLongNumbersAndLeadingZeros() {
         val names = listOf("10.jpg", "2.jpg", "1.jpg", "999999999999999999999999.jpg", "02.jpg")
         assertEquals(listOf("1.jpg", "02.jpg", "2.jpg", "10.jpg", "999999999999999999999999.jpg"), names.sortedWith(::naturalCompare))
