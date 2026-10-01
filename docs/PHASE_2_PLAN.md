@@ -50,8 +50,10 @@ was completed before merge. **2B.3 (EPUB publication search) is accepted and
   (this document's §3 2C section and
   [`PHASE_2C_IMPLEMENTATION_PLAN.md`](PHASE_2C_IMPLEMENTATION_PLAN.md) §22c,
   2026-10-01, on `phase-2/pdf-fidelity`); no 2C production code was written or
-  is planned from this investigation. 2D remains planned only; none of its
-  work has started. See `VALIDATION.md`'s
+  is planned from this investigation. **2D's discovery/implementation-planning
+  pass is ACTIVE** (2026-10-01, on `phase-2/reader-closure`); no 2D production
+  code exists yet. See [`PHASE_2D_IMPLEMENTATION_PLAN.md`](PHASE_2D_IMPLEMENTATION_PLAN.md)
+  and this document's §3 2D section. See `VALIDATION.md`'s
 "Phase 2A.1"/"Phase 2B.1"/"Phase 2B.2"/"Phase 2B.2.1"/"Phase 2B.2.2"
 sections for evidence and explicitly-unclaimed items. This document is the
 canonical Phase 2 planning location referenced by
@@ -94,11 +96,12 @@ after three independent-review rounds; 2B.2.2 via PR #11 after R3 remediation
 and final wording cleanup). 2B.3 (EPUB publication search) is accepted and
 merged to `main` via PR #12 after final technical review and owner RP5
 acceptance. **2B.4 (managed fonts + ShelfOS reading presentation) is accepted
-and merged to `main` via PR #13**; see §12 and `VALIDATION.md`. **2C is in an
-investigation/implementation-planning pass** (see §3 below and
+and merged to `main` via PR #13**; see §12 and `VALIDATION.md`. **2C's
+investigation is closed: no production PDF rendering change was found to be
+justified** (see §3 below and
 [`PHASE_2C_IMPLEMENTATION_PLAN.md`](PHASE_2C_IMPLEMENTATION_PLAN.md)); no 2C
-production code exists yet. 2D remains planned only; none of its work has
-started.
+production code exists or is planned. **2D's discovery/implementation-planning
+pass is ACTIVE**; no 2D production code exists yet.
 
 ## 3. Increments
 
@@ -2483,19 +2486,43 @@ expanded on, not a duplicate plan.
   actually needs.
 - AI upscaling is explicitly not part of Phase 2.
 
-### 2D — Reader continuity, adaptive/accessibility/performance closure (planned, not started)
+### 2D — Reader continuity, adaptive/accessibility/performance closure (discovery/implementation-planning pass ACTIVE, 2026-10-01)
+
+**2D's discovery/implementation-planning pass is ACTIVE** on
+`phase-2/reader-closure` (base `main` at `0d8a6a0`); see
+[`PHASE_2D_IMPLEMENTATION_PLAN.md`](PHASE_2D_IMPLEMENTATION_PLAN.md) for the
+full architecture audit, the reproduced fixed-reader pan/zoom-bounds root
+cause, continuity/input/accessibility/performance findings, severity
+classification and the recommended 2D.1–2D.4 slice sequence. No 2D
+production code exists yet.
 
 - Configuration/process restoration hardening beyond what 2A's chrome-state
   fix touches (rotation, fold/unfold, multi-window resize).
-- Adaptive reading layouts (e.g. two-page spreads on wide/tablet/foldable
-  viewports) — `COMICS_MANGA.md`'s AUTO-spreads-resolve-to-one-page policy
-  from ADR-0017 remains the interim behavior until this lands.
+- **Clarified 2026-10-01** (the original bullet below conflated two distinct
+  features under "two-page/spreads" — see `PHASE_2D_IMPLEMENTATION_PLAN.md`
+  §6.3): **comic/manga fixed-page spread layouts remain `ROADMAP.md`'s
+  explicit Phase 3 — Comics and Manga scope, not 2D** —
+  `COMICS_MANGA.md`'s AUTO-spreads-resolve-to-one-page policy from
+  ADR-0017 remains the interim behavior until Phase 3 lands it. Separately,
+  EPUB's Readium-supported multi-column/`ColumnCount` reflow (flagged as a
+  2D candidate by 2B.1's discovery pass) remains an open, low-risk,
+  not-currently-demanded candidate that 2D's first slice sequence does not
+  build either, absent further evidence.
 - Keyboard/controller consistency closure across any gaps found while
   building 2B/2C.
 - Accessibility closure: TalkBack coverage beyond 2A's chrome-state
   descriptions, focus order review across the reader screens.
 - Performance profiling and malformed/large-document resilience passes.
 - Final physical-device acceptance gate for the whole Phase 2 scope.
+- **New in this pass:** a reproducible fixed-page (`FixedReaderScreen`,
+  shared PDF/CBZ) pan/zoom-bounds defect — pinch-zoom/pan can translate the
+  page beyond its valid scaled bounds, exposing excess letterbox/margin
+  space, because the gesture code clamps translation to the viewport's own
+  size times scale rather than to the actual scaled-content-vs-viewport
+  relationship. Root-caused by code/math inspection (not yet by a live
+  gesture session); classified MEDIUM; recommended as 2D.1. See
+  `PHASE_2D_IMPLEMENTATION_PLAN.md` §2 for the full analysis and §13 for the
+  future acceptance-test cases.
 
 ## 4. Out of scope for Phase 2 (all increments)
 

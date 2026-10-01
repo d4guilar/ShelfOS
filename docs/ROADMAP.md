@@ -217,11 +217,12 @@ internal slices 2B.1–2B.4 — 2B.1 chapter-navigation polish accepted and merg
 via PR #8, 2B.2 durable bookmarks accepted and merged via PR #9, 2B.2.1
 bookmark-location polish accepted and merged via PR #10, and 2B.2.2 reading
 flow accepted and merged via PR #11 at `ab612a46`; 2B.3 EPUB publication
-search is accepted after final technical review and owner physical RP5
-validation, and is ready for PR/merge but not yet merged; **2B.4 managed fonts
-and ShelfOS reading presentation is implemented and complete** on
-`phase-2/managed-fonts` (final independent QA PASS; not yet merged); 2C–2D planned,
-not started) and acceptance criteria. The
+search accepted and merged via PR #12; **2B.4 managed fonts and ShelfOS
+reading presentation accepted and merged via PR #13**; **2C's PDF-fidelity
+investigation is closed** (no production rendering change justified — see
+`PHASE_2C_IMPLEMENTATION_PLAN.md` §22c); **2D's discovery/implementation-
+planning pass is ACTIVE** (see `PHASE_2D_IMPLEMENTATION_PLAN.md`)) and
+acceptance criteria. The
 original inventory below is retained for coverage; items already accepted in
 Phase 1 are marked accordingly.
 

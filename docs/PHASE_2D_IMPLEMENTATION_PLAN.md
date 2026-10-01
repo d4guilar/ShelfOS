@@ -1,0 +1,1002 @@
+# Phase 2D implementation plan: reader continuity, adaptive/accessibility/performance closure
+
+Status: **discovery/implementation-planning pass, ACTIVE** (2026-10-01), on
+`phase-2/reader-closure` (base `main` at `0d8a6a0`, the commit that merged
+Phase 2C's closed investigation via PR #16). No 2D production code exists yet.
+This document is the canonical Phase 2D planning location referenced by
+[`PHASE_2_PLAN.md`](PHASE_2_PLAN.md)'s §3 2D section.
+
+This pass read, in order: `AGENTS.md`, `docs/PHASE_2_PLAN.md`,
+`docs/ROADMAP.md`, `docs/ARCHITECTURE.md`, `docs/features/READER.md`,
+`docs/features/PDF_INGESTION.md`, `docs/features/COMICS_MANGA.md`,
+`docs/design/READER_UX.md`, `docs/design/INPUT_SYSTEM.md`,
+`docs/VALIDATION.md` (for prior-phase evidence format),
+`docs/PHASE_2C_IMPLEMENTATION_PLAN.md` (the just-closed investigation), and
+ADR-0010 (adaptive foldables), ADR-0017 (Phase 1 reading scope, which also
+sets the AUTO-spread interim policy), and ADR-0023 (reader chrome/Back
+semantics). This pass does not reopen 2C's closed PDF-rendering conclusion
+(§22c of that document) — it is treated as settled evidence throughout.
+
+## 1. Current reader architecture (as verified by reading the source)
+
+### 1.1 Shared across EPUB and fixed-page (PDF/CBZ)
+
+- `core.input` (`ShelfCommand`, `InputMapper`, `InputModality`, `InputHints`):
+  both readers resolve keyboard/gamepad key events to the same semantic
+  commands (`NEXT_PAGE`/`PREVIOUS_PAGE`/`OPEN_MENU`/`BACK`) and track/display
+  input-modality hints identically. Touch itself remains screen-specific
+  `pointerInput`/Readium-gesture handling in both readers — not yet routed
+  through `ShelfCommand` (a standing, previously-deferred gap, §6 of
+  `INPUT_SYSTEM.md`).
+- Chrome/Back semantics (ADR-0023): both readers implement "Back reveals
+  hidden chrome first, a second Back exits" via the same pattern — a local
+  `controls` `rememberSaveable` boolean, a `backPress()`/equivalent function
+  checked by both `BackHandler` and the `ShelfCommand.BACK` key path.
+  `FixedReaderScreen.kt` and `EpubActivity.kt` still duplicate this logic
+  (identified as a refactor target in 2A, still not extracted — unchanged by
+  this pass).
+- `ReaderAppearance` composable: the same typography/palette/fit-mode sheet
+  is shared by both readers via `capabilities(item.format)`, with per-format
+  controls gated by what that format actually supports.
+- `ReaderPreferences`/`resolveReaderPreferences`: per-title preference over
+  global preference precedence, shared persistence shape (JSON blob columns
+  on `LibraryEntity`/global preference row), shared `applyAppearance`/
+  `resetAppearance` plumbing pattern in both ViewModels.
+- Position persistence: both use a `PositionWriter<T>`-shaped
+  conflated/debounced writer into `ReadingEntity` — `FixedReaderViewModel`
+  keyed on page index, `EpubReaderViewModel`/`EpubSurface` keyed on
+  `Locator.toJSON()` + computed progress.
+- Error surfacing: both route engine exceptions through a shared
+  `PublicationException`/`PublicationProblem`/`UiMessage.readerMessage()`
+  pipeline (`core.designsystem`), so localized, typed error messages reach
+  both readers' UI without ad hoc strings.
+- Accessibility: both expose a `stateDescription` ("Controls shown"/"Controls
+  hidden") and an `onClick` reveal action on the page surface, only while
+  chrome is hidden (2A).
+
+### 1.2 EPUB-only
+
+- `EpubActivity` (a real `Activity`, not a Compose-only screen) hosts a
+  Readium `EpubNavigatorFragment` via `FragmentManager`; the navigator's own
+  fragment state survives rotation/process recreation (`FragmentManager`
+  restores it), which is how EPUB's current locator/page survives recreation
+  without ShelfOS re-deriving it from scratch.
+  `EpubActivity.kt`'s own comment (lines 68–69) documents this explicitly.
+- Extensive `rememberSaveable` usage for Compose-level UI state: `controls`,
+  `appearance`, `chapters`, `bookmarks`, `search`, `searchQuery`,
+  `fontImportError` (with a custom `Saver`), `modality` — all survive
+  configuration change and process recreation (verified by reading
+  `EpubActivity.kt` directly, not inferred).
+- Chapter navigation, search (`SearchService`/`SearchIterator` lifecycle,
+  2B.3), bookmarks (Room `bookmark` table, 2B.2), managed fonts (2B.4) are
+  all EPUB-only; none of this exists for PDF/CBZ.
+- `EpubPreferences.columnCount` is hard-forced to `ColumnCount.ONE`
+  (single-column, phone-first) — Readium supports `TWO`/`AUTO`, but exposing
+  this was explicitly deferred to 2D by the 2B.1 discovery pass (see §8
+  below; this is a *different* feature from comic page-spreads).
+
+### 1.3 Fixed-page (PDF/CBZ)-only
+
+- `FixedReaderScreen.kt` + `FixedReaderViewModel.kt` + `core/reader/
+  FixedReader.kt` (`PdfPages`, `ArchivePages`): a single Compose screen (no
+  separate `Activity`), one `Bitmap` held in state at a time, rendered via
+  `PdfPages.render()` (`android.graphics.pdf.PdfRenderer`,
+  `MAX_PAGE_PIXELS = 2048` fixed longest-edge, confirmed unchanged by 2C) or
+  `ArchivePages` (CBZ image decode). `FixedReaderViewModel` serializes all
+  open/render work through one `Mutex`, cancels the in-flight `rendering`
+  `Job` before starting a new one, and explicitly recycles a bitmap that
+  loses a race (`CancellationException` / later error path) — this is the
+  concurrency design 2C already investigated and found adequate (§9/§22a of
+  `PHASE_2C_IMPLEMENTATION_PLAN.md`); this pass re-read the same code and
+  confirms it is unchanged and still structurally sound.
+- Zoom/pan/fit state (`scale`, `panX`, `panY`) lives entirely in
+  `FixedReaderScreen`'s Compose state, keyed `remember(state.page)` — **not**
+  `rememberSaveable`. This is the single most load-bearing fact for this
+  pass's two main findings (§2 and §5 below): it resets on every page change
+  by construction, and it does **not** survive configuration change/process
+  recreation at all, because `remember` (unlike `rememberSaveable`) is not
+  persisted across recreation.
+- RTL/LTR: `readingDirection(category, preference)` resolves per-title
+  override over category default (Manga → RTL, Comic/Book → LTR), used both
+  for touch-zone semantics (which edge turns forward) and for which control
+  (Previous/Next) is visually on which side.
+- Fit mode: `FitMode.WIDTH` applies `Modifier.fillMaxWidth().aspectRatio(...)`
+  inside a `verticalScroll` `Box`; any other fit mode uses
+  `Modifier.fillMaxSize()` with `ContentScale.Fit` (letterboxed). Both paths
+  then apply the same `graphicsLayer { scaleX; scaleY; translationX;
+  translationY }` on top.
+
+## 2. PAN/ZOOM BOUNDS — root cause found by code inspection
+
+**Reproduced: by code/math trace, not by a live on-device gesture session in
+this pass** — see the honesty note at the end of this section. The math is
+unambiguous enough that a live confirmation would only corroborate, not
+change, the root-cause finding below.
+
+### 2.1 Exact location
+
+`FixedReaderScreen.kt`, the second `pointerInput(state.page, rtl)` block
+(lines ~152–178), inside the pinch/pan gesture loop:
+
+```kotlin
+if (event.changes.count { it.pressed } > 1 || scale > 1f) {
+    transformed = true
+    scale = (scale * zoom).coerceIn(1f, 5f)
+    panX = (panX + pan.x).coerceIn(-size.width * scale, size.width * scale)
+    panY = (panY + pan.y).coerceIn(-size.height * scale, size.height * scale)
+    event.changes.forEach { it.consume() }
+}
+```
+
+`size` here is the `pointerInput` scope's `size: IntSize` — the **Box's own
+layout size** (the full reader-page viewport, `Modifier.weight(1f)
+.fillMaxWidth().clipToBounds()`), not the rendered bitmap's displayed
+footprint after `ContentScale.Fit`/letterboxing, and not the viewport minus
+that footprint.
+
+### 2.2 Why this produces the reported defect
+
+1. **Wrong magnitude.** The correct bound for translation, per standard
+   "content scaled inside a viewport" math, is
+   `maxPan = max(0, (scaledContentSize - viewportSize) / 2)` — proportional
+   to how much *larger than the viewport* the scaled content is. The current
+   code instead bounds pan to `viewportSize * scale` — proportional to the
+   *viewport's own size times scale*, with no subtraction of the viewport
+   itself and no reference to the actual rendered content size at all. For
+   any `scale > 1`, `viewportSize * scale` is always larger — often far
+   larger — than any correct `maxPan`, so panning is permitted well past the
+   content's real edge into empty space.
+2. **Ignores letterboxing entirely.** When `ContentScale.Fit` letterboxes a
+   page inside the Box (any page whose aspect ratio doesn't match the
+   viewport — e.g. a portrait PDF page in a landscape viewport, or vice
+   versa, confirmed as the Fit Page path, line 187's `else` branch), the
+   *visible* page content is smaller than the Box the `graphicsLayer`
+   transform is actually applied to. The transform scales/translates the
+   whole Box uniformly, including its letterbox margins, but the pan bound
+   never accounts for where the real content edge sits inside that Box — it
+   only knows the Box's own full size. This is exactly the "excessive gray
+   letterbox/margin space" the owner observed in 2C's §22b log.
+3. **No re-clamp on zoom decrease.** The `coerceIn` call does re-run on every
+   pointer-event frame, and does use the *current* `scale` as the bound's
+   scale factor, so there is a re-clamp attempt on zoom-out — but because the
+   bound itself is wrong (too generous per point 1), the re-clamp doesn't
+   produce a correct result; it just produces a different, still-too-loose
+   bound. The double-tap zoom-toggle and the chrome "Zoom in"/"Reset zoom"
+   button (lines 125, 144) both reset `panX`/`panY` to `0f` directly rather
+   than going through this clamp, so those two paths don't exhibit the bug by
+   themselves — only continuous pinch/pan does.
+4. **Fit Width's `verticalScroll` interaction (a second, smaller
+   finding).** In `FitMode.WIDTH`, the `Image` sits inside a `Box` with
+   `Modifier.fillMaxWidth().verticalScroll(rememberScrollState())`
+   *and* the same `graphicsLayer` translation. Vertical scroll position and
+   `panY` are two independent, uncoordinated mechanisms for moving the page
+   vertically; this pass did not fully characterize their interaction (no
+   live repro), but flags it as a related area the eventual fix must examine
+   rather than assume away, since clamping `panY` alone without considering
+   the scroll container's own offset could still produce inconsistent
+   behavior in Fit Width specifically.
+
+### 2.3 Affected formats/modes
+
+By code inspection, the gesture-handling block is identical for **PDF and
+CBZ** (`FixedReaderScreen` is the single shared fixed-page screen for both;
+no per-format branch exists in the pinch/pan code) and applies in **both Fit
+Page and Fit Width** (the bound calculation doesn't look at `fit` at all — it
+is wrong the same way regardless of fit mode, though Fit Page's letterboxing
+makes the visible symptom more obvious since Fit Width's content more often
+fills the viewport on at least one axis). It applies in both RTL and LTR
+reading (direction only affects which edge turns the page and control
+placement, not the gesture/transform code). **EPUB does not share this code
+path at all** — EPUB has no zoom/pan gesture handling of its own; Readium's
+navigator handles its own rendering, and `EpubPreferences` has no pan/zoom
+concept. Per this task's principle 3, this finding is **not** generalized
+into EPUB — there is no EPUB-side pan/zoom to clamp.
+
+### 2.4 Trigger conditions (from code reading, not live confirmation)
+
+- Requires `scale > 1f` to be reachable at all — pinch zoom (coerced to
+  `[1f, 5f]`) or the "Zoom in" button (toggles to `2f`).
+- The incorrect bound is present at every scale `> 1`, not only "while
+  zooming back out" — but zooming back out is the most *visible* trigger
+  because it's when a user notices the page no longer fills the frame while
+  translation hasn't actually been pulled back toward center, exactly
+  matching the 2C log's description ("zooming back in particular").
+- Reachable at minimum zoom (`scale == 1f`) only in the degenerate sense that
+  `coerceIn(-size.width * 1f, size.width * 1f)` is still far too generous a
+  bound relative to a page that may already be centered with real margin on
+  both sides — i.e. even un-zoomed Fit Page content has "valid" pan range
+  that should be `0` on at least one axis, but the current bound still
+  technically allows large excursions. The gesture code's own
+  `scale > 1f` guard on the outer `if` (line 162) does prevent *this specific
+  pointerInput block* from running pan math while `scale == 1f` and
+  single-finger — so the practical floor for a regular drag is `scale > 1f`.
+
+### 2.5 Correct clamping model (to implement later, not now)
+
+Confirmed against the actual code (not assumed): the content drawn inside
+the transformed `Box` has a real rendered size derivable from
+`bitmap.width`/`bitmap.height` and the Box's layout size, combined with
+`ContentScale.Fit`'s standard aspect-preserving-fit formula (the same
+formula `ContentScale.Fit` itself uses internally) — this is exactly the
+conceptual model given in this task's brief:
+
+```
+scaledWidth  = fittedContentWidth  * scale
+scaledHeight = fittedContentHeight * scale
+maxPanX = max(0, (scaledWidth  - viewportWidth)  / 2)
+maxPanY = max(0, (scaledHeight - viewportHeight) / 2)
+translationX ∈ [-maxPanX, +maxPanX]
+translationY ∈ [-maxPanY, +maxPanY]
+```
+
+where `fittedContentWidth`/`fittedContentHeight` are the *already-letterbox-
+fitted* dimensions (i.e., `min(viewportWidth, viewportHeight * aspect)` style
+math), not the raw bitmap pixel dimensions and not the viewport dimensions.
+Fit Width's case is simpler on the horizontal axis (content width already
+equals viewport width by construction via `fillMaxWidth()`), so `maxPanX`
+is `0` at `scale == 1` and grows only with `scale`; its height is driven by
+`aspectRatio()` plus the `verticalScroll` container, which (per §2.2 point 4)
+needs its own look before committing to a single unified formula across both
+fit modes.
+
+### 2.6 Severity
+
+**MEDIUM**, not BLOCKER/HIGH: it is a real, reproducible-by-math interaction
+defect (unpolished/unprofessional-feeling zoom/pan, directly observed by the
+owner on real content) but it does not crash, does not corrupt state, does
+not lose data/position, does not block reading, and has a trivial user
+recovery (double-tap or "Reset zoom" immediately re-centers). It affects two
+of three formats (PDF, CBZ) in specific interaction modes (zoomed pinch/pan),
+not baseline reading.
+
+### 2.7 Pure clamp helper: recommended — YES
+
+A pure function `clampPan(scale: Float, viewportW: Float, viewportH: Float,
+contentW: Float, contentH: Float, panX: Float, panY: Float): Pair<Float,
+Float>` (or a small value-holding result type) has no Compose/Context/Android
+dependency, is fully deterministic, and is exactly the kind of math this
+task's brief describes extracting. Reasons to do this rather than inline the
+corrected formula directly in the gesture `pointerInput` block:
+
+- It is independently JVM-unit-testable (the ten acceptance cases in §8 of
+  this document) without Espresso/instrumentation, which is strictly
+  cheaper and more reliable than the existing `connectedDebugAndroidTest`-only
+  coverage this area currently has (none, today — see §2.8).
+  This mirrors the repository's own precedent of extracting pure helpers out
+  of Compose gesture code specifically to make precedence/ordering rules
+  unit-testable without a real `InputDevice`/`KeyEvent`
+  (`resolveInputSources`/`isGamepadSource` in 2A.1 — see
+  `docs/design/INPUT_SYSTEM.md` §10).
+- Viewport-resize and page-change invalidation both need to re-run the same
+  formula from a slightly different call site (a `LaunchedEffect`/derived
+  state recompute rather than inside the gesture loop) — a shared pure
+  function avoids duplicating the math twice.
+- It must defensively handle zero/invalid dimensions (a not-yet-measured Box,
+  `contentW`/`contentH == 0` before the first bitmap arrives) — exactly the
+  kind of edge case a pure function with no Compose timing dependency is
+  easiest to make correct and test.
+
+### 2.8 Honesty note on reproduction method
+
+This pass did not drive a live pinch/pan gesture sequence on the API 35
+emulator or the RP5 and capture a screenshot of the resulting letterbox gap.
+The root cause is established with high confidence from direct code/math
+inspection (the `coerceIn` bound is unambiguously wrong relative to any
+correct "content vs. viewport" model, independent of runtime observation),
+and this matches the owner's own 2C field observation closely enough
+(letterbox margin visible while zooming back out, tracked as a known,
+logged, not-yet-investigated item) that no contradicting evidence is
+expected. A live gesture-injection reproduction (`adb shell input swipe`
+sequences simulating pinch are notoriously unreliable for true multi-touch
+pinch gestures) is recorded as a **gap**, not fabricated, and should be the
+first manual check performed before/alongside implementing 2D.1 (§9).
+
+## 3. Zoom semantics (current, as implemented)
+
+- **Minimum scale:** `1f` (pinch coerced to `[1f, 5f]`; no way to zoom below
+  1x).
+- **Maximum scale:** `5f` (pinch only; the toolbar button only offers `1f`/
+  `2f`).
+- **Initial scale:** always `1f` on open and on every page change (`remember(
+  state.page)` re-initializes it).
+- **Double-tap:** toggles between `1f` and `2f`, always resetting
+  `panX`/`panY` to `0f` — a deliberate, already-correct "reset to centered"
+  behavior for this one path.
+- **Pinch:** continuous, multiplicative (`scale * zoom`), coerced to
+  `[1f, 5f]`; pan accumulates additively from gesture deltas, clamped by the
+  defective bound in §2.
+- **Page change:** always resets zoom and pan to `1f`/`0f`/`0f` — confirmed
+  intentional, pre-existing behavior (also documented by 2C §/structural
+  analysis). This pass finds no reason to change it; it is the expected,
+  unsurprising default (arriving at a new page zoomed-in from the previous
+  page's zoom level would be confusing, not helpful).
+- **Fit-mode change:** switching `FitMode` (via `ReaderAppearance`) does not
+  go through the zoom/pan state at all — it changes which `Modifier` branch
+  renders the `Image` (line 187), independent of `scale`/`panX`/`panY`. A
+  fit-mode change **while already zoomed** does not reset zoom/pan (no code
+  path connects `ReaderAppearance`'s fit selection to these three `remember`
+  blocks) — this is a real, newly-identified small gap: a user could change
+  Fit Page → Fit Width while zoomed/panned and keep a transform computed for
+  the old fit's layout, which the §2 clamp fix should also re-validate
+  against (the pan-bound model is already sensitive to "viewport/content
+  size changed," and a fit-mode change is exactly that kind of change, not
+  only a literal window resize).
+- **Recreation:** zoom/pan do **not** survive configuration change or process
+  recreation at all (§1.3, §5) — they are not `rememberSaveable`. Per
+  existing product semantics (page-change already always resets them, and no
+  requirement anywhere asks for zoom continuity across recreation), this is
+  judged **acceptable transient behavior**, not a defect — but it was not
+  previously documented as a verified fact, only assumed; this pass confirms
+  it by reading the code.
+
+## 4. Viewport-resize implications
+
+No code currently listens for Box-size changes to re-derive zoom/pan bounds
+(there is no `onSizeChanged`/`BoxWithConstraints` driving this state) — the
+gesture block only reads `size` reactively *during* a gesture, from the
+`pointerInput` scope's live size. A resize that happens while **not**
+gesturing (rotation, fold, multi-window drag) leaves stale `panX`/`panY`
+values in place against the new viewport until the next gesture frame
+re-clamps them (with the still-wrong bound). Once the clamp formula in §2.5
+is implemented, it must be driven by both the gesture loop and a
+viewport-size-change observer, not only the former — this is `Phase 2D
+acceptance case 9` (§8).
+
+## 5. CONTINUITY
+
+### 5.1 EPUB recreation
+
+**Strong, by code inspection.** Readium's `EpubNavigatorFragment` is retained
+by `FragmentManager` across configuration change, restoring locator/scroll
+position natively. `rememberSaveable` covers all Compose-level transient UI
+(`controls`, `appearance`, `chapters`, `bookmarks`, `search`, `searchQuery`,
+font-import error). Search specifically has documented, binding lifecycle
+rules from 2B.1/2B.3 (not retaining `SearchService`/`SearchIterator` across
+recreation; only serializable query/result data may survive) — already
+implemented per 2B.3's acceptance, not re-litigated here. An existing
+instrumented test, `EpubRecreationTest.kt`, already covers
+"reader UI state survives recreation and applied-appearance reloads" (fixed
+during the 2A.1 post-merge maintenance pass to use `OPEN_MENU` instead of a
+stale `KEYCODE_BACK` assumption — see `PHASE_2_PLAN.md`'s 2A.1 section).
+
+### 5.2 PDF recreation
+
+**Page/position: strong** (persisted via `PositionWriter`/`ReadingEntity`,
+restored via `restorePage()` in `FixedReaderViewModel.open()`, independent of
+Activity/Compose lifecycle since the ViewModel itself and the Room-backed
+repository own this state). **Chrome/appearance/modality: strong**
+(`rememberSaveable`, same pattern as EPUB). **Zoom/pan: does not
+survive**, confirmed in §1.3/§3 — judged acceptable transient state, not a
+defect, but newly confirmed rather than assumed.
+
+### 5.3 CBZ recreation
+
+Identical code path to PDF (`FixedReaderScreen`/`FixedReaderViewModel` are
+format-agnostic; `ArchivePages` vs. `PdfPages` only differs inside
+`FixedReader.open()`/`render()`). Same continuity profile as §5.2.
+
+### 5.4 Process-death expectations (not simple Activity recreation)
+
+Ownership, stated explicitly per the brief's request:
+
+| State | Survives process death? | Owner |
+| --- | --- | --- |
+| Publication identity (`LibraryItem.id`) | Yes | ViewModel args / SavedStateHandle-backed navigation, re-resolved from Room on recreation |
+| Current page (fixed-page) / locator (EPUB) | Yes | `ReadingEntity` (Room), durable |
+| Reader preferences (per-title + global) | Yes | `reader_preference`/`appearance_preference` (Room), durable |
+| Bookmark state | Yes | `bookmark` table (Room), durable |
+| Chrome visibility, dialog-open state (appearance/chapters/bookmarks/search panel open) | Should NOT need to (acceptable to reset to default-visible chrome) but currently DOES survive simple Activity recreation via `rememberSaveable`; true process death depends on whether `rememberSaveable`'s backing `Bundle` round-trips through a real process kill, which this pass did not instrument/verify empirically | Compose `rememberSaveable` |
+| Zoom/pan (fixed-page) | Should NOT survive (transient, already reset on page change) | None — intentionally ephemeral |
+| In-flight EPUB search query/iterator | Must NOT survive (2B.3 binding rule) | Cancelled/closed at teardown |
+
+**Gap, honestly recorded:** this pass did not force a true `adb shell am
+kill` process-death test (distinct from configuration-change recreation) on
+either device during this run. `rememberSaveable`'s `Bundle`-based state
+*should* survive real process death the same way it survives configuration
+change (that is the documented Android contract Compose relies on), but this
+pass did not empirically re-confirm it for the reader screens specifically.
+Recommended as an explicit 2D.2 acceptance check (§9), not assumed passed
+here.
+
+### 5.5 Resize/multi-window
+
+Not empirically exercised with live window-drag tooling in this pass (see
+honesty notes throughout). By code inspection: EPUB's navigator fragment and
+Compose appearance/chrome layouts use `fillMaxSize()`/`fillMaxWidth()`-style
+sizing throughout — no hard-coded dp width/height assumptions were found in
+`EpubActivity.kt` or `FixedReaderScreen.kt`. The one resize-sensitive gap
+already identified is §4 (stale pan/zoom bounds after a resize that happens
+outside an active gesture).
+
+### 5.6 What should persist vs. remain transient (synthesized)
+
+**Must persist:** publication identity, page/locator, reader preferences
+(typography/fit/direction/presentation), bookmarks, EPUB font selection.
+**May/should remain transient:** chrome visibility (acceptable either way;
+currently persists, which is harmless), zoom/pan (should reset, already
+does on page change, already doesn't survive recreation — consistent), any
+in-flight search/iterator state (must not persist, already enforced).
+
+## 6. ADAPTIVE LAYOUT
+
+### 6.1 Current compact behavior
+
+Both readers already use `fillMaxSize()`-based Compose layouts with no
+`BoxWithConstraints`/window-size-class branching found anywhere in
+`FixedReaderScreen.kt` or `EpubActivity.kt` — i.e., there is currently no
+adaptive *branch* at all, compact and "expanded" currently render through
+the exact same layout code, just at different measured sizes. This is
+consistent with ADR-0010's framing ("use current window size/capabilities")
+in the narrow sense that nothing hard-codes a phone-only assumption, but it
+has not yet been *exercised or validated* at genuinely different size
+classes in this pass (see the honesty note in §6.3).
+
+### 6.2 Current expanded behavior
+
+Same code path as §6.1 — no distinct expanded/tablet layout exists yet for
+either reader. The chrome rows (`Row`/`Column` with `horizontalScroll`) will
+naturally get more breathing room on a wider viewport, but nothing
+*reflows* content differently (e.g. no side panel, no two-pane appearance +
+page layout).
+
+### 6.3 Two-page/spread decision: DEFER to Phase 3 for comics; EPUB multi-column stays a separate, still-deferred 2D candidate — not built now either
+
+This finding required reconciling a real but narrow documentation tension,
+per AGENTS.md's "do not silently choose" rule:
+
+- `PHASE_2_PLAN.md`'s existing §3 2D bullet list already says "Adaptive
+  reading layouts (e.g. two-page spreads on wide/tablet/foldable viewports)"
+  is 2D-scoped, citing `COMICS_MANGA.md`'s AUTO-spread interim policy.
+- `ROADMAP.md`'s Phase 3 — Comics and Manga section explicitly lists
+  "spreads where appropriate," "foldable two-page/spread behavior," grouped
+  with CBR, thumbnails and guided panels as Phase-3-owned work.
+- `docs/features/COMICS_MANGA.md` itself lists "guided panels" and implicitly
+  non-single-page spread refinement under "Later," consistent with Phase 3
+  ownership, not Phase 2.
+- Separately, `PHASE_2_PLAN.md`'s 2B.1 discovery section (§2B.1, "Reading
+  mode") already made a **distinct, already-accepted** finding: EPUB's
+  `ColumnCount` (Readium's own two-column/auto layout for reflowable text) is
+  "SUPPORTED BY CURRENT READIUM, DELIBERATELY NOT EXPOSED... belongs to 2D."
+
+These are two different features that share the words "two-page"/"spread":
+**comic/manga fixed-page pairing** (pairing two page bitmaps side by side in
+`FixedReaderScreen`) is Phase-3-owned per `ROADMAP.md`'s explicit section;
+**EPUB reflowable multi-column** (Readium's `ColumnCount.TWO`/`AUTO`) was
+separately, already flagged as a 2D candidate by the 2B.1 pass. Treating
+`PHASE_2_PLAN.md`'s 2D bullet as referring to the comic case would duplicate
+Phase 3's explicit ownership; treating it as referring to the EPUB case is
+consistent with 2B.1's own finding. This document resolves the ambiguity by
+recommending this document's own wording (§10) and a small clarifying edit
+to `PHASE_2_PLAN.md`'s 2D bullet (§12.2) rather than silently picking one
+reading and leaving the other document's language unclear for the next
+person.
+
+**Decision:**
+- **Comic/manga fixed-page spreads: DEFER to Phase 3.** `ROADMAP.md` already
+  and explicitly owns this; building it in 2D would duplicate/pre-empt that
+  section's scope, contradicting this task's own "avoid duplicating future
+  Comics/Manga work" instruction. No foldable-posture-aware pairing logic,
+  cover-offset rule, or AUTO-resolution change is proposed here. The interim
+  "AUTO resolves to one page" policy (ADR-0017) remains correct and
+  unchanged.
+- **EPUB multi-column: NOT implemented in 2D either, but for a different
+  reason** — no demonstrated user-facing need surfaced during this pass (no
+  field report, no roadmap urgency beyond the original "deliberately not
+  exposed" discovery note), and 2D's own stated purpose is *closure*, not
+  adding a new reflow mode. Recommend it remain an explicitly open, low-risk,
+  well-understood candidate for a future slice (2D or later) if real demand
+  or a foldable/tablet-readability push materializes — the Readium API
+  already supports it cleanly (confirmed in 2B.1's bytecode-level
+  investigation), so there is no re-investigation cost if it's picked up
+  later.
+- This is choice **(B)** from the brief's framing (better left to Phase 3)
+  for the comic case, and effectively **(D)** (too broad/no current need) for
+  the EPUB case — neither is built now.
+
+### 6.4 Foldable readiness (no foldable-specific code proposed)
+
+No hard-coded width/height assumption was found in either reader's layout
+code. Reader state (position, preferences, bookmarks) already persists
+durably (§5), independent of posture. No current architecture change is
+needed merely to *allow* a future posture-aware layout to be added — the
+gap is entirely "no adaptive layout branch exists yet," not "the
+architecture actively blocks one." Per ADR-0010 and this task's principle 7
+("no speculative abstractions ahead of demonstrated need"), this pass
+recommends building no foldable-specific infrastructure now. `docs/design/
+FOLDABLES.md` was not deeply re-audited in this pass beyond this
+architectural read — if it specifies a stronger near-term foldable
+commitment for Phase 2D specifically, that would need reconciling in a
+follow-up, but nothing found during this pass's reading of `PHASE_2_PLAN.md`
+§3's 2D scope treats foldable-specific work as mandatory for 2D (it treats
+"fold/unfold" restoration — i.e., the resize/continuity case in §5.5 — as
+in-scope, which is distinct from building two-page spread *support*).
+
+## 7. INPUT
+
+### 7.1 Keyboard findings
+
+By code inspection, `InputMapper.readerCommand` resolution is identical for
+both readers (same `core.input` call sites). No divergence found in how
+Escape/Page Up/Page Down/arrows resolve to commands between EPUB and
+fixed-page. The one already-documented asymmetry (2A.1) is **EPUB edge-tap
+page turns bypass the modality-tracking layer entirely** (Readium's own
+`DirectionalNavigationAdapter` never reaches `EpubActivity`'s Compose tree),
+while fixed-page's tap-to-turn is ShelfOS's own `pointerInput` code and
+always updates modality. This is a pre-existing, already-documented,
+already-accepted gap (not new to this pass) — restated here because it is
+directly relevant to "cross-reader input consistency," not reopened as a
+new defect.
+
+### 7.2 Controller findings
+
+Same semantic command set (`NEXT_PAGE`/`PREVIOUS_PAGE`/`OPEN_MENU`/`BACK`),
+same hint-rendering mechanism (`InputHints.hint`), both readers. No
+divergence found by code inspection beyond the known EPUB edge-tap gap
+above.
+
+### 7.3 RP5 physical findings
+
+**Not performed as ADB-injected verification in this pass** — the RP5
+(`d8f7f1b6`) and the API 35 emulator (`emulator-5554`) were both confirmed
+online and authorized (`adb devices -l`) at the start of this session, but
+given this pass's scope (documentation/planning only, no production or test
+code changes, and the pan/zoom root cause already resolved conclusively by
+code inspection in §2), no `adb shell input keyevent`/`swipe` driving
+session against a running ShelfOS build was performed. This is recorded
+honestly as a **gap**, not fabricated evidence, and is explicitly listed as
+the first physical-validation task for 2D.1/2D.4 (§9, §11). Prior phases'
+RP5 evidence (2A, 2A.1, 2B.3) already established that the shared
+`ShelfCommand`/chrome/Back mechanisms work correctly on real RP5 hardware —
+this pass found no code change since then that would plausibly regress
+that, so it is treated as still-valid standing evidence, not re-claimed as
+freshly re-verified.
+
+### 7.4 Cross-reader inconsistencies
+
+Only the already-documented EPUB-edge-tap-modality gap (§7.1). No other
+input inconsistency was found between EPUB and fixed-page command
+resolution, Back semantics, or hint rendering.
+
+## 8. ACCESSIBILITY
+
+### 8.1 Semantics findings
+
+- Chrome-toggle surfaces (`FixedReaderScreen`'s page `Box`, `EpubActivity`'s
+  `epub_page`-tagged surface) carry `stateDescription` + a conditional
+  `onClick` reveal action exactly matching real behavior (2A, re-confirmed
+  present by this pass's code read, unchanged).
+  the chrome `onClick` is intentionally **only** exposed while chrome is
+  hidden, meaning TalkBack never announces a stale/misleading action.
+- Input hints (`backHint`/`previousHint`/`nextHint`) are either merged into
+  an existing control's `contentDescription` (Previous/Next) or made
+  `clearAndSetSemantics { }` decorative-only (the Back keycap row, line 129)
+  — this avoids a duplicate/decorative node being independently announced,
+  a known pattern this task's brief specifically asks to check for. No
+  duplicate-announcement issue found in the reader chrome.
+  by this pass's reading.
+- Icon-only/ambiguous actions: this pass found none introduced since 2A —
+  reader controls use `Text(stringResource(...))` labels (Previous/Next/
+  Appearance/Library/Hide controls), not bare icons, so no icon-only
+  accessible-name gap was found in the fixed-page reader's own chrome.
+  (`EpubActivity`'s dialogs were not exhaustively re-audited line-by-line in
+  this pass beyond the architecture read in §1.2 — recorded as a partial
+  gap, not a clean bill of health, for the chapter/search/bookmark dialog
+  interiors specifically.)
+- Error state (`state.error`): surfaced as plain `Text(message.resolve())`
+  inside a `Surface`, with a `Retry`/`Back to library` `TextButton` — both
+  are labeled, accessible actions, not icon-only, not silently swallowed.
+
+### 8.2 Focus-order findings
+
+By code inspection: `pageFocus`/`firstControl` `FocusRequester`s drive an
+explicit, intentional focus flow (page surface takes initial focus; opening
+chrome via `OPEN_MENU`/double-tap-equivalent moves focus to the first
+control via `controlFocusRequests`). No live D-pad/keyboard traversal
+session was run in this pass to confirm no focus trap exists across the
+chapters/search/bookmark dialogs' own internal focus order — this is a
+**gap**, recorded honestly, not claimed as audited.
+
+### 8.3 TalkBack: unavailable/not run
+
+TalkBack availability was not checked against the live emulator/RP5
+accessibility-service list in this pass (would require `adb shell settings
+get secure enabled_accessibility_services` plus enabling it, which this pass
+did not perform given its documentation-only scope). Per the brief's own
+guidance ("If not available, do not install arbitrary accessibility
+software... record semantic-code audit complete, manual TalkBack validation
+pending"), this is recorded as: **semantic-code audit complete (§8.1),
+manual TalkBack validation pending.**
+
+### 8.4 Reduced motion
+
+No animation was found introduced by any 2B/2C work in either reader —
+chrome show/hide remains the same instant, unanimated state change
+established in 2A (`Context.reducedMotionEnabled()`/`core.theme.
+ReducedMotion` remains unused by the readers, which is correct, since there
+is no reader motion to gate). This pass's code read found no new
+`AnimatedVisibility`/`animate*AsState` call introduced in
+`FixedReaderScreen.kt` or `EpubActivity.kt` since 2A. No regression found.
+
+## 9. PERFORMANCE/RESILIENCE
+
+### 9.1 Large PDF / Large CBZ
+
+**Gap, honestly recorded.** No large PDF or CBZ fixture exists in this
+repository's authorized test locations (`app/src/androidTest/java/com/
+d4guilar/shelfos/OriginalFixtures.kt` only builds small, synthetic,
+originally-authored fixtures — a 3-page PDF, a 3-image CBZ, small EPUBs).
+Per this task's explicit constraint (do not browse broadly for personal
+files, do not fabricate a synthetic huge file solely to stress storage
+unless justified), this pass performed no large-document resilience test.
+Recommended as an explicit 2D.4 task using a deliberately-generated large
+*synthetic* fixture (e.g. a many-page `PdfDocument`-generated PDF, following
+exactly the same already-accepted pattern 2C used for its dense vector
+control PDF — see `PHASE_2C_IMPLEMENTATION_PLAN.md` §22c — generated as a
+temporary test artifact, not committed) if and when that slice is
+implemented, rather than skipped indefinitely.
+
+### 9.2 Malformed-file behavior
+
+**Code-level review only, no destructive fuzzing performed (per the brief's
+own constraint).** Confirmed existing, typed, localized error paths:
+`FixedReader.kt` throws `PublicationException(PublicationProblem.CORRUPT,
+PAGE_IMAGE_DAMAGED_OR_TOO_LARGE)` and `...PAGE_IMAGE_DECODE_FAILED` for
+page-level image failures; `EpubReader.kt` throws
+`...EPUB_INVALID_OR_UNSUPPORTED` for an unopenable EPUB
+(`PublicationOpener.OpenError.FormatNotSupported`). Both flow through
+`UiMessage.readerMessage()` (the localization-foundation typed-error
+pipeline) into the same error-surface UI described in §8.1, with a Retry/
+Back action, never a crash path, by this pass's reading of the exception
+handling in both `FixedReaderViewModel.render()`/`open()` and the EPUB
+equivalent. This is judged **already adequate** for the currently-known
+failure modes; no new crash path was identified in this pass's code reading.
+
+### 9.3 Fast navigation/cancellation
+
+**Reused as accepted evidence, not re-derived.** `FixedReaderViewModel.
+render()`'s `rendering?.cancel()` + single-`Mutex` + bitmap-recycle-on-loss
+pattern is unchanged since 2C's §9/§22a investigation of this exact code,
+and this pass's own reading of the current `FixedReaderViewModel.kt`
+confirms it is still present and structurally identical. No new gap found;
+not re-tested empirically in this pass (not required — 2C already performed
+that verification and nothing has since touched this code).
+
+### 9.4 EPUB lifecycle/performance
+
+No new lifecycle risk was found in this pass's reading of `EpubActivity.kt`
+beyond what 2B.3 already documented and bound (search iterator
+cancellation/closure, `recreate()` calls on font catalog changes). This pass
+did not independently re-measure Readium open/close/repeated-session
+performance — treated as a gap, low-priority given no field complaint exists
+about EPUB performance specifically.
+
+### 9.5 Fixed-reader performance
+
+Per this task's explicit instruction, 2C's measurements are accepted
+evidence and were not reopened. This pass looked only for *new* user-visible
+jank risk introduced since 2C and found none — the only relevant open items
+are the §2 pan/zoom-bounds defect (an interaction-correctness issue, not a
+performance one) and the already-known lack of bitmap
+caching/prefetch (deliberately deferred, unchanged).
+
+## 10. LOCALIZATION/LAYOUT
+
+Not independently re-audited string-by-string in this pass beyond
+confirming (§9.2) that reader error strings already flow through the
+accepted localization-foundation `UiMessage`/string-resource pipeline. No
+live EN/ES/pt-BR layout comparison at compact/expanded viewports was
+performed (gap, honestly recorded) — recommended as part of 2D.3's
+accessibility/focus closure slice, since it's the same kind of
+manual-walkthrough validation as the TalkBack check in §8.3 and is cheapest
+to do together.
+
+## 11. FINDINGS BY SEVERITY
+
+- **BLOCKER:** none found.
+- **HIGH:** none found.
+- **MEDIUM:**
+  1. Fixed-reader pan/zoom bounds defect (§2) — PDF + CBZ, both fit modes,
+     both RTL/LTR, reproduced by code/math inspection, not yet by live
+     gesture session. Ownership: `FixedReaderScreen.kt` gesture/transform
+     code.
+  2. Fit-mode change while zoomed doesn't reset/re-validate the transform
+     (§3) — newly identified, narrow, same ownership/fix surface as #1.
+- **LOW:**
+  3. Viewport-size changes outside an active gesture don't re-clamp
+     pan/zoom until the next gesture frame (§4) — same fix surface as #1.
+  4. EPUB edge-tap page turns don't update tracked input modality (§7.1,
+     pre-existing/already-documented, not new).
+- **OBSERVATIONS (no defect, recorded for completeness):**
+  5. `FixedReaderScreen`/`EpubActivity` still duplicate chrome/Back-state
+     plumbing (pre-existing, previously deferred refactor target).
+  6. Touch is still not routed through `ShelfCommand` (pre-existing,
+     previously deferred).
+  7. No adaptive (compact vs. expanded) layout branch exists yet in either
+     reader — not itself a defect, see §6.
+  8. `docs/PHASE_2_PLAN.md`'s 2D-scope bullet and `ROADMAP.md`'s Phase 3
+     section both use "two-page/spread" language in a way that could be
+     misread as overlapping (§6.3) — a documentation clarity gap, not a code
+     defect, addressed by §12.2's edit.
+
+## 12. Recommended implementation slices
+
+### 12.1 Slice sequence
+
+**2D.1 — Fixed-reader transform/bounds correctness**
+- Motivation: §2/§3's MEDIUM findings; the only user-visible interaction
+  defect found this pass.
+- Scope: extract the pure pan-clamp helper (§2.7); correct the pinch/pan
+  gesture's bound calculation to the content-vs-viewport model (§2.5); make
+  a fit-mode change re-validate/reset the transform consistently with
+  page-change behavior (§3); re-clamp on viewport-size change (§4), not only
+  during active gestures.
+- Production files likely affected: `FixedReaderScreen.kt` (gesture block),
+  a new small pure-math file (e.g. `core/reader/PanClamp.kt` or similar,
+  exact location/name an implementation-time decision).
+- Tests: JVM unit tests for the pure clamp function covering the ten cases
+  in §13; a focused instrumentation/Compose test reproducing the original
+  letterbox-overpan symptom before the fix and asserting it's gone after.
+- Physical validation: RP5 pinch/pan session (ADB-injected at minimum, real
+  physical pinch if practical) on both PDF and CBZ, both fit modes.
+- Non-goals: no zoom range change, no new gesture (e.g. no double-finger-tap
+  reset), no EPUB change, no caching/prefetch change.
+- Rollback boundary: purely additive/corrective to one screen's gesture
+  code + one new pure file; revertable independently of any other 2D slice.
+- Acceptance: all ten §13 cases pass as JVM tests; live RP5/emulator
+  confirmation that zoom-out no longer exposes excess letterbox space;
+  `:app:assembleDebug`/`:app:testDebugUnitTest`/`:app:lintDebug`/
+  `:app:connectedDebugAndroidTest` green.
+
+**2D.2 — Recreation/resize continuity closure**
+- Motivation: §5's process-death gap (not empirically confirmed) and §5.5's
+  unvalidated resize behavior.
+- Scope: a true `adb shell am kill`-based process-death validation pass for
+  all three formats (not assumed passed); live window-resize validation at
+  compact and forced-expanded viewports; confirm §4's resize-triggered
+  re-clamp (if 2D.1 landed first) actually fires on a real resize, not only
+  gesture-time.
+- Production files likely affected: possibly none (validation-only) unless
+  the process-death check surfaces a real gap, in which case the fix would
+  be scoped narrowly at that point, not speculatively now.
+- Tests: an instrumented process-death-style test if the existing test
+  infrastructure supports simulating it reliably (to be confirmed at
+  implementation time); otherwise manual ADB-driven validation, documented
+  as such.
+- Physical validation: emulator forced-expanded + compact viewport resize
+  while each reader is open; RP5 (rotation only — RP5 has no fold/multi-
+  window posture).
+- Non-goals: no new persistence, no schema change, no foldable-specific
+  code.
+- Rollback boundary: validation-only unless a real gap is found; any fix
+  would be scoped at that time.
+- Acceptance: documented pass/fail for every row in §5's "what should
+  persist" table, against real process death, not just configuration
+  change.
+
+**2D.3 — Input/accessibility/focus closure**
+- Motivation: §7's RP5-physical gap, §8's focus-order/TalkBack gaps, §10's
+  localization-layout gap.
+- Scope: RP5 ADB-injected (and, if the owner is available, owner-physical)
+  input walkthrough across all three formats; keyboard/D-pad focus-order
+  walkthrough through chrome → appearance → chapters/search/bookmarks →
+  back to chrome; TalkBack walkthrough if/when available on a test target;
+  EN/ES/pt-BR layout check at compact + expanded viewport for clipped/
+  overlapping reader chrome.
+- Production files likely affected: none predicted ahead of findings; any
+  fix is scoped once a real gap is found, not pre-built speculatively.
+- Tests: extend `NavigationSmokeTest`/`InputModalityClassificationTest` only
+  if a real gap is found requiring regression coverage.
+- Physical validation: RP5 (primary), emulator, TalkBack if available.
+- Non-goals: no input-system redesign, no remapping UI, no new accessibility
+  framework.
+- Rollback boundary: validation-only unless findings require small, scoped
+  fixes.
+- Acceptance: documented walkthrough results for every item in §7/§8/§10;
+  any found defect classified and either fixed in this slice (if small) or
+  explicitly deferred with a reason.
+
+**2D.4 — Performance/resilience + final physical acceptance**
+- Motivation: §9's large-file/malformed-file gaps; this is also the natural
+  place for the Phase-2-wide final acceptance gate (§15).
+- Scope: generate and exercise a synthetic large PDF/CBZ fixture (temporary,
+  not committed, per 2C's own precedent); confirm no regression in
+  fast-navigation/cancellation behavior under load; final device-acceptance
+  matrix (§16) executed end-to-end across EPUB/PDF/CBZ.
+- Production files likely affected: none predicted ahead of findings.
+- Tests: a temporary large-fixture-based instrumentation test used for this
+  pass's own validation (not necessarily retained, per 2C's precedent,
+  unless it proves durably valuable as regression coverage — an
+  implementation-time decision).
+- Physical validation: full matrix, §16.
+- Non-goals: no PDF-rendering change (2C is closed), no new caching
+  architecture unless a real, measured gap is found.
+- Rollback boundary: validation-heavy; any production fix scoped narrowly
+  per finding.
+- Acceptance: §15's Phase 2 completion definition fully satisfied with
+  evidence.
+
+### 12.2 Recommended documentation clarification (small, docs-only)
+
+`PHASE_2_PLAN.md`'s §3 2D bullet list currently says "Adaptive reading
+layouts (e.g. two-page spreads on wide/tablet/foldable viewports)" without
+distinguishing the EPUB-multi-column case (2B.1's already-accepted 2D
+candidate) from the comic/manga spread case (`ROADMAP.md`'s explicit Phase 3
+ownership). This document's §6.3 recommends a minimal wording clarification
+there — not a scope change, not a rewrite of accepted history — splitting
+that one bullet into its two actual referents and stating the Phase 3
+boundary explicitly, so a future reader of `PHASE_2_PLAN.md` alone doesn't
+re-litigate the Phase 3 boundary. Applied as part of this pass's docs-only
+commit (see `PHASE_2_PLAN.md`'s diff).
+
+## 13. Pan-bound acceptance test cases (future tests, not implemented now)
+
+Preferred strategy: pure JVM tests for 1–9 against the extracted clamp
+function (§2.7), plus one focused Compose/instrumentation test for 10 (and
+as a live end-to-end confirmation of 1–3).
+
+1. Page smaller than viewport (both axes) at `scale == 1` → clamped
+   translation is `(0, 0)` on both axes.
+2. Page wider than viewport (scaled) → horizontal pan bounded to
+   `±maxPanX`; vertical stays `0` if the page fits vertically.
+3. Page taller than viewport (scaled) → vertical pan bounded to
+   `±maxPanY`; horizontal stays `0` if the page fits horizontally.
+4. Page larger than viewport on both axes → both axes clamp independently
+   to their own `maxPanX`/`maxPanY`.
+5. Zoom in (`scale` increases) → `maxPanX`/`maxPanY` increase
+   monotonically; a previously-valid translation remains valid or is
+   unaffected.
+6. Zoom out (`scale` decreases) → any existing translation exceeding the
+   new, smaller `maxPanX`/`maxPanY` is immediately re-clamped, not left
+   stale until the next pan delta.
+7. Return to minimum/default zoom (`scale == 1`) → translation recenters to
+   `(0, 0)` when the content no longer exceeds the viewport on that axis
+   (matches the existing double-tap/"Reset zoom" behavior, which this pass
+   confirms is already correct — the fix must not regress it).
+8. Page change → a translation computed for the previous page's content
+   dimensions must not leak into the new page's clamp (already true today
+   only because `remember(state.page)` resets `scale`/`panX`/`panY` to
+   defaults on every page change — the new clamp function must preserve
+   this invariant, not merely coincidentally satisfy it).
+9. Viewport resize (rotation, fold, multi-window) → translation is
+   recalculated against the new viewport dimensions, not left clamped to
+   the old viewport's bound (§4's gap).
+10. PDF and CBZ exhibit identical clamp behavior for the same input
+    dimensions/scale/pan (shared code path, §2.3) — a focused instrumented
+    test opening both a PDF and a CBZ fixture and asserting the same
+    resulting bound/behavior for equivalent inputs.
+
+## 14. Device acceptance matrix (final Phase 2 gate)
+
+A high-value, not exhaustive, matrix:
+
+| Axis | Values |
+| --- | --- |
+| Devices | API 35 emulator (compact default + forced-expanded viewport); RP5 physical (primary); Galaxy Tab A (optional/periodic, not available this pass) |
+| Formats | EPUB, PDF, CBZ |
+| Input | Touch; keyboard (emulator physical/RP5 ADB-injected); gamepad (RP5, ADB-injected + owner-physical where available) |
+| Lifecycle | Fresh open; configuration-change recreation; forced process death (`adb shell am kill`); leave-and-return; close-and-reopen from Library |
+| Viewport | Compact; forced-expanded/tablet-like |
+| Accessibility | Semantic-code audit (always); TalkBack walkthrough (if available on the target) |
+
+High-value combinations to prioritize (not every cell): PDF+CBZ pinch/pan
+at compact and expanded viewport on both emulator and RP5 (directly
+validates 2D.1); all three formats × process-death on the emulator (2D.2);
+RP5 gamepad/keyboard walkthrough for all three formats (2D.3); EPUB search/
+bookmark/font surfaces only need one representative device each, since
+their lifecycle rules were already validated in 2B.2/2B.3.
+
+## 15. Phase 2 final acceptance definition (proposed)
+
+A user on a supported device can, with evidence behind every clause below
+(not claimed until the relevant 2D slice closes it):
+
+1. Open an EPUB, PDF or CBZ from the Library and read/navigate it reliably.
+2. Resume at the correct position after leaving and returning, and after a
+   full app close/reopen.
+3. Use touch, keyboard, and gamepad interchangeably for the same semantic
+   actions (page turn, menu, back) in every reader.
+4. Reveal and leave the reader predictably (ADR-0023's two-Back-press
+   contract), from any chrome state.
+5. Use the supported appearance controls for that format (typography/fit/
+   direction/presentation) and have changes persist correctly.
+6. Use EPUB's chapter navigation, search, bookmarks and managed-font
+   features without a crash or data loss.
+7. Survive Activity recreation (rotation, etc.) without losing position,
+   preferences, bookmarks, or chrome/appearance UI state.
+8. Survive practical viewport changes (resize, fold-equivalent on emulator)
+   without broken layout, cut-off controls, or an un-recoverable pan/zoom
+   state.
+9. Not be able to pan/zoom a fixed-page reader's content visibly past its
+   real edges into empty space (2D.1's defect fixed and verified).
+10. Encounter a graceful, localized error message — never a crash — for a
+    malformed/corrupt publication or page.
+11. Operate the core reader controls (page turn, menu, back, appearance)
+    accessibly: correct semantics, no misleading TalkBack announcements,
+    reachable keyboard/D-pad focus order.
+12. Show no obvious memory/performance regression versus the Phase
+    2C-accepted baseline (2C's own measurements remain the reference; this
+    pass introduces no new rendering work to regress them).
+
+This explicitly does **not** claim: comic/manga page-spread layouts, EPUB
+multi-column reflow, CBR, OCR, annotations/highlights/notes, Adapted PDF,
+cloud sync, or any item from `PHASE_2_PLAN.md` §4's standing out-of-scope
+list.
+
+## 16. Risks
+
+- The pan-clamp fix touches shared PDF/CBZ gesture code; an incorrect
+  formula could make zoom/pan feel *more* broken (e.g. over-clamping to
+  zero on content that legitimately needs pan) rather than less — the ten
+  cases in §13 exist specifically to guard against this.
+- Process-death validation (2D.2) could surface a real gap that requires
+  unplanned schema/persistence work — if that happens, it should be scoped
+  as its own narrow follow-up, not absorbed silently into 2D.2's budget.
+- Accessibility/TalkBack validation depends on tooling availability this
+  pass could not confirm; if TalkBack remains unavailable through 2D.3, the
+  manual-walkthrough gap would need to be explicitly carried forward rather
+  than silently dropped.
+- Large-fixture performance testing (2D.4) risks scope creep into a
+  rendering-architecture discussion that Phase 2C already closed — 2D.4 must
+  stay focused on resilience/crash-avoidance under load, not reopen
+  `MAX_PAGE_PIXELS`/caching decisions without new evidence.
+
+## 17. Explicit non-goals for Phase 2D (restated, not newly invented)
+
+Per the brief's §29 and this document's own findings: no Adapted PDF, no PDF
+rerender architecture change, no OCR, no AI enhancement, no annotations, no
+stylus/ink, no native CBR implementation, no Series/Omnibus, no Library
+Sources, no bulk import, no cloud/sync, no theme implementation, no general
+input rebinding UI, no plugin architecture, no broad Readium rewrite, no
+image-processing pipeline, no speculative device-tier framework, no
+comic/manga page-spread implementation (Phase 3), no EPUB multi-column
+implementation (left open, not built). CBR remains a reinforced future
+Comics/Manga priority per `PHASE_2C_IMPLEMENTATION_PLAN.md`'s §22b
+cross-cutting finding, not implemented here.
+
+## 18. GitHub issue vs. plan-doc tracking for the pan/zoom defect
+
+This environment's `gh` CLI is not installed/available in the current shell
+(`gh --version`/`gh issue list` both failed with "command not found"), so
+this pass could not directly query whether the repository has any open
+GitHub Issues or an established issue-based workflow. No `CONTRIBUTING.md`
+or issue-template convention was found during this pass's documentation
+reading (none of `AGENTS.md`/`PHASE_2_PLAN.md`/`ROADMAP.md`/
+`RELEASE_GOVERNANCE.md` references a GitHub Issues workflow as the way
+defects are tracked — this repository's tracking convention, as observed
+throughout Phase 2A–2C, is entirely plan-document/`VALIDATION.md`-based).
+**Recommendation: keep the pan/zoom defect tracked only in this plan
+document (§2, §9's 2D.1 slice), not as a GitHub Issue**, consistent with
+the repository's existing convention and this task's own default guidance
+not to create one absent an established workflow or explicit instruction.
+
+## 19. ADR decision
+
+**Not needed.** The pan-clamp fix is a bug fix to existing, already-accepted
+gesture-handling code — it does not change an architectural boundary,
+introduce a new abstraction, or alter a product-level decision recorded by
+an existing ADR. The two-page/spread question (§6.3) that could plausibly
+have warranted a new ADR was resolved by reconciling existing documents
+(ADR-0010, ADR-0017, `ROADMAP.md`'s Phase 3 section already cover the
+relevant ground) rather than by making a new durable architectural
+commitment — no new adaptive-reader-architecture decision is being made by
+this pass, only a scope/sequencing clarification. If a future pass actually
+commits to building EPUB multi-column or comic spreads, an ADR may become
+warranted at that time, but not from this discovery pass's findings alone.
+
+## 20. Summary table: what 2D should actually build
+
+| Area | Build in 2D? | Slice |
+| --- | --- | --- |
+| Pan/zoom bounds clamp fix | Yes | 2D.1 |
+| Fit-mode-change transform reset | Yes | 2D.1 |
+| Viewport-resize re-clamp | Yes | 2D.1 |
+| Process-death validation (+ narrow fix if found) | Validation yes; fix only if needed | 2D.2 |
+| Resize/multi-window validation | Yes (validation) | 2D.2 |
+| RP5/keyboard/TalkBack/focus-order walkthrough | Yes (validation + scoped fixes) | 2D.3 |
+| EN/ES/pt-BR layout check | Yes (validation) | 2D.3 |
+| Large PDF/CBZ resilience check | Yes | 2D.4 |
+| Final Phase 2 device acceptance matrix | Yes | 2D.4 |
+| Comic/manga page-spread layout | No — Phase 3 | — |
+| EPUB multi-column reflow | No — left open, no current need | — |
+| Any PDF render-resolution change | No — Phase 2C closed this | — |
+| CBR | No — future Comics/Manga priority, not 2D | — |
