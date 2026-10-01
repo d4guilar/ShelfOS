@@ -1081,6 +1081,145 @@ width-driven requirement exceeding a longest-edge-only budget in landscape
   density) and its headroom does not generalize to the original lower-end
   tablet that produced the field report.
 
+## 22b. Live owner visual A/B session on RP5 (2026-10-01)
+
+§22a's measurement pass could not obtain a live owner visual judgment. This
+section closes that gap with a real, interactive session: the owner sat at
+the physical RP5 while builds were swapped between 2048/3072/4096 (temporary
+`MAX_PAGE_PIXELS` edits, rebuilt and reinstalled between each comparison,
+fully reverted afterward — confirmed by `git diff --stat 483ea5a` returning
+empty before this section's commit). All quotes below are the owner's own
+words, tagged **OWNER VISUAL OBSERVATION**; nothing is inferred on their
+behalf.
+
+### New X-Men PDF — Fit Page, page 1 (portrait)
+
+- 2048 — OWNER VISUAL OBSERVATION: *"looking a little blurry I must say."*
+- 2048 → 3072 — OWNER VISUAL OBSERVATION: **C, effectively the same.**
+- 3072 → 4096 — OWNER VISUAL OBSERVATION: **C, effectively the same**, with
+  the owner's own hypothesis unprompted: *"It could be a problem with the
+  file itself... maybe the issue is the scan, not the render."* This matches
+  §22a's MEASURED conversion-loss finding exactly.
+
+### New X-Men PDF — Fit Width, landscape, page 1
+
+- 2048 — OWNER VISUAL OBSERVATION: subjectively preferred **portrait Fit
+  Page** over landscape Fit Width at the same 2048 target (*"most people read
+  comic books portrait mode... tried vertical as well... words especially
+  look crisper"*). This is an orientation/fit-mode preference, not a
+  resolution finding, but it corroborates §22a's MEASURED fact that Fit Page
+  already has headroom at 2048 while Fit Width does not.
+- 2048 → 3072 (Fit Width) — OWNER VISUAL OBSERVATION: **C, effectively the
+  same** — despite §22a's MEASURED fact that 2048's resulting bitmap width
+  (1582px) is narrower than the RP5's landscape viewport (1920px), the
+  source image's own ~584×754px ceiling appears to cap any visible gain
+  before the viewport-width math would.
+- 3072 → 4096 (Fit Width) — OWNER VISUAL OBSERVATION: *"actually no"*
+  (no improvement).
+
+### New X-Men PDF — ~2x zoom, Fit Page, page 1 (the most important result)
+
+- 2048 — OWNER VISUAL OBSERVATION: *"still a bit pixelated."*
+- 2048 → 3072 — OWNER VISUAL OBSERVATION: **worse, not neutral.** First
+  response was *"actually its worse!"*; followed up and explicitly ruled out
+  a zoom-level confound (zoom/pan is not persisted across reinstalls, so a
+  mismatched pinch amount was a real possibility raised and checked) —
+  confirmed: *"it looks blurrier."*
+- 3072 → 4096 — OWNER VISUAL OBSERVATION: *"Nope, looks worse."* The owner
+  independently cross-referenced two **native CBZ** comics from the same
+  publisher/era (Dawn of X; New X-Men volume 3) opened in ShelfOS and
+  described them as looking *"magnificent"* / *"amazing"* — i.e. the CBZ
+  path (no PDF rasterization step at all) is not exhibiting this problem on
+  comparable content.
+- **This is a materially stronger finding than "no benefit."** Raising the
+  PdfRenderer target for a page whose only content is a small embedded
+  raster image appears to make the result perceptibly *worse*, not merely
+  unchanged. The most likely mechanism (INFERENCE, not measured at the pixel
+  level in this pass): PdfRenderer must resample the embedded ~584×754px
+  JPEG up to fill a much larger requested canvas, and that upsampling is
+  then scaled again by Compose's `graphicsLayer` zoom — two compounding
+  interpolation passes over the same fixed, low source information, which
+  can look softer than a single, smaller, less-stretched bitmap.
+
+### Synthetic vector/text PDF fixture — Fit Page + zoom
+
+- 2048, page 1 — OWNER VISUAL OBSERVATION: *"the letters look crisp."*
+- 3072, page 1, un-zoomed and pinch-zoomed ~2–3x — OWNER VISUAL OBSERVATION:
+  *"looks the same with and without zoom"*; explicitly re-checked at zoom:
+  *"all clear."*
+- 2048 at the same ~2–3x zoom, for comparison — OWNER VISUAL OBSERVATION:
+  *"looks the same"* as 3072.
+- **No threshold was found within this pass.** The fixture (`OriginalFixtures.pdf()`)
+  is a single large line of text per page on an otherwise blank background —
+  acknowledged here as a weak, low-information control, not a confident
+  proof that vector/text content never benefits from a higher target. A
+  denser real-world vector/text PDF (body paragraphs, smaller type) is
+  needed before concluding vector content has no threshold at all.
+
+### Unrelated observation (out of Phase 2C scope, logged not actioned)
+
+The owner noticed that zooming out manually in the fixed-page reader allows
+panning into a gray letterbox/margin area while it continues to track page
+navigation. This is a pre-existing pan/zoom-bounds UI behavior, unrelated to
+render resolution — explicitly **not investigated or changed** in this
+fidelity-only pass, consistent with §20's non-goal against redesigning zoom
+semantics. Logged here as a candidate follow-up item for whoever later
+touches `FixedReaderScreen`'s gesture/transform code.
+
+### Cross-cutting product finding (outside Phase 2C's own scope, important enough to record)
+
+The owner directly compared two volumes of the **same comic series**: volume
+1 (CBR, converted to PDF for this test, the file investigated throughout
+§22a/§22b) and volume 3 (native CBZ, no conversion). The CBZ volume looked
+"amazing" while the converted-PDF volume showed the fidelity problems above.
+The only structurally relevant difference between the two is container
+format and the lossy third-party CBR→PDF conversion step the first required.
+This is strong, concrete, real-world evidence that **native CBR support**
+(reading `.cbr` directly, no conversion) would eliminate this entire class of
+complaint more effectively than any PDF-rendering change in ShelfOS could —
+reinforcing CBR's existing roadmap priority (`AGENTS.md`'s "CBZ and future
+CBR are container adapters for the same image-sequence reader semantics... any
+RAR implementation requires dependency and license review first"). This is a
+product-prioritization input, not a Phase 2C deliverable; Phase 2C's scope
+remains PDF-only.
+
+### Final reconciled recommendation (supersedes §22a's base-raise framing)
+
+§22a concluded the viewport/fit-mode-aware direction was "confirmed, not
+contradicted." The live visual evidence requires a more conservative revision:
+
+- **Do not raise `MAX_PAGE_PIXELS`, and do not build a blanket
+  viewport/zoom-driven resolution increase, on the strength of this
+  investigation.** The owner-observed *regression* at 3072/4096 on real,
+  representative comic content is a real risk, not just a missed
+  opportunity — the opposite of the "worst case neutral" assumption §14 was
+  written under.
+- **Defer Phase 2C.2 (zoom-triggered high-detail rerender) entirely**, not
+  just the quality-bucket sizing. There is currently no cheap way to detect
+  an embedded raster page's native resolution via `PdfRenderer`'s public
+  API, so there is no safe way to decide *when* a higher-resolution rerender
+  would help versus hurt. Building it now risks shipping a feature that
+  makes real-world scanned/converted comics look worse, which is the exact
+  opposite of this phase's goal.
+- **Fit Width's viewport-width-driven sizing remains a legitimate, narrow,
+  bounded correctness fix** (§14.2's concrete missing input, MEASURED in
+  §22a) — but its real-world visible benefit is now unconfirmed on the one
+  file tested (source ceiling masked it). Recommend implementing it only
+  once validated against a less source-degraded PDF, not on the strength of
+  the New X-Men file alone.
+- **Vector/text base-resolution behavior remains genuinely open** — this
+  pass's fixture was too sparse to test it meaningfully either way.
+- **2C.1 as originally scoped (raise/viewport-size the base render target)
+  is NOT ready to implement.** The evidence argues for doing less here, not
+  more: keep 2048 as the default, treat Fit Width sizing as a small isolated
+  follow-up pending better test material, and do not pursue 2C.2 at all
+  under current evidence.
+- **Cache/prefetch**: unchanged, continue to DEFER.
+- **CBZ**: unchanged and reconfirmed untouched (`SyntheticLoadAcceptanceTest`
+  remained green throughout; no `ArchivePages`/CBZ code was ever modified).
+- **ADR**: still not warranted — if anything, this pass argues for *less*
+  durable architecture change than §21 anticipated, not a new one to record.
+
 ## 23. Deferred 2D work (restated from §16.14 for clarity)
 
 Cache/prefetch (if later evidence supports it and isn't absorbed into a later

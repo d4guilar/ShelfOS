@@ -1,5 +1,47 @@
 # Validation
 
+## Phase 2C live visual fidelity validation (2026-10-01)
+
+Status: **Phase 2C live owner visual A/B session — explicitly NOT
+implemented.** Closes the "owner visual observation: not obtained" gap left
+by the discovery pass immediately below. Full detail, with every quote
+tagged MEASURED / OWNER VISUAL OBSERVATION / INFERENCE, is in
+[`PHASE_2C_IMPLEMENTATION_PLAN.md`](PHASE_2C_IMPLEMENTATION_PLAN.md#22b-live-owner-visual-ab-session-on-rp5-2026-10-01).
+
+- The owner sat at the physical RP5 while builds were swapped between a
+  temporarily modified 2048/3072/4096 `MAX_PAGE_PIXELS` (reverted after every
+  comparison; the final diff against the previous commit is docs-only).
+- **New X-Men PDF, Fit Page**: 2048 was reported "a little blurry"; 3072 and
+  4096 looked "effectively the same" as the step before — no improvement.
+- **New X-Men PDF, ~2x zoom**: 3072 and 4096 were reported as **visibly
+  worse** than 2048, not merely unchanged — a materially stronger and more
+  important finding than "no benefit." The owner independently compared two
+  native CBZ comics (no PDF conversion step) from the same era/publisher and
+  described them as looking excellent, consistent with the fidelity problem
+  being specific to the lossy CBR→PDF conversion rather than to ShelfOS's
+  renderer.
+- **New X-Men PDF, Fit Width landscape**: no visible difference between
+  2048/3072/4096, despite a previously measured mathematical under-render at
+  2048 in this mode — the source image's own resolution ceiling appears to
+  mask that gap on this particular file.
+- **Synthetic vector/text PDF fixture**: no visible difference found between
+  2048 and 3072 at Fit Page or at ~2-3x zoom; the fixture is acknowledged as
+  too sparse (one large line of text per page) to be a strong control either
+  way.
+- **Cross-cutting product finding** (outside Phase 2C's own scope): the owner
+  directly compared a CBR-converted-to-PDF volume against a native CBZ
+  volume of the same comic series and found the CBZ version markedly
+  better — concrete, real-world evidence reinforcing the existing product
+  priority on native CBR support as a more effective fix for this class of
+  complaint than any PDF-rendering change.
+- **Revised recommendation**: do not raise the default PDF render target and
+  do not build a zoom-triggered high-detail rerender (2C.2) on this
+  evidence — the observed regression at higher targets on real content is a
+  real risk, not just a missed opportunity. Fit Width's viewport-width-aware
+  sizing remains a narrow, legitimate correctness fix but its real-world
+  benefit is unconfirmed pending a less source-degraded test file. No
+  implementation was accepted or built in this pass.
+
 ## Phase 2C discovery / device validation (2026-10-01)
 
 Status: **Phase 2C discovery / device validation — explicitly NOT
