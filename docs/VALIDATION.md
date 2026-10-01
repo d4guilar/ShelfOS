@@ -1,5 +1,63 @@
 # Validation
 
+## Phase 2B.4 managed fonts + ShelfOS reading presentation — complete (2026-09-30)
+
+Phase 2B.4 is **implemented and complete** on `phase-2/managed-fonts` at `93d0aaf`
+(`fix: preserve global managed font application`), following `ed38761` and `65309ab`.
+Final independent QA returned **PASS**, with no additional production changes
+required. Phase 2B.4 is not yet merged or pushed. Implementation summary:
+[`PHASE_2_PLAN.md`](PHASE_2_PLAN.md#12-phase-2b4-implementation-record--managed-fonts--shelfos-reading-presentation).
+
+Delivered scope: user-imported TTF/OTF managed fonts (SAF import, validation,
+app-private managed copy, family catalog, and stable logical family ids
+`builtin:serif` / `builtin:sans` / `user:<uuid>` persisted in reader preferences), the
+Readium 3.4.0 serving path into the navigator WebView via `@font-face`, live catalog
+resolution plus live switching between imported fonts without reopening the
+publication, and the Publisher/ShelfOS reading-presentation boundary. Source
+publication bytes are never modified, and an unresolvable managed font falls back to
+built-in serif rather than failing.
+
+Validation evidence:
+
+- JVM unit suite: **143 discovered, 143 passed, 0 failed, 0 skipped**
+- Full connected suite (`shelfos-phase0` emulator, API 35): **90 discovered,
+  90 passed, 0 failed, 0 skipped**
+- Gradle gate: **86/86 tasks successful** — `compileDebugKotlin`,
+  `compileDebugAndroidTestKotlin`, `assembleDebug`, `testDebugUnitTest`, `lintDebug`,
+  `assembleDebugAndroidTest`
+- Room/schema: **unchanged**; dependencies: **unchanged**; `git diff --check`: **PASS**
+
+The connected 90-test suite was run after `ed38761`. The final `93d0aaf` change was a
+narrow `ReaderPreferences` policy fix, validated independently afterward with
+`ReadingPolicyTest`, the complete 143-test JVM suite,
+`EpubManagedFontAppearanceTest`, `compileDebugKotlin`,
+`compileDebugAndroidTestKotlin` and `git diff --check`. The full connected suite was
+**not** re-run after `93d0aaf`, and no claim is made that it was.
+
+Defects found and resolved during QA (summarized, not a diary): initial and live
+font-preference divergence; a publication transformation callback attached at the
+wrong lifecycle point; a shared seekable font resource being unsafe across concurrent
+requests; a missing `@font-face` declaration when live-switching fonts; a font
+imported inside an open reader hidden behind a stale session snapshot; legacy title
+font precedence conflicting with newer global managed fonts; valid OpenType
+cross-signature extension combinations being rejected; and a stale title override
+surviving a global managed-font application.
+
+Known low-severity follow-ups. These are non-blocking and do **not** reopen Phase
+2B.4:
+
+- replace-rollback has a theoretical restore-failure edge case
+- repository startup performs small synchronous disk work
+- an unusual Activity recreation timing case may drop the import UI/create callback
+- the stored checksum is not revalidated at load
+- malformed manually-created private folder names may not be removable
+- a missing selected font may leave no font chip visually selected
+- Publisher mode may carry harmless unused font-face declarations
+- managed font tests currently depend on Android system font fixtures; a bundled OFL
+  test font could improve portability later
+- one live-switch test has an avoidable timeout wait in its precondition check
+- live managed resource resolution performs small filesystem checks per request
+
 ## Phase 2B.3 final technical review and owner RP5 acceptance (2026-09-28)
 
 Phase 2B.3 is **accepted and ready for PR/merge, but is not yet merged or

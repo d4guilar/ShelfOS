@@ -39,6 +39,8 @@ Features:
 - text preferences
 - bookmark
 - search
+- user-imported managed fonts (TTF/OTF) with app-private managed storage
+- Publisher / ShelfOS reading presentation
 
 Later:
 

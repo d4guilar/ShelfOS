@@ -39,7 +39,9 @@ was completed before merge. **2B.3 (EPUB publication search) is accepted and
   ready for PR/merge on `phase-2/epub-search`.** Its final targeted independent
   review returned **PASS WITH NON-BLOCKING FINDINGS** with no R1/R2/R3
   findings, and owner physical RP5 acceptance passed on the exact reviewed
-  build. It is not yet merged. 2B.4 remains not started. 2C/2D remain planned only;
+  build. It is not yet merged. **2B.4 (managed fonts + ShelfOS reading presentation) is
+implemented and complete** on `phase-2/managed-fonts` — see §12 and `VALIDATION.md`.
+2C/2D remain planned only;
 none of their work has started. See `VALIDATION.md`'s
 "Phase 2A.1"/"Phase 2B.1"/"Phase 2B.2"/"Phase 2B.2.1"/"Phase 2B.2.2"
 sections for evidence and explicitly-unclaimed items. This document is the
@@ -81,8 +83,10 @@ pass. 2B.1, 2B.2, 2B.2.1 and 2B.2.2 are accepted and merged (2B.2 via PR #9
 after independent review and RP5 physical acceptance; 2B.2.1 via PR #10
 after three independent-review rounds; 2B.2.2 via PR #11 after R3 remediation
 and final wording cleanup). 2B.3 (EPUB publication search) is accepted and
-ready for PR/merge after final technical review and owner RP5 acceptance; 2B.4
-remains not started. 2C/2D remain planned only; none of their work has started.
+ready for PR/merge after final technical review and owner RP5 acceptance. **2B.4
+(managed fonts + ShelfOS reading presentation) is implemented and complete** on
+`phase-2/managed-fonts`; see §12 and `VALIDATION.md`. 2C/2D remain planned only;
+none of their work has started.
 
 ## 3. Increments
 
@@ -731,7 +735,9 @@ ingestion and serving, with only ingestion actually proven**
     "Reset" action in `ReaderAppearance`) must cleanly fall back to SERIF/
     SANS, not leave a dangling reference.
 - **Verdict: INGESTION FEASIBLE AND LOW-RISK (reuses proven ShelfOS patterns);
-  SERVING NOT PROVEN.** 2B.4 is reframed below as "Custom-font feasibility +
+  SERVING NOT PROVEN.** *(Discovery-time verdict, 2026-09-26 — since **resolved**: the
+  2B.4 proof gate passed and serving is implemented; see §12 and `VALIDATION.md`.)*
+  2B.4 is reframed below as "Custom-font feasibility +
   managed-font architecture" with an explicit proof gate before any
   import/selection UX is built. Do not bundle a font library either way; a
   single user-supplied font per title/globally remains the minimal viable
@@ -783,8 +789,8 @@ of how the serving question above is eventually resolved:**
 | Extended typography (paragraph/word/letter spacing, hyphens, ligatures) | DESIRED BY NO CURRENT REQUIREMENT — not built |
 | Reading-surface dark/sepia/light ("Page colors") | ALREADY IMPLEMENTED — satisfies roadmap's dark-reading-mode item |
 | Bookmarks (discrete saved locations) | NOT IMPLEMENTED — REQUIRES SHELFOS STORAGE/UI |
-| Custom font — ingestion (SAF pick, validate, managed copy) | NOT IMPLEMENTED — REQUIRES SHELFOS STORAGE/UI; feasible, reuses an existing pattern |
-| Custom font — serving to the navigator/WebView | NOT PROVEN — only `AssetsPathHandler` (packaged APK assets) is confirmed; a managed-copy file's reachability is unproven |
+| Managed font — ingestion (SAF pick, validate, app-private managed copy) | IMPLEMENTED in 2B.4 |
+| Managed font — serving to the navigator/WebView | IMPLEMENTED in 2B.4 — the proof gate passed; a managed private font is served as a publication-local container URL and declared to the navigator as `@font-face` |
 
 #### 2B.3 Bookmark data-model proposal
 
@@ -1328,6 +1334,10 @@ establishes, and because it depends on nothing bookmarks doesn't also depend
 on, so de-risking the smaller schema change first is preferable.
 
 **2B.4 — Custom-font feasibility + managed-font architecture.**
+**Status: complete (see §12).** The proof gate described below was run and
+**passed**, so the slice proceeded to managed font import, app-private storage,
+selection and live switching. The planning reasoning below is retained as the
+record of how the slice was originally scoped.
 **Reframed 2026-09-26:** this slice must not promise a finished
 import/selection UX up front. It begins with an explicit proof gate, run
 before any user-facing work: (1) prove selected font bytes can actually be
@@ -2631,3 +2641,94 @@ added — `androidx.room:room-testing` was considered and deliberately not
 added (see the 2B.2 implementation record above). See §4's standing
 Phase-2-wide out-of-scope list, which this pass's work respects without
 exception.
+
+## 12. Phase 2B.4 implementation record — managed fonts + ShelfOS reading presentation
+
+**Status: implemented and complete** on `phase-2/managed-fonts`
+(`65309ab` → `ed38761` → `93d0aaf`). Final independent QA returned **PASS** with no
+further production changes required. Evidence: `VALIDATION.md`.
+
+**Managed fonts (user-imported TTF/OTF).** A user picks a font through SAF;
+ShelfOS validates it before accepting it (sfnt signature/structure, required tables,
+extension, size limit, readable bytes) and copies it into app-private managed storage
+as a family with a stable logical id and display name. Validation failures produce a
+clear, readable message rather than a crash or a silent no-op.
+
+**Logical identity.** Reader preferences persist a stable logical family id, never a
+file path:
+
+```text
+builtin:serif
+builtin:sans
+user:<uuid>
+```
+
+`builtin:*` are the built-in families; `user:*` ids are ShelfOS-issued and stable.
+Managed copies are looked up through the repository by that id.
+
+**Private storage.** Managed fonts live under app-private storage in a managed-font
+namespace. Resource lookup resolves the requested file and verifies it stays inside
+that namespace, so a managed font request cannot escape it and no arbitrary
+filesystem path is exposed to the reader or the serving layer.
+
+**Readium integration (pinned Readium 3.4.0 runtime path).**
+
+```text
+managed private font → Readium publication resource → ShelfOS managed-font URL
+→ @font-face → navigator WebView
+```
+
+The managed-font container is publication-local: each served request resolves to a
+ShelfOS-owned resource rather than a raw path. At navigator creation ShelfOS declares
+the managed font faces currently available and preloads only the currently selected
+family, so the selected font renders immediately while other declarations stay lazy.
+Live switching between already-imported managed fonts works without reopening the
+publication.
+
+**Live font catalog.** The EPUB session and the managed-font container resolve the
+catalog through the live repository supplier rather than a frozen snapshot, so a font
+imported while the reader is already open becomes usable through the existing reader
+recreation flow without leaving and reopening the book. Managed font resource requests
+still receive fresh resource instances per request.
+
+**Presentation modes.** The reader has an explicit presentation boundary:
+
+- **Publisher** — publisher styling is preserved; ShelfOS typography/palette
+  overrides are not applied.
+- **ShelfOS** — ShelfOS reading preferences are applied, including managed and
+  custom fonts.
+
+This is a per-format capability, not a blanket promise: it is implemented for EPUB,
+and PDF/comic source fidelity is unchanged and remains a separate concern.
+
+**Preferences, legacy data and precedence.** Reader preferences persist a stable
+`fontFamilyId`. Legacy font-only Serif/Sans data remains compatible through
+effective-family-id resolution. Legacy title-specific choices keep precedence over
+newer global managed-font defaults; applying a managed font globally clears the
+conflicting title override on the title the change was applied from, so the user's
+explicit global choice wins there. No Room schema change or migration was required,
+because these preferences stay inside the existing persisted preference
+representation.
+
+**Source immutability.** Source EPUBs are never rewritten to embed fonts. Source
+bytes remain untouched, runtime transformation happens only through Readium/container
+behavior, and the imported font is copied separately into ShelfOS app-private storage.
+
+**Fallback.** A broken, removed, missing, corrupt or invalid managed font never makes
+a publication unreadable: the reader falls back to built-in serif behavior when the
+selected managed family cannot be resolved.
+
+**Scope of 2B.4.** 2B.4 introduced no Room schema change, no database migration, no
+new dependency, and no PDF, comics, theme, cloud/sync or speculative Reading-Profile
+architecture work.
+
+## 13. Explicit out-of-scope confirmation for 2B.4
+
+This pass, on `phase-2/managed-fonts` (base `main` at `f201058`), implemented EPUB
+managed fonts and the Publisher/ShelfOS presentation boundary only. No 2C work was
+started: no highlights/notes/annotations, no reading-statistics work, no control
+remapping, no ShelfOS Home, no billing, no cloud sync, no metadata-provider work and
+no theme implementation exist on this branch. No Room schema change, no migration and
+no `app/schemas/` change were introduced by 2B.4, and no dependency was added, removed
+or upgraded. PDF and comic readers are unchanged and remain source-faithful. See §4's
+standing Phase-2-wide out-of-scope list, which this pass respects without exception.

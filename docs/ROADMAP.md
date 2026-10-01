@@ -218,7 +218,9 @@ via PR #8, 2B.2 durable bookmarks accepted and merged via PR #9, 2B.2.1
 bookmark-location polish accepted and merged via PR #10, and 2B.2.2 reading
 flow accepted and merged via PR #11 at `ab612a46`; 2B.3 EPUB publication
 search is accepted after final technical review and owner physical RP5
-validation, and is ready for PR/merge but not yet merged; 2B.4 is not started; 2C–2D planned,
+validation, and is ready for PR/merge but not yet merged; **2B.4 managed fonts
+and ShelfOS reading presentation is implemented and complete** on
+`phase-2/managed-fonts` (final independent QA PASS; not yet merged); 2C–2D planned,
 not started) and acceptance criteria. The
 original inventory below is retained for coverage; items already accepted in
 Phase 1 are marked accordingly.
@@ -247,7 +249,8 @@ ShelfOS becomes a useful everyday reader.
 - reader chrome — hardened in Phase 2A (immersive Back/rediscoverability)
 - dark reading mode
 - TTS research / initial implementation if practical
-- custom font architecture
+- custom font architecture — delivered for EPUB in Phase 2B.4 (user-imported managed
+  fonts and the Publisher/ShelfOS reading-presentation boundary)
 - adaptive reader layouts
 - fold/unfold reading continuity
 

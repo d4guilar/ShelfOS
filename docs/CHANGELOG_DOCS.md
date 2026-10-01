@@ -1,5 +1,29 @@
 # Documentation Changelog
 
+## Phase 2B.4 documentation reconciliation (2026-09-30)
+
+- Reconciled documentation with the completed Phase 2B.4 implementation on
+  `phase-2/managed-fonts` (`93d0aaf`). Final independent QA was **PASS**; no
+  additional production changes were required.
+- Marked Phase 2B.4 complete in `PHASE_2_PLAN.md` (status paragraphs, capability
+  table, and the 2B.4 proof-gate entry), `ROADMAP.md` (Phase 2 sequencing and the
+  custom-font-architecture deliverable), and `VALIDATION.md` (new final entry).
+- Added the canonical 2B.4 implementation record in `PHASE_2_PLAN.md` §12 covering
+  managed font import/validation/app-private storage, the logical family id model
+  (`builtin:serif`, `builtin:sans`, `user:<uuid>`), namespace-confined resource
+  lookup, the Readium 3.4.0 managed-font → `@font-face` serving path, live catalog
+  resolution and live font switching, the Publisher/ShelfOS presentation boundary,
+  legacy preference compatibility and title/global precedence, source immutability,
+  and built-in serif fallback — plus §13's out-of-scope confirmation.
+- Recorded the managed-font repository boundary in `ARCHITECTURE.md` §10 and the
+  EPUB reader capabilities in `features/READER.md`.
+- Recorded final validation evidence and the non-blocking follow-up list in
+  `VALIDATION.md`, explicitly stating that the 90-test connected suite ran after
+  `ed38761` and that the narrow `93d0aaf` `ReaderPreferences` fix was validated
+  independently with the 143-test JVM suite rather than a connected re-run.
+- Documentation only: no production code, test, dependency, Room/schema or Gradle
+  change was made, and no theme/monetization/cloud content was touched.
+
 ## Phase 2B.3 final review and RP5 acceptance (2026-09-28)
 
 - Recorded the final targeted independent verdict for `e395ce7`: **PASS WITH
