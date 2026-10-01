@@ -1,5 +1,59 @@
 # Validation
 
+## Phase 2C discovery / device validation (2026-10-01)
+
+Status: **Phase 2C discovery / device validation — explicitly NOT
+implemented.** This is a measurement/validation pass only; no production
+code changed (`git diff --stat` against the pass's starting commit is
+docs-only). Full detail, including the complete pixel chain and evidence-tag
+breakdown (MEASURED / OWNER VISUAL OBSERVATION / ANALYTICAL / INFERENCE / NOT
+VERIFIED), is in
+[`PHASE_2C_IMPLEMENTATION_PLAN.md`](PHASE_2C_IMPLEMENTATION_PLAN.md#22a-rp5-physical-device-validation-2026-10-01).
+
+- **Hardware**: a physical Retroid Pocket 5 (Android 13, API 33, 1080×1920
+  physical, 360dpi, `isLowRamDevice=false`, 256MB memory class, not the
+  original Galaxy Tab A field-report device).
+- **Controlled comparison**: an owner-provided New X-Men volume 1 CBR/PDF
+  conversion pair (private, never committed to this repository). The CBR's
+  source page images (sampled: ~2100–4000px on the longest edge, JPEG) are
+  downsampled by the CBR→PDF conversion tool to a uniform 584×754px embedded
+  JPEG on every one of the PDF's 186 pages — a >4x longest-edge loss,
+  classified **SEVERE**, that happens entirely upstream of ShelfOS.
+- **Resolution experiment**: real `PdfRenderer` measurements at 2048
+  (current), 3072 and 4096 longest-edge targets against the real converted
+  PDF and against the repository's synthetic vector/text PDF fixture, on the
+  RP5. Bitmap sizes and allocation bytes matched the discovery doc's
+  analytical Letter-page estimates almost exactly. Render time for the
+  real (JPEG-embedding) comic PDF was 20–40x slower than the vector/text
+  fixture at equal targets (tens of ms vs. low single-digit ms).
+- **Key finding**: for this specific converted PDF, ShelfOS's current 2048px
+  budget already renders at roughly 2.7x the embedded image's own native
+  pixel density — raising the budget to 3072 or 4096 cannot recover detail
+  the conversion already discarded, only add memory/time cost. This file's
+  fidelity complaint is **source-limited at the conversion step**, not a
+  ShelfOS rendering defect. A separate, genuine ShelfOS-side gap was also
+  measured: in the RP5's landscape orientation, Fit Width's layout request
+  exceeds the 2048 budget's resulting bitmap *width* (independent of the
+  source PDF's own quality), confirming the discovery doc's analytical
+  concern that a single longest-edge constant does not correctly serve
+  Fit Width.
+- **Memory/timing**: per-bitmap allocation and transient-overlap-during-swap
+  figures were confirmed on real hardware; the RP5's own 256MB memory class
+  and 8GB RAM comfortably absorb even a 4096px target with transient
+  overlap, but the RP5 is not low-RAM and this does not generalize to a
+  low-RAM/budget device.
+- **Owner visual findings**: **NOT OBTAINED.** This pass could not pause for
+  a live, synchronous human visual judgment on the RP5 screen; no visual
+  sharpness comparison is recorded as an owner opinion, and none is inferred
+  from the measured pixel/byte numbers above. Closing this gap requires a
+  live session with the owner at the device.
+- **Final architecture recommendation**: the discovery doc's
+  viewport/fit-mode-aware render-target direction (replacing the flat 2048
+  constant) is confirmed, not contradicted, by this evidence — reframed
+  around Fit Width's measured width requirement rather than "raise the
+  ceiling," since a higher fixed ceiling would not have helped this file. No
+  implementation was accepted or built in this pass.
+
 ## Localization foundation complete (2026-09-30)
 
 The ShelfOS interface localization foundation is **implemented and validated** on

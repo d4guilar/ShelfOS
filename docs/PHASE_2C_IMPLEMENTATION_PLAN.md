@@ -762,6 +762,325 @@ ADR-0018/ADR-0003. Recorded here rather than written speculatively now.
   change. No file under `app/src/...` was touched. No dependency, Room
   schema, or `app/schemas/` file was changed.
 
+## 22a. RP5 physical-device validation (2026-10-01)
+
+Status: **MEASUREMENT/VALIDATION pass only. No production code changed.** This
+section closes §6's device-less coverage gap using a real Retroid Pocket 5
+(RP5) and an owner-provided New X-Men volume 1 CBR/PDF conversion pair (never
+committed to this repository — see AGENTS.md and the repo's copyright
+policy). Every line below is tagged **MEASURED** (captured directly from
+device/tooling output in this pass), **ANALYTICAL** (arithmetic derived from
+measured inputs), **OWNER VISUAL OBSERVATION** (a live human judgment — see
+the explicit gap below), or **NOT VERIFIED** (could not be established in
+this pass).
+
+**Method note:** rather than temporarily editing the production
+`MAX_PAGE_PIXELS` constant and rebuilding per target (§6/Step 8's suggested
+approach), this pass added one temporary instrumented test
+(`Phase2cRp5FidelityProbe`, deleted before this commit — see below) that
+calls `android.graphics.pdf.PdfRenderer` directly using the *exact same*
+`scale = target / maxOf(page.width, page.height)` formula as
+`PdfPages.render()`. This exercises the real formula against the real file on
+real hardware without ever touching `FixedReader.kt`, so the production diff
+for this pass is zero (confirmed: `git diff --stat db2c6e4` is empty before
+this doc commit).
+
+### RP5 hardware (MEASURED, `adb -s d8f7f1b6 shell getprop` / `wm` / instrumented `ActivityManager`)
+
+- `ro.product.manufacturer=Moorechip`, `ro.product.model=Retroid Pocket 5`,
+  `ro.product.device=kona`, `ro.build.version.release=13`,
+  `ro.build.version.sdk=33`.
+- `wm size`: physical `1080x1920`. `wm density`: `360` (≈2.25x bucket).
+- Measured app-window `DisplayMetrics` during the probe run (device held in
+  its native landscape handheld orientation): `widthPixels=1920
+  heightPixels=1026 density=2.25 densityDpi=360` (the ~54px height deficit
+  from a pure 1920x1080 landscape is system bar/inset consumption).
+- `ActivityManager.isLowRamDevice()=false`, `getMemoryClass()=256MB`,
+  `getLargeMemoryClass()=512MB`. `ActivityManager.MemoryInfo`:
+  `totalMem=8074MB availMem=4734MB lowMemory=false` at measurement time.
+  **The RP5 is not a low-RAM device** by the platform's own signal — its
+  evidence cannot validate a low-RAM-specific cap strategy (§14.6), only
+  confirm the ordinary-device path (see "Evidence gaps" below).
+
+### Controlled source pair (MEASURED)
+
+- Folder (private, outside this repo, never committed): the owner's New
+  X-Men volume 1 CBR and its Calibre-converted PDF, identified by matching
+  filenames/title. Sanity-checked by content, not filename alone: PDF page 1
+  renders the identical cover artwork as CBR page 1 (visually confirmed
+  locally; image not reproduced here or anywhere in Git).
+- **The CBR**: `UnRAR.exe lb` lists 137 image entries, all `.jpg`. Page pixel
+  dimensions vary — sampled pages: page 1 (cover) `2123×3053`, page 6 (a
+  double-page spread) `3975×3056` (landscape, confirming page dimensions are
+  **not** uniform — double spreads are wider than tall), page 15
+  (dialogue-dense story page, several small speech bubbles — the text-heavy
+  representative) `1988×3056`, page 50 (a house-ad page) `2063×3131`. All
+  sampled pages are baseline JPEG, no unusual subsampling. This satisfies
+  Step 2's requirement to pick one text-heavy (page 15) and one art-heavy/
+  minimal-text (page 1, the cover) representative page.
+- **The converted PDF**: `pymupdf` reports **186 pages** (not 137 — the
+  conversion inserts additional front/back matter and/or splits spreads,
+  confirmed structurally but not fully re-indexed page-by-page; PDF page 1
+  content-matches CBR page 1, but PDF page 15 content is **one CBR page
+  later** than CBR page 15, so the two page-number sequences are offset by at
+  least 1 starting partway through — **NOT VERIFIED**: the exact offset
+  mapping for all 186 pages). Every sampled PDF page (1, 11, 15, 31, 61, 91,
+  121, 151, 186) embeds exactly one JPEG image at **584×754 px**, uniformly,
+  regardless of the source page's own aspect ratio, inside a uniform
+  US-Letter `612×792`-point media box. PDF metadata: `creator`/`producer` =
+  `calibre 8.5.0`, `creationDate` = `2026-10-01` (today, local-pass time),
+  consistent with this conversion having been (re)generated for this
+  validation rather than confirmed byte-identical to whatever file originally
+  produced the Phase 2A field report — noted for honesty, does not change the
+  conversion-loss finding below, since it is still a real Calibre CBR→PDF
+  raster conversion of the same content.
+
+### Conversion-loss classification: **SEVERE** (MEASURED + ANALYTICAL)
+
+- Page 1: CBR `2123×3053` → PDF embedded `584×754`. Longest-edge ratio
+  ≈ **4.05x downsample**.
+  Page 15 (text-heavy; PDF's content-matched neighbor): CBR `1988×3056` (or
+  its PDF-offset neighbor) → PDF embedded `584×754`. Ratio **≈4.05–4.5x
+  downsample** depending on exact offset page.
+- The conversion is **uniform and fixed-size**, not content-adaptive: every
+  sampled page across the full 186-page PDF embeds the same 584×754 JPEG
+  regardless of source resolution or orientation (the landscape double-spread
+  source page would be squashed into the same portrait-shaped embed, though
+  this was not independently re-verified for that specific spread page).
+  This is conversion-tool-driven resolution loss, not a ShelfOS rendering
+  artifact — classified **SEVERE**, not MODERATE, because a >4x longest-edge
+  downsample on already-finished lettered/inked artwork destroys fine line
+  work and small-text legibility before ShelfOS ever opens the file.
+
+### Current ShelfOS 2048 pipeline — re-verified against source (not assumed)
+
+- `FixedReader.kt` read directly: `MAX_PAGE_PIXELS = 2048` (private constant,
+  line 66), `PdfPages.render()`'s formula and `ArchivePages`'s
+  downsample-only `inSampleSize` loop are **byte-for-byte unchanged** from
+  §2's description — no drift since the discovery pass.
+- `FixedReaderViewModel.kt` read directly: the `Mutex`-guarded
+  `rendering?.cancel()` + fresh-`Job` + `ensureActive()`-before-publish
+  pattern is confirmed exactly as §9 described.
+- `FixedReaderScreen.kt` read directly: the pinch/double-tap zoom path
+  (`awaitEachGesture`, `graphicsLayer { scaleX = scale; ... }`) **never**
+  calls `vm.render`/`vm.showPage` — confirmed by reading the full gesture
+  handler, not by assumption. §2/§11's "zoom never triggers a re-render"
+  claim **still holds** on inspection of the current `db2c6e4` code.
+- **Important architecture correction**: `PublicationFormat` (domain enum,
+  `LibraryItem.kt`) currently has exactly three values — `PDF`, `EPUB`,
+  `CBZ`. **CBR is not implemented anywhere in ShelfOS today** (no enum value,
+  no archive policy branch) — consistent with the project's own
+  `cbr-support-priority` memory note that CBR needs license review before
+  implementation. This means Step 9/19's "open the matching CBR in ShelfOS
+  via the existing fixed-reader CBZ/CBR path" **could not be performed as
+  written** — there is no CBR path to open it with. The CBR-vs-PDF comparison
+  in this pass is therefore file-level (dimensions/compression, outside
+  ShelfOS) for the CBR side, and real on-device `PdfRenderer` measurement for
+  the PDF side; it is **not** an in-app ShelfOS CBR-reader vs PDF-reader
+  visual A/B, which does not yet exist as a buildable comparison.
+
+### MEASURED render targets (RP5, `PdfRenderer` direct, same formula as `PdfPages.render()`)
+
+Page index 0 (PDF page 1, matches CBR cover) and page index 15 (PDF page 16,
+one page after the CBR's text-heavy page 15 per the offset noted above). 3
+runs per target; range shown as min–max, median reported separately since 3
+samples does not support a meaningful min/median/max is already the full
+range (debug build, not a rigorous benchmark — do not over-read precision):
+
+| Target | Bitmap (idx 0 / idx 15) | Bytes/bitmap | Timing idx 0 (ms, 3 runs) | Timing idx 15 (ms, 3 runs) |
+| --- | --- | --- | --- | --- |
+| 2048 (current) | 1582×2048 | 12,959,744 (~12.4MB) | 36.26 / 36.65 / 36.76 | 35.97 / 36.00 / 36.55 |
+| 3072 | 2373×3072 | 29,159,424 (~27.8MB) | 52.43 / 52.56 / 52.57 | 51.72 / 51.86 / 51.93 |
+| 4096 | 3165×4096 | 51,855,360 (~49.5MB) | 84.46 / 84.48 / 84.60 | 83.72 / 83.79 / 83.79 |
+
+These bitmap-byte figures **match §8's analytical Letter-page estimates
+almost exactly** (§8 predicted ~12.4MB/27.8MB/49.5MB) — confirmed, not
+coincidentally close, because this specific conversion's media box genuinely
+is uniform US Letter (612×792pt) for every page, so §8's representative-page
+choice was accidentally exact for this real file.
+
+**Synthetic vector PDF control** (`OriginalFixtures.pdf()`, 400×600pt,
+pure text/vector, MEASURED on the same RP5 run):
+
+| Target | Bitmap | Bytes | Time (ms, single run) |
+| --- | --- | --- | --- |
+| 2048 | 1365×2048 | 11,182,080 | 1.06 |
+| 3072 | 2048×3072 | 25,165,824 | 1.45 |
+| 4096 | 2730×4096 | 44,728,320 | 2.19 |
+
+**Critical comparison (MEASURED + ANALYTICAL)**: the vector/text fixture
+renders in **1–2ms** at every target regardless of resolution, while the
+real comic-conversion PDF renders in **36–85ms** at the same targets — a
+**20–40x** cost difference at equal target resolution. This is because
+`PdfRenderer` must decode and resample a large embedded JPEG for the comic
+page but only rasterize vector paths/glyphs for the synthetic page. This
+directly informs §21/§22 below: raising resolution is nearly free for
+vector/text PDFs and strictly beneficial (no source ceiling), but expensive
+*and*, for this specific converted comic PDF, **pointless beyond the
+embedded image's own density** (next point).
+
+### The pixel chain (MEASURED + ANALYTICAL) — the most important output of this pass
+
+```
+CBR source page (page 1):        2123 × 3053 px, JPEG
+        ↓ Calibre CBR→PDF conversion (SEVERE loss, ~4.05x downsample)
+PDF embedded raster image:        584 × 754 px, JPEG, inside a 612×792pt page
+        ↓ PdfRenderer.Page (points, not pixels — media box is 612×792pt)
+ShelfOS current render (2048):    1582 × 2048 px bitmap  (≈2.59 px/pt)
+        — compare to the embedded image's own native density: 754/792 ≈ 0.95 px/pt
+        — ShelfOS's 2048 render is ALREADY ~2.7x the embedded image's own resolution
+RP5 physical viewport (measured): 1920 × 1026 px (landscape handheld orientation)
+        ↓ Fit Page (ContentScale.Fit, letterboxed on the shorter dimension)
+displayed @ Fit Page, 1x:         792 × 1026 px   (height-bound; scale 0.501 — DOWNSCALES the 2048 bitmap)
+        ↓ Fit Width (fillMaxWidth, vertical scroll)
+displayed @ Fit Width, 1x:        1920 × 2485 px  (width-bound; scale 1.214 — UPSCALES the 2048 bitmap's 1582px width)
+        ↓ pinch-zoom (graphicsLayer transform only, confirmed no re-render)
+displayed @ Fit Page × 2x zoom:   ≈1584 × 2052 px — within ~0.1% of the 2048 bitmap's own 1582×2048 native size
+displayed @ Fit Page × 3x zoom:   ≈2376 × 3078 px — exceeds the 2048 bitmap; genuine upscaling begins
+```
+
+**Reading this chain**: for *this* converted PDF, ShelfOS's current fixed
+2048 budget is not under-serving the source — it is already rendering
+roughly **2.7x more pixels than the embedded JPEG actually contains**
+(2.59 px/pt requested vs. 0.95 px/pt native). No increase to 3072 or 4096
+can recover detail the conversion already discarded; it would only upscale
+further, at real memory/time cost (§ render-timing table above), for zero
+fidelity gain **on this file**. This is strong, device-measured evidence
+that the Phase 2A field complaint about *this specific New X-Men PDF* is
+**SOURCE-LIMITED** at the conversion step, not a ShelfOS rendering defect —
+reversing this document's own earlier framing in §7 ("remains genuinely
+unresolved"), now resolved by direct measurement.
+
+**However, a real, separate, ShelfOS-side finding survives**: at Fit Width in
+the RP5's landscape orientation, the current 2048 budget's resulting bitmap
+width (1582px, since the page's own point aspect ratio keeps width below the
+2048 longest-edge cap) is **less than** the 1920px-wide viewport — Fit Width
+is measurably *upscaling* a ShelfOS-rendered bitmap that is narrower than the
+screen, independent of the source PDF's own quality ceiling. This confirms
+§10's analytical concern with a real measurement: Fit Width's resolution
+requirement is driven by viewport *width*, not longest-edge, and today's
+single longest-edge constant does not serve it correctly in landscape **even
+before considering source-side loss**.
+
+### Memory (MEASURED bitmap bytes + ANALYTICAL transient overlap)
+
+- Per-bitmap: 2048 ≈12.4MB, 3072 ≈27.8MB (table above: 29,159,424B), 4096
+  ≈49.5MB (51,855,360B) — essentially exact confirmation of §8's analytical
+  table for this real file's aspect ratio (its media box happens to be
+  Letter-shaped).
+- Transient overlap during a hypothetical swap (old+new bitmap both briefly
+  live): 2048→3072 ≈42.1MB, 3072→4096 ≈81.0MB. Against the RP5's own
+  `getMemoryClass()=256MB` per-app heap budget, both are a modest fraction
+  (16%/32%) — the RP5 specifically has comfortable headroom even at 4096 with
+  overlap. **This is device-specific, not universal** — see evidence gaps.
+- Process-level PSS/RSS during an actual in-app render session was **NOT
+  VERIFIED** in this pass (no UI-automated import-and-render session was
+  driven through the real Reader screen; the probe measured `PdfRenderer`
+  bitmap allocation directly, which is the dominant but not sole cost).
+  Device-level `ActivityManager.MemoryInfo` (`totalMem=8074MB
+  availMem=4734MB lowMemory=false`) was captured as context, not as a
+  per-render delta.
+
+### Fast-navigation stress (MEASURED, partial)
+
+A 13-step forward/back navigation sequence (`0,1,2,3,2,3,4,5,4,3,2,1,0`)
+against the real PDF at a temporary 4096 target, opening/closing
+`PdfRenderer.Page` sequentially: **0 failures, 0 exceptions**. This confirms
+`PdfRenderer`/`Page` sequencing itself is stable under rapid navigation at
+the largest tested target on real hardware. **This does not exercise**
+`FixedReaderViewModel`'s `Mutex`/cancel-and-replace coroutine logic (§9) —
+that requires driving the real ViewModel/Compose layer (e.g. via UI
+automation rapidly tapping next/previous), which was **NOT VERIFIED** in
+this pass. The cancellation logic itself was re-confirmed correct by reading
+`FixedReaderViewModel.kt` directly (see above), but its *behavior under real
+timing pressure* on the RP5 specifically remains unexercised.
+
+### CBZ regression control: **PASS**
+
+Production code was never modified during this pass (confirmed: `git diff
+--stat db2c6e4` is empty). As an additional real-hardware confirmation
+rather than relying on that alone, `SyntheticLoadAcceptanceTest` (which
+exercises the CBZ/`ArchivePages` path among others) was run on the same RP5,
+same installed build, immediately after the PDF probes: **1/1 passed**. No
+CBZ regression.
+
+### Owner visual observation: **NOT OBTAINED — explicit evidence gap**
+
+This pass could not pause mid-task for a live, synchronous human looking at
+the RP5 screen. No visual A/B judgment (2048 vs 3072 vs 4096 sharpness on the
+real comic page; CBR-rendered-elsewhere vs ShelfOS-rendered-PDF; synthetic
+vector PDF sharpness at different targets) is recorded as an owner opinion
+anywhere in this document, and none should be inferred from the measured
+numbers above — the numbers establish *what pixels exist*, not *what a human
+perceives*. To close this gap: with the owner physically present at the RP5,
+reinstall a build with a temporarily restored probe (or a debug toggle) at
+each target, show the same page (PDF page 1 and page 16) at 1x/2x/3x zoom at
+2048 then 3072 then 4096, and ask directly "noticeably sharper / slightly
+sharper / no difference" at each step, then repeat for Fit Width in landscape
+specifically (the one case this pass's pixel chain shows is genuinely
+under-rendered independent of source quality).
+
+### Updated recommendation (reconciling §14, not just appending)
+
+§14's conceptual direction (viewport/fit-mode/density-aware render target,
+replacing the flat 2048 constant, §14.1–14.2) is **confirmed, not
+contradicted**, by this evidence — but the *reason* shifts: the RP5 evidence
+shows the dominant fidelity loss for *this specific New X-Men conversion* is
+upstream of ShelfOS entirely (SEVERE conversion-step downsampling), while the
+one concrete ShelfOS-side gap this pass actually measured is Fit Width's
+width-driven requirement exceeding a longest-edge-only budget in landscape
+(not a general "raise the ceiling" case). Practical implications:
+- **Do not raise `MAX_PAGE_PIXELS` to a new fixed constant.** §15's rejection
+  of "a different fixed number" is now evidence-backed, not just structural:
+  for a source-limited converted PDF, a higher constant purely upscales
+  (zero benefit, real memory/time cost, confirmed by the 36ms→85ms render
+  cost table above); for a vector/text PDF, a higher constant is cheap but
+  still not "viewport-aware" — it is still a guess.
+- **§14.2's viewport/fit-mode-driven target is the right mechanism**, and
+  this pass adds a concrete missing input: Fit Width should size its render
+  target request from **viewport width**, independent of longest-edge, since
+  the measured case above shows width-bound upscaling happening *before* any
+  zoom is involved.
+- **A memory-cap ceiling of ~3072px remains a reasonable default** (§14.5)
+  given the real per-bitmap byte counts above, but this pass's RP5-only
+  memory headroom (not low-RAM, 256MB class) cannot by itself justify a
+  *universal* ceiling — see evidence gaps.
+- **Quality buckets should not be sized to "fix" this specific PDF.** No
+  bucket count higher than what the viewport/fit-mode formula already
+  produces will recover this file's lost detail; implementing a bucket
+  strategy anyway (for the vector/text and better-sourced-raster cases where
+  it genuinely helps) remains worthwhile, per §14.4.
+- **2C.1's acceptance criteria should add**: a manual owner-performed visual
+  check (per the gap above) before treating any resolution change as
+  user-visible improvement for the New X-Men file specifically, since the
+  measured pixel chain predicts no visible gain for that file from resolution
+  alone.
+
+### Evidence gaps (explicit, not papered over)
+
+- **OWNER VISUAL OBSERVATION**: not obtained (above) — requires a live
+  session with the owner at the RP5 screen.
+- **Low-RAM-device evidence**: RP5 is not low-RAM (`isLowRamDevice=false`,
+  256MB memory class); this pass cannot validate or size a low-RAM-specific
+  cap, only confirm the ordinary-device path has headroom.
+- **Full PDF page-offset mapping**: the CBR's 137 pages vs. the PDF's 186
+  pages are confirmed offset by at least 1 partway through, but the complete
+  page-by-page correspondence was not derived (not required for the
+  resolution-loss conclusion, which held for both sampled pages regardless
+  of exact offset).
+- **Process PSS/RSS under a real in-app render session**: not measured — the
+  probe measured `PdfRenderer` bitmap allocation directly (the dominant
+  component) rather than full ShelfOS process memory during live reading.
+- **`FixedReaderViewModel`'s coroutine cancel-and-replace behavior under
+  real UI timing pressure**: re-confirmed correct by source reading, but not
+  exercised via real rapid UI taps on the RP5 (the fast-navigation stress
+  test above exercised `PdfRenderer` sequencing directly, not the
+  ViewModel/Compose layer above it).
+- **Galaxy Tab A (the original field-report device)**: not available in this
+  pass; the RP5 is a different device (higher-end, more RAM, different
+  density) and its headroom does not generalize to the original lower-end
+  tablet that produced the field report.
+
 ## 23. Deferred 2D work (restated from §16.14 for clarity)
 
 Cache/prefetch (if later evidence supports it and isn't absorbed into a later
