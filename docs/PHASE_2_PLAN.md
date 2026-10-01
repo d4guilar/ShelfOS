@@ -36,13 +36,22 @@ closed in a third round before merge. All three rounds are recorded under
 returned **CHANGES REQUIRED** with **no R1/R2 findings**; the three R3
 test/documentation findings were remediated and the final wording cleanup
 was completed before merge. **2B.3 (EPUB publication search) is accepted and
-  ready for PR/merge on `phase-2/epub-search`.** Its final targeted independent
-  review returned **PASS WITH NON-BLOCKING FINDINGS** with no R1/R2/R3
-  findings, and owner physical RP5 acceptance passed on the exact reviewed
-  build. It is not yet merged. **2B.4 (managed fonts + ShelfOS reading presentation) is
-implemented and complete** on `phase-2/managed-fonts` — see §12 and `VALIDATION.md`.
-2C/2D remain planned only;
-none of their work has started. See `VALIDATION.md`'s
+  merged to `main` via PR #12** at commit `f201058bd3000ca7ad4f145e6ae4da81237d01b9`.
+  Its final targeted independent review returned **PASS WITH NON-BLOCKING
+  FINDINGS** with no R1/R2/R3 findings, and owner physical RP5 acceptance
+  passed on the exact reviewed build before merge. **2B.4 (managed fonts +
+  ShelfOS reading presentation) is accepted and merged to `main` via PR #13**
+  at commit `6eea50504573497c8a071f74326be4567cf3359a` — see §12 and
+  `VALIDATION.md`. **The ShelfOS interface localization foundation is also
+  accepted and merged to `main` via PR #15** at commit
+  `7dcfd384167edc8639d74c1757da96c88f84d282` — a cross-cutting foundation, not
+  a numbered Phase 2 increment; see `ROADMAP.md`. **2C's investigation is
+  CLOSED: no production PDF rendering change was found to be justified**
+  (this document's §3 2C section and
+  [`PHASE_2C_IMPLEMENTATION_PLAN.md`](PHASE_2C_IMPLEMENTATION_PLAN.md) §22c,
+  2026-10-01, on `phase-2/pdf-fidelity`); no 2C production code was written or
+  is planned from this investigation. 2D remains planned only; none of its
+  work has started. See `VALIDATION.md`'s
 "Phase 2A.1"/"Phase 2B.1"/"Phase 2B.2"/"Phase 2B.2.1"/"Phase 2B.2.2"
 sections for evidence and explicitly-unclaimed items. This document is the
 canonical Phase 2 planning location referenced by
@@ -83,10 +92,13 @@ pass. 2B.1, 2B.2, 2B.2.1 and 2B.2.2 are accepted and merged (2B.2 via PR #9
 after independent review and RP5 physical acceptance; 2B.2.1 via PR #10
 after three independent-review rounds; 2B.2.2 via PR #11 after R3 remediation
 and final wording cleanup). 2B.3 (EPUB publication search) is accepted and
-ready for PR/merge after final technical review and owner RP5 acceptance. **2B.4
-(managed fonts + ShelfOS reading presentation) is implemented and complete** on
-`phase-2/managed-fonts`; see §12 and `VALIDATION.md`. 2C/2D remain planned only;
-none of their work has started.
+merged to `main` via PR #12 after final technical review and owner RP5
+acceptance. **2B.4 (managed fonts + ShelfOS reading presentation) is accepted
+and merged to `main` via PR #13**; see §12 and `VALIDATION.md`. **2C is in an
+investigation/implementation-planning pass** (see §3 below and
+[`PHASE_2C_IMPLEMENTATION_PLAN.md`](PHASE_2C_IMPLEMENTATION_PLAN.md)); no 2C
+production code exists yet. 2D remains planned only; none of its work has
+started.
 
 ## 3. Increments
 
@@ -2284,11 +2296,11 @@ the new search entry point's reachability, same bar as 2B.2.
 
 #### 2B.3 implementation record (2026-09-28)
 
-**Status:** accepted and ready for PR/merge on `phase-2/epub-search`; final
+**Status:** accepted and merged to `main` via PR #12
+(`f201058bd3000ca7ad4f145e6ae4da81237d01b9`); final
 targeted independent review **PASS WITH NON-BLOCKING FINDINGS**, with no
 R1/R2/R3 findings, followed by owner physical RP5 acceptance on the exact
-reviewed build. It is not merged or pushed, and is not evidence that 2B.4/2C
-has started.
+reviewed build, before merge.
 
 - `EpubSession.search()` consumes the `SearchService` already attached by the
   pinned Readium 3.4.0 EPUB parser. ShelfOS copies each result into a value
@@ -2370,7 +2382,7 @@ D-pad/controller; a known query could be entered; results were navigable; a
 selected result jumped to the correct passage; zero-results behavior was clear;
 Back dismissed Search without leaving the reader; hidden-chrome Back still
 revealed controls before exit; and compact-layout/focus behavior remained sane.
-2B.3 is ready for PR/merge but is not yet merged.
+2B.3 is accepted and merged to `main` via PR #12.
 Unbounded result accumulation remains a non-blocking R4 item for later
 performance closure, with no current failure evidence. The debug-only process-
 global opener remains acceptable for sequential instrumentation and is not
@@ -2433,13 +2445,24 @@ API 35: yes. RP5: not required specifically for font rendering (a rendering-
 fidelity concern more than an input-reachability one), but the picker entry
 point should join the same reachability bar as other Appearance controls.
 
-### 2C — Original PDF hardening and fidelity (planned, not started)
+### 2C — Original PDF hardening and fidelity (investigation/planning active)
 
 Motivated by an unresolved field observation (§5): a New X-Men PDF looked
 blurry on the Galaxy Tab A, especially text, and it is not yet known whether
 the source file, the conversion that produced it, or ShelfOS's own rendering
 caused that. 2C is where this gets an actual controlled investigation and, if
 warranted, a fix — not 2A.
+
+**Status (2026-10-01):** an investigation/implementation-planning pass is
+underway on `phase-2/pdf-fidelity` (base `main` at `7dcfd38`), following the
+same pattern as 2B's own discovery pass. The detailed pipeline audit,
+measurement findings (and honestly-recorded measurement gaps), memory model,
+recommended minimum-viable architecture, implementation slices and
+acceptance matrix are recorded in
+[`PHASE_2C_IMPLEMENTATION_PLAN.md`](PHASE_2C_IMPLEMENTATION_PLAN.md), the
+canonical Phase 2C planning document. No 2C production code exists yet; the
+bullets below are retained as the original discovery-time notes that pass
+expanded on, not a duplicate plan.
 
 - Resolution-aware rendering: `FixedReader.kt`'s `PdfPages.render()` currently
   renders every page at a single fixed `MAX_PAGE_PIXELS = 2048`-longest-edge
@@ -2644,8 +2667,9 @@ exception.
 
 ## 12. Phase 2B.4 implementation record — managed fonts + ShelfOS reading presentation
 
-**Status: implemented and complete** on `phase-2/managed-fonts`
-(`65309ab` → `ed38761` → `93d0aaf`). Final independent QA returned **PASS** with no
+**Status: accepted and merged to `main` via PR #13**
+(`6eea50504573497c8a071f74326be4567cf3359a`, squashing
+`65309ab` → `ed38761` → `93d0aaf`). Final independent QA returned **PASS** with no
 further production changes required. Evidence: `VALIDATION.md`.
 
 **Managed fonts (user-imported TTF/OTF).** A user picks a font through SAF;

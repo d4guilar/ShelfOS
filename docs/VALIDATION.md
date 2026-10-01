@@ -1,5 +1,125 @@
 # Validation
 
+## Phase 2C evidence closure — no production render change justified (2026-10-01)
+
+Status: **Phase 2C investigation CLOSED. DECISION: no production PDF
+rendering change.** Full detail in
+[`PHASE_2C_IMPLEMENTATION_PLAN.md`](PHASE_2C_IMPLEMENTATION_PLAN.md#22c-final-evidence-closure-dense-vector-control-on-rp5-2026-10-01).
+
+- **MEASURED**: a purpose-built, locally generated dense vector/text PDF
+  (same 612x792pt page shape as the New X-Men file, no embedded raster, no
+  source-resolution ceiling) was rendered on the RP5 at the current 2048
+  default (bitmap ≈1582x2048px, a 1.21x upscale versus the ~1920px landscape
+  viewport in Fit Width) and at a computed viewport-sufficient target of
+  ~2485 (bitmap ≈1920x2485px, ~18.2MB vs. 2048's ~12.4MB).
+- **OWNER VISUAL OBSERVATION**: 2048 Fit Width "looks clean"; 2048 vs. 2485
+  Fit Width — **C, effectively the same**; 2048 vs. 2485 Fit Page — **same,
+  no visible difference**.
+- **DECISION**: even with the source-quality confound fully removed, closing
+  the measured Fit Width upscale produced no visible improvement. Combined
+  with the prior live session's finding that raising render resolution was
+  actively harmful on the real-world source-limited PDF, there is no
+  remaining evidence-backed case for any PDF rendering change. Current
+  behavior (`MAX_PAGE_PIXELS = 2048`, no zoom rerender, no cache, no
+  prefetch, CBZ unchanged) is **retained as-is**. No production code was
+  changed in this pass or the two preceding Phase 2C validation passes.
+
+## Phase 2C live visual fidelity validation (2026-10-01)
+
+Status: **Phase 2C live owner visual A/B session — explicitly NOT
+implemented.** Closes the "owner visual observation: not obtained" gap left
+by the discovery pass immediately below. Full detail, with every quote
+tagged MEASURED / OWNER VISUAL OBSERVATION / INFERENCE, is in
+[`PHASE_2C_IMPLEMENTATION_PLAN.md`](PHASE_2C_IMPLEMENTATION_PLAN.md#22b-live-owner-visual-ab-session-on-rp5-2026-10-01).
+
+- The owner sat at the physical RP5 while builds were swapped between a
+  temporarily modified 2048/3072/4096 `MAX_PAGE_PIXELS` (reverted after every
+  comparison; the final diff against the previous commit is docs-only).
+- **New X-Men PDF, Fit Page**: 2048 was reported "a little blurry"; 3072 and
+  4096 looked "effectively the same" as the step before — no improvement.
+- **New X-Men PDF, ~2x zoom**: 3072 and 4096 were reported as **visibly
+  worse** than 2048, not merely unchanged — a materially stronger and more
+  important finding than "no benefit." The owner independently compared two
+  native CBZ comics (no PDF conversion step) from the same era/publisher and
+  described them as looking excellent, consistent with the fidelity problem
+  being specific to the lossy CBR→PDF conversion rather than to ShelfOS's
+  renderer.
+- **New X-Men PDF, Fit Width landscape**: no visible difference between
+  2048/3072/4096, despite a previously measured mathematical under-render at
+  2048 in this mode — the source image's own resolution ceiling appears to
+  mask that gap on this particular file.
+- **Synthetic vector/text PDF fixture**: no visible difference found between
+  2048 and 3072 at Fit Page or at ~2-3x zoom; the fixture is acknowledged as
+  too sparse (one large line of text per page) to be a strong control either
+  way.
+- **Cross-cutting product finding** (outside Phase 2C's own scope): the owner
+  directly compared a CBR-converted-to-PDF volume against a native CBZ
+  volume of the same comic series and found the CBZ version markedly
+  better — concrete, real-world evidence reinforcing the existing product
+  priority on native CBR support as a more effective fix for this class of
+  complaint than any PDF-rendering change.
+- **Revised recommendation**: do not raise the default PDF render target and
+  do not build a zoom-triggered high-detail rerender (2C.2) on this
+  evidence — the observed regression at higher targets on real content is a
+  real risk, not just a missed opportunity. Fit Width's viewport-width-aware
+  sizing remains a narrow, legitimate correctness fix but its real-world
+  benefit is unconfirmed pending a less source-degraded test file. No
+  implementation was accepted or built in this pass.
+
+## Phase 2C discovery / device validation (2026-10-01)
+
+Status: **Phase 2C discovery / device validation — explicitly NOT
+implemented.** This is a measurement/validation pass only; no production
+code changed (`git diff --stat` against the pass's starting commit is
+docs-only). Full detail, including the complete pixel chain and evidence-tag
+breakdown (MEASURED / OWNER VISUAL OBSERVATION / ANALYTICAL / INFERENCE / NOT
+VERIFIED), is in
+[`PHASE_2C_IMPLEMENTATION_PLAN.md`](PHASE_2C_IMPLEMENTATION_PLAN.md#22a-rp5-physical-device-validation-2026-10-01).
+
+- **Hardware**: a physical Retroid Pocket 5 (Android 13, API 33, 1080×1920
+  physical, 360dpi, `isLowRamDevice=false`, 256MB memory class, not the
+  original Galaxy Tab A field-report device).
+- **Controlled comparison**: an owner-provided New X-Men volume 1 CBR/PDF
+  conversion pair (private, never committed to this repository). The CBR's
+  source page images (sampled: ~2100–4000px on the longest edge, JPEG) are
+  downsampled by the CBR→PDF conversion tool to a uniform 584×754px embedded
+  JPEG on every one of the PDF's 186 pages — a >4x longest-edge loss,
+  classified **SEVERE**, that happens entirely upstream of ShelfOS.
+- **Resolution experiment**: real `PdfRenderer` measurements at 2048
+  (current), 3072 and 4096 longest-edge targets against the real converted
+  PDF and against the repository's synthetic vector/text PDF fixture, on the
+  RP5. Bitmap sizes and allocation bytes matched the discovery doc's
+  analytical Letter-page estimates almost exactly. Render time for the
+  real (JPEG-embedding) comic PDF was 20–40x slower than the vector/text
+  fixture at equal targets (tens of ms vs. low single-digit ms).
+- **Key finding**: for this specific converted PDF, ShelfOS's current 2048px
+  budget already renders at roughly 2.7x the embedded image's own native
+  pixel density — raising the budget to 3072 or 4096 cannot recover detail
+  the conversion already discarded, only add memory/time cost. This file's
+  fidelity complaint is **source-limited at the conversion step**, not a
+  ShelfOS rendering defect. A separate, genuine ShelfOS-side gap was also
+  measured: in the RP5's landscape orientation, Fit Width's layout request
+  exceeds the 2048 budget's resulting bitmap *width* (independent of the
+  source PDF's own quality), confirming the discovery doc's analytical
+  concern that a single longest-edge constant does not correctly serve
+  Fit Width.
+- **Memory/timing**: per-bitmap allocation and transient-overlap-during-swap
+  figures were confirmed on real hardware; the RP5's own 256MB memory class
+  and 8GB RAM comfortably absorb even a 4096px target with transient
+  overlap, but the RP5 is not low-RAM and this does not generalize to a
+  low-RAM/budget device.
+- **Owner visual findings**: **NOT OBTAINED.** This pass could not pause for
+  a live, synchronous human visual judgment on the RP5 screen; no visual
+  sharpness comparison is recorded as an owner opinion, and none is inferred
+  from the measured pixel/byte numbers above. Closing this gap requires a
+  live session with the owner at the device.
+- **Final architecture recommendation**: the discovery doc's
+  viewport/fit-mode-aware render-target direction (replacing the flat 2048
+  constant) is confirmed, not contradicted, by this evidence — reframed
+  around Fit Width's measured width requirement rather than "raise the
+  ceiling," since a higher fixed ceiling would not have helped this file. No
+  implementation was accepted or built in this pass.
+
 ## Localization foundation complete (2026-09-30)
 
 The ShelfOS interface localization foundation is **implemented and validated** on
