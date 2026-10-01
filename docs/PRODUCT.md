@@ -481,6 +481,66 @@ Community/custom theme importing and cross-device cloud synchronization are post
 demand-driven features — see [themes](design/THEMES.md) and the local-first section in
 [architecture](ARCHITECTURE.md#local-first-and-optional-future-synchronization).
 
+## 20. Interface language
+
+ShelfOS's interface language is a core, Free product capability, and is independent from
+the language of the publication being read.
+
+Changing the ShelfOS language changes the **application UI only**. It does not translate:
+
+- EPUB or PDF text
+- comic/manga page content
+- publication source content
+- user-written notes
+- titles, creators or imported metadata
+
+No publication-translation feature exists or is planned. Any such capability would have
+to be designed deliberately as its own feature.
+
+### Initial locales
+
+The intended initial official app locales are:
+
+- System default (the default behavior)
+- English
+- Español
+
+System default follows the Android system language. When the user explicitly chooses
+English or Español, ShelfOS respects that choice independently of the system language.
+No further launch languages are added in this pass.
+
+### Language setting
+
+Conceptually `Settings → General → Language`, offering System default / English /
+Español, following the existing Settings information architecture. Settings is not
+redesigned to fit this requirement.
+
+### What must be localizable
+
+ShelfOS-owned UI strings are localization-ready, including navigation (Library, Search,
+Notes, Shelves, Settings), category labels (Favorites, Books, Comics, Manga,
+Documents), actions and buttons, dialogs, onboarding, errors, empty states,
+accessibility labels and content descriptions, settings descriptions, system messages,
+pluralized strings, and locale-aware formatting of dates, numbers, percentages and file
+sizes where applicable. Theme-owned ShelfOS UI copy resolves through the same
+localization system.
+
+### What localization never covers
+
+Three concepts stay separate, and changing one must never silently change another:
+
+- **App language** — the ShelfOS interface language
+- **Reading Presentation** — font, size, line height, margins, palette and the
+  Publisher/ShelfOS presentation choice
+- **Publication language** — the language of the source content
+
+Imported publication metadata remains source/user data. ShelfOS does not translate
+titles, creator names, descriptions, Series names, Shelf names, tags or user notes.
+Locale-aware *formatting* is not content translation.
+
+Future right-to-left and additional locales are a compatibility consideration, not a
+launch promise.
+
 ## Metadata as part of the library experience
 
 ShelfOS should enrich local files into recognizable publications when possible.

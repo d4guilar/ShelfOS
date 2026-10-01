@@ -1,5 +1,46 @@
 # Documentation Changelog
 
+## Interface localization direction + merge of latest main (2026-09-30)
+
+- Merged `origin/main` (`6eea505`, Phase 2B.4 managed fonts and reading presentation)
+  into `docs/theme-lineup` as merge commit `a85a9cd`, preserving the completed Phase
+  2B.4 reader documentation (plan §12/§13, validation record, roadmap sequencing,
+  managed-font architecture, source immutability, fallback) **and** the existing
+  product/theme/supporter/community/cloud decisions. The only merge conflict was this
+  changelog; it was resolved by keeping all three entries (2B.4 first, then the
+  supporter-model and theme-lineup entries). No "ours"/"theirs" shortcut was used and no
+  shared history was rewritten.
+- Recorded the ShelfOS UI localization decision as a core, free requirement in
+  `docs/PRODUCT.md` §20: the interface language is independent from publication
+  language, and changing it never translates EPUB/PDF text, comic pages, publication
+  content, user notes, titles, creators or imported metadata.
+- Documented the intended initial official app locales — System default, English,
+  Español — with an explicit choice honored independently of the Android system
+  language, and the conceptual `Settings → General → Language` location without
+  redesigning Settings.
+- Added the localization resource boundary in `docs/ARCHITECTURE.md`: UI strings in
+  Android string resources (never hard-coded, never in domain/data models),
+  locale-aware formatting, localizable accessibility labels, no translation or
+  language-detection ingestion/analysis, and Reading Presentation kept independent of
+  app language, with right-to-left/future-locale compatibility framed as design
+  discipline rather than a launch commitment.
+- Recorded the theme-side requirement in `docs/design/THEMES.md`: theme-owned ShelfOS
+  copy resolves through the app's localization resources, themes may style localized
+  text but must not ship their own translation mechanism, and reference-theme
+  terminology is not translated content.
+- Added interface localization to the free/core baseline in `docs/features/PREMIUM.md`
+  (explicitly never a Plus feature) and added localization guardrails for agents in
+  `AGENTS.md`.
+- Placed the near-term localization foundation in `docs/ROADMAP.md` as an explicitly
+  labeled cross-cutting pre-launch requirement, without inventing a new numbered phase
+  and without moving Phase 2C or any other phase.
+- Reconciled `docs/COMPETITIVE_FEATURES.md`, which previously listed "translation" under
+  adopted ideas and could have implied a planned publication-translation feature; it now
+  states that publication-content translation is not planned and points to the interface
+  localization decision.
+- Documentation only: no production code, test, dependency, Room/schema or Gradle
+  change, and no localization implementation.
+
 ## Phase 2B.4 documentation reconciliation (2026-09-30)
 
 - Reconciled documentation with the completed Phase 2B.4 implementation on

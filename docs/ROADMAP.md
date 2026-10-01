@@ -462,6 +462,32 @@ No PlayStation trademark, logo, button iconography, boot audio, copyrighted visu
 
 ---
 
+## Localization foundation — near-term core requirement (pre-launch)
+
+Not a new numbered phase: this is a cross-cutting foundation that should be established
+before substantial future UI expansion makes hard-coded strings expensive to retrofit,
+and before release. It does not move Phase 2C or any other phase.
+
+### Scope
+
+- ShelfOS-owned UI strings move to Android string resources; no hard-coded user-facing
+  copy in UI, domain or data layers
+- locale-aware formatting for dates, numbers, percentages, plurals and file sizes
+- localizable accessibility labels and content descriptions
+- a language preference with System default / English / Español that changes only
+  ShelfOS-owned UI text
+- theme-owned ShelfOS copy resolving through the same resources
+
+### Done when
+
+The interface runs in English and Español with no hard-coded English strings, and
+changing the app language changes only ShelfOS-owned UI text — never publication
+content or imported metadata.
+
+See [`PRODUCT.md`](PRODUCT.md#20-interface-language) and [`ARCHITECTURE.md`](ARCHITECTURE.md#localization-architecture).
+
+---
+
 ## Phase 9 — Google Play Release
 
 ### Deliverables

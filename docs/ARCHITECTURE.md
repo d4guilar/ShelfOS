@@ -788,6 +788,30 @@ Do not add ahead of demand: sync tables, sync timestamps everywhere, tombstones
 everywhere, operation journals, encryption infrastructure, network providers, unused
 provider abstractions, cloud APIs, authentication, billing or sync services.
 
+## Localization architecture
+
+Interface language is a presentation/resource concern owned by the UI layer.
+
+- User-facing copy lives in Android string resources — the platform localization
+  mechanism — not hard-coded at call sites and not stored in domain or data models.
+- Dates, numbers, percentages, plural quantities and file sizes use locale-aware
+  formatting instead of assembled strings.
+- Accessibility labels and content descriptions are localizable resources too.
+- No localization, translation or language-detection step is applied to imported
+  publication data. Metadata, Series, Shelves, tags and notes are user/source data and
+  are never rewritten. No translation ingestion or analysis exists.
+- Reading Presentation (font, size, spacing, palette, Publisher/ShelfOS presentation) is
+  independent of app language and stays a presentation preference rather than
+  translated content.
+- Theme-owned ShelfOS copy resolves through the same application localization
+  resources. A theme may style localized text, but it must not ship a separate
+  translation mechanism, and reference-theme terminology is not translated content.
+- Language selection is a preference (System default / English / Español) and, when
+  explicitly set, is honored independently of the Android system language.
+- Design discipline for future locales: no architecture may assume English-only UI text,
+  fixed left-to-right ordering, or locale-specific formatting. Right-to-left support and
+  additional locales are future compatibility, not a launch commitment.
+
 ## Metadata enrichment architecture
 
 Metadata enrichment is a first-class data-layer concern.

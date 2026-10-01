@@ -40,6 +40,7 @@ Free includes:
 - metadata editing, Favorites, Series, Shelves, sorting and filtering
 - Gallery / Grid / List library views
 - accessibility, performance, reliability and bug-fix work
+- interface localization (app UI languages) — free/core, never a Plus feature
 - the five official free themes — Classic, Dark, Pear Platinum, Pear Platinum Dark,
   Deckle — with their standard curated accents
 - keyboard, gamepad, offline reading, no ads

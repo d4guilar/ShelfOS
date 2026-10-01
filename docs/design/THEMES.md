@@ -470,6 +470,17 @@ status section above.
 A theme should be data/configuration-driven where possible.
 
 Theme-specific custom components or layouts are allowed only when the experience genuinely requires them, and they must still conform to shared navigation/accessibility semantics.
+## Theme localization
+
+Themes must not assume English-only ShelfOS UI copy. Any ShelfOS-owned copy a theme
+displays — for example Terminal's `READY` and system-status labels and boot-sequence
+strings, Pagestation's theme labels and startup/effect settings, or Deckle and Pear
+theme supporting copy — resolves through the same application localization resources as
+the rest of ShelfOS.
+
+A theme may style localized text, but it must not own a separate translation mechanism,
+and reference-theme terminology is not translated content.
+
 ## Structural invariants
 
 Themes are presentation layers over the ShelfOS product structure.

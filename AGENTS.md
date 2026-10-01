@@ -172,6 +172,22 @@ Do not invent additional visual systems merely because the mock does not show a 
 - Do not upload full publications for metadata lookup.
 
 
+## Localization rules for agents
+
+- Never hard-code user-facing UI strings. Put them in Android string resources.
+- Keep UI copy out of domain and data models; presentation text is a UI concern.
+- Use locale-aware formatting for dates, numbers, percentages, plurals and file sizes.
+- Never translate, rewrite, or "helpfully localize" publication content, imported
+  metadata, titles, creators, Series, Shelves, tags or user notes.
+- Interface language, Reading Presentation and publication language are separate
+  concerns; changing one must not silently change the others.
+- Interface localization is free/core. It is never a ShelfOS Plus feature.
+- Theme-owned ShelfOS copy uses the app's localization resources; a theme must not ship
+  its own translation mechanism.
+- Preserve right-to-left and future-locale compatibility as design discipline, but do not
+  claim RTL support is implemented or committed. No publication-translation feature
+  exists or is planned.
+
 ## Open-source and release rules
 
 Read:
