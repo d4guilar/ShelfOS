@@ -52,14 +52,16 @@ data class ReaderPreferences(
             FitMode.PAGE, presentationMode = PresentationMode.SHELFOS)
         fun parse(json: String?): ReaderPreferences = try {
             val obj = JSONObject(json ?: "{}")
+            val font = BookFont.entries.find { it.name == obj.optString("font") }
+            val fontFamilyId = backfillLegacyFontFamilyId(font, obj.optString("fontFamilyId").takeIf { it.isNotBlank() })
             ReaderPreferences(
-                BookFont.entries.find { it.name == obj.optString("font") },
+                font,
                 obj.number("fontSize")?.coerceIn(.7, 2.5), obj.number("lineHeight")?.coerceIn(1.0, 2.5),
                 obj.number("margins")?.coerceIn(0.0, 3.0), obj.boolean("justified"), obj.boolean("scroll"),
                 PagePalette.entries.find { it.name == obj.optString("palette") },
                 ReadingDirection.entries.find { it.name == obj.optString("direction") },
                 FitMode.entries.find { it.name == obj.optString("fit") },
-                obj.optString("fontFamilyId").takeIf { it.isNotBlank() },
+                fontFamilyId,
                 PresentationMode.entries.find { it.name == obj.optString("presentationMode") })
         } catch (_: Exception) { ReaderPreferences() }
         private fun JSONObject.number(key: String) = if (has(key)) optDouble(key).takeIf { it.isFinite() } else null

@@ -39,6 +39,26 @@ class ReadingPolicyTest {
         assertEquals(BUILTIN_SANS_FONT_ID, ReaderPreferences(font = BookFont.SANS).effectiveFontFamilyId())
         assertEquals("user:chosen", ReaderPreferences(font = BookFont.SANS, fontFamilyId = "user:chosen").effectiveFontFamilyId())
     }
+    /** Codex QA M1: a legacy per-title layer that only ever stored `font` (no `fontFamilyId`, saved before Phase
+     * 2B.4) must keep its own title-specific font choice even once a newer global managed-font choice exists —
+     * the global choice must not silently win just because the title layer's `fontFamilyId` was never populated.
+     * `backfillLegacyFontFamilyId` (called from `ReaderPreferences.parse`, per layer, before merging) is what
+     * fixes this; the full `.json()`/`.parse()` round-trip through `org.json.JSONObject` cannot be exercised in a
+     * plain JVM test in this project (no Robolectric — see every other JSON-boundary split here), so the
+     * end-to-end proof lives in `EpubManagedFontAppearanceTest` (instrumented) instead. This test proves the pure
+     * logic directly: a backfilled title layer's `fontFamilyId` wins over the merge, exactly as a real parsed
+     * legacy title would. */
+    @Test fun legacyTitleFontTakesPrecedenceOverANewerGlobalManagedFont() {
+        assertEquals(BUILTIN_SANS_FONT_ID, backfillLegacyFontFamilyId(BookFont.SANS, null))
+        assertEquals(BUILTIN_SERIF_FONT_ID, backfillLegacyFontFamilyId(BookFont.SERIF, null))
+        assertEquals("user:explicit", backfillLegacyFontFamilyId(BookFont.SANS, "user:explicit"))
+        assertNull(backfillLegacyFontFamilyId(null, null))
+
+        val legacyTitle = ReaderPreferences(font = BookFont.SANS, fontFamilyId = backfillLegacyFontFamilyId(BookFont.SANS, null))
+        val newerGlobal = ReaderPreferences(fontFamilyId = "user:chosen")
+        val resolved = resolveReaderPreferences(legacyTitle, newerGlobal)
+        assertEquals(BUILTIN_SANS_FONT_ID, resolved.effectiveFontFamilyId())
+    }
     @Test fun naturalPageOrderHandlesLongNumbersAndLeadingZeros() {
         val names = listOf("10.jpg", "2.jpg", "1.jpg", "999999999999999999999999.jpg", "02.jpg")
         assertEquals(listOf("1.jpg", "02.jpg", "2.jpg", "10.jpg", "999999999999999999999999.jpg"), names.sortedWith(::naturalCompare))

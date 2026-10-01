@@ -21,16 +21,28 @@ class ManagedFontPolicyTest {
         } finally { ttf.delete(); otf.delete() }
     }
 
-    @Test fun rejectsTruncatedCorruptCollectionAndExtensionMismatch() {
+    /** Codex QA M2: the sfnt signature identifies the *outline* format, not the file extension — a real .otf can
+     * contain TrueType outlines (0x00010000) and a real .ttf can contain CFF/PostScript outlines ('OTTO'), both
+     * valid in the actual OpenType ecosystem. `validateSfnt` must accept these cross-combinations rather than
+     * rejecting a structurally valid font for not matching an assumed extension-to-outline mapping, while the
+     * stored format still reflects the file's own (already-allowlisted) extension. */
+    @Test fun acceptsValidCrossSignatureExtensionCombinations() {
+        val otfWithTrueTypeOutlines = fontFile(0x00010000)
+        val ttfWithCffOutlines = fontFile(0x4F54544F)
+        try {
+            assertEquals(ManagedFontFormat.OTF, ManagedFontRepository.validateSfnt(otfWithTrueTypeOutlines, "Reading Serif.otf"))
+            assertEquals(ManagedFontFormat.TTF, ManagedFontRepository.validateSfnt(ttfWithCffOutlines, "Reading Serif.ttf"))
+        } finally { otfWithTrueTypeOutlines.delete(); ttfWithCffOutlines.delete() }
+    }
+
+    @Test fun rejectsTruncatedCorruptCollectionAndUnsupportedExtension() {
         val truncated = createTempFile(suffix = ".ttf").toFile().apply { writeBytes(byteArrayOf(0, 1, 0, 0)) }
         val collection = fontFile(0x74746366)
-        val ttf = fontFile(0x00010000)
         try {
             assertThrows(FontImportException::class.java) { ManagedFontRepository.validateSfnt(truncated, "bad.ttf") }
             assertThrows(FontImportException::class.java) { ManagedFontRepository.validateSfnt(collection, "collection.ttf") }
-            assertThrows(FontImportException::class.java) { ManagedFontRepository.validateSfnt(ttf, "disguised.otf") }
             assertThrows(FontImportException::class.java) { ManagedFontRepository.checkFontExtension("font.woff2") }
-        } finally { truncated.delete(); collection.delete(); ttf.delete() }
+        } finally { truncated.delete(); collection.delete() }
     }
 
     @Test fun idsAndNamesCannotEscapeTheReservedNamespace() {

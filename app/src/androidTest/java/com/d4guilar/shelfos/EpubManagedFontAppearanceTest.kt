@@ -61,12 +61,23 @@ class EpubManagedFontAppearanceTest {
         }
 
         runBlocking { container.fonts.remove(requireNotNull(familyId)) }
-        ActivityScenario.launch<EpubActivity>(EpubActivity.intent(context, "test-epub")).use {
+        ActivityScenario.launch<EpubActivity>(EpubActivity.intent(context, "test-epub")).use { scenario ->
             awaitReader()
+            val removedFamilyId = requireNotNull(familyId)
+            val storedPreferences = runBlocking {
+                ReaderPreferences.parse(container.library.publication("test-epub").first()?.preferences)
+            }
+            // The stored preference still points at the removed font — it is not silently rewritten — but
+            // rendering must fall back to a safe built-in family rather than failing to resolve a CSS family that
+            // no longer exists. "Serif" always being a listed chip proves nothing about this; check the actual
+            // resolved rendering family instead.
+            assertEquals(removedFamilyId, storedPreferences.fontFamilyId)
+            val item = requireNotNull(runBlocking { container.library.publication("test-epub").first() })
+            runBlocking { container.epubs.open(item) }.use { session ->
+                val resolved = session.preferences(storedPreferences, false, item.category)
+                assertEquals("serif", resolved.fontFamily?.name)
+            }
             compose.onNodeWithText("Appearance").performClick()
-            assertEquals(familyId, runBlocking {
-                ReaderPreferences.parse(container.library.publication("test-epub").first()?.preferences).fontFamilyId
-            })
             compose.onNodeWithText("Serif").assertExists()
         }
         familyId = null

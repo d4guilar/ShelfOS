@@ -247,14 +247,23 @@ class ManagedFontRepository(
             if (file.length() < 28) throw FontImportException("That font is truncated or damaged.")
             RandomAccessFile(file, "r").use { data ->
                 val signature = data.readInt()
+                // Codex QA M2: the sfnt signature identifies the *outline* format (TrueType glyphs vs. CFF/
+                // PostScript glyphs), which is independent of the file's own extension — a real .otf can contain
+                // TrueType outlines (0x00010000) and a real .ttf can contain CFF outlines ('OTTO'), both valid in
+                // the actual OpenType ecosystem. The file's claimed extension was already restricted to .ttf/.otf
+                // by checkFontExtension before this ever runs, so it is not re-validated against the detected
+                // outline signature here — only used, as before, to name the stored face file. Every structural
+                // check below (table-directory bounds, required tables) still fully applies regardless of which
+                // outline format was detected.
                 val format = when (signature) {
-                    0x00010000, 0x74727565 -> ManagedFontFormat.TTF
-                    0x4F54544F -> ManagedFontFormat.OTF
+                    // checkFontExtension already restricted sourceName to .ttf/.otf before this ever runs; the
+                    // stored face file simply keeps that same, already-validated extension rather than one
+                    // re-derived from (and potentially disagreeing with) the detected outline signature.
+                    0x00010000, 0x74727565, 0x4F54544F ->
+                        if (sourceName.substringAfterLast('.', "").lowercase() == "otf") ManagedFontFormat.OTF else ManagedFontFormat.TTF
                     0x74746366 -> throw FontImportException("Font collections (.ttc) are not supported yet.")
                     else -> throw FontImportException("That file is not a supported TrueType or OpenType font.")
                 }
-                if (sourceName.substringAfterLast('.', "").lowercase() != format.extension)
-                    throw FontImportException("The font extension does not match its contents.")
                 val tableCount = data.readUnsignedShort()
                 if (tableCount !in 1..256 || 12L + tableCount * 16L > data.length())
                     throw FontImportException("That font is truncated or damaged.")
@@ -292,3 +301,17 @@ fun ReaderPreferences.effectiveFontFamilyId(): String = fontFamilyId ?: when (fo
     BookFont.SANS -> BUILTIN_SANS_FONT_ID
     else -> BUILTIN_SERIF_FONT_ID
 }
+
+/**
+ * Codex QA M1: called from [ReaderPreferences.parse], per layer, before title/global merging — not from
+ * [effectiveFontFamilyId]. A legacy layer (e.g. a title saved before Phase 2B.4) can have [font] set with no
+ * [storedFontFamilyId]; if left null here, [ReaderPreferences.over] would let a *global* `fontFamilyId` (e.g. a
+ * later-chosen managed font) silently win over this layer's own legacy choice once the layers are merged, since
+ * by then there is no way to tell "this layer never set a font" apart from "this layer explicitly wants whatever
+ * font wins elsewhere." Populating the matching built-in logical ID right here keeps this layer self-consistent
+ * and title-specific precedence intact — this runs on every parse, not a one-time stored rewrite, so no Room
+ * migration is needed. Pure so it is directly unit-testable without `org.json.JSONObject`, mirroring every other
+ * JSON-boundary split in this project (`EpubBookmarkLocation`, `toEpubPositions`, etc.).
+ */
+internal fun backfillLegacyFontFamilyId(font: BookFont?, storedFontFamilyId: String?): String? =
+    storedFontFamilyId ?: font?.let { if (it == BookFont.SANS) BUILTIN_SANS_FONT_ID else BUILTIN_SERIF_FONT_ID }

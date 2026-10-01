@@ -43,13 +43,17 @@ data class EpubManagedFontResource(val familyId: String, val displayName: String
 }
 
 /**
- * Exposes private font files through publication-local URLs. A fresh [FileResource] is returned for every
- * request because Readium's WebView server can request the same face concurrently from multiple spine views,
- * while [FileResource] owns a seekable file handle and is therefore not safe to share between those reads.
+ * Exposes private font files through publication-local URLs. Resolved *live* from [liveResources] on every call,
+ * not a snapshot frozen at container-construction time: `EpubReaderViewModel` survives `Activity.recreate()` (a
+ * ViewModel is retained across configuration changes by design), so the same `Publication`/container instance
+ * stays alive across a font import that happens while the reader is already open — a frozen snapshot would never
+ * see a font imported after the session was first opened (Codex QA H2). A fresh [FileResource] is returned for
+ * every request because Readium's WebView server can request the same face concurrently from multiple spine
+ * views, while [FileResource] owns a seekable file handle and is therefore not safe to share between those reads.
  */
-private class ManagedFontContainer(private val resources: Map<Url, File>) : Container<Resource> {
-    override val entries: Set<Url> = resources.keys
-    override fun get(url: Url): Resource? = resources[url]?.let(::FileResource)
+private class ManagedFontContainer(private val liveResources: () -> Map<Url, File>) : Container<Resource> {
+    override val entries: Set<Url> get() = liveResources().keys
+    override fun get(url: Url): Resource? = liveResources()[url]?.let(::FileResource)
     override fun close() = Unit
 }
 
@@ -58,6 +62,11 @@ internal fun safeFontResourceId(id: String): String {
     require(!id.contains("..") && '/' !in id && '\\' !in id) { "Invalid font family id" }
     return id.replace(':', '-')
 }
+
+/** The subset of [raw] that is currently safe and usable as a managed font resource — shared by
+ * [ManagedFontContainer] and [EpubSession] so both agree on exactly which fonts are servable at any given moment. */
+private fun resolveLiveFonts(raw: List<EpubManagedFontResource>): List<EpubManagedFontResource> =
+    raw.filter { it.file.isFile && it.file.canRead() }.filter { runCatching { safeFontResourceId(it.familyId) }.isSuccess }
 
 class EpubReaderFactory(private val context: Context, private val files: PublicationFiles,
     private val managedFonts: () -> List<EpubManagedFontResource> = { emptyList() }) {
@@ -81,9 +90,12 @@ class EpubReaderFactory(private val context: Context, private val files: Publica
         val asset = AssetRetriever(context.contentResolver, offlineClient).retrieve(url)
             .getOrElse { throw PublicationException(PublicationProblem.UNREADABLE) }
         try {
-            val fonts = managedFonts().filter { it.file.isFile && it.file.canRead() }.mapNotNull { font ->
-                runCatching { safeFontResourceId(font.familyId); font }.getOrNull()
-            }
+            // Resolved live, not snapshotted here: the ViewModel (and this EpubSession) can survive an
+            // Activity.recreate() triggered by importing a font while the reader is already open, so both the
+            // navigator's font-face declarations (EpubSession.fragmentFactory) and this container's resource
+            // lookup must keep consulting the catalog as it is *now*, not as it was at this one open() call.
+            fun liveFontMap(): Map<Url, File> = resolveLiveFonts(managedFonts())
+                .mapNotNull { font -> Url(font.servedUrl)?.let { it to font.file } }.toMap()
             val publication = PublicationOpener(EpubParser(offlineClient)).open(asset, allowUserInteraction = false,
                 onCreatePublication = {
                 val publicationContainer = TransformingContainer(container) { resourceUrl, resource ->
@@ -91,8 +103,7 @@ class EpubReaderFactory(private val context: Context, private val files: Publica
                         TransformingResource(resource) { data -> Try.success(sanitizeEpubHtml(data)) }
                     else resource
                 }
-                val fontResources = fonts.mapNotNull { font -> Url(font.servedUrl)?.let { it to font.file } }.toMap()
-                container = CompositeContainer(listOf(ManagedFontContainer(fontResources), publicationContainer))
+                container = CompositeContainer(listOf(ManagedFontContainer(::liveFontMap), publicationContainer))
             }).getOrElse { error ->
                 throw if (error is PublicationOpener.OpenError.FormatNotSupported) PublicationException(PublicationProblem.CORRUPT, "This EPUB is invalid or unsupported.")
                 else PublicationException(PublicationProblem.UNREADABLE)
@@ -105,7 +116,7 @@ class EpubReaderFactory(private val context: Context, private val files: Publica
                 publication.close()
                 throw PublicationException(PublicationProblem.UNSUPPORTED_LAYOUT)
             }
-            EpubSession(publication, fonts)
+            EpubSession(publication, managedFonts)
         } catch (error: Throwable) { asset.close(); throw error }
     }
 }
@@ -140,8 +151,15 @@ internal fun sanitizeEpubHtml(bytes: ByteArray): ByteArray {
 data class EpubChapter(val id: Int, val title: String, val href: String, val depth: Int, val resource: String, val fragment: String?)
 
 class EpubSession internal constructor(internal val publication: Publication,
-    private val managedFonts: List<EpubManagedFontResource> = emptyList()) : AutoCloseable {
-    internal fun managedFontCssFamily(id: String): String? = managedFonts.find { it.familyId == id }?.cssFamily
+    private val managedFontsSupplier: () -> List<EpubManagedFontResource> = { emptyList() }) : AutoCloseable {
+    /**
+     * Resolved fresh on every call rather than cached from construction time: `EpubReaderViewModel` (and this
+     * session with it) survives `Activity.recreate()`, so a font imported while the reader is already open must
+     * become visible here without needing to leave and reopen the publication (Codex QA H2). Cheap enough to call
+     * on every lookup — just filtering/validating [EpubManagedFontResource]s the factory already holds in memory.
+     */
+    private fun liveManagedFonts(): List<EpubManagedFontResource> = resolveLiveFonts(managedFontsSupplier())
+    internal fun managedFontCssFamily(id: String): String? = liveManagedFonts().find { it.familyId == id }?.cssFamily
     internal fun hasResource(url: String): Boolean = Url(url)?.let { publication.get(it) } != null
     val chapters: List<EpubChapter> = buildList {
         fun addLinks(links: List<Link>, depth: Int = 0) { links.forEach { link ->
@@ -158,14 +176,26 @@ class EpubSession internal constructor(internal val publication: Publication,
         } }
         addLinks(publication.tableOfContents.ifEmpty { publication.readingOrder })
     }
+    /**
+     * Codex QA H1: a `@font-face` declaration is only usable by the WebView if it existed when *this* navigator's
+     * `EpubNavigatorFragment.Configuration` was built — `submitPreferences` later can change which `font-family`
+     * the CSS asks for, but it cannot add a new `@font-face` to an already-built configuration. Declaring every
+     * managed font available to this session up front (not only the one selected right now) means a later live
+     * switch to a *different*, already-registered managed font actually resolves, instead of silently falling
+     * back because its face was never declared. Only the font selected at this exact moment gets `preload = true`
+     * (an eager-fetch hint); every other declared face stays lazy — the browser does not fetch an `@font-face`'s
+     * source at all until something actually renders with that `font-family`, so declaring the rest without
+     * preload does not load them, it only makes them *selectable* without a navigator rebuild.
+     */
     fun fragmentFactory(locator: String?, preferences: ReaderPreferences, dark: Boolean, category: MediaCategory): FragmentFactory {
-        val selectedFont = managedFonts.find { it.familyId == preferences.effectiveFontFamilyId() }
+        val fonts = liveManagedFonts()
+        val selectedFamilyId = preferences.effectiveFontFamilyId()
         val configuration = EpubNavigatorFragment.Configuration {
             shouldApplyInsetsPadding = false
-            selectedFont?.let { font ->
+            fonts.forEach { font ->
                 addFontFamilyDeclaration(FontFamily(font.cssFamily), listOf(FontFamily.SERIF)) {
                     addFontFace {
-                        addSource(requireNotNull(Url(font.servedUrl)), preload = true)
+                        addSource(requireNotNull(Url(font.servedUrl)), preload = font.familyId == selectedFamilyId)
                         setFontStyle(FontStyle.NORMAL)
                         setFontWeight(FontWeight.NORMAL)
                     }
@@ -178,9 +208,10 @@ class EpubSession internal constructor(internal val publication: Publication,
             configuration = configuration,
         )
     }
-    /** Resolves ShelfOS's logical family to this session's registered renderer resource, with built-in fallback. */
+    /** Resolves ShelfOS's logical family to this session's registered renderer resource, with built-in fallback.
+     * Live, not cached — see [liveManagedFonts]. */
     fun preferences(value: ReaderPreferences, dark: Boolean, category: MediaCategory): EpubPreferences =
-        epubPreferences(value, dark, category, managedFonts.find { it.familyId == value.effectiveFontFamilyId() }?.cssFamily)
+        epubPreferences(value, dark, category, liveManagedFonts().find { it.familyId == value.effectiveFontFamilyId() }?.cssFamily)
     fun chapter(href: String): Link? {
         fun find(links: List<Link>): Link? = links.firstNotNullOfOrNull { if (it.href.toString() == href) it else find(it.children) }
         return find(publication.tableOfContents) ?: find(publication.readingOrder)

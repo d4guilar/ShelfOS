@@ -19,6 +19,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import org.json.JSONTokener
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -33,6 +34,15 @@ class EpubManagedFontProofTest {
     private val context get() = instrumentation.targetContext
     private val container get() = (context.applicationContext as ShelfApplication).container
     private val managedFont get() = File(context.filesDir, EpubManagedFontProofActivity.PROOF_FONT_PATH)
+
+    /** Codex QA cleanup: this test adds a fixed-id library item and writes a proof font file outside the test's
+     * own ManagedFontRepository root (directly under this app's real filesDir, since it exercises the real,
+     * production-wired EpubManagedFontProofActivity) — both must be removed so a repeated run starts clean rather
+     * than hitting a stale library row or a leftover file from an interrupted previous run. */
+    @After fun clean() = runBlocking<Unit> {
+        container.library.remove("test-epub-chapters")
+        managedFont.parentFile?.deleteRecursively()
+    }
 
     @Test fun runtimeManagedFontLoadsFallsBackSafelyAndSurvivesRecreation() = runBlocking {
         val item = OriginalFixtures.epubWithChapters(context).copy(

@@ -32,11 +32,18 @@ class ManagedFontRepositoryTest {
         val restarted = ManagedFontRepository(context, root)
         assertEquals(family.id, restarted.families.value.last().id)
         val beforeReplacement = managed.readBytes()
-        val replacement = FileInputStream("/system/fonts/DancingScript-Regular.ttf").use {
+        // Codex QA cleanup: distinct, genuinely different valid font content — not the same file re-imported —
+        // so this actually proves replacement happened, rather than trivially matching byte-identical content
+        // regardless of whether replace() did anything at all.
+        val replacementBytes = File("/system/fonts/DroidSans.ttf").readBytes()
+        assertFalse("Test fixture sanity: the two source fonts must differ", beforeReplacement.contentEquals(replacementBytes))
+        val replacement = FileInputStream("/system/fonts/DroidSans.ttf").use {
             restarted.replace(family.id, it, "Replacement.ttf")
         }
         assertEquals(family.id, replacement.id)
-        assertArrayEquals(beforeReplacement, restarted.epubResources().single().file.readBytes())
+        val afterReplacement = restarted.epubResources().single().file.readBytes()
+        assertArrayEquals(replacementBytes, afterReplacement)
+        assertFalse("Replacement should have actually changed the stored bytes", beforeReplacement.contentEquals(afterReplacement))
         assertFalse(root.listFiles().orEmpty().any { it.name.startsWith('.') })
 
         assertThrows(FontImportException::class.java) {
