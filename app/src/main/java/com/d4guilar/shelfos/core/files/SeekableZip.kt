@@ -2,6 +2,7 @@
 package com.d4guilar.shelfos.core.files
 
 import com.d4guilar.shelfos.domain.library.PublicationException
+import com.d4guilar.shelfos.domain.library.PublicationExceptionDetail
 import com.d4guilar.shelfos.domain.library.PublicationProblem
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
@@ -41,7 +42,7 @@ class SeekableZip private constructor(private val channel: FileChannel, val entr
         return when (entry.method) {
             STORED -> raw
             DEFLATED -> EntryInflaterStream(raw)
-            else -> throw PublicationException(PublicationProblem.UNSUPPORTED_FORMAT, "The archive uses an unsupported compression method.")
+            else -> throw PublicationException(PublicationProblem.UNSUPPORTED_FORMAT, PublicationExceptionDetail.UNSUPPORTED_COMPRESSION_METHOD)
         }
     }
 
@@ -105,7 +106,7 @@ class SeekableZip private constructor(private val channel: FileChannel, val entr
             val (count, directorySize, directoryOffset) = (tailLength - END_SIZE downTo 0).asSequence()
                 .filter { tail.int(it) == END_SIGNATURE }
                 .firstNotNullOfOrNull { endRecord(channel, tail, it, size - tailLength + it) } ?: throw corrupt()
-            if (count > maxEntries) throw PublicationException(PublicationProblem.TOO_LARGE, "The archive has too many entries.")
+            if (count > maxEntries) throw PublicationException(PublicationProblem.TOO_LARGE, PublicationExceptionDetail.TOO_MANY_ENTRIES)
             if (directorySize > MAX_DIRECTORY_BYTES) throw corrupt()
             val directory = readFully(channel, directoryOffset, directorySize.toInt())
             val entries = ArrayList<Entry>(count.toInt())
@@ -188,7 +189,7 @@ class SeekableZip private constructor(private val channel: FileChannel, val entr
             return bytes
         }
 
-        private fun corrupt() = PublicationException(PublicationProblem.CORRUPT, "This archive is damaged or incomplete.")
+        private fun corrupt() = PublicationException(PublicationProblem.CORRUPT, PublicationExceptionDetail.ARCHIVE_DAMAGED_OR_INCOMPLETE)
         private fun ByteArray.short(i: Int) = (this[i].toInt() and 0xff) or ((this[i + 1].toInt() and 0xff) shl 8)
         private fun ByteArray.int(i: Int) = short(i) or (short(i + 2) shl 16)
         private fun ByteArray.uint(i: Int) = int(i).toLong() and MASK_32

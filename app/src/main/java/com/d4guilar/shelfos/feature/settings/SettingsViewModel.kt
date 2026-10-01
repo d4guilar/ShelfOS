@@ -3,9 +3,13 @@ package com.d4guilar.shelfos.feature.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.d4guilar.shelfos.R
+import com.d4guilar.shelfos.core.designsystem.UiMessage
 import com.d4guilar.shelfos.core.files.PrivateCopyUsage
+import com.d4guilar.shelfos.core.localization.AppLanguage
 import com.d4guilar.shelfos.core.theme.ThemeId
 import com.d4guilar.shelfos.data.library.PrivateCopyStore
+import com.d4guilar.shelfos.data.preferences.AppLanguageRepository
 import com.d4guilar.shelfos.data.preferences.ThemeRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,15 +19,19 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class SettingsViewModel(private val repository: ThemeRepository, private val copies: PrivateCopyStore? = null) : ViewModel() {
-    private val _error = MutableStateFlow<String?>(null)
+class SettingsViewModel(private val repository: ThemeRepository, private val copies: PrivateCopyStore? = null,
+    private val languages: AppLanguageRepository? = null) : ViewModel() {
+    private val _error = MutableStateFlow<UiMessage?>(null)
     val error = _error.asStateFlow()
+    val language = languages?.language ?: MutableStateFlow(AppLanguage.SYSTEM_DEFAULT).asStateFlow()
+
+    fun selectLanguage(language: AppLanguage) { languages?.select(language) }
     private val _unusedCopies = MutableStateFlow<PrivateCopyUsage?>(null)
     /** Private copies no library item references; null until measured. */
     val unusedCopies = _unusedCopies.asStateFlow()
     val theme = repository.theme.catch { failure ->
         if (failure is CancellationException) throw failure
-        _error.value = "Your saved appearance could not be loaded."
+        _error.value = UiMessage.Resource(R.string.settings_error_appearance_load_failed)
         emit(ThemeId.CLASSIC)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -34,7 +42,7 @@ class SettingsViewModel(private val repository: ThemeRepository, private val cop
                 _error.value = null
             } catch (failure: Exception) {
                 if (failure is CancellationException) throw failure
-                _error.value = "Appearance could not be saved. Please try again."
+                _error.value = UiMessage.Resource(R.string.settings_error_appearance_save_failed)
             }
         }
     }
@@ -48,7 +56,7 @@ class SettingsViewModel(private val repository: ThemeRepository, private val cop
         viewModelScope.launch {
             try { _unusedCopies.value = block() } catch (failure: Exception) {
                 if (failure is CancellationException) throw failure
-                _error.value = "Storage information could not be updated."
+                _error.value = UiMessage.Resource(R.string.settings_error_storage_update_failed)
             }
         }
     }

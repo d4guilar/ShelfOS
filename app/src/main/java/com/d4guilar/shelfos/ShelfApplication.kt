@@ -11,6 +11,7 @@ import com.d4guilar.shelfos.core.reader.ManagedFontRepository
 import com.d4guilar.shelfos.domain.importing.ImportLeases
 import kotlinx.coroutines.*
 import com.d4guilar.shelfos.data.preferences.RoomThemeRepository
+import com.d4guilar.shelfos.data.preferences.AppCompatLanguageRepository
 
 class ShelfApplication : Application() {
     val container by lazy { AppContainer(this) }
@@ -19,6 +20,7 @@ class ShelfApplication : Application() {
 class AppContainer(application: Application) {
     private val database by lazy { ShelfDatabase.create(application) }
     val themes by lazy { RoomThemeRepository(database.appearance()) }
+    val languages by lazy { AppCompatLanguageRepository() }
     val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val files = PublicationFiles(application)
     /** Shared by every import: grants are process-wide, and import cleanup outlives the screen that started it. */

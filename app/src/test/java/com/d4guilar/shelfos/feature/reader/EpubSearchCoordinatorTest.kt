@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos.feature.reader
 
+import com.d4guilar.shelfos.R
+import com.d4guilar.shelfos.core.designsystem.UiMessage
 import com.d4guilar.shelfos.core.reader.EpubSearchCursor
 import com.d4guilar.shelfos.core.reader.EpubSearchRead
 import com.d4guilar.shelfos.core.reader.EpubSearchResult
@@ -40,7 +42,7 @@ class EpubSearchCoordinatorTest {
         coordinator.search("broken") { cursor }
         advanceUntilIdle()
 
-        assertEquals("This publication could not be searched. Try another query.", coordinator.state.value.error)
+        assertEquals(UiMessage.Resource(R.string.search_error_failed), coordinator.state.value.error)
         assertTrue(cursor.closed)
     }
 

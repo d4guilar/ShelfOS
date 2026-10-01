@@ -3,7 +3,11 @@ package com.d4guilar.shelfos
 
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
+import com.d4guilar.shelfos.core.designsystem.UiMessage
+import com.d4guilar.shelfos.core.designsystem.importMessageRes
+import com.d4guilar.shelfos.core.designsystem.messageRes
 import com.d4guilar.shelfos.data.library.LibraryRepository
+import com.d4guilar.shelfos.domain.importing.ImportProgressStage
 import com.d4guilar.shelfos.domain.importing.PreparedImport
 import com.d4guilar.shelfos.domain.importing.PublicationImporter
 import com.d4guilar.shelfos.domain.library.*
@@ -25,9 +29,9 @@ class ImportViewModelTest {
         val requests = mutableListOf<Pair<String, Boolean>>()
         val discarded = mutableListOf<Pair<PreparedImport, Boolean>>()
         var prepare: suspend (String, Boolean) -> PreparedImport = { uri, copy -> PreparedImport(candidate(uri), acquiredGrant = !copy) }
-        override suspend fun prepare(sourceUri: String, copy: Boolean, stage: (String) -> Unit): PreparedImport {
+        override suspend fun prepare(sourceUri: String, copy: Boolean, stage: (ImportProgressStage) -> Unit): PreparedImport {
             requests += sourceUri to copy
-            stage("Inspecting publication…")
+            stage(ImportProgressStage.Inspecting)
             return prepare(sourceUri, copy)
         }
         override fun discard(prepared: PreparedImport, sourceStillUsed: Boolean) { discarded += prepared to sourceStillUsed }
@@ -82,13 +86,13 @@ class ImportViewModelTest {
     @Test fun failuresReportSpecificProblemsInImportLanguage() = runTest {
         val importer = FakeImporter()
         val vm = importing(importer)
-        importer.prepare = { _, _ -> throw PublicationException(PublicationProblem.CORRUPT, "This EPUB has no publication container.") }
+        importer.prepare = { _, _ -> throw PublicationException(PublicationProblem.CORRUPT, PublicationExceptionDetail.EPUB_MISSING_CONTAINER) }
         vm.choose("content://docs/damaged"); advanceUntilIdle()
-        assertEquals("This EPUB has no publication container.", vm.state.value.error)
+        assertEquals(UiMessage.Resource(PublicationExceptionDetail.EPUB_MISSING_CONTAINER.messageRes()), vm.state.value.error)
         vm.dismiss()
         importer.prepare = { _, _ -> throw SecurityException("revoked") }
         vm.choose("content://docs/revoked"); advanceUntilIdle()
-        assertEquals(PublicationProblem.PERMISSION_LOST.importMessage, vm.state.value.error)
+        assertEquals(UiMessage.Resource(PublicationProblem.PERMISSION_LOST.importMessageRes()), vm.state.value.error)
         assertNull(vm.state.value.preview)
         vm.viewModelScope.cancel()
     }
@@ -182,7 +186,7 @@ class ImportViewModelTest {
         val discarded = mutableListOf<PreparedImport>()
         val item = testItems().first().copy(sourceUri = "content://review/book", managedPath = "review.epub")
         val importer = object : PublicationImporter {
-            override suspend fun prepare(sourceUri: String, copy: Boolean, stage: (String) -> Unit) = PreparedImport(item, true)
+            override suspend fun prepare(sourceUri: String, copy: Boolean, stage: (ImportProgressStage) -> Unit) = PreparedImport(item, true)
             override fun discard(prepared: PreparedImport, sourceStillUsed: Boolean) { discarded += prepared }
         }
         val vm = ImportViewModel(importer, repository, this)
@@ -275,7 +279,7 @@ class ImportViewModelTest {
         }
         val item = testItems().first().copy(sourceUri = "content://review/book")
         val importer = object : PublicationImporter {
-            override suspend fun prepare(sourceUri: String, copy: Boolean, stage: (String) -> Unit): PreparedImport {
+            override suspend fun prepare(sourceUri: String, copy: Boolean, stage: (ImportProgressStage) -> Unit): PreparedImport {
                 val acquired = !grant; grant = true
                 return PreparedImport(item, acquired)
             }
@@ -301,7 +305,7 @@ class ImportViewModelTest {
     private class GrantImporter(private val item: LibraryItem) : PublicationImporter {
         var grant = false
         val discarded = mutableListOf<Pair<PreparedImport, Boolean>>()
-        override suspend fun prepare(sourceUri: String, copy: Boolean, stage: (String) -> Unit): PreparedImport {
+        override suspend fun prepare(sourceUri: String, copy: Boolean, stage: (ImportProgressStage) -> Unit): PreparedImport {
             val acquired = !grant; grant = true
             return PreparedImport(item, acquired)
         }
@@ -368,7 +372,7 @@ class ImportViewModelTest {
         val item = candidate("content://docs/slow")
         var calls = 0
         val importer = object : PublicationImporter {
-            override suspend fun prepare(sourceUri: String, copy: Boolean, stage: (String) -> Unit): PreparedImport {
+            override suspend fun prepare(sourceUri: String, copy: Boolean, stage: (ImportProgressStage) -> Unit): PreparedImport {
                 val acquired = !grant; grant = true
                 if (++calls == 1) try { awaitCancellation() } finally {
                     // Like PublicationFiles, a failed preparation releases what it acquired; here it takes a while.

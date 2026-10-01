@@ -790,13 +790,66 @@ provider abstractions, cloud APIs, authentication, billing or sync services.
 
 ## Localization architecture
 
-Interface language is a presentation/resource concern owned by the UI layer.
+Interface language is a presentation/resource concern owned by the UI layer. It is
+**implemented**: the localization foundation landed on `feat/localization-foundation`
+(`ce32d5f`, remediated in `e6cc519`).
 
-- User-facing copy lives in Android string resources — the platform localization
-  mechanism — not hard-coded at call sites and not stored in domain or data models.
-- Dates, numbers, percentages, plural quantities and file sizes use locale-aware
-  formatting instead of assembled strings.
-- Accessibility labels and content descriptions are localizable resources too.
+### Mechanism
+
+ShelfOS uses AndroidX per-app locales — `AppCompatDelegate.setApplicationLocales(...)` and
+`getApplicationLocales(...)` with `LocaleListCompat`. Both ShelfOS activities participate
+correctly in per-app localization (`MainActivity` extends `AppCompatActivity`), and
+`Theme.ShelfOS` uses an AppCompat-compatible NoActionBar parent. This was independently
+tested with no visual/theme regression.
+
+The manifest declares AppCompat's locale auto-store metadata holder, so the chosen
+language auto-persists below API 33 and routes through the system `LocaleManager` on
+API 33+. ShelfOS does **not** declare `android:localeConfig`, so it is **not** exposed in
+Android Settings → Apps → App language; today the in-app selector is the only way to
+change the interface language. Do not imply the system App Languages integration exists.
+
+### Language identity and persistence
+
+Language identity is locale-neutral and never a translated label:
+
+```text
+SYSTEM_DEFAULT    → empty override (follow Android's system language)
+ENGLISH           → en
+SPANISH           → es
+PORTUGUESE_BRAZIL → pt-BR
+```
+
+Unrecognized tags fall back to following the system language rather than pinning to
+whatever that tag happened to resolve to. System default is an empty override, not a
+snapshot of the current system language stored as a ShelfOS preference. Persistence uses
+AppCompat/framework locale storage: no Room table, schema version or migration was added,
+and no translated label is persisted.
+
+### Domain/UI boundary
+
+Domain, file and parser layers stay locale-neutral and Context-free. Failures and progress
+are modeled as typed identities that carry no text of their own — publication problems and
+exception details, font-import failure reasons, import-progress stages — and are mapped to
+localized string resources at the presentation boundary. Raw English parser/validation
+strings are therefore never the primary user-facing message, and resource references such
+as `@StringRes`/`UiMessage` stay on the presentation side of the boundary rather than
+entering domain types.
+
+Import progress uses a typed stage instead of resolving text through the Application
+`Context`, because AppCompat per-app locale overrides are applied through Activity
+resources below API 33.
+
+### Formatting and accessibility
+
+Locale-aware formatting is applied to the paths this implementation touched — percentages,
+file sizes and formatted progress text — with percentage formatting reading the observable
+Compose locale rather than the process default locale. This is not a claim that every
+future formatting path is complete. Accessibility copy (content descriptions, state
+descriptions, accessible action labels) is localizable, and localization remains
+free/core.
+
+### Boundaries that hold
+
 - No localization, translation or language-detection step is applied to imported
   publication data. Metadata, Series, Shelves, tags and notes are user/source data and
   are never rewritten. No translation ingestion or analysis exists.
@@ -805,9 +858,8 @@ Interface language is a presentation/resource concern owned by the UI layer.
   translated content.
 - Theme-owned ShelfOS copy resolves through the same application localization
   resources. A theme may style localized text, but it must not ship a separate
-  translation mechanism, and reference-theme terminology is not translated content.
-- Language selection is a preference (System default / English / Español) and, when
-  explicitly set, is honored independently of the Android system language.
+  translation mechanism, and reference-theme terminology is not translated content. No
+  theme implementation occurred in the localization work.
 - Design discipline for future locales: no architecture may assume English-only UI text,
   fixed left-to-right ordering, or locale-specific formatting. Right-to-left support and
   additional locales are future compatibility, not a launch commitment.

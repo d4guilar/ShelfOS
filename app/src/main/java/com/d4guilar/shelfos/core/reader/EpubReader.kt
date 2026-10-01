@@ -78,11 +78,11 @@ class EpubReaderFactory(private val context: Context, private val files: Publica
             val entries = ArchivePolicy.entries(zip)
             val markup = entries.filter { it.name.substringAfterLast('.').lowercase() in setOf("xhtml", "html", "htm", "svg", "xml", "opf", "ncx", "css") }
             if (markup.any { it.size > 8 * 1024 * 1024 } || markup.sumOf { it.size } > 128 * 1024 * 1024)
-                throw PublicationException(PublicationProblem.TOO_LARGE, "This EPUB has exceptionally large content resources and is not supported yet.")
+                throw PublicationException(PublicationProblem.TOO_LARGE, PublicationExceptionDetail.EPUB_CONTENT_TOO_LARGE)
             entries.filter { it.name.endsWith(".opf", true) || it.name.endsWith(".xml", true) || it.name.endsWith(".ncx", true) }.forEach { entry ->
                 val xml = zip.readBytes(entry, 8L * 1024 * 1024)?.toString(Charsets.UTF_8)
-                    ?: throw PublicationException(PublicationProblem.TOO_LARGE, "This EPUB has exceptionally large content resources and is not supported yet.")
-                if (xml.contains("<!ENTITY", true)) throw PublicationException(PublicationProblem.UNSUPPORTED_FORMAT, "This EPUB contains unsupported entity declarations.")
+                    ?: throw PublicationException(PublicationProblem.TOO_LARGE, PublicationExceptionDetail.EPUB_CONTENT_TOO_LARGE)
+                if (xml.contains("<!ENTITY", true)) throw PublicationException(PublicationProblem.UNSUPPORTED_FORMAT, PublicationExceptionDetail.EPUB_UNSUPPORTED_ENTITY_DECLARATIONS)
             }
         } }
         val url = item.managedPath?.let { files.managedFile(it).toUrl(isDirectory = false) }
@@ -105,7 +105,7 @@ class EpubReaderFactory(private val context: Context, private val files: Publica
                 }
                 container = CompositeContainer(listOf(ManagedFontContainer(::liveFontMap), publicationContainer))
             }).getOrElse { error ->
-                throw if (error is PublicationOpener.OpenError.FormatNotSupported) PublicationException(PublicationProblem.CORRUPT, "This EPUB is invalid or unsupported.")
+                throw if (error is PublicationOpener.OpenError.FormatNotSupported) PublicationException(PublicationProblem.CORRUPT, PublicationExceptionDetail.EPUB_INVALID_OR_UNSUPPORTED)
                 else PublicationException(PublicationProblem.UNREADABLE)
             }
             if (publication.isRestricted) {
@@ -463,20 +463,28 @@ fun EpubSession.presentBookmark(locatorJson: String, progress: Int, positions: L
  * structural "Location N" resolved by [resolveEpubLocation]. Two lines when a chapter title is available (it may
  * be long), one line otherwise.
  */
-internal fun bookmarkDisplayText(p: EpubBookmarkPresentation): String = when {
-    p.chapterTitle != null && p.location != null -> "${p.chapterTitle}\nLocation ${p.location} · ${p.progress}% through book"
-    p.chapterTitle != null -> "${p.chapterTitle}\n${p.progress}% through book"
-    p.location != null -> "Location ${p.location} · ${p.progress}% through book"
-    else -> "${p.progress}% through book"
+internal fun bookmarkDisplayText(
+    p: EpubBookmarkPresentation,
+    locationPhrase: (Int) -> String = { "Location $it" },
+    progressPhrase: (Int) -> String = { "$it% through book" },
+): String = when {
+    p.chapterTitle != null && p.location != null -> "${p.chapterTitle}\n${locationPhrase(p.location)} · ${progressPhrase(p.progress)}"
+    p.chapterTitle != null -> "${p.chapterTitle}\n${progressPhrase(p.progress)}"
+    p.location != null -> "${locationPhrase(p.location)} · ${progressPhrase(p.progress)}"
+    else -> progressPhrase(p.progress)
 }
 
 /**
  * A bookmark row's accessible description: one spoken sentence (used verbatim, prefixed with "Bookmark, "/"Delete
  * bookmark, " at the call site) rather than [bookmarkDisplayText]'s two visual lines, with "%" spelled out as
- * "percent" the way a screen reader would otherwise have to expand it anyway.
+ * "percent" the way a screen reader would otherwise have to expand it anyway. [locationPhrase]/[progressPhrase]
+ * default to English; EpubActivity passes localized string-resource-backed closures instead.
  */
-internal fun bookmarkAccessibilityText(p: EpubBookmarkPresentation): String =
-    listOfNotNull(p.chapterTitle, p.location?.let { "Location $it" }, "${p.progress} percent through book").joinToString(", ")
+internal fun bookmarkAccessibilityText(
+    p: EpubBookmarkPresentation,
+    locationPhrase: (Int) -> String = { "Location $it" },
+    progressPhrase: (Int) -> String = { "$it percent through book" },
+): String = listOfNotNull(p.chapterTitle, p.location?.let(locationPhrase), progressPhrase(p.progress)).joinToString(", ")
 
 internal fun epubPreferences(p: ReaderPreferences, dark: Boolean, category: MediaCategory, managedCssFamily: String? = null): EpubPreferences {
     val progression = if (readingDirection(category, p.direction) == ReadingDirection.RTL) ReadingProgression.RTL else ReadingProgression.LTR

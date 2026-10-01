@@ -1,0 +1,277 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ShelfOS</string>
+
+    <!-- Navegación -->
+    <string name="nav_library">Biblioteca</string>
+    <string name="nav_search">Buscar</string>
+    <string name="nav_notes">Notas</string>
+    <string name="nav_shelves">Estantes</string>
+    <string name="nav_settings">Ajustes</string>
+
+    <!-- Acciones comunes -->
+    <string name="action_back">Atrás</string>
+    <string name="action_back_to_library">Volver a la biblioteca</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_close">Cerrar</string>
+    <string name="action_delete">Eliminar</string>
+    <string name="action_edit">Editar</string>
+    <string name="action_remove">Quitar</string>
+    <string name="action_apply">Aplicar</string>
+    <string name="action_add_file">Añadir archivo</string>
+    <string name="action_clear">Borrar</string>
+    <string name="action_read">Leer</string>
+    <string name="action_continue_reading">Continuar leyendo</string>
+    <string name="action_try_open">Intentar abrir</string>
+    <string name="action_save_changes">Guardar cambios</string>
+
+    <!-- Biblioteca -->
+    <string name="section_continue_reading">Continuar leyendo</string>
+    <string name="continue_reading_empty">Tu lectura aparecerá aquí en cuanto abras una publicación.</string>
+    <string name="library_loading">Cargando tu biblioteca…</string>
+    <string name="library_empty_start">Tu biblioteca empieza aquí. Añade un PDF, EPUB o CBZ con Añadir archivo.</string>
+    <string name="library_empty_filtered">Todavía no hay publicaciones en esta vista.</string>
+    <string name="label_unavailable">No disponible</string>
+    <string name="library_update_title">Actualización de la biblioteca</string>
+    <string name="library_error_save_failed">No se pudo guardar el cambio en la biblioteca. Inténtalo de nuevo.</string>
+    <string name="filter_favorites">★ Favoritos</string>
+    <string name="category_books">Libros</string>
+    <string name="category_comics">Cómics</string>
+    <string name="category_manga">Manga</string>
+    <string name="category_documents">Documentos</string>
+    <string name="category_book_singular">Libro</string>
+    <string name="category_comic_singular">Cómic</string>
+    <string name="category_manga_singular">Manga</string>
+    <string name="category_document_singular">Documento</string>
+    <plurals name="library_item_count_recently_added">
+        <item quantity="one">%1$d publicación · Añadida recientemente</item>
+        <item quantity="other">%1$d publicaciones · Añadidas recientemente</item>
+    </plurals>
+
+    <!-- Buscar -->
+    <string name="search_field_label">Buscar títulos o autores</string>
+    <plurals name="search_results_count">
+        <item quantity="one">%1$d resultado</item>
+        <item quantity="other">%1$d resultados</item>
+    </plurals>
+
+    <!-- Marcadores de posición -->
+    <string name="placeholder_notes_body">Un lugar para tus notas de lectura. Las notas y anotaciones están planeadas para una fase posterior.</string>
+    <string name="placeholder_shelves_body">Tus propias formas de organizar una biblioteca, como Investigación o Universidad. Una publicación puede estar en varios Estantes y conserva su categoría. Los Estantes están planeados para una fase posterior.</string>
+    <string name="publication_unavailable_title">Publicación no disponible</string>
+    <string name="publication_unavailable_body">Vuelve a la Biblioteca para elegir una publicación.</string>
+
+    <!-- Detalles de publicación -->
+    <string name="dialog_remove_title">¿Quitar de ShelfOS?</string>
+    <string name="dialog_remove_body">Esto elimina la entrada, su posición de lectura y sus preferencias de lectura de ShelfOS. El archivo original no se ve afectado.</string>
+    <string name="dialog_remove_private_copy_note">ShelfOS conserva su copia privada sin conexión (%1$s). Puedes eliminar copias sin usar en Ajustes.</string>
+    <string name="original_file_unavailable_title">Archivo original no disponible</string>
+    <string name="original_file_unavailable_body">ShelfOS no puede acceder al archivo original en este momento. Puede que se haya movido, eliminado o desconectado, o que se haya revocado el acceso. Tu posición de lectura y tus cambios se conservan.</string>
+    <string name="favorite_on">★ En favoritos</string>
+    <string name="favorite_off">☆ Favorito</string>
+    <string name="details_expand">Detalles +</string>
+    <string name="details_collapse">Detalles −</string>
+    <string name="detail_title_origin">Título: %1$s</string>
+    <string name="detail_creator_origin">Autor: %1$s</string>
+    <string name="detail_source_linked">Origen: archivo original enlazado</string>
+    <string name="detail_source_private_copy">Origen: copia privada sin conexión del original</string>
+    <string name="detail_cover_generated">Portada: generada por ShelfOS</string>
+    <string name="origin_user">Editado por ti</string>
+    <string name="origin_embedded">Incluido en la publicación</string>
+    <string name="origin_filename">Del nombre del archivo</string>
+    <string name="origin_unknown">No proporcionado</string>
+
+    <!-- Importación -->
+    <string name="import_dialog_adding_title">Añadiendo publicación</string>
+    <string name="import_dialog_keep_copy_title">¿Conservar una copia sin conexión?</string>
+    <string name="import_dialog_keep_copy_body">Este proveedor no puede ofrecer acceso duradero con acceso aleatorio. ShelfOS puede guardar una copia privada, usando el tamaño completo del archivo en el almacenamiento del dispositivo. El original no se modifica.</string>
+    <string name="action_copy_and_continue">Copiar y continuar</string>
+    <string name="import_action_add_to_library">Añadir a la biblioteca</string>
+    <string name="import_possible_duplicate_notice">Ya hay un archivo con el mismo nombre y tamaño en tu biblioteca. ¿Quieres añadir este como una entrada independiente?</string>
+    <string name="import_dialog_unavailable_title">Importación no disponible</string>
+    <string name="import_title_field">Título</string>
+    <string name="import_title_origin_note">Título %1$s</string>
+    <string name="import_creator_field">Autor / creador</string>
+    <string name="import_error_save_failed">No se pudo guardar la entrada en la biblioteca. Puedes volver a intentarlo.</string>
+    <string name="import_stage_preparing">Preparando la importación…</string>
+    <string name="import_stage_saving">Guardando publicación…</string>
+    <string name="import_stage_inspecting">Inspeccionando publicación…</string>
+    <string name="import_stage_copying_offline">Copiando para acceso sin conexión…</string>
+    <string name="import_stage_copying_percent">Copiando… %1$d %%</string>
+    <string name="import_stage_copying_megabytes">Copiando… %1$d MB</string>
+
+    <!-- Tamaños de archivo -->
+    <string name="file_size_unavailable">Tamaño no disponible</string>
+    <string name="file_size_gb">%1$s GB</string>
+    <string name="file_size_mb">%1$d MB</string>
+    <string name="file_size_kb">%1$d KB</string>
+
+    <!-- Ajustes -->
+    <string name="settings_appearance_description">Elige un fondo discreto para tu biblioteca.</string>
+    <string name="settings_theme_planned">Planeado</string>
+    <string name="settings_storage_title">Almacenamiento</string>
+    <string name="settings_storage_description">Cuando un proveedor no puede ofrecer acceso duradero, ShelfOS guarda una copia privada sin conexión. Quitar una publicación conserva su copia hasta que la elimines aquí. Los archivos originales nunca se modifican ni se eliminan.</string>
+    <string name="settings_storage_checking">Comprobando copias privadas…</string>
+    <string name="settings_storage_none_unused">No hay copias privadas sin usar</string>
+    <string name="settings_storage_unused_count">%1$s fuera de tu biblioteca · %2$s</string>
+    <string name="settings_delete_copies_title">¿Eliminar copias privadas sin usar?</string>
+    <string name="settings_delete_copies_body">Esto elimina %1$s (%2$s) que ninguna publicación de tu biblioteca usa. Tus archivos originales y tu biblioteca no se ven afectados.</string>
+    <string name="settings_about_title">ShelfOS · Desarrollo temprano</string>
+    <string name="settings_about_body">Una biblioteca personal local para los archivos que ya tienes. Añade publicaciones PDF, EPUB y CBZ con Añadir archivo; se quedan donde están. No se sube nada y no se necesita cuenta.</string>
+    <string name="settings_keyboard_help">Teclado: Tab o flechas para moverte, Intro para seleccionar, Ctrl+F para buscar. En un lector: flechas, Re Pág/Av Pág o Espacio para pasar página, Menú para los controles, Escape para volver. Mando: D-pad para moverte, A para seleccionar, B para volver, L1/R1 para pasar página.</string>
+    <string name="settings_language_title">Idioma</string>
+    <string name="settings_language_description">Elige el idioma de la interfaz de ShelfOS. Esto nunca cambia el idioma de tus publicaciones.</string>
+    <string name="settings_error_appearance_load_failed">No se pudo cargar tu apariencia guardada.</string>
+    <string name="settings_error_appearance_save_failed">No se pudo guardar la apariencia. Inténtalo de nuevo.</string>
+    <string name="settings_error_storage_update_failed">No se pudo actualizar la información de almacenamiento.</string>
+    <plurals name="private_copy_count">
+        <item quantity="one">%1$d copia privada</item>
+        <item quantity="other">%1$d copias privadas</item>
+    </plurals>
+
+    <!-- Nombres de idiomas: se muestran en su propio idioma, sin importar el idioma activo de la interfaz -->
+    <string name="language_system_default">Predeterminado del sistema</string>
+    <string name="language_english" translatable="false">English</string>
+    <string name="language_spanish" translatable="false">Español</string>
+    <string name="language_portuguese_brazil" translatable="false">Português (Brasil)</string>
+
+    <!-- Controles del lector -->
+    <string name="action_chapters">Capítulos</string>
+    <string name="action_bookmarks">Marcadores</string>
+    <string name="action_appearance">Apariencia</string>
+    <string name="action_previous">Anterior</string>
+    <string name="action_next">Siguiente</string>
+    <string name="action_hide_controls">Ocultar controles</string>
+    <string name="action_zoom_in">Acercar</string>
+    <string name="action_reset_zoom">Restablecer zoom</string>
+    <string name="action_retry_page">Reintentar página</string>
+    <string name="action_show_controls">Mostrar controles del lector</string>
+    <string name="reader_opening">Abriendo…</string>
+    <string name="reader_no_longer_in_library">Esta publicación ya no está en tu biblioteca.</string>
+    <string name="reader_position_save_failed">No se pudo guardar tu posición de lectura.</string>
+    <string name="reader_preferences_save_failed">No se pudieron guardar las preferencias de lectura.</string>
+    <string name="content_desc_controls_shown">Controles visibles</string>
+    <string name="content_desc_controls_hidden">Controles ocultos</string>
+    <string name="content_desc_previous_hint">Anterior, %1$s</string>
+    <string name="content_desc_next_hint">Siguiente, %1$s</string>
+    <string name="content_desc_page_of_count">Página %1$d de %2$d</string>
+    <string name="reading_progress_visual">%1$d%% del libro</string>
+    <string name="reading_progress_spoken">%1$d por ciento del libro</string>
+    <string name="bookmark_location">Ubicación %1$d</string>
+
+    <!-- Capítulos -->
+    <string name="filter_chapters_placeholder">Filtrar capítulos</string>
+    <string name="content_desc_filter_chapters">Filtrar capítulos</string>
+    <string name="chapters_no_match">Ningún capítulo coincide con “%1$s”.</string>
+    <string name="content_desc_current_chapter">%1$s, capítulo actual</string>
+
+    <!-- Diálogo de búsqueda -->
+    <string name="search_this_publication">Buscar en esta publicación</string>
+    <string name="search_prompt_empty">Escribe una palabra o frase para buscar en esta publicación.</string>
+    <string name="content_desc_searching">Buscando en esta publicación</string>
+    <string name="search_no_results">Sin resultados para “%1$s”.</string>
+    <string name="content_desc_no_search_results">Sin resultados de búsqueda</string>
+    <string name="content_desc_search_result">Resultado de búsqueda, %1$s</string>
+    <string name="search_result_open_failed">No se pudo abrir este resultado de búsqueda. Prueba con otro resultado.</string>
+    <string name="search_match_fallback">Coincidencia en esta publicación</string>
+    <string name="search_error_failed">No se pudo buscar en esta publicación. Prueba con otra consulta.</string>
+
+    <!-- Diálogo de marcadores -->
+    <string name="bookmark_add">Añadir marcador</string>
+    <string name="bookmark_remove">Quitar marcador</string>
+    <string name="bookmarks_empty">Todavía no hay marcadores.</string>
+    <string name="bookmark_open_failed">No se pudo abrir la ubicación guardada de este marcador. Aun así puedes eliminarlo.</string>
+    <string name="bookmark_save_failed">No se pudo guardar el marcador.</string>
+    <string name="bookmark_delete_failed">No se pudo eliminar el marcador.</string>
+    <string name="content_desc_bookmark_add_unavailable">Añadir marcador, todavía no disponible</string>
+    <string name="content_desc_bookmark_remove_current">Quitar marcador en la posición actual</string>
+    <string name="content_desc_bookmark_add_current">Añadir marcador en la posición actual</string>
+    <string name="content_desc_bookmark_row">Marcador, %1$s</string>
+    <string name="content_desc_bookmark_delete">Eliminar marcador, %1$s</string>
+
+    <!-- Diálogo de apariencia -->
+    <string name="appearance_dialog_title">Apariencia de lectura</string>
+    <string name="appearance_presentation">Presentación</string>
+    <string name="appearance_presentation_publisher">Estilos del editor</string>
+    <string name="appearance_publisher_notice">Se respetan los estilos del editor del EPUB original. El archivo original no se modifica.</string>
+    <string name="appearance_book_style">Estilo del libro</string>
+    <string name="appearance_style_editorial">Editorial</string>
+    <string name="appearance_style_clean">Limpio</string>
+    <string name="appearance_style_spacious">Espacioso</string>
+    <string name="appearance_font">Fuente</string>
+    <string name="appearance_import_font">Importar fuente…</string>
+    <string name="font_remove_failed">ShelfOS no pudo eliminar esa fuente.</string>
+    <string name="appearance_text_size">Tamaño del texto: %1$s</string>
+    <string name="appearance_line_spacing">Interlineado</string>
+    <string name="appearance_page_margins">Márgenes de página</string>
+    <string name="appearance_justified_text">Texto justificado</string>
+    <string name="appearance_continuous_scrolling">Desplazamiento continuo</string>
+    <string name="appearance_page_colors">Colores de página</string>
+    <string name="palette_theme">Tema</string>
+    <string name="palette_light">Claro</string>
+    <string name="palette_dark">Oscuro</string>
+    <string name="palette_paper">Papel</string>
+    <string name="appearance_fixed_pages_notice">Esta publicación usa páginas fijas. Las fuentes, el diseño y las ilustraciones conservan su apariencia original.</string>
+    <string name="appearance_fit_page">Ajustar a la página</string>
+    <string name="appearance_fit_width">Ajustar al ancho</string>
+    <string name="appearance_reading_direction">Dirección de lectura</string>
+    <string name="appearance_direction_category_default">Predeterminada de la categoría</string>
+    <string name="appearance_direction_rtl">De derecha a izquierda</string>
+    <string name="appearance_direction_ltr">De izquierda a derecha</string>
+    <string name="appearance_use_as_default">Usar como predeterminado para todos los títulos</string>
+    <string name="appearance_direction_title_only_notice">La dirección de lectura siempre se aplica solo a este título.</string>
+    <string name="appearance_reset_all_titles">Restablecer valores predeterminados para todos los títulos</string>
+    <string name="appearance_reset_this_title">Restablecer este título</string>
+
+    <!-- Problemas de publicación -->
+    <string name="problem_permission_lost_message">ShelfOS ya no puede abrir el archivo original. Puede que se haya revocado el acceso, o que el archivo se haya movido o eliminado. Tu posición de lectura y tus cambios se conservan.</string>
+    <string name="problem_permission_lost_import_message">Se denegó el acceso a este archivo. Vuelve a elegirlo.</string>
+    <string name="problem_source_unavailable_message">No se puede acceder al archivo original. Puede que se haya movido, eliminado o desconectado. Tu posición de lectura y tus cambios se conservan.</string>
+    <string name="problem_source_unavailable_import_message">El archivo seleccionado no está disponible. Comprueba que todavía existe e inténtalo de nuevo.</string>
+    <string name="problem_needs_copy_message">Este proveedor no puede ofrecer acceso duradero con acceso aleatorio. ShelfOS necesita una copia privada sin conexión.</string>
+    <string name="problem_unsupported_format_message">Elige una publicación PDF, EPUB o CBZ.</string>
+    <string name="problem_unsupported_layout_message">La lectura de EPUB de maquetación fija no es compatible en esta versión. Las páginas fijas de PDF y CBZ sí son compatibles.</string>
+    <string name="problem_protected_message">Esta publicación está protegida con contraseña o usa DRM. ShelfOS no puede abrir publicaciones protegidas.</string>
+    <string name="problem_corrupt_message">Esta publicación parece estar dañada o incompleta.</string>
+    <string name="problem_empty_archive_message">El archivo comprimido no contiene páginas de imagen compatibles.</string>
+    <string name="problem_too_large_message">Esta publicación supera los límites de procesamiento seguro de ShelfOS.</string>
+    <string name="problem_insufficient_storage_message">No hay suficiente almacenamiento libre para una copia privada. Se eliminó la copia incompleta.</string>
+    <string name="problem_copy_failed_message">No se pudo completar la copia privada. El archivo original no se ha visto afectado.</string>
+    <string name="problem_unreadable_message">Esta publicación no se pudo abrir. Puede no estar disponible o estar dañada.</string>
+    <string name="problem_unreadable_import_message">No se pudo importar este archivo. Comprueba que esté disponible y no esté dañado.</string>
+
+    <!-- Detalles específicos de errores de publicación (sustituyen al mensaje genérico anterior cuando existen) -->
+    <string name="publication_error_unsafe_entry_path">El archivo contiene una ruta de entrada no segura.</string>
+    <string name="publication_error_unsupported_entry_size">El archivo contiene una entrada de tamaño no compatible.</string>
+    <string name="publication_error_expands_beyond_safe_limits">El archivo se expande más allá de los límites seguros.</string>
+    <string name="publication_error_image_page_too_large">Una página de imagen supera el tamaño compatible.</string>
+    <string name="publication_error_pdf_has_no_pages">Este PDF no tiene páginas.</string>
+    <string name="publication_error_unsupported_compression_method">El archivo usa un método de compresión no compatible.</string>
+    <string name="publication_error_too_many_entries">El archivo tiene demasiadas entradas.</string>
+    <string name="publication_error_archive_damaged_or_incomplete">Este archivo comprimido está dañado o incompleto.</string>
+    <string name="publication_error_epub_content_too_large">Este EPUB tiene recursos de contenido excepcionalmente grandes y todavía no es compatible.</string>
+    <string name="publication_error_epub_unsupported_entity_declarations">Este EPUB contiene declaraciones de entidad no compatibles.</string>
+    <string name="publication_error_epub_invalid_or_unsupported">Este EPUB no es válido o no es compatible.</string>
+    <string name="publication_error_use_epub_reader_instead">Usa el lector de EPUB para esta publicación.</string>
+    <string name="publication_error_page_image_damaged_or_too_large">Esta imagen de página está dañada o supera las dimensiones compatibles.</string>
+    <string name="publication_error_page_image_decode_failed">No se pudo decodificar esta imagen de página.</string>
+    <string name="publication_error_epub_missing_container">Este EPUB no tiene contenedor de publicación.</string>
+    <string name="publication_error_publication_has_no_readable_pages">Esta publicación no tiene páginas legibles.</string>
+
+    <!-- Errores al importar fuentes gestionadas -->
+    <string name="font_error_read_failed">ShelfOS no pudo leer esa fuente.</string>
+    <string name="font_error_unsupported_extension">Elige un archivo de fuente .ttf o .otf.</string>
+    <string name="font_error_too_large">Esa fuente es más grande de lo que ShelfOS admite.</string>
+    <string name="font_error_truncated_or_damaged">Esa fuente está truncada o dañada.</string>
+    <string name="font_error_collection_unsupported">Las colecciones de fuentes (.ttc) todavía no son compatibles.</string>
+    <string name="font_error_not_sfnt">Ese archivo no es una fuente TrueType u OpenType compatible.</string>
+    <string name="font_error_missing_tables">A esa fuente le faltan tablas obligatorias.</string>
+    <string name="font_error_damaged_or_unsupported">Esa fuente está dañada o no es compatible.</string>
+    <string name="font_error_family_not_found">Esa fuente gestionada ya no existe.</string>
+    <string name="font_error_finish_import_failed">ShelfOS no pudo terminar de importar esa fuente.</string>
+    <string name="font_error_finish_replace_failed">ShelfOS no pudo terminar de reemplazar esa fuente.</string>
+
+    <!-- Nombres de las fuentes integradas (el id estable, builtin:serif/builtin:sans, no cambia) -->
+    <string name="font_builtin_serif">Con serif</string>
+    <string name="font_builtin_sans">Sin serif</string>
+</resources>

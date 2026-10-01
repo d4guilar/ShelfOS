@@ -3,14 +3,18 @@ package com.d4guilar.shelfos.feature.importing
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.d4guilar.shelfos.R
+import com.d4guilar.shelfos.core.designsystem.UiMessage
+import com.d4guilar.shelfos.core.designsystem.importMessage
+import com.d4guilar.shelfos.core.designsystem.toUiMessage
 import com.d4guilar.shelfos.data.library.LibraryRepository
 import com.d4guilar.shelfos.domain.importing.*
 import com.d4guilar.shelfos.domain.library.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
-data class ImportState(val busy: Boolean = false, val cancellable: Boolean = true, val stage: String = "",
-    val preview: LibraryItem? = null, val needsCopy: Boolean = false, val error: String? = null,
+data class ImportState(val busy: Boolean = false, val cancellable: Boolean = true, val stage: UiMessage = UiMessage.Literal(""),
+    val preview: LibraryItem? = null, val needsCopy: Boolean = false, val error: UiMessage? = null,
     val imported: LibraryItem? = null, val possibleDuplicate: Boolean = false)
 
 /**
@@ -43,14 +47,14 @@ class ImportViewModel(private val importer: PublicationImporter, private val rep
             try {
                 // A cancelled earlier preparation finishes, releasing what it acquired, before this one starts.
                 previous?.join()
-                _state.value = ImportState(busy = true, stage = "Preparing import…")
+                _state.value = ImportState(busy = true, stage = UiMessage.Resource(R.string.import_stage_preparing))
                 beforeImport()
                 existingSource(repository.publications.first(), sourceUri)?.let { existing ->
                     _state.value = ImportState(imported = existing)
                     return@launch
                 }
                 leases.awaitRelease(sourceUri)
-                val result = importer.prepare(sourceUri, copy) { stage -> _state.update { it.copy(stage = stage) } }
+                val result = importer.prepare(sourceUri, copy) { stage -> _state.update { it.copy(stage = stage.toUiMessage()) } }
                 prepared = result
                 val duplicate = isPossibleDuplicate(repository.publications.first(), result.item)
                 pending = result; reviewing = true // Ownership: this job → the review.
@@ -72,7 +76,7 @@ class ImportViewModel(private val importer: PublicationImporter, private val rep
             // before this runs, the save never starts and the review abandons its preparation as usual.
             val prepared = pending ?: return@launch
             pending = null
-            _state.update { it.copy(busy = true, cancellable = false, stage = "Saving publication…") }
+            _state.update { it.copy(busy = true, cancellable = false, stage = UiMessage.Resource(R.string.import_stage_saving)) }
             val original = prepared.item
             val item = original.copy(title = title.trim(), creator = creator.trim(), category = category,
                 titleOrigin = if (title.trim() == original.title) original.titleOrigin else "user",
@@ -91,7 +95,7 @@ class ImportViewModel(private val importer: PublicationImporter, private val rep
                     // Not saved: the review takes the preparation back for a retry; without a review it is abandoned.
                     if (save.isActive) {
                         pending = prepared
-                        _state.update { it.copy(busy = false, cancellable = true, error = "Could not save the library entry. You can retry.") }
+                        _state.update { it.copy(busy = false, cancellable = true, error = UiMessage.Resource(R.string.import_error_save_failed)) }
                     } else abandon(original.sourceUri, prepared)
                 }
             }
@@ -120,10 +124,4 @@ class ImportViewModel(private val importer: PublicationImporter, private val rep
     }
 
     override fun onCleared() { pending?.let { abandoned -> pending = null; abandon(abandoned.item.sourceUri, abandoned) } }
-}
-
-/** A specific detail (for example a damaged EPUB container) wins over the problem's import wording. */
-private fun Exception.importMessage(): String {
-    val problem = publicationProblem()
-    return (this as? PublicationException)?.message?.takeIf { it != problem.message } ?: problem.importMessage
 }

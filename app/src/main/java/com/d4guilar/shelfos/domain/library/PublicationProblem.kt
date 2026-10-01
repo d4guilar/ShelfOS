@@ -6,35 +6,44 @@ import java.io.IOException
 import java.util.zip.ZipException
 
 /**
- * Distinct, explainable reasons a publication cannot be imported or opened.
- * [unavailable] problems concern access to the source rather than its content.
+ * Distinct, explainable reasons a publication cannot be imported or opened. [unavailable] problems concern
+ * access to the source rather than its content. This is identity only, never text: UI-layer code maps each
+ * case to a localized string (see core.designsystem's PublicationErrorMessages) so ShelfOS's interface
+ * language controls how these surface, without the domain layer depending on Android resources at all — see
+ * AGENTS.md's localization rules.
  */
-enum class PublicationProblem(val message: String, val importMessage: String = message, val unavailable: Boolean = false) {
+enum class PublicationProblem(val unavailable: Boolean = false) {
     // Providers may revoke access when a document is deleted, so the message does not over-claim a cause.
-    PERMISSION_LOST(
-        "ShelfOS can no longer open the original file. Access may have been revoked, or the file was moved or deleted. Your reading position and edits are kept.",
-        "Access to this file was denied. Choose it again.", unavailable = true,
-    ),
-    SOURCE_UNAVAILABLE(
-        "The original file can't be reached. It may have been moved, deleted or disconnected. Your reading position and edits are kept.",
-        "The selected file is unavailable. Check that it still exists and try again.", unavailable = true,
-    ),
-    NEEDS_COPY("This provider can't offer durable, seekable access. ShelfOS needs a private offline copy."),
-    UNSUPPORTED_FORMAT("Choose a PDF, EPUB or CBZ publication."),
-    UNSUPPORTED_LAYOUT("Fixed-layout EPUB reading is not supported in this build. PDF and CBZ fixed pages are supported."),
-    PROTECTED("This publication is password-protected or uses DRM. ShelfOS can't open protected publications."),
-    CORRUPT("This publication appears to be damaged or incomplete."),
-    EMPTY_ARCHIVE("The archive contains no supported image pages."),
-    TOO_LARGE("This publication exceeds ShelfOS's safe processing limits."),
-    INSUFFICIENT_STORAGE("There isn't enough free storage for a private copy. The incomplete copy was removed."),
-    COPY_FAILED("The private copy could not be completed. The original file is untouched."),
-    UNREADABLE(
-        "This publication could not be opened. It may be unavailable or damaged.",
-        "This file could not be imported. Check that it is available and not damaged.",
-    ),
+    PERMISSION_LOST(unavailable = true),
+    SOURCE_UNAVAILABLE(unavailable = true),
+    NEEDS_COPY,
+    UNSUPPORTED_FORMAT,
+    UNSUPPORTED_LAYOUT,
+    PROTECTED,
+    CORRUPT,
+    EMPTY_ARCHIVE,
+    TOO_LARGE,
+    INSUFFICIENT_STORAGE,
+    COPY_FAILED,
+    UNREADABLE,
 }
 
-class PublicationException(val problem: PublicationProblem, message: String = problem.message) : IOException(message)
+/**
+ * A more specific reason than [PublicationProblem] alone can express, raised by pure file/archive/EPUB-parsing
+ * code that has no Android Context to resolve a localized string with. Like [PublicationProblem], this is a
+ * locale-neutral identifier, not text; UI-layer code maps each case to a localized string. [name] still serves
+ * as [PublicationException]'s own technical `.message` for logs and stack traces, never shown to the user
+ * directly — see [PublicationException].
+ */
+enum class PublicationExceptionDetail {
+    UNSAFE_ENTRY_PATH, UNSUPPORTED_ENTRY_SIZE, EXPANDS_BEYOND_SAFE_LIMITS, IMAGE_PAGE_TOO_LARGE, PDF_HAS_NO_PAGES,
+    UNSUPPORTED_COMPRESSION_METHOD, TOO_MANY_ENTRIES, ARCHIVE_DAMAGED_OR_INCOMPLETE, EPUB_CONTENT_TOO_LARGE,
+    EPUB_UNSUPPORTED_ENTITY_DECLARATIONS, EPUB_INVALID_OR_UNSUPPORTED, USE_EPUB_READER_INSTEAD,
+    PAGE_IMAGE_DAMAGED_OR_TOO_LARGE, PAGE_IMAGE_DECODE_FAILED, EPUB_MISSING_CONTAINER, PUBLICATION_HAS_NO_READABLE_PAGES,
+}
+
+/** [detail], when present, is a more specific reason than [problem] alone — see [PublicationExceptionDetail]. */
+class PublicationException(val problem: PublicationProblem, val detail: PublicationExceptionDetail? = null) : IOException(detail?.name)
 
 /** Maps platform failures onto the ShelfOS error model without collapsing them into one generic message. */
 fun Throwable.publicationProblem(): PublicationProblem = when (this) {
@@ -45,5 +54,6 @@ fun Throwable.publicationProblem(): PublicationProblem = when (this) {
     else -> PublicationProblem.UNREADABLE
 }
 
-/** Specific detail when a [PublicationException] carries one, otherwise the problem's reader message. */
-fun Throwable.readerMessage(): String = (this as? PublicationException)?.message ?: publicationProblem().message
+/** The specific detail a [PublicationException] carries, when present, otherwise null. Pure and localization-
+ * free, like the rest of this file; UI-layer code resolves either this or [publicationProblem] to a message. */
+fun Throwable.publicationExceptionDetail(): PublicationExceptionDetail? = (this as? PublicationException)?.detail

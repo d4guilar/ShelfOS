@@ -2,6 +2,8 @@
 package com.d4guilar.shelfos.feature.library
 
 import androidx.lifecycle.*
+import com.d4guilar.shelfos.R
+import com.d4guilar.shelfos.core.designsystem.UiMessage
 import com.d4guilar.shelfos.data.library.LibraryRepository
 import com.d4guilar.shelfos.domain.library.*
 import kotlinx.coroutines.CancellationException
@@ -20,7 +22,7 @@ class LibraryViewModel(val repository: LibraryRepository, private val saved: Sav
     private val selection = saved.getStateFlow("selection", "")
     val query = saved.getStateFlow("query", "")
     private val records = repository.publications.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    private val _error = MutableStateFlow<String?>(null)
+    private val _error = MutableStateFlow<UiMessage?>(null)
     val error = _error.asStateFlow()
     val state = combine(records, filter, selection, query) { all, filterName, id, queryText ->
         val active = LibraryFilter.entries.firstOrNull { it.name == filterName } ?: LibraryFilter.BOOKS
@@ -44,6 +46,6 @@ class LibraryViewModel(val repository: LibraryRepository, private val saved: Sav
     fun dismissError() { _error.value = null }
     private fun action(block: suspend () -> Unit) { viewModelScope.launch {
         try { block() } catch (e: CancellationException) { throw e }
-        catch (_: Exception) { _error.value = "The library change could not be saved. Please try again." }
+        catch (_: Exception) { _error.value = UiMessage.Resource(R.string.library_error_save_failed) }
     } }
 }

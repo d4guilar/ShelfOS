@@ -22,6 +22,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
@@ -31,7 +32,9 @@ import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.core.designsystem.InputKeycap
+import com.d4guilar.shelfos.core.designsystem.resolve
 import com.d4guilar.shelfos.core.input.*
 import com.d4guilar.shelfos.core.reader.FitMode
 import com.d4guilar.shelfos.core.reader.capabilities
@@ -68,6 +71,16 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
     val previousHint = InputHints.hint(ShelfCommand.PREVIOUS_PAGE, modality, rtl)
     val nextHint = InputHints.hint(ShelfCommand.NEXT_PAGE, modality, rtl)
     val backHint = InputHints.hint(ShelfCommand.BACK, modality, rtl)
+    // Semantics lambdas run outside composition, so these localized strings are resolved here.
+    val controlsShownDescription = stringResource(R.string.content_desc_controls_shown)
+    val controlsHiddenDescription = stringResource(R.string.content_desc_controls_hidden)
+    val showControlsActionLabel = stringResource(R.string.action_show_controls)
+    val previousLabel = stringResource(R.string.content_desc_previous_hint)
+    val nextLabel = stringResource(R.string.content_desc_next_hint)
+    fun previousHintDescription(hint: String) = String.format(previousLabel, hint)
+    fun nextHintDescription(hint: String) = String.format(nextLabel, hint)
+    val pageOfCountTemplate = stringResource(R.string.content_desc_page_of_count)
+    val openingLabel = stringResource(R.string.reader_opening)
 
     fun hideControls() { controls = false; pageFocus.requestFocus() }
     fun toggleControls(moveFocus: Boolean) {
@@ -107,24 +120,24 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
     }) {
         if (controls) Row(Modifier.fillMaxWidth().onFocusChanged { topFocused = it.hasFocus }.horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onBack, Modifier.focusRequester(firstControl).testTag("reader_library")) { Text("Library") }
-            TextButton({ appearance = true }, enabled = item != null) { Text("Appearance") }
-            TextButton({ scale = if (scale == 1f) 2f else 1f; panX = 0f; panY = 0f }) { Text(if (scale == 1f) "Zoom in" else "Reset zoom") }
-            TextButton({ hideControls() }) { Text("Hide controls") }
+            TextButton(onBack, Modifier.focusRequester(firstControl).testTag("reader_library")) { Text(stringResource(R.string.nav_library)) }
+            TextButton({ appearance = true }, enabled = item != null) { Text(stringResource(R.string.action_appearance)) }
+            TextButton({ scale = if (scale == 1f) 2f else 1f; panX = 0f; panY = 0f }) { Text(stringResource(if (scale == 1f) R.string.action_zoom_in else R.string.action_reset_zoom)) }
+            TextButton({ hideControls() }) { Text(stringResource(R.string.action_hide_controls)) }
             // Input-discovery hint (Phase 2A.1): decorative only, since no single existing control is exactly
             // "Back" to merge this into; the system Back gesture/button remains self-describing to TalkBack.
             backHint?.let { Row(Modifier.padding(start = 4.dp).testTag("back_hint").clearAndSetSemantics { }, horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically) { InputKeycap(it); Text("Back", color = t.colors.secondary, style = t.typography.labelSmall) } }
+                verticalAlignment = Alignment.CenterVertically) { InputKeycap(it); Text(stringResource(R.string.action_back), color = t.colors.secondary, style = t.typography.labelSmall) } }
         }
         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().focusRequester(pageFocus).focusable().testTag("reader_page")
             .semantics {
                 // Tap zones (edges turn pages, center toggles chrome) and double-tap-to-zoom are unchanged;
                 // this only adds an accessibility action, exposed exclusively while chrome is hidden, so
                 // TalkBack's announced instruction always matches an action that actually reveals chrome.
-                if (controls) stateDescription = "Controls shown"
+                if (controls) stateDescription = controlsShownDescription
                 else {
-                    stateDescription = "Controls hidden"
-                    onClick(label = "Show reader controls") { toggleControls(moveFocus = true); true }
+                    stateDescription = controlsHiddenDescription
+                    onClick(label = showControlsActionLabel) { toggleControls(moveFocus = true); true }
                 }
             }
             .pointerInput(state.page, rtl) {
@@ -170,7 +183,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                 val fitWidth = state.preferences.fit == FitMode.WIDTH
                 key(state.page) {
                     Box(if (fitWidth) Modifier.fillMaxSize().verticalScroll(rememberScrollState()) else Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Image(image, "Page ${state.page + 1} of ${state.count}",
+                        Image(image, String.format(pageOfCountTemplate, state.page + 1, state.count),
                             (if (fitWidth) Modifier.fillMaxWidth().aspectRatio(bitmap.width.toFloat() / bitmap.height) else Modifier.fillMaxSize())
                                 .graphicsLayer { scaleX = scale; scaleY = scale; translationX = panX; translationY = panY }, contentScale = ContentScale.Fit)
                     }
@@ -179,8 +192,8 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
             if (state.loading && state.error == null) CircularProgressIndicator()
             state.error?.let { message -> Surface(color = t.colors.surface, shape = t.shapes.small) {
                 Column(Modifier.padding(16.dp).widthIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(message)
-                    if (state.count > 0) TextButton(vm::retry) { Text("Retry page") } else TextButton(onBack) { Text("Back to Library") }
+                    Text(message.resolve())
+                    if (state.count > 0) TextButton(vm::retry) { Text(stringResource(R.string.action_retry_page)) } else TextButton(onBack) { Text(stringResource(R.string.action_back_to_library)) }
                 }
             } }
         }
@@ -188,14 +201,14 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
         if (controls) CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
             Column(Modifier.padding(horizontal = 8.dp).onFocusChanged { bottomFocused = it.hasFocus }) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton({ vm.turn(-1) }, Modifier.let { m -> previousHint?.let { m.semantics { contentDescription = "Previous, $it" } } ?: m },
-                        enabled = state.page > 0) { previousHint?.let { InputKeycap(it, Modifier.padding(end = 4.dp)) }; Text("Previous") }
+                    TextButton({ vm.turn(-1) }, Modifier.let { m -> previousHint?.let { m.semantics { contentDescription = previousHintDescription(it) } } ?: m },
+                        enabled = state.page > 0) { previousHint?.let { InputKeycap(it, Modifier.padding(end = 4.dp)) }; Text(stringResource(R.string.action_previous)) }
                     // Numbers keep left-to-right order inside the mirrored row ("3 / 193", never "193 / 3").
                     if (state.count > 0) Text("${(sliderTarget?.roundToInt() ?: state.page) + 1} / ${state.count}", Modifier.testTag("page_number"),
                         style = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr))
-                    else if (state.loading && state.error == null) Text("Opening…", color = t.colors.secondary)
-                    TextButton({ vm.turn(1) }, Modifier.let { m -> nextHint?.let { m.semantics { contentDescription = "Next, $it" } } ?: m },
-                        enabled = state.page + 1 < state.count) { Text("Next"); nextHint?.let { InputKeycap(it, Modifier.padding(start = 4.dp)) } }
+                    else if (state.loading && state.error == null) Text(openingLabel, color = t.colors.secondary)
+                    TextButton({ vm.turn(1) }, Modifier.let { m -> nextHint?.let { m.semantics { contentDescription = nextHintDescription(it) } } ?: m },
+                        enabled = state.page + 1 < state.count) { Text(stringResource(R.string.action_next)); nextHint?.let { InputKeycap(it, Modifier.padding(start = 4.dp)) } }
                 }
                 if (state.count > 1) Slider(sliderTarget ?: state.page.toFloat(), { sliderTarget = it },
                     valueRange = 0f..(state.count - 1).toFloat(),

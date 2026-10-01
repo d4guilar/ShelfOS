@@ -70,7 +70,7 @@ class PublicationFiles(
         return File(directory, name)
     }
 
-    override suspend fun prepare(sourceUri: String, copy: Boolean, stage: (String) -> Unit): PreparedImport = withContext(Dispatchers.IO) {
+    override suspend fun prepare(sourceUri: String, copy: Boolean, stage: (ImportProgressStage) -> Unit): PreparedImport = withContext(Dispatchers.IO) {
         val uri = Uri.parse(sourceUri)
         var name = "Publication"
         var size: Long? = null
@@ -94,7 +94,7 @@ class PublicationFiles(
             }
             val id = UUID.randomUUID().toString()
             if (copy) owned = copyToPrivateStorage(uri, id, size, stage).also { size = it.length() }
-            stage("Inspecting publication…")
+            stage(ImportProgressStage.Inspecting)
             val descriptor = owned?.let { ParcelFileDescriptor.open(it, ParcelFileDescriptor.MODE_READ_ONLY) }
                 ?: open(LibraryItem(id, name, category = MediaCategory.BOOK, sourceUri = sourceUri, format = PublicationFormat.PDF, fileName = name, byteSize = size))
             val (format, metadata) = descriptor.use(::inspect)
@@ -116,8 +116,8 @@ class PublicationFiles(
         }
     }
 
-    private suspend fun copyToPrivateStorage(uri: Uri, id: String, size: Long?, stage: (String) -> Unit): File {
-        stage("Copying for offline access…")
+    private suspend fun copyToPrivateStorage(uri: Uri, id: String, size: Long?, stage: (ImportProgressStage) -> Unit): File {
+        stage(ImportProgressStage.CopyingOffline)
         val root = directory
         if (size != null && freeBytes(root) < size + RESERVED_BYTES) throw PublicationException(PublicationProblem.INSUFFICIENT_STORAGE)
         val partial = File(root, "$id$PARTIAL")
@@ -141,7 +141,8 @@ class PublicationFiles(
                     val progress = if (size != null && size > 0) total * 100 / size else total / (1024 * 1024)
                     if (progress != reported) {
                         reported = progress
-                        stage(if (size != null && size > 0) "Copying… $progress%" else "Copying… $progress MB")
+                        stage(if (size != null && size > 0) ImportProgressStage.CopyingPercent(progress.toInt())
+                            else ImportProgressStage.CopyingMegabytes(progress))
                     }
                 }
             } } ?: throw PublicationException(PublicationProblem.SOURCE_UNAVAILABLE)
@@ -187,7 +188,7 @@ class PublicationFiles(
     /** Opening the document reads only its cross-reference data; protected and damaged PDFs fail early. */
     private fun checkPdf(descriptor: ParcelFileDescriptor) {
         val pages = openPdf(ParcelFileDescriptor.dup(descriptor.fileDescriptor)).use { it.pageCount }
-        if (pages <= 0) throw PublicationException(PublicationProblem.CORRUPT, "This PDF has no pages.")
+        if (pages <= 0) throw PublicationException(PublicationProblem.CORRUPT, PublicationExceptionDetail.PDF_HAS_NO_PAGES)
     }
 
     override fun discard(prepared: PreparedImport, sourceStillUsed: Boolean) {

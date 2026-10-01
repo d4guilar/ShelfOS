@@ -3,7 +3,7 @@ package com.d4guilar.shelfos
 
 import android.graphics.Color
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -31,13 +31,13 @@ import com.d4guilar.shelfos.feature.library.LibraryViewModel
 import com.d4guilar.shelfos.feature.settings.SettingsViewModel
 import kotlinx.coroutines.flow.map
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val container = (application as ShelfApplication).container
         setContent {
-            val settings: SettingsViewModel = viewModel(factory = viewModelFactory { initializer { SettingsViewModel(container.themes, container.library) } })
+            val settings: SettingsViewModel = viewModel(factory = viewModelFactory { initializer { SettingsViewModel(container.themes, container.library, container.languages) } })
             val library: LibraryViewModel = viewModel(factory = viewModelFactory { initializer {
                 LibraryViewModel(container.library, createSavedStateHandle())
             } })

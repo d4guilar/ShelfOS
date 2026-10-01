@@ -29,15 +29,19 @@ import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.core.designsystem.SectionTitle
 import com.d4guilar.shelfos.core.designsystem.shelfAction
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import com.d4guilar.shelfos.domain.library.LibraryItem
 import com.d4guilar.shelfos.domain.library.LibraryFilter
 import com.d4guilar.shelfos.domain.library.MediaCategory
+import com.d4guilar.shelfos.core.designsystem.formatPercent
 
 @Composable
 fun LibraryScreen(
@@ -71,8 +75,8 @@ fun LibraryScreen(
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(t.spacing.medium)) {
-                    SectionTitle("Continue Reading")
-                    if (state.continueReading.isEmpty()) Text("Your reading will appear here once you open a publication.", color = t.colors.secondary)
+                    SectionTitle(stringResource(R.string.section_continue_reading))
+                    if (state.continueReading.isEmpty()) Text(stringResource(R.string.continue_reading_empty), color = t.colors.secondary)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(t.spacing.medium)) {
                         items(state.continueReading, key = { it.id }) { item ->
                             Row(Modifier.width(244.dp).testTag("continue_${item.id}").shelfAction(
@@ -93,7 +97,7 @@ fun LibraryScreen(
                         LibraryFilter.entries.forEach { filter ->
                             val selected = state.filter == filter
                             Column(Modifier.width(IntrinsicSize.Max).shelfAction(selected = selected, role = Role.Tab, onClick = { onFilter(filter) })) {
-                                Text(filter.label, Modifier.padding(horizontal = 12.dp, vertical = 16.dp),
+                                Text(stringResource(filter.labelRes()), Modifier.padding(horizontal = 12.dp, vertical = 16.dp),
                                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                                     color = if (selected) t.colors.ink else t.colors.secondary,
                                     style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false)
@@ -101,12 +105,16 @@ fun LibraryScreen(
                             }
                         }
                     }
-                    Text("${state.items.size} ${if (state.items.size == 1) "publication" else "publications"} · Recently added",
+                    Text(pluralStringResource(R.plurals.library_item_count_recently_added, state.items.size, state.items.size),
                         color = t.colors.secondary, style = MaterialTheme.typography.bodySmall)
                 }
             }
             if (state.items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                Text(if (state.loading) "Loading your library…" else if (state.all.isEmpty()) "Your library starts here. Add a PDF, EPUB or CBZ using Add file." else "No publications in this view yet.", Modifier.padding(vertical = 24.dp))
+                Text(stringResource(when {
+                    state.loading -> R.string.library_loading
+                    state.all.isEmpty() -> R.string.library_empty_start
+                    else -> R.string.library_empty_filtered
+                }), Modifier.padding(vertical = 24.dp))
             }
             items(state.items, key = { it.id }) { item ->
                 val selected = state.selected?.id == item.id
@@ -134,7 +142,7 @@ fun PublicationTile(item: LibraryItem, selected: Boolean, modifier: Modifier = M
         ).padding(3.dp))
         Text(item.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(item.creator, color = t.colors.secondary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (!item.available) Text("Unavailable", color = t.colors.secondary, style = MaterialTheme.typography.labelSmall)
+        if (!item.available) Text(stringResource(R.string.label_unavailable), color = t.colors.secondary, style = MaterialTheme.typography.labelSmall)
         else if (item.progress > 0) ReadingProgress(item.progress)
     }
 }
@@ -145,6 +153,6 @@ fun ReadingProgress(progress: Int) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.weight(1f).height(3.dp),
             color = t.colors.secondary, trackColor = t.colors.divider, drawStopIndicator = {})
-        Text("$progress%", color = t.colors.secondary, style = MaterialTheme.typography.labelSmall)
+        Text(formatPercent(progress), color = t.colors.secondary, style = MaterialTheme.typography.labelSmall)
     }
 }

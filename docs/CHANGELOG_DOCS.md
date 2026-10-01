@@ -1,5 +1,34 @@
 # Documentation Changelog
 
+## Localization foundation documented as complete (2026-09-30)
+
+- Reconciled documentation with the completed, independently validated localization
+  foundation on `feat/localization-foundation` (`ce32d5f` + `e6cc519`). QA verdict:
+  **PASS WITH NON-BLOCKING FOLLOW-UPS**; no remaining HIGH or MEDIUM findings.
+- Updated `docs/PRODUCT.md` §20: the four initial official app locales (System default,
+  English, Español, Português (Brasil) as `pt-BR`) are implemented and shipped, English
+  is the canonical/fallback language, System default is an empty override rather than a
+  snapshot, the control lives in the existing Settings UI, and the covered
+  production-UI surfaces are listed.
+- Updated `docs/ARCHITECTURE.md` localization architecture with the actual implementation:
+  AppCompat per-app locales (`setApplicationLocales`/`getApplicationLocales` +
+  `LocaleListCompat`, AppCompat activity participation and AppCompat-compatible NoActionBar
+  theme parent), locale-neutral language identity/persistence with no Room change, the
+  domain/UI boundary (typed publication, font-import and import-progress reasons/states
+  mapped to resources at the presentation boundary, including the API 24–32 rationale),
+  locale-aware formatting on touched paths, and localized accessibility copy.
+- Recorded explicitly, in both product and architecture docs, that ShelfOS does **not**
+  declare `android:localeConfig` and is therefore not exposed in Android Settings → Apps →
+  App language, so no system-level App Languages integration may be implied.
+- Marked the localization foundation **COMPLETE** in `docs/ROADMAP.md` without creating or
+  renumbering a phase; Phase 2C remains the next engineering phase.
+- Recorded final validation evidence, the NavigationSmokeTest teardown flake triage
+  (emulator/infra flake, not merge-blocking, not a localization defect) and the three
+  remaining non-blocking follow-ups (API 24–32 device verification, external
+  locale-change observation, optional translation polish) in `docs/VALIDATION.md`.
+- Documentation only: no production code, test, resource, Gradle, Room/schema or
+  dependency change.
+
 ## Interface localization direction + merge of latest main (2026-09-30)
 
 - Merged `origin/main` (`6eea505`, Phase 2B.4 managed fonts and reading presentation)

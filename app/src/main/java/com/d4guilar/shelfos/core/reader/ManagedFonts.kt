@@ -39,7 +39,15 @@ data class ManagedFontFamily(
     val faces: List<ManagedFontFace>,
 )
 
-class FontImportException(val userMessage: String, cause: Throwable? = null) : Exception(userMessage, cause)
+/** A locale-neutral identifier, not text — see [FontImportException]. UI-layer code (not this file) maps each
+ * case to a localized string, keeping this validation layer free of Android resources/Context, as some of it
+ * (e.g. [validateSfnt]) is also exercised directly by plain JVM tests. */
+enum class FontImportFailureReason {
+    READ_FAILED, UNSUPPORTED_EXTENSION, TOO_LARGE, TRUNCATED_OR_DAMAGED, COLLECTION_UNSUPPORTED, NOT_SFNT,
+    MISSING_TABLES, DAMAGED_OR_UNSUPPORTED, FAMILY_NOT_FOUND, FINISH_IMPORT_FAILED, FINISH_REPLACE_FAILED,
+}
+
+class FontImportException(val reason: FontImportFailureReason, cause: Throwable? = null) : Exception(reason.name, cause)
 
 /**
  * Owns copies of user-selected fonts. The catalog is reconstructed from per-family metadata in private storage;
@@ -64,8 +72,8 @@ class ManagedFontRepository(
     suspend fun import(uri: Uri): ManagedFontFamily = withContext(Dispatchers.IO) {
         val name = displayName(uri)
         val input = try { context.contentResolver.openInputStream(uri) }
-        catch (error: Exception) { throw FontImportException("ShelfOS could not read that font.", error) }
-        input?.use { import(it, name) } ?: throw FontImportException("ShelfOS could not read that font.")
+        catch (error: Exception) { throw FontImportException(FontImportFailureReason.READ_FAILED, error) }
+        input?.use { import(it, name) } ?: throw FontImportException(FontImportFailureReason.READ_FAILED)
     }
 
     internal suspend fun import(input: InputStream, sourceName: String): ManagedFontFamily = mutex.withLock {
@@ -75,22 +83,22 @@ class ManagedFontRepository(
         try {
             root.mkdirs()
             val family = stageFamily(input, sourceName, uuid, partial)
-            if (!partial.renameTo(complete)) throw FontImportException("ShelfOS could not finish importing that font.")
+            if (!partial.renameTo(complete)) throw FontImportException(FontImportFailureReason.FINISH_IMPORT_FAILED)
             refresh()
             family
         } catch (error: Throwable) {
             partial.deleteRecursively()
             complete.deleteRecursively()
             if (error is FontImportException) throw error
-            throw FontImportException("That font is damaged or unsupported.", error)
+            throw FontImportException(FontImportFailureReason.DAMAGED_OR_UNSUPPORTED, error)
         }
     }
 
     /** Replaces only ShelfOS's managed Regular face; the external source remains read-only and untouched. */
     internal suspend fun replace(familyId: String, input: InputStream, sourceName: String): ManagedFontFamily = mutex.withLock {
-        val uuid = userUuid(familyId) ?: throw FontImportException("That managed font no longer exists.")
+        val uuid = userUuid(familyId) ?: throw FontImportException(FontImportFailureReason.FAMILY_NOT_FOUND)
         val complete = File(root, uuid)
-        if (!complete.isDirectory) throw FontImportException("That managed font no longer exists.")
+        if (!complete.isDirectory) throw FontImportException(FontImportFailureReason.FAMILY_NOT_FOUND)
         val partial = File(root, ".$uuid.replace.part")
         val old = File(root, ".$uuid.replace.old")
         try {
@@ -98,7 +106,7 @@ class ManagedFontRepository(
             val family = stageFamily(input, sourceName, uuid, partial)
             if (!complete.renameTo(old) || !partial.renameTo(complete)) {
                 if (!complete.exists()) old.renameTo(complete)
-                throw FontImportException("ShelfOS could not finish replacing that font.")
+                throw FontImportException(FontImportFailureReason.FINISH_REPLACE_FAILED)
             }
             old.deleteRecursively()
             refresh()
@@ -109,7 +117,7 @@ class ManagedFontRepository(
             old.deleteRecursively()
             refresh()
             if (error is FontImportException) throw error
-            throw FontImportException("That font is damaged or unsupported.", error)
+            throw FontImportException(FontImportFailureReason.DAMAGED_OR_UNSUPPORTED, error)
         }
     }
 
@@ -151,7 +159,7 @@ class ManagedFontRepository(
         copyBounded(input, staging)
         val format = validateSfnt(staging, sourceName)
         val face = File(directory, "regular.${format.extension}")
-        if (!staging.renameTo(face)) throw FontImportException("ShelfOS could not finish importing that font.")
+        if (!staging.renameTo(face)) throw FontImportException(FontImportFailureReason.FINISH_IMPORT_FAILED)
         val family = ManagedFontFamily(
             id = "user:$uuid",
             displayName = normalizedFontName(sourceName),
@@ -222,7 +230,7 @@ class ManagedFontRepository(
 
         internal fun checkFontExtension(name: String) {
             if (name.substringAfterLast('.', "").lowercase() !in setOf("ttf", "otf"))
-                throw FontImportException("Choose a .ttf or .otf font file.")
+                throw FontImportException(FontImportFailureReason.UNSUPPORTED_EXTENSION)
         }
 
         internal fun normalizedFontName(name: String): String = name.substringBeforeLast('.', name)
@@ -237,14 +245,14 @@ class ManagedFontRepository(
                     val count = input.read(buffer)
                     if (count < 0) break
                     total += count
-                    if (total > MAX_FONT_BYTES) throw FontImportException("That font is larger than ShelfOS supports.")
+                    if (total > MAX_FONT_BYTES) throw FontImportException(FontImportFailureReason.TOO_LARGE)
                     output.write(buffer, 0, count)
                 }
             }
         }
 
         internal fun validateSfnt(file: File, sourceName: String): ManagedFontFormat {
-            if (file.length() < 28) throw FontImportException("That font is truncated or damaged.")
+            if (file.length() < 28) throw FontImportException(FontImportFailureReason.TRUNCATED_OR_DAMAGED)
             RandomAccessFile(file, "r").use { data ->
                 val signature = data.readInt()
                 // Codex QA M2: the sfnt signature identifies the *outline* format (TrueType glyphs vs. CFF/
@@ -261,12 +269,12 @@ class ManagedFontRepository(
                     // re-derived from (and potentially disagreeing with) the detected outline signature.
                     0x00010000, 0x74727565, 0x4F54544F ->
                         if (sourceName.substringAfterLast('.', "").lowercase() == "otf") ManagedFontFormat.OTF else ManagedFontFormat.TTF
-                    0x74746366 -> throw FontImportException("Font collections (.ttc) are not supported yet.")
-                    else -> throw FontImportException("That file is not a supported TrueType or OpenType font.")
+                    0x74746366 -> throw FontImportException(FontImportFailureReason.COLLECTION_UNSUPPORTED)
+                    else -> throw FontImportException(FontImportFailureReason.NOT_SFNT)
                 }
                 val tableCount = data.readUnsignedShort()
                 if (tableCount !in 1..256 || 12L + tableCount * 16L > data.length())
-                    throw FontImportException("That font is truncated or damaged.")
+                    throw FontImportException(FontImportFailureReason.TRUNCATED_OR_DAMAGED)
                 data.skipBytes(6)
                 val tags = mutableSetOf<String>()
                 repeat(tableCount) {
@@ -276,11 +284,11 @@ class ManagedFontRepository(
                     val offset = data.readInt().toLong() and 0xffffffffL
                     val length = data.readInt().toLong() and 0xffffffffL
                     if (offset > data.length() || length > data.length() - offset)
-                        throw FontImportException("That font is truncated or damaged.")
+                        throw FontImportException(FontImportFailureReason.TRUNCATED_OR_DAMAGED)
                     tags += tag
                 }
                 if (!tags.containsAll(setOf("name", "cmap", "head")))
-                    throw FontImportException("That font is missing required tables.")
+                    throw FontImportException(FontImportFailureReason.MISSING_TABLES)
                 return format
             }
         }
