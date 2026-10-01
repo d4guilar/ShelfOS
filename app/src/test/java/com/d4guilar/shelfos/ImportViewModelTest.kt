@@ -3,6 +3,7 @@ package com.d4guilar.shelfos
 
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
+import com.d4guilar.shelfos.core.designsystem.UiMessage
 import com.d4guilar.shelfos.data.library.LibraryRepository
 import com.d4guilar.shelfos.domain.importing.PreparedImport
 import com.d4guilar.shelfos.domain.importing.PublicationImporter
@@ -84,11 +85,11 @@ class ImportViewModelTest {
         val vm = importing(importer)
         importer.prepare = { _, _ -> throw PublicationException(PublicationProblem.CORRUPT, "This EPUB has no publication container.") }
         vm.choose("content://docs/damaged"); advanceUntilIdle()
-        assertEquals("This EPUB has no publication container.", vm.state.value.error)
+        assertEquals(UiMessage.Literal("This EPUB has no publication container."), vm.state.value.error)
         vm.dismiss()
         importer.prepare = { _, _ -> throw SecurityException("revoked") }
         vm.choose("content://docs/revoked"); advanceUntilIdle()
-        assertEquals(PublicationProblem.PERMISSION_LOST.importMessage, vm.state.value.error)
+        assertEquals(UiMessage.Resource(PublicationProblem.PERMISSION_LOST.importMessageRes), vm.state.value.error)
         assertNull(vm.state.value.preview)
         vm.viewModelScope.cancel()
     }

@@ -806,8 +806,9 @@ Interface language is a presentation/resource concern owned by the UI layer.
 - Theme-owned ShelfOS copy resolves through the same application localization
   resources. A theme may style localized text, but it must not ship a separate
   translation mechanism, and reference-theme terminology is not translated content.
-- Language selection is a preference (System default / English / Español) and, when
-  explicitly set, is honored independently of the Android system language.
+- Language selection is a preference (System default / English / Español / Português
+  (Brasil)) and, when explicitly set, is honored independently of the Android system
+  language.
 - Design discipline for future locales: no architecture may assume English-only UI text,
   fixed left-to-right ordering, or locale-specific formatting. Right-to-left support and
   additional locales are future compatibility, not a launch commitment.

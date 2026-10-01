@@ -474,15 +474,15 @@ and before release. It does not move Phase 2C or any other phase.
   copy in UI, domain or data layers
 - locale-aware formatting for dates, numbers, percentages, plurals and file sizes
 - localizable accessibility labels and content descriptions
-- a language preference with System default / English / Español that changes only
-  ShelfOS-owned UI text
+- a language preference with System default / English / Español / Português (Brasil)
+  that changes only ShelfOS-owned UI text
 - theme-owned ShelfOS copy resolving through the same resources
 
 ### Done when
 
-The interface runs in English and Español with no hard-coded English strings, and
-changing the app language changes only ShelfOS-owned UI text — never publication
-content or imported metadata.
+The interface runs in English, Español and Português (Brasil) with no hard-coded
+English strings in current production UI, and changing the app language changes only
+ShelfOS-owned UI text — never publication content or imported metadata.
 
 See [`PRODUCT.md`](PRODUCT.md#20-interface-language) and [`ARCHITECTURE.md`](ARCHITECTURE.md#localization-architecture).
 

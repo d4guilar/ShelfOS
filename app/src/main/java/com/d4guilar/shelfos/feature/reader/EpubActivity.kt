@@ -27,6 +27,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
@@ -44,9 +45,12 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.ShelfApplication
 import com.d4guilar.shelfos.AppContainer
 import com.d4guilar.shelfos.core.designsystem.InputKeycap
+import com.d4guilar.shelfos.core.designsystem.formatPercent
+import com.d4guilar.shelfos.core.designsystem.resolve
 import com.d4guilar.shelfos.core.input.*
 import com.d4guilar.shelfos.core.reader.*
 import com.d4guilar.shelfos.core.theme.*
@@ -98,6 +102,28 @@ open class EpubActivity : AppCompatActivity() {
         val searchState by vm.searchState.collectAsStateWithLifecycle()
         val tokens = LocalShelfTokens.current
         val controller = remember { EpubController() }
+        // Semantics lambdas below run outside composition, so these localized strings are resolved here.
+        val controlsShownDescription = stringResource(R.string.content_desc_controls_shown)
+        val controlsHiddenDescription = stringResource(R.string.content_desc_controls_hidden)
+        val showControlsActionLabel = stringResource(R.string.action_show_controls)
+        val previousLabel = stringResource(R.string.content_desc_previous_hint)
+        val nextLabel = stringResource(R.string.content_desc_next_hint)
+        fun previousHintDescription(hint: String) = String.format(previousLabel, hint)
+        fun nextHintDescription(hint: String) = String.format(nextLabel, hint)
+        val fontRemoveFailedMessage = stringResource(R.string.font_remove_failed)
+        val filterChaptersDescription = stringResource(R.string.content_desc_filter_chapters)
+        val searchThisPublicationLabel = stringResource(R.string.search_this_publication)
+        val searchingDescription = stringResource(R.string.content_desc_searching)
+        val noSearchResultsDescription = stringResource(R.string.content_desc_no_search_results)
+        val searchResultOpenFailedMessage = stringResource(R.string.search_result_open_failed)
+        val searchMatchFallback = stringResource(R.string.search_match_fallback)
+        val progressVisualTemplate = stringResource(R.string.reading_progress_visual)
+        val progressSpokenTemplate = stringResource(R.string.reading_progress_spoken)
+        val bookmarkLocationTemplate = stringResource(R.string.bookmark_location)
+        val searchResultDescriptionTemplate = stringResource(R.string.content_desc_search_result)
+        fun progressVisual(percent: Int) = String.format(progressVisualTemplate, percent)
+        fun progressSpoken(percent: Int) = String.format(progressSpokenTemplate, percent)
+        fun locationPhrase(location: Int) = String.format(bookmarkLocationTemplate, location)
         var controls by rememberSaveable { mutableStateOf(true) }
         var appearance by rememberSaveable { mutableStateOf(false) }
         var chapters by rememberSaveable { mutableStateOf(false) }
@@ -194,16 +220,16 @@ open class EpubActivity : AppCompatActivity() {
                 if (controls) FlowRow(Modifier.fillMaxWidth().onFocusChanged { topFocused = it.hasFocus },
                     horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton({ finish() }, Modifier.focusRequester(firstControl).testTag("epub_library")) { Text("Library") }
+                        TextButton({ finish() }, Modifier.focusRequester(firstControl).testTag("epub_library")) { Text(stringResource(R.string.nav_library)) }
                         // Input-discovery hint (Phase 2A.1): decorative only, since no single existing control is
                         // exactly "Back" to merge this into; the system Back gesture/button remains self-describing.
                         backHint?.let { Row(Modifier.padding(start = 4.dp).testTag("back_hint").clearAndSetSemantics { }, horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically) { InputKeycap(it); Text("Back", color = tokens.colors.secondary, style = tokens.typography.labelSmall) } }
+                            verticalAlignment = Alignment.CenterVertically) { InputKeycap(it); Text(stringResource(R.string.action_back), color = tokens.colors.secondary, style = tokens.typography.labelSmall) } }
                     }
-                    TextButton({ chapters = true }, enabled = session != null) { Text("Chapters") }
-                    TextButton({ bookmarks = true }, enabled = session != null) { Text("Bookmarks") }
-                    TextButton({ search = true }, enabled = session != null) { Text("Search") }
-                    TextButton({ appearance = true }, enabled = session != null) { Text("Appearance") }
+                    TextButton({ chapters = true }, enabled = session != null) { Text(stringResource(R.string.action_chapters)) }
+                    TextButton({ bookmarks = true }, enabled = session != null) { Text(stringResource(R.string.action_bookmarks)) }
+                    TextButton({ search = true }, enabled = session != null) { Text(stringResource(R.string.nav_search)) }
+                    TextButton({ appearance = true }, enabled = session != null) { Text(stringResource(R.string.action_appearance)) }
                 }
                 if (session != null && item != null) {
                     EpubSurface(this@EpubActivity, session, item.locator, state.preferences, tokens.dark, item.category, controller,
@@ -211,10 +237,10 @@ open class EpubActivity : AppCompatActivity() {
                             // Center-tap-to-toggle is unchanged; this only adds an accessibility action, exposed
                             // exclusively while chrome is hidden, so TalkBack's instruction matches a real action.
                             .semantics {
-                                if (controls) stateDescription = "Controls shown"
+                                if (controls) stateDescription = controlsShownDescription
                                 else {
-                                    stateDescription = "Controls hidden"
-                                    onClick(label = "Show reader controls") { controls = true; controlFocusRequests++; true }
+                                    stateDescription = controlsHiddenDescription
+                                    onClick(label = showControlsActionLabel) { controls = true; controlFocusRequests++; true }
                                 }
                             },
                         onCenterTap = { modality = InputModality.TOUCH; controls = !controls },
@@ -223,22 +249,22 @@ open class EpubActivity : AppCompatActivity() {
                     val error = state.error
                     if (error == null) CircularProgressIndicator()
                     else Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(error)
-                        TextButton({ finish() }) { Text("Back to Library") }
+                        Text(error.resolve())
+                        TextButton({ finish() }) { Text(stringResource(R.string.action_back_to_library)) }
                     }
                 }
                 if (session != null) {
-                    state.error?.let { Text(it, Modifier.padding(8.dp)) }
+                    state.error?.let { Text(it.resolve(), Modifier.padding(8.dp)) }
                     // Page controls follow the reading direction: in right-to-left reading, Next sits on the left.
                     if (controls) CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
                         Row(Modifier.fillMaxWidth().onFocusChanged { bottomFocused = it.hasFocus }, horizontalArrangement = Arrangement.SpaceBetween) {
-                            TextButton(controller::previous, Modifier.let { m -> previousHint?.let { m.semantics { contentDescription = "Previous, $it" } } ?: m }) {
-                                previousHint?.let { InputKeycap(it, Modifier.padding(end = 4.dp)) }; Text("Previous")
+                            TextButton(controller::previous, Modifier.let { m -> previousHint?.let { m.semantics { contentDescription = previousHintDescription(it) } } ?: m }) {
+                                previousHint?.let { InputKeycap(it, Modifier.padding(end = 4.dp)) }; Text(stringResource(R.string.action_previous))
                             }
-                            Text("${item?.progress ?: 0}%", Modifier.align(Alignment.CenterVertically),
+                            Text(formatPercent(item?.progress ?: 0), Modifier.align(Alignment.CenterVertically),
                                 style = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr))
-                            TextButton(controller::next, Modifier.let { m -> nextHint?.let { m.semantics { contentDescription = "Next, $it" } } ?: m }) {
-                                Text("Next"); nextHint?.let { InputKeycap(it, Modifier.padding(start = 4.dp)) }
+                            TextButton(controller::next, Modifier.let { m -> nextHint?.let { m.semantics { contentDescription = nextHintDescription(it) } } ?: m }) {
+                                Text(stringResource(R.string.action_next)); nextHint?.let { InputKeycap(it, Modifier.padding(start = 4.dp)) }
                             }
                         }
                     }
@@ -254,7 +280,7 @@ open class EpubActivity : AppCompatActivity() {
             onRemoveFont = { familyId ->
                 lifecycleScope.launch {
                     if (container.fonts.remove(familyId)) { fontImportError = null; recreate() }
-                    else fontImportError = "ShelfOS could not remove that font."
+                    else fontImportError = fontRemoveFailedMessage
                 }
             })
         if (chapters && session != null) {
@@ -264,13 +290,15 @@ open class EpubActivity : AppCompatActivity() {
             val query = filter.trim()
             val visible = if (query.isEmpty()) session.chapters
                 else session.chapters.filter { it.title.contains(query, ignoreCase = true) }
-            AlertDialog(onDismissRequest = { chapters = false }, title = { Text("Chapters") }, text = {
+            val currentChapterDescription = stringResource(R.string.content_desc_current_chapter)
+            val noChaptersMatchTemplate = stringResource(R.string.chapters_no_match)
+            AlertDialog(onDismissRequest = { chapters = false }, title = { Text(stringResource(R.string.action_chapters)) }, text = {
                 Column {
                     // Only worth the extra control on a TOC long enough that scanning it visually is a chore.
                     if (session.chapters.size > CHAPTER_FILTER_THRESHOLD) OutlinedTextField(filter, { filter = it },
-                        Modifier.fillMaxWidth().padding(bottom = 8.dp).semantics { contentDescription = "Filter chapters" },
-                        placeholder = { Text("Filter chapters") }, singleLine = true)
-                    if (visible.isEmpty()) Text("No chapters match “$query”.", Modifier.padding(vertical = 16.dp))
+                        Modifier.fillMaxWidth().padding(bottom = 8.dp).semantics { contentDescription = filterChaptersDescription },
+                        placeholder = { Text(stringResource(R.string.filter_chapters_placeholder)) }, singleLine = true)
+                    if (visible.isEmpty()) Text(String.format(noChaptersMatchTemplate, query), Modifier.padding(vertical = 16.dp))
                     else LazyColumn(Modifier.testTag("chapters_list")) { items(visible) { chapter ->
                         val current = chapter.id == currentChapterId
                         // The checkmark is its own Text node (not interpolated into the title string) so the
@@ -279,19 +307,21 @@ open class EpubActivity : AppCompatActivity() {
                         // own Text rather than being folded into it.
                         TextButton({ controller.chapter(session, chapter.href); chapters = false },
                             Modifier.padding(start = (chapter.depth * 16).dp)
-                                .semantics { if (current) contentDescription = "${chapter.title}, current chapter" }) {
+                                .semantics { if (current) contentDescription = String.format(currentChapterDescription, chapter.title) }) {
                             if (current) Text("✓ ")
                             Text(chapter.title, fontWeight = if (current) FontWeight.Bold else FontWeight.Normal)
                         }
                     } }
                 }
-            }, confirmButton = { TextButton({ chapters = false }) { Text("Close") } })
+            }, confirmButton = { TextButton({ chapters = false }) { Text(stringResource(R.string.action_close)) } })
         }
         if (search && session != null) {
             val searchField = remember { FocusRequester() }
             var jumpError by rememberSaveable { mutableStateOf<String?>(null) }
             LaunchedEffect(searchQuery, session) { vm.search(session, searchQuery) }
-            AlertDialog(onDismissRequest = ::closeSearch, title = { Text("Search this publication") }, text = {
+            val searchPromptEmpty = stringResource(R.string.search_prompt_empty)
+            val noResultsTemplate = stringResource(R.string.search_no_results)
+            AlertDialog(onDismissRequest = ::closeSearch, title = { Text(searchThisPublicationLabel) }, text = {
                 // A Dialog owns a separate window. Request focus only after that window reports focus; requesting
                 // during its first composition can be dropped on a cold launch before the window is attached.
                 val searchWindow = LocalWindowInfo.current
@@ -305,33 +335,32 @@ open class EpubActivity : AppCompatActivity() {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(searchQuery, { searchQuery = it; jumpError = null },
                         Modifier.fillMaxWidth().focusRequester(searchField)
-                            .semantics { contentDescription = "Search this publication" },
-                        label = { Text("Search this publication") }, singleLine = true,
-                        trailingIcon = { if (searchQuery.isNotEmpty()) TextButton({ searchQuery = "" }) { Text("Clear") } })
+                            .semantics { contentDescription = searchThisPublicationLabel },
+                        label = { Text(searchThisPublicationLabel) }, singleLine = true,
+                        trailingIcon = { if (searchQuery.isNotEmpty()) TextButton({ searchQuery = "" }) { Text(stringResource(R.string.action_clear)) } })
                     jumpError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     when {
-                        searchQuery.isBlank() -> Text("Enter a word or phrase to search this publication.",
-                            Modifier.padding(vertical = 16.dp))
+                        searchQuery.isBlank() -> Text(searchPromptEmpty, Modifier.padding(vertical = 16.dp))
                         visibleSearchState == null -> CircularProgressIndicator(
                             Modifier.align(Alignment.CenterHorizontally)
-                                .semantics { contentDescription = "Searching this publication" })
-                        visibleSearchState.error != null -> Text(visibleSearchState.error, Modifier.padding(vertical = 16.dp),
+                                .semantics { contentDescription = searchingDescription })
+                        visibleSearchState.error != null -> Text(visibleSearchState.error.resolve(), Modifier.padding(vertical = 16.dp),
                             color = MaterialTheme.colorScheme.error)
-                        visibleSearchState.complete && visibleSearchState.results.isEmpty() -> Text("No results for “$normalizedQuery”.",
-                            Modifier.padding(vertical = 16.dp).semantics { contentDescription = "No search results" })
+                        visibleSearchState.complete && visibleSearchState.results.isEmpty() -> Text(String.format(noResultsTemplate, normalizedQuery),
+                            Modifier.padding(vertical = 16.dp).semantics { contentDescription = noSearchResultsDescription })
                         else -> {
                             if (visibleSearchState.loading && visibleSearchState.results.isEmpty()) CircularProgressIndicator(
-                                Modifier.align(Alignment.CenterHorizontally).semantics { contentDescription = "Searching this publication" })
+                                Modifier.align(Alignment.CenterHorizontally).semantics { contentDescription = searchingDescription })
                             if (visibleSearchState.results.isNotEmpty()) LazyColumn(
                                 Modifier.fillMaxWidth().heightIn(max = 360.dp).testTag("search_results")) {
                                 items(visibleSearchState.results) { result ->
-                                    val accessible = searchResultAccessibilityText(result)
+                                    val accessible = searchResultAccessibilityText(result, searchMatchFallback, ::progressSpoken)
                                     TextButton(onClick = {
                                         jumpError = null
                                         if (controller.goTo(result.locator)) closeSearch()
-                                        else jumpError = "This search result could not be opened. Try another result."
+                                        else jumpError = searchResultOpenFailedMessage
                                     }, modifier = Modifier.fillMaxWidth().testTag("search_result")
-                                        .semantics { contentDescription = "Search result, $accessible" }) {
+                                        .semantics { contentDescription = String.format(searchResultDescriptionTemplate, accessible) }) {
                                         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
                                             result.title?.let { Text(it, fontWeight = FontWeight.Bold) }
                                             Text(buildAnnotatedString {
@@ -345,7 +374,7 @@ open class EpubActivity : AppCompatActivity() {
                                                 append(after)
                                             })
                                             result.progression?.takeIf { it.isFinite() && it in 0.0..1.0 }?.let {
-                                                Text("${(it * 100).toInt()}% through book", color = tokens.colors.secondary,
+                                                Text(progressVisual((it * 100).toInt()), color = tokens.colors.secondary,
                                                     style = tokens.typography.labelSmall)
                                             }
                                         }
@@ -355,13 +384,19 @@ open class EpubActivity : AppCompatActivity() {
                         }
                     }
                 }
-            }, confirmButton = { TextButton(::closeSearch) { Text("Close") } })
+            }, confirmButton = { TextButton(::closeSearch) { Text(stringResource(R.string.action_close)) } })
         }
         if (bookmarks && session != null) {
             // Reset on each open, like the Chapters dialog's filter — a stale failure message from a previous
             // open should not linger silently into the next one.
             var jumpError by rememberSaveable { mutableStateOf<String?>(null) }
-            AlertDialog(onDismissRequest = { bookmarks = false }, title = { Text("Bookmarks") }, text = {
+            val addBookmarkUnavailableDescription = stringResource(R.string.content_desc_bookmark_add_unavailable)
+            val removeBookmarkCurrentDescription = stringResource(R.string.content_desc_bookmark_remove_current)
+            val addBookmarkCurrentDescription = stringResource(R.string.content_desc_bookmark_add_current)
+            val bookmarkOpenFailedMessage = stringResource(R.string.bookmark_open_failed)
+            val bookmarkRowTemplate = stringResource(R.string.content_desc_bookmark_row)
+            val bookmarkDeleteTemplate = stringResource(R.string.content_desc_bookmark_delete)
+            AlertDialog(onDismissRequest = { bookmarks = false }, title = { Text(stringResource(R.string.action_bookmarks)) }, text = {
                 Column {
                     // Phase 2B.2.2: a real toggle, not a dead-end disabled state once bookmarked — removing the
                     // bookmark at the reader's current position no longer requires finding its row in the list.
@@ -371,30 +406,30 @@ open class EpubActivity : AppCompatActivity() {
                         else currentLocatorJson?.let { vm.addBookmark(it, locatorProgress(it)) }
                     }, enabled = currentLocatorJson != null,
                         modifier = Modifier.semantics { contentDescription = when {
-                            currentLocatorJson == null -> "Add bookmark, not yet available"
-                            currentlyBookmarked -> "Remove bookmark at current position"
-                            else -> "Add bookmark at current position"
-                        } }) { Text(if (currentlyBookmarked) "Remove bookmark" else "Add bookmark") }
+                            currentLocatorJson == null -> addBookmarkUnavailableDescription
+                            currentlyBookmarked -> removeBookmarkCurrentDescription
+                            else -> addBookmarkCurrentDescription
+                        } }) { Text(stringResource(if (currentlyBookmarked) R.string.bookmark_remove else R.string.bookmark_add)) }
                     jumpError?.let { Text(it, Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.error) }
-                    if (state.bookmarks.isEmpty()) Text("No bookmarks yet.", Modifier.padding(vertical = 16.dp))
+                    if (state.bookmarks.isEmpty()) Text(stringResource(R.string.bookmarks_empty), Modifier.padding(vertical = 16.dp))
                     else LazyColumn(Modifier.testTag("bookmarks_list").padding(top = 8.dp)) {
                         items(state.bookmarks, key = { it.id }) { bookmark ->
                             val presentation = session.presentBookmark(bookmark.locator, bookmark.progress, state.epubPositions)
-                            val display = bookmarkDisplayText(presentation)
-                            val accessible = bookmarkAccessibilityText(presentation)
+                            val display = bookmarkDisplayText(presentation, ::locationPhrase, ::progressVisual)
+                            val accessible = bookmarkAccessibilityText(presentation, ::locationPhrase, ::progressSpoken)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 TextButton({
                                     jumpError = null
                                     if (controller.goTo(bookmark.locator)) bookmarks = false
-                                    else jumpError = "This bookmark's saved location could not be opened. You can still delete it."
-                                }, Modifier.weight(1f).semantics { contentDescription = "Bookmark, $accessible" }) { Text(display) }
+                                    else jumpError = bookmarkOpenFailedMessage
+                                }, Modifier.weight(1f).semantics { contentDescription = String.format(bookmarkRowTemplate, accessible) }) { Text(display) }
                                 TextButton({ vm.deleteBookmark(bookmark.id) },
-                                    Modifier.semantics { contentDescription = "Delete bookmark, $accessible" }) { Text("Delete") }
+                                    Modifier.semantics { contentDescription = String.format(bookmarkDeleteTemplate, accessible) }) { Text(stringResource(R.string.action_delete)) }
                             }
                         }
                     }
                 }
-            }, confirmButton = { TextButton({ bookmarks = false }) { Text("Close") } })
+            }, confirmButton = { TextButton({ bookmarks = false }) { Text(stringResource(R.string.action_close)) } })
         }
     }
 

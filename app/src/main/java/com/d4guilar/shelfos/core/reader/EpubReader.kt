@@ -463,20 +463,28 @@ fun EpubSession.presentBookmark(locatorJson: String, progress: Int, positions: L
  * structural "Location N" resolved by [resolveEpubLocation]. Two lines when a chapter title is available (it may
  * be long), one line otherwise.
  */
-internal fun bookmarkDisplayText(p: EpubBookmarkPresentation): String = when {
-    p.chapterTitle != null && p.location != null -> "${p.chapterTitle}\nLocation ${p.location} · ${p.progress}% through book"
-    p.chapterTitle != null -> "${p.chapterTitle}\n${p.progress}% through book"
-    p.location != null -> "Location ${p.location} · ${p.progress}% through book"
-    else -> "${p.progress}% through book"
+internal fun bookmarkDisplayText(
+    p: EpubBookmarkPresentation,
+    locationPhrase: (Int) -> String = { "Location $it" },
+    progressPhrase: (Int) -> String = { "$it% through book" },
+): String = when {
+    p.chapterTitle != null && p.location != null -> "${p.chapterTitle}\n${locationPhrase(p.location)} · ${progressPhrase(p.progress)}"
+    p.chapterTitle != null -> "${p.chapterTitle}\n${progressPhrase(p.progress)}"
+    p.location != null -> "${locationPhrase(p.location)} · ${progressPhrase(p.progress)}"
+    else -> progressPhrase(p.progress)
 }
 
 /**
  * A bookmark row's accessible description: one spoken sentence (used verbatim, prefixed with "Bookmark, "/"Delete
  * bookmark, " at the call site) rather than [bookmarkDisplayText]'s two visual lines, with "%" spelled out as
- * "percent" the way a screen reader would otherwise have to expand it anyway.
+ * "percent" the way a screen reader would otherwise have to expand it anyway. [locationPhrase]/[progressPhrase]
+ * default to English; EpubActivity passes localized string-resource-backed closures instead.
  */
-internal fun bookmarkAccessibilityText(p: EpubBookmarkPresentation): String =
-    listOfNotNull(p.chapterTitle, p.location?.let { "Location $it" }, "${p.progress} percent through book").joinToString(", ")
+internal fun bookmarkAccessibilityText(
+    p: EpubBookmarkPresentation,
+    locationPhrase: (Int) -> String = { "Location $it" },
+    progressPhrase: (Int) -> String = { "$it percent through book" },
+): String = listOfNotNull(p.chapterTitle, p.location?.let(locationPhrase), progressPhrase(p.progress)).joinToString(", ")
 
 internal fun epubPreferences(p: ReaderPreferences, dark: Boolean, category: MediaCategory, managedCssFamily: String? = null): EpubPreferences {
     val progression = if (readingDirection(category, p.direction) == ReadingDirection.RTL) ReadingProgression.RTL else ReadingProgression.LTR

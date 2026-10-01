@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos
 
+import com.d4guilar.shelfos.core.designsystem.UiMessage
 import com.d4guilar.shelfos.core.files.EmbeddedMetadataReader
 import com.d4guilar.shelfos.domain.importing.*
 import com.d4guilar.shelfos.domain.library.*
@@ -69,8 +70,8 @@ class ImportPolicyTest {
         assertEquals(PublicationProblem.UNREADABLE, IllegalStateException().publicationProblem())
         assertTrue(PublicationProblem.PERMISSION_LOST.unavailable && PublicationProblem.SOURCE_UNAVAILABLE.unavailable)
         assertFalse(PublicationProblem.PROTECTED.unavailable || PublicationProblem.CORRUPT.unavailable)
-        assertEquals("Detail.", PublicationException(PublicationProblem.CORRUPT, "Detail.").readerMessage())
-        assertEquals(PublicationProblem.entries.size, PublicationProblem.entries.map { it.message }.toSet().size)
+        assertEquals(UiMessage.Literal("Detail."), PublicationException(PublicationProblem.CORRUPT, "Detail.").readerMessage())
+        assertEquals(PublicationProblem.entries.size, PublicationProblem.entries.map { it.messageRes }.toSet().size)
     }
 
     @Test fun epubPackageMetadataIsBoundedUntrustedEvidence() {

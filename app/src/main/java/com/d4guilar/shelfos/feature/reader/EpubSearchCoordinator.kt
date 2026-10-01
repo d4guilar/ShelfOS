@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos.feature.reader
 
+import com.d4guilar.shelfos.R
+import com.d4guilar.shelfos.core.designsystem.UiMessage
 import com.d4guilar.shelfos.core.reader.EpubSearchCursor
 import com.d4guilar.shelfos.core.reader.EpubSearchRead
 import com.d4guilar.shelfos.core.reader.EpubSearchResult
@@ -26,7 +28,7 @@ data class EpubSearchUiState(
     val results: List<EpubSearchResult> = emptyList(),
     val loading: Boolean = false,
     val complete: Boolean = false,
-    val error: String? = null,
+    val error: UiMessage? = null,
 )
 
 /**
@@ -71,7 +73,7 @@ class EpubSearchCoordinator(
                             }
                             EpubSearchRead.Error -> {
                                 publish(id, EpubSearchUiState(query = query,
-                                    error = "This publication could not be searched. Try another query."))
+                                    error = UiMessage.Resource(R.string.search_error_failed)))
                                 return@withLock
                             }
                             is EpubSearchRead.Page -> {
@@ -85,7 +87,7 @@ class EpubSearchCoordinator(
                     throw error
                 } catch (_: Exception) {
                     publish(id, EpubSearchUiState(query = query,
-                        error = "This publication could not be searched. Try another query."))
+                        error = UiMessage.Resource(R.string.search_error_failed)))
                 } finally {
                     withContext(NonCancellable + worker) { cursor?.close() }
                 }

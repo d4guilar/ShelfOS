@@ -3,12 +3,12 @@ package com.d4guilar.shelfos.domain.library
 
 enum class PublicationFormat { PDF, EPUB, CBZ }
 enum class ReadingDirection { LTR, RTL }
-enum class MediaCategory(val label: String, val singular: String) {
-    BOOK("Books", "Book"), COMIC("Comics", "Comic"), MANGA("Manga", "Manga"), DOCUMENT("Documents", "Document")
-}
-enum class LibraryFilter(val label: String, val category: MediaCategory?) {
-    FAVORITES("★ Favorites", null), BOOKS("Books", MediaCategory.BOOK), COMICS("Comics", MediaCategory.COMIC),
-    MANGA("Manga", MediaCategory.MANGA), DOCUMENTS("Documents", MediaCategory.DOCUMENT)
+// Display labels are a UI concern (see AGENTS.md's localization rules) and live in feature.library's
+// labelRes()/singularRes() extensions, resolved through Android string resources, not here.
+enum class MediaCategory { BOOK, COMIC, MANGA, DOCUMENT }
+enum class LibraryFilter(val category: MediaCategory?) {
+    FAVORITES(null), BOOKS(MediaCategory.BOOK), COMICS(MediaCategory.COMIC),
+    MANGA(MediaCategory.MANGA), DOCUMENTS(MediaCategory.DOCUMENT)
 }
 
 data class LibraryItem(

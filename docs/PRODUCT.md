@@ -504,16 +504,17 @@ The intended initial official app locales are:
 - System default (the default behavior)
 - English
 - Español
+- Português (Brasil)
 
 System default follows the Android system language. When the user explicitly chooses
-English or Español, ShelfOS respects that choice independently of the system language.
-No further launch languages are added in this pass.
+English, Español or Português (Brasil), ShelfOS respects that choice independently of
+the system language.
 
 ### Language setting
 
 Conceptually `Settings → General → Language`, offering System default / English /
-Español, following the existing Settings information architecture. Settings is not
-redesigned to fit this requirement.
+Español / Português (Brasil), following the existing Settings information architecture.
+Settings is not redesigned to fit this requirement.
 
 ### What must be localizable
 

@@ -3,6 +3,8 @@ package com.d4guilar.shelfos.feature.reader
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.d4guilar.shelfos.R
+import com.d4guilar.shelfos.core.designsystem.UiMessage
 import com.d4guilar.shelfos.core.reader.*
 import com.d4guilar.shelfos.data.library.BookmarkRepository
 import com.d4guilar.shelfos.data.library.LibraryRepository
@@ -12,7 +14,7 @@ import kotlinx.coroutines.flow.*
 
 data class EpubReaderState(val item: LibraryItem? = null, val session: EpubSession? = null,
     val preferences: ReaderPreferences = ReaderPreferences.DEFAULT, val globalPreferences: String? = null,
-    val bookmarks: List<Bookmark> = emptyList(), val epubPositions: List<EpubPosition> = emptyList(), val error: String? = null)
+    val bookmarks: List<Bookmark> = emptyList(), val epubPositions: List<EpubPosition> = emptyList(), val error: UiMessage? = null)
 
 /** Injectable at the Activity factory boundary so lifecycle tests can observe cursor ownership deterministically. */
 typealias EpubSearchCursorOpener = suspend (EpubSession, String) -> EpubSearchCursor
@@ -28,13 +30,13 @@ class EpubReaderViewModel(private val id: String, private val repository: Librar
     val searchState = searchCoordinator.state
     private val positions = PositionWriter<Pair<String, Int>>(appScope, write = { (locator, progress) ->
         repository.reading(id, locator, progress)
-    }, onFailure = { _state.update { it.copy(error = "Your reading position could not be saved.") } })
+    }, onFailure = { _state.update { it.copy(error = UiMessage.Resource(R.string.reader_position_save_failed)) } })
 
     init {
         viewModelScope.launch {
             var opening = false
             combine(repository.publication(id), repository.globalPreferences) { item, global -> item to global }.collect { (item, global) ->
-                if (item == null) { _state.update { it.copy(error = "This publication is no longer in your library.") }; return@collect }
+                if (item == null) { _state.update { it.copy(error = UiMessage.Resource(R.string.reader_no_longer_in_library)) }; return@collect }
                 _state.update { it.copy(item = item, globalPreferences = global,
                     preferences = resolveReaderPreferences(ReaderPreferences.parse(item.preferences), ReaderPreferences.parse(global))) }
                 if (!opening) { opening = true; launch { open(item) } }
@@ -89,12 +91,12 @@ class EpubReaderViewModel(private val id: String, private val repository: Librar
      * by the repository, not here. */
     fun addBookmark(locator: String, progress: Int) = viewModelScope.launch {
         try { bookmarks.addBookmark(id, locator, progress) } catch (e: CancellationException) { throw e }
-        catch (_: Exception) { _state.update { it.copy(error = "This bookmark could not be saved.") } }
+        catch (_: Exception) { _state.update { it.copy(error = UiMessage.Resource(R.string.bookmark_save_failed)) } }
     }
 
     fun deleteBookmark(bookmarkId: String) = viewModelScope.launch {
         try { bookmarks.deleteBookmark(bookmarkId) } catch (e: CancellationException) { throw e }
-        catch (_: Exception) { _state.update { it.copy(error = "This bookmark could not be deleted.") } }
+        catch (_: Exception) { _state.update { it.copy(error = UiMessage.Resource(R.string.bookmark_delete_failed)) } }
     }
 
     fun search(session: EpubSession, query: String) = searchCoordinator.search(query) { openSearchCursor(session, it) }
@@ -103,7 +105,7 @@ class EpubReaderViewModel(private val id: String, private val repository: Librar
 
     private fun persistPreferences(block: suspend () -> Unit) { viewModelScope.launch {
         try { block() } catch (e: CancellationException) { throw e }
-        catch (_: Exception) { _state.update { it.copy(error = "Reading preferences could not be saved.") } }
+        catch (_: Exception) { _state.update { it.copy(error = UiMessage.Resource(R.string.reader_preferences_save_failed)) } }
     } }
 
     private suspend fun markAvailable(available: Boolean) {

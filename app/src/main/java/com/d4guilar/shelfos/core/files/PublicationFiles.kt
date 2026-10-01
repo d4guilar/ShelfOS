@@ -12,6 +12,7 @@ import android.provider.OpenableColumns
 import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
+import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.domain.importing.*
 import com.d4guilar.shelfos.domain.library.*
 import kotlinx.coroutines.*
@@ -94,7 +95,7 @@ class PublicationFiles(
             }
             val id = UUID.randomUUID().toString()
             if (copy) owned = copyToPrivateStorage(uri, id, size, stage).also { size = it.length() }
-            stage("Inspecting publication…")
+            stage(context.getString(R.string.import_stage_inspecting))
             val descriptor = owned?.let { ParcelFileDescriptor.open(it, ParcelFileDescriptor.MODE_READ_ONLY) }
                 ?: open(LibraryItem(id, name, category = MediaCategory.BOOK, sourceUri = sourceUri, format = PublicationFormat.PDF, fileName = name, byteSize = size))
             val (format, metadata) = descriptor.use(::inspect)
@@ -117,7 +118,7 @@ class PublicationFiles(
     }
 
     private suspend fun copyToPrivateStorage(uri: Uri, id: String, size: Long?, stage: (String) -> Unit): File {
-        stage("Copying for offline access…")
+        stage(context.getString(R.string.import_stage_copying_offline))
         val root = directory
         if (size != null && freeBytes(root) < size + RESERVED_BYTES) throw PublicationException(PublicationProblem.INSUFFICIENT_STORAGE)
         val partial = File(root, "$id$PARTIAL")
@@ -141,7 +142,8 @@ class PublicationFiles(
                     val progress = if (size != null && size > 0) total * 100 / size else total / (1024 * 1024)
                     if (progress != reported) {
                         reported = progress
-                        stage(if (size != null && size > 0) "Copying… $progress%" else "Copying… $progress MB")
+                        stage(if (size != null && size > 0) context.getString(R.string.import_stage_copying_percent, progress)
+                            else context.getString(R.string.import_stage_copying_megabytes, progress))
                     }
                 }
             } } ?: throw PublicationException(PublicationProblem.SOURCE_UNAVAILABLE)

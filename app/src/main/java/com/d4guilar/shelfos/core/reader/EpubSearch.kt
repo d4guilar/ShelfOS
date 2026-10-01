@@ -66,9 +66,13 @@ internal fun normalizeSearchText(text: String): String = text.replace(Regex("\\s
 internal fun searchResultSnippet(result: EpubSearchResult): String =
     normalizeSearchText(result.before + result.highlight + result.after)
 
-internal fun searchResultAccessibilityText(result: EpubSearchResult): String = buildList {
+internal fun searchResultAccessibilityText(
+    result: EpubSearchResult,
+    matchFallback: String = "Match in this publication",
+    progressPhrase: (Int) -> String = { "$it percent through book" },
+): String = buildList {
     result.title?.let(::add)
-    add(searchResultSnippet(result).ifBlank { "Match in this publication" })
+    add(searchResultSnippet(result).ifBlank { matchFallback })
     result.progression?.takeIf { it.isFinite() && it in 0.0..1.0 }
-        ?.let { add("${(it * 100).toInt()} percent through book") }
+        ?.let { add(progressPhrase((it * 100).toInt())) }
 }.joinToString(", ")

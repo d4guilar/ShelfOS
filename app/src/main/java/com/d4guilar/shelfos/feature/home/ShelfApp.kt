@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos.feature.home
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -54,13 +56,15 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.d4guilar.shelfos.core.designsystem.resolve
 import com.d4guilar.shelfos.core.theme.reducedMotionEnabled
 
 /** Canonical global destinations. Shelves replaced the earlier Collections placeholder (ADR-0020). */
-enum class Destination(val route: String, val label: String, val icon: ShelfIcon) {
-    LIBRARY("library", "Library", ShelfIcon.LIBRARY), SEARCH("search", "Search", ShelfIcon.SEARCH),
-    NOTES("notes", "Notes", ShelfIcon.NOTES), SHELVES("shelves", "Shelves", ShelfIcon.SHELVES),
-    SETTINGS("settings", "Settings", ShelfIcon.SETTINGS),
+enum class Destination(val route: String, @StringRes val labelRes: Int, val icon: ShelfIcon) {
+    LIBRARY("library", R.string.nav_library, ShelfIcon.LIBRARY), SEARCH("search", R.string.nav_search, ShelfIcon.SEARCH),
+    NOTES("notes", R.string.nav_notes, ShelfIcon.NOTES), SHELVES("shelves", R.string.nav_shelves, ShelfIcon.SHELVES),
+    SETTINGS("settings", R.string.nav_settings, ShelfIcon.SETTINGS),
 }
 
 /** Set on the Library entry before opening details/reader so returning restores keyboard focus. */
@@ -90,8 +94,9 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
         library.showImported(item, item.id); importing.consumed()
         nav.navigate(Destination.LIBRARY.route) { launchSingleTop = true; popUpTo(Destination.LIBRARY.route) }
     } }
-    if (libraryError != null) AlertDialog(onDismissRequest = library::dismissError, title = { Text("Library update") },
-        text = { Text(libraryError.orEmpty()) }, confirmButton = { TextButton(library::dismissError) { Text("Close") } })
+    val currentLibraryError = libraryError
+    if (currentLibraryError != null) AlertDialog(onDismissRequest = library::dismissError, title = { Text(stringResource(R.string.library_update_title)) },
+        text = { Text(currentLibraryError.resolve()) }, confirmButton = { TextButton(library::dismissError) { Text(stringResource(R.string.action_close)) } })
     fun navigate(destination: Destination) {
         nav.navigate(destination.route) {
             popUpTo(nav.graph.findStartDestination().id) { saveState = true }
@@ -164,7 +169,7 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                     .padding(horizontal = t.spacing.medium, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (route.startsWith("details")) {
-                        Text("Back", Modifier.shelfAction(onClick = { nav.popBackStack() }).padding(12.dp))
+                        Text(stringResource(R.string.action_back), Modifier.shelfAction(onClick = { nav.popBackStack() }).padding(12.dp))
                     } else {
                         Icon(painterResource(R.drawable.ic_shelf), contentDescription = null, modifier = Modifier.size(30.dp))
                         Text(buildAnnotatedString {
@@ -173,7 +178,7 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                         }, style = MaterialTheme.typography.headlineMedium)
                     }
                     Spacer(Modifier.weight(1f))
-                    TextButton({ picker.launch(arrayOf("*/*")) }, enabled = !importState.busy, modifier = Modifier.testTag("import_action")) { Text("Add file") }
+                    TextButton({ picker.launch(arrayOf("*/*")) }, enabled = !importState.busy, modifier = Modifier.testTag("import_action")) { Text(stringResource(R.string.action_add_file)) }
                 }
                 HorizontalDivider(color = t.colors.divider)
                 NavHost(navController = nav, startDestination = Destination.LIBRARY.route, modifier = Modifier.weight(1f),
@@ -191,7 +196,7 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                             onFavorite = { library.toggleFavorite(item.id) }, modifier = Modifier.fillMaxWidth().testTag("details_screen"),
                             onRead = { openReader(item.id) }, onEdit = { title, creator, category -> library.edit(item.id, title, creator, category) },
                             onRemove = { library.remove(item.id); nav.popBackStack() }, focusPrimaryAction = true)
-                        else PlaceholderScreen("Publication unavailable", "Return to the Library to choose a publication.")
+                        else PlaceholderScreen(stringResource(R.string.publication_unavailable_title), stringResource(R.string.publication_unavailable_body))
                     }
                     composable("reader/{id}") { backStack ->
                         val id = backStack.arguments?.getString("id").orEmpty()
@@ -202,12 +207,12 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                     }
                     composable(Destination.SEARCH.route) {
                         Column(Modifier.fillMaxSize().padding(t.spacing.medium), verticalArrangement = Arrangement.spacedBy(t.spacing.medium)) {
-                            Text("Search", style = MaterialTheme.typography.headlineMedium)
+                            Text(stringResource(R.string.nav_search), style = MaterialTheme.typography.headlineMedium)
                             OutlinedTextField(libraryState.query, library::search,
-                                label = { Text("Search titles or creators") }, singleLine = true,
+                                label = { Text(stringResource(R.string.search_field_label)) }, singleLine = true,
                                 modifier = Modifier.fillMaxWidth().testTag("search_field"))
                             val results = library.searchResults(libraryState.query)
-                            Text(if (results.size == 1) "1 result" else "${results.size} results", color = t.colors.secondary)
+                            Text(pluralStringResource(R.plurals.search_results_count, results.size, results.size), color = t.colors.secondary)
                             LazyColumn {
                                 items(results, key = { it.id }) { item ->
                                     Row(Modifier.fillMaxWidth().shelfAction(onClick = {
@@ -220,11 +225,13 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                             }
                         }
                     }
-                    composable(Destination.NOTES.route) { PlaceholderScreen("Notes", "A place for your reading notes. Notes and annotations are planned for a later phase.") }
-                    composable(Destination.SHELVES.route) { PlaceholderScreen("Shelves", "Your own ways to organize a library, such as Research or University. A publication can sit on several Shelves and keeps its category. Shelves are planned for a later phase.") }
+                    composable(Destination.NOTES.route) { PlaceholderScreen(stringResource(Destination.NOTES.labelRes), stringResource(R.string.placeholder_notes_body)) }
+                    composable(Destination.SHELVES.route) { PlaceholderScreen(stringResource(Destination.SHELVES.labelRes), stringResource(R.string.placeholder_shelves_body)) }
                     composable(Destination.SETTINGS.route) {
                         LaunchedEffect(Unit) { settings.refreshStorage() }
-                        SettingsScreen(theme ?: ThemeId.CLASSIC, error, settings::select, unusedCopies, settings::deleteUnusedCopies)
+                        val language by settings.language.collectAsStateWithLifecycle()
+                        SettingsScreen(theme ?: ThemeId.CLASSIC, error, settings::select, unusedCopies, settings::deleteUnusedCopies,
+                            language, settings::selectLanguage)
                     }
                 }
                 if (!reading && layout.navigation == NavigationLayout.BOTTOM) {
@@ -256,7 +263,7 @@ private fun NavigationItem(destination: Destination, selected: Boolean, modifier
         .padding(horizontal = 2.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp)) {
         ShelfIcon(destination.icon)
-        Text(destination.label, style = MaterialTheme.typography.labelSmall,
+        Text(stringResource(destination.labelRes), style = MaterialTheme.typography.labelSmall,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
     }
 }

@@ -4,6 +4,8 @@ package com.d4guilar.shelfos.feature.reader
 import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.d4guilar.shelfos.R
+import com.d4guilar.shelfos.core.designsystem.UiMessage
 import com.d4guilar.shelfos.core.reader.*
 import com.d4guilar.shelfos.data.library.LibraryRepository
 import com.d4guilar.shelfos.domain.library.*
@@ -13,7 +15,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 data class FixedReaderState(val item: LibraryItem? = null, val page: Int = 0, val count: Int = 0,
-    val bitmap: Bitmap? = null, val loading: Boolean = true, val error: String? = null,
+    val bitmap: Bitmap? = null, val loading: Boolean = true, val error: UiMessage? = null,
     val preferences: ReaderPreferences = ReaderPreferences.DEFAULT, val globalPreferences: String? = null)
 
 /** Owns one fixed-layout session for one title; the session is closed when this ViewModel is cleared. */
@@ -27,14 +29,14 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
     @Volatile private var closed = false
     private val positions = PositionWriter<Int>(appScope, write = { page ->
         repository.reading(id, pageLocator(page), pageProgress(page, _state.value.count))
-    }, onFailure = { _state.update { it.copy(error = "Your reading position could not be saved.") } })
+    }, onFailure = { _state.update { it.copy(error = UiMessage.Resource(R.string.reader_position_save_failed)) } })
 
     init {
         viewModelScope.launch {
             var opening = false
             combine(repository.publication(id), repository.globalPreferences) { item, global -> item to global }.collect { (item, global) ->
                 if (item == null) {
-                    _state.update { it.copy(loading = false, error = "This publication is no longer in your library.") }
+                    _state.update { it.copy(loading = false, error = UiMessage.Resource(R.string.reader_no_longer_in_library)) }
                     return@collect
                 }
                 _state.update { it.copy(item = item, globalPreferences = global,
@@ -108,7 +110,7 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
 
     private fun persistPreferences(block: suspend () -> Unit) { viewModelScope.launch {
         try { block() } catch (e: CancellationException) { throw e }
-        catch (_: Exception) { _state.update { it.copy(error = "Reading preferences could not be saved.") } }
+        catch (_: Exception) { _state.update { it.copy(error = UiMessage.Resource(R.string.reader_preferences_save_failed)) } }
     } }
 
     private suspend fun markAvailable(available: Boolean) {

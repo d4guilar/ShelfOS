@@ -19,5 +19,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Lets AndroidX's per-app language support (AppCompatDelegate.setApplicationLocales) auto-persist
+             the chosen interface language below API 33 and stay in sync with the system per-app language
+             setting on API 33+. Never started; this is a manifest marker AppCompat reads at runtime. -->
+        <service android:name="androidx.appcompat.app.AppLocalesMetadataHolderService" android:enabled="false" android:exported="false">
+            <meta-data android:name="autoStoreLocales" android:value="true" />
+        </service>
     </application>
 </manifest>
