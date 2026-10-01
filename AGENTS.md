@@ -31,7 +31,7 @@ This file is the primary behavioral contract for coding agents working in the Sh
 20. The canonical ShelfOS brand is monochrome; do not introduce required brand accent colors into Classic.
 21. ShelfOS Classic is cover-first and card-light: system chrome stays neutral while publication covers supply most visual color.
 22. Classic/Dark may borrow media-frontend interaction quality, but must not visually read as gaming/console frontends.
-23. Public free theme set: Classic, Dark, Retro Apple UI (working name), Retro Apple UI Dark (working name), and Paper / Vintage Library.
+23. Public free theme set: Classic, Dark, Pear Platinum, Pear Platinum Dark, and Deckle. None of these five is a Plus theme; see `docs/design/THEMES.md`.
 24. Trademark/franchise-inspired theme names and assets must be reviewed before public release; never copy proprietary visual/audio assets.
 
 ## Technical direction
@@ -125,6 +125,10 @@ The following are future features and should not leak into early phases through 
 
 - ShelfOS accounts
 - mandatory cloud sync
+- optional cloud/synchronization services or storage providers (post-launch and
+  demand-gated; see the local-first section in `docs/ARCHITECTURE.md`)
+- community/custom theme import or a public theme format (post-launch and demand-gated;
+  see `docs/design/THEMES.md`)
 - iOS implementation
 - OCR
 - AI services
@@ -167,6 +171,22 @@ Do not invent additional visual systems merely because the mock does not show a 
 - Metadata network failure must never block local reading.
 - Do not upload full publications for metadata lookup.
 
+
+## Localization rules for agents
+
+- Never hard-code user-facing UI strings. Put them in Android string resources.
+- Keep UI copy out of domain and data models; presentation text is a UI concern.
+- Use locale-aware formatting for dates, numbers, percentages, plurals and file sizes.
+- Never translate, rewrite, or "helpfully localize" publication content, imported
+  metadata, titles, creators, Series, Shelves, tags or user notes.
+- Interface language, Reading Presentation and publication language are separate
+  concerns; changing one must not silently change the others.
+- Interface localization is free/core. It is never a ShelfOS Plus feature.
+- Theme-owned ShelfOS copy uses the app's localization resources; a theme must not ship
+  its own translation mechanism.
+- Preserve right-to-left and future-locale compatibility as design discipline, but do not
+  claim RTL support is implemented or committed. No publication-translation feature
+  exists or is planned.
 
 ## Open-source and release rules
 

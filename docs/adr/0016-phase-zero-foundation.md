@@ -35,7 +35,8 @@ Accepted for the requested Phase 0 prototype, 2026-09-23.
 `ARCHITECTURE.md` listed Classic / Night / Paper / Aqua. Accepted ADR-0012 and
 ADR-0007 (explicitly expanded by ADR-0012), plus v4 design specifications, supersede
 that older list with Classic / Dark / Retro Apple UI / Retro Apple UI Dark / Paper.
-The architecture list is corrected rather than maintaining both names.
+The architecture list is corrected rather than maintaining both names. The five
+names were later finalized in `docs/design/THEMES.md`.
 
 The existing license is the full MPL-2.0 text. The owner's explicit license choice
 and that file finalize the earlier ADR-0015 / licensing-document recommendation.

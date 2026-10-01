@@ -446,19 +446,20 @@ ShelfTheme
 └── library presentation hints
 ```
 
-Free themes:
+Free themes ([canonical names and descriptions](design/THEMES.md)):
 
 - Classic
 - Dark
-- Retro Apple UI (working/internal name)
-- Retro Apple UI Dark (working/internal name)
-- Paper / Vintage Library
+- Pear Platinum
+- Pear Platinum Dark
+- Deckle
 
-This list follows accepted ADR-0012, which supersedes the earlier Night/Aqua naming.
+This list follows accepted ADR-0012 (five polished free themes over one monochrome
+core), which supersedes the earlier Night/Aqua naming. Naming for these five was
+finalized in `design/THEMES.md`.
 
-Future premium:
-
-- PageStation
+Future premium theme packs (Retro Systems, Pop & Print, Dream Internet) alongside the five
+free themes above; see [themes](design/THEMES.md).
 
 Themes must not compromise accessibility or basic reader clarity.
 
@@ -553,7 +554,8 @@ No backend is required for the prototype.
 A future backend may be justified for:
 
 - stronger purchase verification
-- optional sync
+- optional synchronization (direction only; see "Local-first and optional future
+  synchronization")
 - remote metadata proxying if rate limits require it
 
 Core reading must not depend on it.
@@ -644,6 +646,172 @@ Portable concepts should include stable identifiers and serializable forms for:
 - progress
 
 Platform-specific source URIs/URLs are adapters and must not become the identity of a LibraryItem.
+## Local-first and optional future synchronization
+
+ShelfOS does not promise or implement cloud synchronization, and no sync, cloud, account
+or storage-provider work exists. The only present architectural goal is:
+
+> **Keep ShelfOS local-first while avoiding design decisions that would make optional
+> future synchronization unnecessarily difficult.**
+
+Cloud/sync is treated like community themes (see `design/THEMES.md`): build it in
+response to real post-launch demand, not because the architecture is interesting.
+
+A managed service is investigated only after public launch, stability, a meaningful active
+user base, real multi-device usage and sustained demand — for example sync repeatedly
+appearing among the most requested features. Planning illustrations such as "a few
+thousand active users plus hundreds of explicit cross-device sync requests" are examples,
+not release gates or promises. The requirement is **sustained demand**: if ShelfOS grows
+significantly and users do not care about sync, do not build it.
+
+### Local-first stays fundamental
+
+Future synchronization must not turn ShelfOS into a cloud-dependent app:
+
+```text
+UI → local repositories / local database / local files → optional synchronization layer
+```
+
+not `UI → cloud database → library`. ShelfOS keeps working normally while completely
+offline, and network or cloud availability never becomes necessary for ordinary local
+reading and library operations.
+
+### Three separable problems
+
+Future sync should separate:
+
+1. **Reading state** — reading progress, bookmarks, notes/highlights, last-read state,
+   Reading Profiles, reader preferences and app/theme preferences where appropriate.
+2. **Library state** — logical publication records, metadata edits, Series, Shelves,
+   Favorites, categories, organization and cover overrides where appropriate.
+3. **Source files** — EPUB, PDF, CBZ, CBR, DOCX and other potentially large files.
+
+Reading and library state are comparatively small. Source-file synchronization is a
+separate and substantially more expensive problem: a user should eventually be able to
+synchronize state without uploading an entire library. Do not design these as one
+inseparable feature.
+
+### Publication identity is not a local source location
+
+Device-local paths and Android SAF/content URIs are device-specific and must not become
+the permanent logical identity of a publication (see §22):
+
+```text
+Publication identity ≠ Local source location
+```
+
+The architecture must stay capable of recognizing the same logical publication on a
+different device with a different local URI. Possible future tools are stable logical IDs,
+fingerprints/hashes and source records separate from publication records; do not implement
+them merely for hypothetical sync while the current architecture does not need them.
+
+### Do not synchronize the raw Room database
+
+Multi-device synchronization must not upload or replace the database file, and never as
+whole-database last-writer-wins between devices. Future sync operates on logical entities,
+state or changes. Future research concepts only — none of these exist and none are added
+now: stable entity IDs, revisions, operations/change records, device IDs, deletion
+tombstones, conflict handling.
+
+### Deletions and conflicts (principles only)
+
+A future engine must be able to represent deletions so offline devices cannot resurrect
+deleted state; a tombstone is a possible mechanism. Conflict behavior must eventually be
+entity-aware:
+
+- **Bookmarks** — independent records can often merge
+- **Shelves** — membership changes can often merge
+- **Notes** — simultaneous edits may require conflict preservation
+- **Reading progress** — never assume the highest percentage wins; rereading or resetting
+  is valid user behavior
+- **Metadata** — manual user edits remain authoritative
+- **Theme/settings preferences** — simple latest-authoritative-setting may be enough
+
+ShelfOS is not committed to CRDTs or any other heavy synchronization framework now.
+
+### Delivery order if demand justifies it
+
+1. **State sync** — reading state and library state first. Do not host books yet.
+2. **Bring your own cloud (BYOC)** — user-controlled providers: Google Drive, WebDAV,
+   Nextcloud, a user-selected sync/storage folder where viable, and possibly other
+   user-controlled providers later. Goal: no ShelfOS-operated storage required.
+3. **Optional managed ShelfOS Cloud** — only if users strongly want a simple managed
+   service after state sync and BYOC have been validated.
+
+This staged order is direction, not a committed roadmap schedule.
+
+### Accounts
+
+BYOC should ideally require no ShelfOS account: storage identity comes from the user's
+Google authorization or their WebDAV/Nextcloud credentials. "No ShelfOS account" does not
+mean "no account with any provider".
+
+A managed ShelfOS Cloud may one day be investigated without traditional email/password
+accounts — for example a generated encrypted vault identity, device key pairs, QR-code
+device pairing, a recovery key and end-to-end encryption, with the server storing
+encrypted data it cannot read. Recovery is the hard problem: if all authorized devices and
+the recovery key are lost, a genuinely encrypted accountless vault may be unrecoverable.
+This is future security/product research only; no authentication architecture is selected
+now, and anonymous provider authentication (for example Firebase anonymous auth) is not by
+itself a durable cross-device identity model.
+
+Peer-to-peer device-to-device sync may be explored much later. Benefits: no hosted
+source-file storage, strong local-first character, device-key pairing. Complications:
+discovery, NAT/firewalls, relays, Android background execution and devices rarely online
+simultaneously. It is not built now and is not the presumed primary future architecture.
+
+### Pricing is not committed
+
+Recurring infrastructure may require separate recurring pricing, and exact ShelfOS Cloud
+plans and prices are undecided. If the early research is mentioned at all, label it
+explicitly as a **2026 feasibility hypothesis — subject to future infrastructure
+economics** (roughly 25 GB ≈ $1.99/month, 100 GB ≈ $3.99/month, 250 GB ≈ $7.99/month).
+That is not approved launch pricing.
+
+### Backup is not sync
+
+Backup/restore restores data to a replacement or new device; cross-device sync has active
+devices continuously reconciling state. Android backup is not a substitute for
+multi-device synchronization. See
+[backup and device reconnection](features/LIBRARY_SOURCES.md#backup-and-device-reconnection).
+
+### What to prepare now — and nothing more
+
+1. Prefer stable logical IDs where already appropriate.
+2. Do not equate a device-local source URI with logical publication identity.
+3. Keep user-created/library state conceptually separable from source files.
+4. Keep domain/repository logic provider-neutral.
+5. Preserve local-first, offline-complete behavior.
+6. Avoid architectural choices that make later sync impossible.
+
+Do not add ahead of demand: sync tables, sync timestamps everywhere, tombstones
+everywhere, operation journals, encryption infrastructure, network providers, unused
+provider abstractions, cloud APIs, authentication, billing or sync services.
+
+## Localization architecture
+
+Interface language is a presentation/resource concern owned by the UI layer.
+
+- User-facing copy lives in Android string resources — the platform localization
+  mechanism — not hard-coded at call sites and not stored in domain or data models.
+- Dates, numbers, percentages, plural quantities and file sizes use locale-aware
+  formatting instead of assembled strings.
+- Accessibility labels and content descriptions are localizable resources too.
+- No localization, translation or language-detection step is applied to imported
+  publication data. Metadata, Series, Shelves, tags and notes are user/source data and
+  are never rewritten. No translation ingestion or analysis exists.
+- Reading Presentation (font, size, spacing, palette, Publisher/ShelfOS presentation) is
+  independent of app language and stays a presentation preference rather than
+  translated content.
+- Theme-owned ShelfOS copy resolves through the same application localization
+  resources. A theme may style localized text, but it must not ship a separate
+  translation mechanism, and reference-theme terminology is not translated content.
+- Language selection is a preference (System default / English / Español) and, when
+  explicitly set, is honored independently of the Android system language.
+- Design discipline for future locales: no architecture may assume English-only UI text,
+  fixed left-to-right ordering, or locale-specific formatting. Right-to-left support and
+  additional locales are future compatibility, not a launch commitment.
+
 ## Metadata enrichment architecture
 
 Metadata enrichment is a first-class data-layer concern.

@@ -243,32 +243,23 @@ The ShelfOS logo remains primarily monochrome. The default Classic UI uses neutr
 
 1. **ShelfOS Classic** — monochrome, editorial, cover-first.
 2. **ShelfOS Dark** — near-black/ivory sibling of Classic.
-3. **Retro Apple UI** — nostalgic Aqua-era computing influence; working/internal name pending public trademark review.
-4. **Retro Apple UI Dark** — dark nostalgic counterpart; working/internal name pending public trademark review.
-5. **Paper / Vintage Library** — warm editorial paper/library-card atmosphere.
+3. **Pear Platinum** — light, tactile retro-computing/Platinum-inspired interpretation.
+4. **Pear Platinum Dark** — its graphite dark sibling.
+5. **Deckle** — paper/editorial/literary theme; interface neutral, collection in color.
 
-All five free themes must feel complete and premium.
+All five free themes must feel complete and premium, and none of the five is a
+Plus/Premium theme. Details: [themes](design/THEMES.md).
 
 ### Premium themes
 
-Premium themes are optional expressive experiences. Initial backlog includes at least twelve concepts:
+Premium themes are optional expressive experiences delivered as **theme packs**
+($4.99 each, 4–5 themes) or through **ShelfOS Plus** ($14.99 lifetime launch
+direction): Retro Systems (5), Pop & Print (4) and Dream Internet (4) — 13 themes total.
+They may introduce stronger motion, custom library presentation, optional effects and
+alternate focus language, while the reader itself remains calm and accessible.
 
-- Frutiger Aero
-- Terminal
-- Archive
-- PageStation
-- Pocket
-- Deck
-- Dark Academia
-- Crystal
-- Vaporwave
-- Swiss
-- Solarpunk
-- Ink
-
-Premium themes may introduce stronger motion, custom library presentation, optional sounds, and alternate focus language, while the reader itself remains calm and accessible.
-
-See `design/VISUAL_IDENTITY.md`, `design/CLASSIC_UI.md`, and `design/THEMES.md`.
+None of them gates core reading, and none of the five free themes is a Plus theme.
+Details: [themes](design/THEMES.md) and [premium](features/PREMIUM.md).
 
 ## 11. Input philosophy
 
@@ -285,38 +276,29 @@ All should map into semantic application commands.
 
 ## 12. Monetization philosophy
 
-ShelfOS should be open source and distributed publicly.
+ShelfOS is open source and distributed publicly (GitHub, Google Play, possibly
+F-Droid-compatible distribution later), using one app with optional permanent in-app
+purchases rather than separate Free and Pro applications.
 
-Planned distribution:
+> **Free users should not feel limited. Paid users should feel rewarded.**
 
-- GitHub
-- Google Play
-- possibly F-Droid-compatible distribution later
-
-Google Play should use one app with an optional permanent Premium entitlement rather than separate Free and Pro apps.
-
-Core reading stays free.
-
-No ads.
-
-Potential Premium areas:
-
-- PageStation
-- advanced themes
-- advanced stylus tools
-- advanced PDF reconstruction
-- sophisticated reading statistics
-- smart shelves
-- enhanced comic/manga features
-- deeper personalization
+ShelfOS Free is the complete core product: reading, organization, accessibility,
+reliability and format support are never intentionally limited, and there are no ads.
+Paid scope is primarily personalization — official premium themes through theme packs
+($4.99) or ShelfOS Plus ($14.99 lifetime launch direction), curated accents, optional
+theme effects, cosmetic extras and Labs/early access. A separate "Theme Pass" is not part
+of the model, and no local cosmetic functionality is subscription-gated.
 
 Premium should answer:
 
-> “Can ShelfOS become even more delightful and powerful?”
+> “Can ShelfOS become even more delightful and personally mine?”
 
 not:
 
 > “Can I comfortably read my own files?”
+
+See [Premium](features/PREMIUM.md) for the Plus lifetime boundary, pack → Plus upgrade
+fairness, Labs and supporter tone.
 
 ## 13. Accounts
 
@@ -326,9 +308,14 @@ Free users: no account.
 
 Premium users: no ShelfOS account required.
 
-Later, Google Play Billing may provide entitlement verification for the permanent Premium purchase.
+Later, Google Play Billing may provide entitlement verification for the permanent Plus
+purchase.
 
-Optional sync, if ever added, must not redefine ShelfOS as a cloud-first product.
+Optional synchronization, if ever added, must not redefine ShelfOS as a cloud-first
+product. A future bring-your-own-cloud integration (Google Drive, WebDAV, Nextcloud)
+should ideally need no ShelfOS account — the user authenticates with their own provider.
+An accountless managed ShelfOS Cloud vault is future research only, not a decision. See
+[local-first and optional future synchronization](ARCHITECTURE.md#local-first-and-optional-future-synchronization).
 
 ## 14. Product principles
 
@@ -352,6 +339,14 @@ Do not create artificial restrictions around user-owned files.
 
 ### Free is complete
 Do not intentionally degrade the free experience.
+
+### Supporters are rewarded, not free users limited
+Paid content adds personalization and official polish; it never removes capability from the free product.
+
+### Do not pre-build community infrastructure
+Community/custom theme importing and cross-device cloud synchronization are post-launch,
+demand-driven features. ShelfOS does not build community infrastructure before the
+community demonstrates a need for it.
 
 ### Personal, not sterile
 ShelfOS should have identity.
@@ -383,7 +378,10 @@ Beyond the accepted ingestion/organization direction; timing is not committed:
 - universal notes
 - advanced reading stats
 - widgets
-- optional WebDAV / Drive-style sync
+- optional state synchronization and later bring-your-own-cloud providers (post-launch and
+  demand-gated; see [architecture](ARCHITECTURE.md#local-first-and-optional-future-synchronization))
+- community/custom theme import (post-launch, gated on a very active community or
+  substantial repeated demand; free if it ever ships)
 - OPDS
 - Calibre integration
 - theme SDK
@@ -463,6 +461,86 @@ Future Apple features may include:
 Do not compromise the first Android implementation merely to share UI code.
 
 See `PLATFORM_STRATEGY.md`.
+## 19. Community and feedback
+
+ShelfOS should eventually have a restrained **Feedback / Community** surface (Settings /
+About / Help & Feedback, or the equivalent area that fits actual navigation) offering
+actions such as joining the community, requesting a feature, reporting a bug, following
+development, opening the GitHub repository and supporting ShelfOS.
+
+Initial community direction:
+
+- **Discord first** — early testers, direct discussion, quick feedback, screenshots, theme
+  discussion and voting, bug discussion, ideas and development conversation
+- **GitHub Issues** — reproducible bugs, technical issues and structured implementation
+  tracking
+- **A subreddit later** — public discovery, release posts, searchable discussion,
+  showcases and broader participation; it is not an initial requirement
+
+Community/custom theme importing and cross-device cloud synchronization are post-launch,
+demand-driven features — see [themes](design/THEMES.md) and the local-first section in
+[architecture](ARCHITECTURE.md#local-first-and-optional-future-synchronization).
+
+## 20. Interface language
+
+ShelfOS's interface language is a core, Free product capability, and is independent from
+the language of the publication being read.
+
+Changing the ShelfOS language changes the **application UI only**. It does not translate:
+
+- EPUB or PDF text
+- comic/manga page content
+- publication source content
+- user-written notes
+- titles, creators or imported metadata
+
+No publication-translation feature exists or is planned. Any such capability would have
+to be designed deliberately as its own feature.
+
+### Initial locales
+
+The intended initial official app locales are:
+
+- System default (the default behavior)
+- English
+- Español
+
+System default follows the Android system language. When the user explicitly chooses
+English or Español, ShelfOS respects that choice independently of the system language.
+No further launch languages are added in this pass.
+
+### Language setting
+
+Conceptually `Settings → General → Language`, offering System default / English /
+Español, following the existing Settings information architecture. Settings is not
+redesigned to fit this requirement.
+
+### What must be localizable
+
+ShelfOS-owned UI strings are localization-ready, including navigation (Library, Search,
+Notes, Shelves, Settings), category labels (Favorites, Books, Comics, Manga,
+Documents), actions and buttons, dialogs, onboarding, errors, empty states,
+accessibility labels and content descriptions, settings descriptions, system messages,
+pluralized strings, and locale-aware formatting of dates, numbers, percentages and file
+sizes where applicable. Theme-owned ShelfOS UI copy resolves through the same
+localization system.
+
+### What localization never covers
+
+Three concepts stay separate, and changing one must never silently change another:
+
+- **App language** — the ShelfOS interface language
+- **Reading Presentation** — font, size, line height, margins, palette and the
+  Publisher/ShelfOS presentation choice
+- **Publication language** — the language of the source content
+
+Imported publication metadata remains source/user data. ShelfOS does not translate
+titles, creator names, descriptions, Series names, Shelf names, tags or user notes.
+Locale-aware *formatting* is not content translation.
+
+Future right-to-left and additional locales are a compatibility consideration, not a
+launch promise.
+
 ## Metadata as part of the library experience
 
 ShelfOS should enrich local files into recognizable publications when possible.

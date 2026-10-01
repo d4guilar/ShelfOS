@@ -143,7 +143,7 @@ No theme should require sound.
 
 Sounds may later be used for:
 
-- PageStation boot
+- Pagestation boot (short, optional, toggleable)
 - selection confirmation
 - subtle navigation feedback
 

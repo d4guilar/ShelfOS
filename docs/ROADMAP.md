@@ -61,7 +61,7 @@ ShelfOS boots, navigates, and has a stable engineering foundation.
 - basic dependency injection strategy
 - initial design system
 - theme infrastructure
-- theme infrastructure plus placeholder Classic / Dark / Retro Apple UI / Retro Apple UI Dark / Paper themes
+- theme infrastructure plus placeholder Classic / Dark / Pear Platinum / Pear Platinum Dark / Deckle themes
 - package architecture
 - logging strategy
 - basic test setup
@@ -391,10 +391,10 @@ Complete the public free visual system before monetized theme work.
 
 - ShelfOS Classic production polish
 - ShelfOS Dark parity
-- Retro Apple UI light implementation
-- Retro Apple UI dark implementation
-- Paper / Vintage Library implementation
-- Grid / Compact / List / Showcase view architecture
+- Pear Platinum implementation
+- Pear Platinum Dark implementation
+- Deckle implementation
+- Gallery / Grid / List free view modes, with Compact and Showcase as additional later presentations
 - shared theme token validation
 - keyboard/gamepad focus QA across all free themes
 - reduced-motion QA
@@ -414,22 +414,21 @@ Introduce sustainable monetization without damaging free ShelfOS.
 
 - centralized entitlement system
 - Google Play Billing
-- permanent Premium unlock
+- permanent **ShelfOS Plus** lifetime unlock ($14.99 launch/founding direction)
+- premium theme packs ($4.99 each) with upgrade accounting toward Plus where platform
+  billing capabilities allow
 - restore purchase behavior
-- Premium feature registry
-- Premium settings screen
+- Plus entitlement registry and settings surface
 - graceful offline entitlement behavior
 
-### Candidate Premium features
+### Candidate Plus content
 
-- PageStation
-- advanced themes
-- advanced pen presets
-- smart shelves
-- advanced statistics
-- deeper metadata tools
-- advanced PDF reconstruction features
-- enhanced comic/manga presentation
+- the 13 launch premium themes in three packs (Retro Systems, Pop & Print, Dream Internet)
+- curated accent sets and optional theme effects
+- local cosmetic personalization extras and Labs / early access
+
+Non-cosmetic candidates remain unresolved rather than phase scope; see
+[Premium](features/PREMIUM.md). Free ShelfOS stays complete in every case.
 
 ### Done when
 
@@ -437,14 +436,19 @@ Free ShelfOS remains excellent and Premium reliably restores on supported Google
 
 ---
 
-## Phase 8 — PageStation
+## Phase 8 — Signature theme experience (Pagestation)
+
+Naming note: the theme is **Pagestation** (the earlier working name *Memory Orbit* is
+retired) and it ships as one theme inside the **Retro Systems** pack rather than as a
+standalone product. This phase covers the deeper presentation work a signature theme
+needs; theme directions and pack contents live in [Themes](design/THEMES.md).
 
 ### Goal
 Ship ShelfOS's signature premium theme experience.
 
 ### Deliverables
 
-- original boot animation
+- original boot sequence (short, optional, toggleable and Reduced Motion aware)
 - optional original UI sounds
 - custom library motion
 - controller-friendly horizontal browsing
@@ -454,7 +458,33 @@ Ship ShelfOS's signature premium theme experience.
 
 ### Legal rule
 
-No PlayStation trademark, logo, button iconography, boot audio, copyrighted visuals, or copied interface assets.
+No PlayStation trademark, logo, button iconography, boot audio, copyrighted visuals, or copied interface assets. *PS2 WebXperience* and *OPL-Theme-PS2pops* are atmosphere references only.
+
+---
+
+## Localization foundation — near-term core requirement (pre-launch)
+
+Not a new numbered phase: this is a cross-cutting foundation that should be established
+before substantial future UI expansion makes hard-coded strings expensive to retrofit,
+and before release. It does not move Phase 2C or any other phase.
+
+### Scope
+
+- ShelfOS-owned UI strings move to Android string resources; no hard-coded user-facing
+  copy in UI, domain or data layers
+- locale-aware formatting for dates, numbers, percentages, plurals and file sizes
+- localizable accessibility labels and content descriptions
+- a language preference with System default / English / Español that changes only
+  ShelfOS-owned UI text
+- theme-owned ShelfOS copy resolving through the same resources
+
+### Done when
+
+The interface runs in English and Español with no hard-coded English strings, and
+changing the app language changes only ShelfOS-owned UI text — never publication
+content or imported metadata.
+
+See [`PRODUCT.md`](PRODUCT.md#20-interface-language) and [`ARCHITECTURE.md`](ARCHITECTURE.md#localization-architecture).
 
 ---
 
@@ -523,7 +553,9 @@ Begins only after Android architecture/product stability.
 ## Future / Exploration
 
 Exploratory scope or deferred implementation; accepted adapter directions are
-sequenced above, not implemented:
+sequenced above, not implemented. Community themes and cloud/sync are additionally
+demand-gated (see `design/THEMES.md` and the local-first section in `ARCHITECTURE.md`);
+nothing here is a committed delivery phase:
 
 - CBR
 - DOCX
@@ -536,8 +568,14 @@ sequenced above, not implemented:
 - optional scheduled LibrarySource rescans (manual rescan comes first)
 - OPDS
 - Calibre integration
-- optional WebDAV
-- optional cloud sync
+- optional state sync, then bring-your-own-cloud providers (Google Drive / WebDAV /
+  Nextcloud) — post-launch and gated on sustained cross-device demand
+- optional managed ShelfOS Cloud — only after state sync and BYOC are validated, and never
+  part of Lifetime Plus
+- peer-to-peer device-to-device sync — optional future research, never the presumed primary
+  architecture
+- community/custom theme import — post-launch, gated on a very active community or
+  substantial repeated demand, free if it ever ships
 - theme SDK
 - plugin architecture
 - metadata provider extensions

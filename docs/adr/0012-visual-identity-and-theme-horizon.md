@@ -24,9 +24,12 @@ Public launch will provide five polished free themes:
 
 1. ShelfOS Classic
 2. ShelfOS Dark
-3. Retro Apple UI (working/internal name; public naming requires review)
-4. Retro Apple UI Dark (working/internal name; public naming requires review)
-5. Paper / Vintage Library
+3. Pear Platinum
+4. Pear Platinum Dark
+5. Deckle
+
+These names were finalized in `docs/design/THEMES.md`; the five-free-theme decision
+is unchanged, and public-release naming review still applies.
 
 Premium themes are explicitly more expressive and may alter motion, optional sound, focus treatment, and library presentation while preserving reader clarity and shared navigation semantics.
 
@@ -44,6 +47,14 @@ The initial Premium theme backlog contains at least ten themes and currently inc
 - Swiss
 - Solarpunk
 - Ink
+
+Backlog reconciliation (2026-09-28): the shipped premium lineup is now 13 themes in three
+packs — **Retro Systems** (Terminal, Pagestation, Glassline, MonoDot, Deckwave),
+**Pop & Print** (Sprite Clash, Halftone Hero, Pocket Pixel, Manga Print) and
+**Dream Internet** (AeroBloom, Neo Shibuya, Sakura Mist, ClipPop 2000) — offered as $4.99
+theme packs or through the lifetime ShelfOS Plus entitlement, with a themed-pack upgrade
+path toward Plus. The list above is retained as the record of the earlier backlog; see
+`docs/design/THEMES.md` and `docs/features/PREMIUM.md`.
 
 ## Consequences
 

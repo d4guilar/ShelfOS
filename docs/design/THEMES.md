@@ -2,10 +2,15 @@
 
 ## Phase 0 implementation status
 
-Classic and Dark are implemented through shared Compose tokens. Retro Apple UI,
-Retro Apple UI Dark, and Paper / Vintage Library are registered but unavailable
-and marked Planned. Their eventual complete design is described below.
-No Premium themes are implemented. Theme selection is persisted locally in Room.
+Classic and Dark are implemented through shared Compose tokens. Pear Platinum,
+Pear Platinum Dark, and Deckle are registered but unavailable and marked Planned.
+Their eventual complete design is described below. No Premium themes are
+implemented. Theme selection is persisted locally in Room.
+
+The current placeholder registrations in `core.theme` still carry the earlier
+working IDs and labels (`RETRO_LIGHT`, `RETRO_DARK`, `PAPER`). Renaming them is
+part of the Phase 6.5 theme work, not a Phase 0 change; their persisted storage
+keys are migration-relevant.
 
 ## Planned reader presentation
 
@@ -59,10 +64,14 @@ Themes must not break:
 ## 1. ShelfOS Classic
 
 ### Role
-Default ShelfOS identity.
+Default ShelfOS identity: native, neutral, modern and collection-first.
 
 ### Principle
 **The interface is monochrome. The library is the color.**
+
+### Default accent
+ShelfOS Blue. A designed default used for selection, focus and progress; it never
+replaces the monochrome logo or the cover-first hierarchy.
 
 ### Characteristics
 
@@ -83,6 +92,10 @@ Borrow structural strengths from ES-DE-quality media browsers while avoiding gam
 
 See `CLASSIC_UI.md`.
 
+### Reference
+`references/ShelfOS_Classic_Library_v1.jpeg` — approved Classic library visual
+direction. Concept image only; see "Theme references" below.
+
 ---
 
 ## 2. ShelfOS Dark
@@ -96,307 +109,319 @@ Low-light sibling to Classic.
 - warm white text
 - graphite/gray surfaces
 - full-color covers
-- no required blue/neon accent
+- no required neon or fluorescent accent
 - identical geometry and navigation to Classic
 - calm OLED-friendly presentation
+
+### Default accent
+ShelfOS Blue, matching Classic.
 
 ### Rule
 Dark is not a separate visual concept. It is Classic under a dark material system.
 
 ---
 
-## 3. Retro Apple UI
-
-### Status
-Working/internal theme name. Final public naming must receive trademark review.
+## 3. Pear Platinum
 
 ### Role
-Free nostalgic computing theme.
+Pear Classic theme family: light retro-computing / Platinum-inspired aesthetic.
 
 ### Characteristics
 
-- Aqua-era optimism
 - tactile controls
-- soft blue/silver surfaces
-- gentle glass and depth
-- friendly system iconography
-- restrained skeuomorphism
+- restrained bevels
+- warm neutral surfaces
 - full-color covers
+- same ShelfOS structure as Classic; theme only, not a product redesign
+
+### Default accent
+Restrained Classic Blue.
 
 ### Rule
-Do not copy Apple assets, icons, wallpapers, sounds, or proprietary UI layouts.
+Do not copy third-party assets, icons, wallpapers, sounds, or proprietary UI
+layouts.
 
 ---
 
-## 4. Retro Apple UI Dark
-
-### Status
-Working/internal theme name. Final public naming must receive trademark review.
+## 4. Pear Platinum Dark
 
 ### Role
-Dark nostalgic counterpart.
+Dark sibling of Pear Platinum.
 
 ### Characteristics
 
-- deep blue / graphite
-- silver/ivory typography
-- restrained glass surfaces
-- subtle depth
-- reduced brightness
-- same nostalgic language without excessive glow
+- graphite / dark retro-computing interpretation
+- same ShelfOS structure and Pear material language as Pear Platinum
+- restrained bevels and tactile controls
+- reduced brightness without losing contrast
+
+### Default accent
+Cool restrained blue.
 
 ---
 
-## 5. Paper / Vintage Library
+## 5. Deckle
 
 ### Role
-Warm literary alternative.
+Paper / editorial / literary theme.
+
+### Principle
+**Interface is neutral. Collection is color.**
 
 ### Characteristics
 
-- cream/paper canvas
-- ink/brown typography
-- subtle paper grain
-- thin editorial rules
-- restrained serif headings paired with readable sans-serif controls
-- library-card / classic paperback influence
+- cream paper surfaces, warm ink
+- editorial typography
+- thin rules and restrained texture
+- identity carried by typography, spacing and paper surfaces rather than bevels
 - no fake wooden bookshelf
+
+### Default accent
+Oxblood.
 
 ### Target feeling
 Old Penguin paperback + quiet reading room + modern product usability.
 
 ---
 
+## Theme accent personalization
+
+Each theme ships one carefully designed default accent.
+
+A future release may let users choose from a curated set of accents compatible
+with that theme's character. An unrestricted RGB picker is not the initial design,
+and a curated choice must preserve the theme's visual character.
+
+Accents recolor semantic roles (accent, selection, focus, progress) rather than
+hard-coded color values, so every choice still looks like that theme.
+
+| Theme | Default accent | Curated direction |
+|---|---|---|
+| Classic | ShelfOS Blue | Blue, Green, Purple, Amber, Red |
+| Dark | ShelfOS Blue | Blue, Teal, Green, Purple, Amber |
+| Pear Platinum | Restrained Classic Blue | Blue, Forest Green, Burgundy, Graphite, Amber |
+| Pear Platinum Dark | Cool restrained blue | Cool Blue, Emerald, Amber, Plum, Ice |
+| Deckle | Oxblood | Oxblood, Library Green, Navy Ink, Burnt Orange, Plum |
+
+This is a future implementation direction only. No accent architecture, storage
+model or settings UI is defined here.
+
+## App theme, reading profile and page palette
+
+The app theme/accent and the Reading Profile (page palette) are independent.
+
+A Deckle app theme with a Library Green accent can still read in a Paper, Sepia,
+Sage or Dark reading palette, and changing one never forces the other.
+
+Comics and Original PDF pages remain source-faithful: theme colors and reading
+palettes never recolor or replace authored artwork or embedded fonts.
+
+Reader behavior is owned by `READER_UX.md`; implemented page-color behavior is
+recorded in `../PHASE_2_PLAN.md`.
+
+## Theme references (concept images)
+
+Concept images are visual reference, not pixel-perfect implementation specs.
+
+- Classic: `references/ShelfOS_Classic_Library_v1.jpeg` (concept images are
+  local-only and excluded from Git; see `references/README.md`)
+- Pear Platinum, Pear Platinum Dark, Deckle: no approved concept image yet, so the
+  written specification on this page is authoritative
+
+Implementation preserves the real ShelfOS layout, the monochrome logo assets,
+accessibility requirements, semantic navigation and component behavior. If an
+image and a written specification conflict, the written specification wins.
+
+## Free-theme policy
+
+The five themes above are the initial free theme set, and none of them may be
+assigned to Plus/Premium in documentation or product messaging.
+
+Pear Platinum and Pear Platinum Dark are the canonical project names. The
+public-release naming review in `AGENTS.md` rule 24 still applies before launch.
+
+---
+
 # Premium Themes
 
 Premium themes are optional and should never gate core readability or accessibility.
+They are official ShelfOS reinterpretations, not alternate applications: they preserve
+ShelfOS information architecture, navigation, core interaction behavior,
+accessibility and recognizable product identity.
 
-At least ten premium themes should be available over the life of the product. The following twelve form the initial design backlog.
+> **Same ShelfOS. Different personality.**
 
-## 1. Frutiger Aero
+Premium themes ship as **theme packs** ($4.99 each, 4–5 themes) or through
+**ShelfOS Plus** ($14.99 lifetime launch direction). Pack contents, pack → Plus
+upgrade fairness and the lifetime boundary are owned by
+[PREMIUM.md](../features/PREMIUM.md).
 
-### Personality
-Optimistic, glossy, bright, aquatic, airy.
+Everything named below is an **inspiration reference only**. ShelfOS never ships
+proprietary logos, characters, copyrighted artwork, copied UI assets, proprietary
+sounds or copied boot animations.
 
-### Characteristics
+## Retro Systems — 5 themes
 
-- sky/water/glass motifs
-- luminous blue/green surfaces
-- soft reflections
-- smooth motion
-- optimistic early-web / mid-2000s energy
+### Terminal
 
-### Reader
-Very restrained; expressive visuals belong mainly to library/navigation surfaces.
+- terminal / command-line interface; ASCII-art influence; monospace-heavy language
+- low-level computer / system-console personality with a Linux/Unix boot-log mood
+- *Serial Experiments Lain* is an internal mood reference only
+- accent controls the primary code / terminal-highlight color; possible curated
+  directions include phosphor green, amber, ice blue, white and red
+- optional effect: one very short terminal/Linux-style boot sequence
+- no copied franchise imagery, fonts, logos, dialogue or interface assets
 
----
+### Pagestation
 
-## 2. Terminal
+Public name **Pagestation**; this replaces the earlier working name *Memory Orbit*.
 
-### Personality
-Late-90s/early-2000s cyber-computing.
-
-### Inspiration
-Broadly influenced by experimental terminal/cyber-media aesthetics, including the era associated with works such as *Serial Experiments Lain*, without using copyrighted assets.
-
-### Characteristics
-
-- black backgrounds
-- green/amber/white terminal text
-- technical labels
-- subtle scanline/CRT options
-- command-line-like focus treatment
-- minimal animation
-
-### Rule
-No copied franchise imagery, fonts, logos, dialogue, or interface assets.
-
----
-
-## 3. Archive
-
-### Personality
-Professional archival workstation.
-
-### Characteristics
-
-- folders/index cards
-- off-white document surfaces
-- stamps/index-number motifs
-- restrained beige/gray palette
-- metadata-forward layouts
-- catalog / museum archive energy
+- early-2000s console-system atmosphere: dark, spacious, restrained blue/cyan or
+  alternate accent glow, floating system-like geometry, subtle motion
+- memory-card / system-browser feeling while ShelfOS structure stays intact
+- accent may control the principal system glow / light color
+- optional effect: one very short console/system-startup-inspired sequence
+- internal visual references only: *PS2 WebXperience* (startup-sequence atmosphere,
+  dark virtual-dashboard mood, restrained scanline/glow/motion rhythm) and
+  *OPL-Theme-PS2pops* (a small handmade loader/startup animation, restrained
+  console-menu presentation)
+- do not copy PlayStation logos, BIOS assets, proprietary sounds, commercial artwork,
+  original boot sequences, copyrighted interface graphics or source code unless
+  separately verified as license-compatible and actually needed
 
 ---
 
-## 4. PageStation
+### Glassline
 
-### Positioning
-`PageStation — A ShelfOS Experience`
+- Windows Vista / Aero-era inspiration: translucent layered glass, soft aurora lighting
+- glossy but tasteful controls; late-2000s optimistic computing character
+- do not copy Microsoft logos or proprietary assets
 
-### Personality
-Original Y2K Japanese consumer-electronics/media-system theme.
+### MonoDot
 
-### Characteristics
+- bitmap / monochromatic computing: 1-bit / low-bit visual language
+- bitmap typography, stark graphic hierarchy, intentionally restricted palette
+- optional accent behaves like a single alternate system color
 
-- deep navy/black
-- cold white/silver
-- original crystalline startup motion/sound
-- horizontal library presentation
-- small technical system labels
-- controller-forward focus motion
+### Deckwave
 
-### Legal boundary
-Do not reproduce PlayStation names, trademarks, logos, sounds, controller symbols, boot graphics, or proprietary UI assets.
-
-Final public name should receive trademark review before release.
+- SteamOS / handheld-console-library inspiration: cover-forward, modern dark interface
+- controller-friendly visual rhythm with a restrained contemporary presentation
+- do not clone SteamOS or ship Valve/Steam proprietary assets
 
 ---
 
-## 5. Pocket
+## Pop & Print — 4 themes
 
-### Personality
-Playful monochrome handheld computing.
+### Sprite Clash
 
-### Characteristics
+- 1990s / early-2000s arcade fighting-game energy
+- sprite-inspired visual details, bold graphic framing, energetic accent colors
+- *Marvel vs. Capcom* is an internal inspiration reference only
+- do not use Marvel/Capcom characters, copyrighted sprites, logos or proprietary assets
 
-- limited green/gray/amber palettes
-- pixel-inspired details
-- chunky but readable controls
-- optional LCD ghosting simulation kept subtle
-- compact handheld presentation
+### Halftone Hero
 
-### Legal boundary
-Do not use Game Boy branding, copyrighted iconography, shell designs, or proprietary visual assets.
-
----
-
-## 6. Deck
-
-### Personality
-Polished desktop media-library theme.
-
-### Characteristics
-
-- dark slate surfaces
-- dense shelves
-- horizontal artwork rows
-- strong controller/keyboard navigation
-- desktop media-hub feel
-- compact metadata panels
-
-### Legal boundary
-Do not copy Steam branding, layout assets, iconography, or proprietary interface details.
+- 1990s American superhero-comic energy: ink, halftone, dramatic framing
+- bold caption/panel character
+- the Alex Ross / Jim Lee era may be referenced internally for broad mood and era
+- do not imitate or reproduce specific protected artwork or characters
 
 ---
 
-## 7. Dark Academia
+### Pocket Pixel
 
-### Personality
-Moody literary study.
+- late-1990s / early-2000s handheld RPG aesthetic
+- creature-collector-era pixel UI, compact menus, playful map/menu language
+- *Pokémon* is an internal inspiration reference only
+- do not use Pokémon names, characters, sprites, logos or proprietary assets
 
-### Characteristics
+### Manga Print
 
-- espresso/burgundy/cream
-- serif display headings
-- restrained paper/leather texture
-- elegant separators
-- study-desk atmosphere
-- warm low-light presentation
-
-### Rule
-Keep texture subtle; no fake photorealistic bookshelves.
+- manga / Japanese print-editorial influence, black-and-white print personality
+- screentone and ink inspiration, restrained accent color
+- usable across all ShelfOS content categories
+- avoid turning the entire UI into novelty manga panels
 
 ---
 
-## 8. Crystal
+## Dream Internet — 4 themes
 
-### Personality
-Clean translucent glass interface.
+### AeroBloom
 
-### Characteristics
+- Frutiger Aero: optimistic technology/nature relationship
+- sky, water, glass, greenery; Y2K-to-late-2000s digital optimism
+- colorful while preserving readability
 
-- frosted glass layers
-- pale neutral backgrounds
-- subtle spectral highlights
-- minimal chrome
-- light/refraction-inspired motion
+### Neo Shibuya
 
-### Target audience
-Users who enjoy premium contemporary glass UI without heavy retro references.
+- Japanese cyberpunk: dense but controlled neon, urban-night signage
+- technological editorial presentation
+- accent strongly influences the main neon/highlight family
+- avoid generic gamer-RGB styling
 
----
+### Sakura Mist
 
-## 9. Vaporwave
+- cherry blossom / Japanese seasonal inspiration, soft surfaces
+- subtle pink botanical accents, calm and elegant mood
+- possible washi / traditional Japanese material influence
+- avoid caricature or excessive kawaii styling
 
-### Personality
-Dreamlike retro-digital.
+### ClipPop 2000
 
-### Characteristics
+- maximalist Y2K web/desktop energy: clip-art, stickers, chrome, layered graphics
+- playful early-web chaos; may be intentionally busy
+- core ShelfOS usability must remain intact
 
-- violet/pink/cyan accents
-- deep gradient atmospheres
-- geometric horizon motifs used sparingly
-- expressive library browsing
-- restrained reader canvas
+## Theme effects (optional)
 
-### Rule
-Avoid illegible novelty typography.
+Official themes may include small optional effects that strengthen their personality
+(for example Terminal's and Pagestation's short startup sequences).
 
----
+- effects are optional, and enabled by default because they contribute personality
+- users always have an easy toggle to disable them
+- ShelfOS remains fully usable with effects disabled
+- effects must be short and must never repeatedly block library or reader access
+- Reduced Motion / accessibility preferences take priority
+- no network dependency, no proprietary boot animations, no proprietary sounds, no
+  copied commercial assets
 
-## 10. Swiss
+ShelfOS may recommend leaving them enabled; it never forces them.
 
-### Personality
-Editorial modernist library.
+## Community and custom themes (post-launch)
 
-### Characteristics
+Community/custom theme support — importing, exporting, personal themes, sharing and an
+open documented format — is a **post-launch** investigation only.
 
-- strict grid
-- black/white/red or black/white accent system
-- strong typography
-- asymmetrical editorial composition
-- almost no decorative texture
+> **Do not implement community/custom theme import for the initial release.**
 
-### Target audience
-Users who want a design-forward, non-retro premium experience.
+Reconsider it only after public launch, and only with either a **VERY active
+community** or **substantial repeated user demand**. Before that, ShelfOS should
+already have a mature internal theme engine, stable semantic tokens, several official
+themes in real use, real-world accessibility validation, stable cross-device behavior
+and enough demand to justify supporting a public format. Do not freeze a public theme
+schema, build an importer, or take on long-term format compatibility prematurely.
 
----
+If it ever ships:
 
-## 11. Solarpunk
-
-### Personality
-Warm optimistic future.
-
-### Characteristics
-
-- natural greens
-- warm cream
-- gentle organic curves
-- sunlight-inspired surfaces
-- restrained botanical motifs
-- calm animation
-
-### Rule
-Keep it sophisticated rather than illustrated or childish.
-
----
-
-## 12. Ink
-
-### Personality
-High-contrast print / manga-editorial aesthetic.
-
-### Characteristics
-
-- black, white, warm paper
-- brush/ink-inspired secondary marks
-- halftone used sparingly
-- high-contrast cover presentation
-- particularly compatible with manga/comics but usable across the whole library
-
-### Rule
-Do not reduce accessibility or make body text decorative.
+- importing and using your own or community themes stays **free** — ShelfOS does not
+  charge permission to use a theme the user created or obtained elsewhere
+- **themes are data, not executable code**: no Kotlin, Java, JavaScript, shell scripts,
+  plugins or arbitrary executable logic; a theme may declare a manifest, semantic
+  colors, typography/component tokens, safe image assets, a preview image and
+  references to ShelfOS-provided effects
+- community animation must reference ShelfOS-controlled built-in effects rather than
+  arbitrary executable animation
+- the exact format is undecided; a future importer would need explicit design for
+  archive-size limits, path-traversal prevention, strict schema validation, allowed
+  asset formats, image-dimension limits, safe font handling, format versioning,
+  fallback to a safe official theme, easy uninstall/reset and preview-before-apply
+- community themes change presentation, never core navigation or functionality
+- ShelfOS does not become a marketplace: no user storefronts, creator payouts, ratings,
+  reviews, accounts, hosted distribution, moderation infrastructure or paid user themes.
+  Distribution can happen externally (community chat, repositories, community sites,
+  later a subreddit, or direct file sharing); ShelfOS needs only a safe import
+  mechanism, if and when demand justifies it. A curated showcase is not roadmap scope.
 
 ---
 
@@ -409,31 +434,53 @@ ThemeRegistry
 ├── Free
 │   ├── Classic
 │   ├── Dark
-│   ├── RetroAppleLight   (working name)
-│   ├── RetroAppleDark    (working name)
-│   └── Paper
+│   ├── PearPlatinum
+│   ├── PearPlatinumDark
+│   └── Deckle
 └── Premium
-    ├── FrutigerAero
-    ├── Terminal
-    ├── Archive
-    ├── PageStation
-    ├── Pocket
-    ├── Deck
-    ├── DarkAcademia
-    ├── Crystal
-    ├── Vaporwave
-    ├── Swiss
-    ├── Solarpunk
-    └── Ink
+    ├── RetroSystems       (pack: 5)
+    │   ├── Terminal
+    │   ├── Pagestation
+    │   ├── Glassline
+    │   ├── MonoDot
+    │   └── Deckwave
+    ├── PopAndPrint        (pack: 4)
+    │   ├── SpriteClash
+    │   ├── HalftoneHero
+    │   ├── PocketPixel
+    │   └── MangaPrint
+    └── DreamInternet      (pack: 4)
+        ├── AeroBloom
+        ├── NeoShibuya
+        ├── SakuraMist
+        └── ClipPop2000
 ```
 
+13 premium themes in three packs at launch. Every theme ships one designed default
+accent plus its standard curated accent set, and the same semantic accent roles apply
+to premium themes as to free themes.
+
 Do not hard-code theme branches across unrelated screens.
+
+Placeholder code registrations still use the earlier IDs and labels; see the
+status section above.
 
 ## Theme implementation rule
 
 A theme should be data/configuration-driven where possible.
 
 Theme-specific custom components or layouts are allowed only when the experience genuinely requires them, and they must still conform to shared navigation/accessibility semantics.
+## Theme localization
+
+Themes must not assume English-only ShelfOS UI copy. Any ShelfOS-owned copy a theme
+displays — for example Terminal's `READY` and system-status labels and boot-sequence
+strings, Pagestation's theme labels and startup/effect settings, or Deckle and Pear
+theme supporting copy — resolves through the same application localization resources as
+the rest of ShelfOS.
+
+A theme may style localized text, but it must not own a separate translation mechanism,
+and reference-theme terminology is not translated content.
+
 ## Structural invariants
 
 Themes are presentation layers over the ShelfOS product structure.

@@ -145,7 +145,9 @@ Adopt:
 - crop and fit controls
 - multilingual typography/hyphenation
 - local/offline dictionaries
-- optional Wikipedia/translation actions
+- optional Wikipedia lookup actions; publication-content translation is **not** planned —
+  interface localization is core/free and is a separate concern
+  (see [`PRODUCT.md`](PRODUCT.md#20-interface-language))
 - OPDS
 - Calibre integration
 - e-ink/low-motion theme or reader mode

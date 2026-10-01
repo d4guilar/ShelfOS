@@ -13,9 +13,12 @@ Public free theme target:
 
 - ShelfOS Classic
 - ShelfOS Dark
-- Retro Apple UI (working/internal name)
-- Retro Apple UI Dark (working/internal name)
-- Paper / Vintage Library
+- Pear Platinum
+- Pear Platinum Dark
+- Deckle
+
+These five names were finalized in `docs/design/THEMES.md`; the five-theme decision
+and the public-release naming review are unchanged.
 
 Premium themes are registered separately and may be more expressive.
 
