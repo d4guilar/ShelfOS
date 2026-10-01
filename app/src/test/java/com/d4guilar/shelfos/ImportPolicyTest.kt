@@ -2,6 +2,8 @@
 package com.d4guilar.shelfos
 
 import com.d4guilar.shelfos.core.designsystem.UiMessage
+import com.d4guilar.shelfos.core.designsystem.messageRes
+import com.d4guilar.shelfos.core.designsystem.readerMessage
 import com.d4guilar.shelfos.core.files.EmbeddedMetadataReader
 import com.d4guilar.shelfos.domain.importing.*
 import com.d4guilar.shelfos.domain.library.*
@@ -70,8 +72,9 @@ class ImportPolicyTest {
         assertEquals(PublicationProblem.UNREADABLE, IllegalStateException().publicationProblem())
         assertTrue(PublicationProblem.PERMISSION_LOST.unavailable && PublicationProblem.SOURCE_UNAVAILABLE.unavailable)
         assertFalse(PublicationProblem.PROTECTED.unavailable || PublicationProblem.CORRUPT.unavailable)
-        assertEquals(UiMessage.Literal("Detail."), PublicationException(PublicationProblem.CORRUPT, "Detail.").readerMessage())
-        assertEquals(PublicationProblem.entries.size, PublicationProblem.entries.map { it.messageRes }.toSet().size)
+        assertEquals(UiMessage.Resource(PublicationExceptionDetail.EPUB_MISSING_CONTAINER.messageRes()),
+            PublicationException(PublicationProblem.CORRUPT, PublicationExceptionDetail.EPUB_MISSING_CONTAINER).readerMessage())
+        assertEquals(PublicationProblem.entries.size, PublicationProblem.entries.map { it.messageRes() }.toSet().size)
     }
 
     @Test fun epubPackageMetadataIsBoundedUntrustedEvidence() {

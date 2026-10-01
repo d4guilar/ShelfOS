@@ -78,11 +78,11 @@ class EpubReaderFactory(private val context: Context, private val files: Publica
             val entries = ArchivePolicy.entries(zip)
             val markup = entries.filter { it.name.substringAfterLast('.').lowercase() in setOf("xhtml", "html", "htm", "svg", "xml", "opf", "ncx", "css") }
             if (markup.any { it.size > 8 * 1024 * 1024 } || markup.sumOf { it.size } > 128 * 1024 * 1024)
-                throw PublicationException(PublicationProblem.TOO_LARGE, "This EPUB has exceptionally large content resources and is not supported yet.")
+                throw PublicationException(PublicationProblem.TOO_LARGE, PublicationExceptionDetail.EPUB_CONTENT_TOO_LARGE)
             entries.filter { it.name.endsWith(".opf", true) || it.name.endsWith(".xml", true) || it.name.endsWith(".ncx", true) }.forEach { entry ->
                 val xml = zip.readBytes(entry, 8L * 1024 * 1024)?.toString(Charsets.UTF_8)
-                    ?: throw PublicationException(PublicationProblem.TOO_LARGE, "This EPUB has exceptionally large content resources and is not supported yet.")
-                if (xml.contains("<!ENTITY", true)) throw PublicationException(PublicationProblem.UNSUPPORTED_FORMAT, "This EPUB contains unsupported entity declarations.")
+                    ?: throw PublicationException(PublicationProblem.TOO_LARGE, PublicationExceptionDetail.EPUB_CONTENT_TOO_LARGE)
+                if (xml.contains("<!ENTITY", true)) throw PublicationException(PublicationProblem.UNSUPPORTED_FORMAT, PublicationExceptionDetail.EPUB_UNSUPPORTED_ENTITY_DECLARATIONS)
             }
         } }
         val url = item.managedPath?.let { files.managedFile(it).toUrl(isDirectory = false) }
@@ -105,7 +105,7 @@ class EpubReaderFactory(private val context: Context, private val files: Publica
                 }
                 container = CompositeContainer(listOf(ManagedFontContainer(::liveFontMap), publicationContainer))
             }).getOrElse { error ->
-                throw if (error is PublicationOpener.OpenError.FormatNotSupported) PublicationException(PublicationProblem.CORRUPT, "This EPUB is invalid or unsupported.")
+                throw if (error is PublicationOpener.OpenError.FormatNotSupported) PublicationException(PublicationProblem.CORRUPT, PublicationExceptionDetail.EPUB_INVALID_OR_UNSUPPORTED)
                 else PublicationException(PublicationProblem.UNREADABLE)
             }
             if (publication.isRestricted) {

@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.core.designsystem.UiMessage
+import com.d4guilar.shelfos.core.designsystem.importMessage
+import com.d4guilar.shelfos.core.designsystem.toUiMessage
 import com.d4guilar.shelfos.data.library.LibraryRepository
 import com.d4guilar.shelfos.domain.importing.*
 import com.d4guilar.shelfos.domain.library.*
@@ -52,9 +54,7 @@ class ImportViewModel(private val importer: PublicationImporter, private val rep
                     return@launch
                 }
                 leases.awaitRelease(sourceUri)
-                // The importer resolves its own progress text (it already holds a Context) and hands back an
-                // already-localized string; wrapping it in Literal means it is shown as-is, not re-resolved.
-                val result = importer.prepare(sourceUri, copy) { stage -> _state.update { it.copy(stage = UiMessage.Literal(stage)) } }
+                val result = importer.prepare(sourceUri, copy) { stage -> _state.update { it.copy(stage = stage.toUiMessage()) } }
                 prepared = result
                 val duplicate = isPossibleDuplicate(repository.publications.first(), result.item)
                 pending = result; reviewing = true // Ownership: this job → the review.
@@ -125,7 +125,3 @@ class ImportViewModel(private val importer: PublicationImporter, private val rep
 
     override fun onCleared() { pending?.let { abandoned -> pending = null; abandon(abandoned.item.sourceUri, abandoned) } }
 }
-
-/** A specific detail (for example a damaged EPUB container) wins over the problem's import wording. */
-private fun Exception.importMessage(): UiMessage =
-    (this as? PublicationException)?.message?.let(UiMessage::Literal) ?: UiMessage.Resource(publicationProblem().importMessageRes)

@@ -6,10 +6,20 @@ import com.d4guilar.shelfos.domain.library.*
 /** An inspected source awaiting review; nothing is committed to the library yet. */
 data class PreparedImport(val item: LibraryItem, val acquiredGrant: Boolean)
 
+/** A publication import's progress, as a locale-neutral identifier rather than text — UI-layer code maps each
+ * case to a localized string (see core.designsystem's ImportProgressMessages), keeping this pure and
+ * Context-free regardless of which Android API level is applying ShelfOS's chosen interface language. */
+sealed interface ImportProgressStage {
+    data object Inspecting : ImportProgressStage
+    data object CopyingOffline : ImportProgressStage
+    data class CopyingPercent(val percent: Int) : ImportProgressStage
+    data class CopyingMegabytes(val megabytes: Long) : ImportProgressStage
+}
+
 /** Platform access used by single-file import. Implementations never modify the source. */
 interface PublicationImporter {
     /** The prepared item's source is [sourceUri]. */
-    suspend fun prepare(sourceUri: String, copy: Boolean, stage: (String) -> Unit): PreparedImport
+    suspend fun prepare(sourceUri: String, copy: Boolean, stage: (ImportProgressStage) -> Unit): PreparedImport
     /**
      * Discards abandoned work: its private copy, and its grant unless [sourceStillUsed] (a library item or another
      * import still depends on the source). Never called for work the library holds.
@@ -35,7 +45,7 @@ fun classifyArchive(names: Collection<String>, mimetype: String?): PublicationFo
     if (mimetype?.trim() == "application/epub+zip" || container) {
         if ("META-INF/rights.xml" in names || names.any { it.endsWith("license.lcpl", true) })
             throw PublicationException(PublicationProblem.PROTECTED)
-        if (!container) throw PublicationException(PublicationProblem.CORRUPT, "This EPUB has no publication container.")
+        if (!container) throw PublicationException(PublicationProblem.CORRUPT, PublicationExceptionDetail.EPUB_MISSING_CONTAINER)
         return PublicationFormat.EPUB
     }
     if (names.none(::isPageImage)) throw PublicationException(PublicationProblem.EMPTY_ARCHIVE)

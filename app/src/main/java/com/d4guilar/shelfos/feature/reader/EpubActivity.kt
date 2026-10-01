@@ -49,8 +49,11 @@ import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.ShelfApplication
 import com.d4guilar.shelfos.AppContainer
 import com.d4guilar.shelfos.core.designsystem.InputKeycap
+import com.d4guilar.shelfos.core.designsystem.UiMessage
+import com.d4guilar.shelfos.core.designsystem.UiMessageSaver
 import com.d4guilar.shelfos.core.designsystem.formatPercent
 import com.d4guilar.shelfos.core.designsystem.resolve
+import com.d4guilar.shelfos.core.designsystem.toUiMessage
 import com.d4guilar.shelfos.core.input.*
 import com.d4guilar.shelfos.core.reader.*
 import com.d4guilar.shelfos.core.theme.*
@@ -110,7 +113,7 @@ open class EpubActivity : AppCompatActivity() {
         val nextLabel = stringResource(R.string.content_desc_next_hint)
         fun previousHintDescription(hint: String) = String.format(previousLabel, hint)
         fun nextHintDescription(hint: String) = String.format(nextLabel, hint)
-        val fontRemoveFailedMessage = stringResource(R.string.font_remove_failed)
+        val fontRemoveFailedMessage = UiMessage.Resource(R.string.font_remove_failed)
         val filterChaptersDescription = stringResource(R.string.content_desc_filter_chapters)
         val searchThisPublicationLabel = stringResource(R.string.search_this_publication)
         val searchingDescription = stringResource(R.string.content_desc_searching)
@@ -130,7 +133,7 @@ open class EpubActivity : AppCompatActivity() {
         var bookmarks by rememberSaveable { mutableStateOf(false) }
         var search by rememberSaveable { mutableStateOf(false) }
         var searchQuery by rememberSaveable { mutableStateOf("") }
-        var fontImportError by rememberSaveable { mutableStateOf<String?>(null) }
+        var fontImportError by rememberSaveable(stateSaver = UiMessageSaver) { mutableStateOf<UiMessage?>(null) }
         val fontFamilies by container.fonts.families.collectAsStateWithLifecycle()
         val importFont = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             uri?.let {
@@ -142,7 +145,7 @@ open class EpubActivity : AppCompatActivity() {
                         // Recreate once so a newly imported family can be selected immediately in this dialog.
                         recreate()
                     } catch (error: FontImportException) {
-                        fontImportError = error.userMessage
+                        fontImportError = error.toUiMessage()
                     }
                 }
             }

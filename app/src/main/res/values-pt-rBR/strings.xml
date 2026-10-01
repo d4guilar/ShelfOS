@@ -84,7 +84,7 @@
     <!-- Importação -->
     <string name="import_dialog_adding_title">Adicionando publicação</string>
     <string name="import_dialog_keep_copy_title">Manter uma cópia offline?</string>
-    <string name="import_dialog_keep_copy_body">Este provedor não consegue oferecer acesso duradouro e pesquisável. O ShelfOS pode guardar uma cópia privada, usando o tamanho completo do arquivo no armazenamento do dispositivo. O original permanece intacto.</string>
+    <string name="import_dialog_keep_copy_body">Este provedor não consegue oferecer acesso duradouro com acesso aleatório. O ShelfOS pode guardar uma cópia privada, usando o tamanho completo do arquivo no armazenamento do dispositivo. O original permanece intacto.</string>
     <string name="action_copy_and_continue">Copiar e continuar</string>
     <string name="import_action_add_to_library">Adicionar à biblioteca</string>
     <string name="import_possible_duplicate_notice">Já existe um arquivo com o mesmo nome e tamanho na sua biblioteca. Deseja adicionar este como uma entrada separada?</string>
@@ -228,7 +228,7 @@
     <string name="problem_permission_lost_import_message">O acesso a este arquivo foi negado. Escolha-o novamente.</string>
     <string name="problem_source_unavailable_message">Não foi possível acessar o arquivo original. Ele pode ter sido movido, excluído ou desconectado. Sua posição de leitura e suas alterações são mantidas.</string>
     <string name="problem_source_unavailable_import_message">O arquivo selecionado está indisponível. Verifique se ele ainda existe e tente novamente.</string>
-    <string name="problem_needs_copy_message">Este provedor não consegue oferecer acesso duradouro e pesquisável. O ShelfOS precisa de uma cópia privada offline.</string>
+    <string name="problem_needs_copy_message">Este provedor não consegue oferecer acesso duradouro com acesso aleatório. O ShelfOS precisa de uma cópia privada offline.</string>
     <string name="problem_unsupported_format_message">Escolha uma publicação em PDF, EPUB ou CBZ.</string>
     <string name="problem_unsupported_layout_message">A leitura de EPUB de layout fixo não é compatível com esta versão. Páginas fixas de PDF e CBZ são compatíveis.</string>
     <string name="problem_protected_message">Esta publicação é protegida por senha ou usa DRM. O ShelfOS não consegue abrir publicações protegidas.</string>
@@ -239,4 +239,39 @@
     <string name="problem_copy_failed_message">Não foi possível concluir a cópia privada. O arquivo original não foi alterado.</string>
     <string name="problem_unreadable_message">Não foi possível abrir esta publicação. Ela pode estar indisponível ou danificada.</string>
     <string name="problem_unreadable_import_message">Não foi possível importar este arquivo. Verifique se ele está disponível e não está danificado.</string>
+
+    <!-- Detalhes específicos de falhas de publicação (substituem a mensagem genérica acima quando presentes) -->
+    <string name="publication_error_unsafe_entry_path">O arquivo contém um caminho de entrada inseguro.</string>
+    <string name="publication_error_unsupported_entry_size">O arquivo contém uma entrada de tamanho não compatível.</string>
+    <string name="publication_error_expands_beyond_safe_limits">O arquivo se expande além dos limites seguros.</string>
+    <string name="publication_error_image_page_too_large">Uma página de imagem excede o tamanho compatível.</string>
+    <string name="publication_error_pdf_has_no_pages">Este PDF não tem páginas.</string>
+    <string name="publication_error_unsupported_compression_method">O arquivo usa um método de compactação não compatível.</string>
+    <string name="publication_error_too_many_entries">O arquivo tem entradas demais.</string>
+    <string name="publication_error_archive_damaged_or_incomplete">Este arquivo compactado está danificado ou incompleto.</string>
+    <string name="publication_error_epub_content_too_large">Este EPUB tem recursos de conteúdo excepcionalmente grandes e ainda não é compatível.</string>
+    <string name="publication_error_epub_unsupported_entity_declarations">Este EPUB contém declarações de entidade não compatíveis.</string>
+    <string name="publication_error_epub_invalid_or_unsupported">Este EPUB é inválido ou não é compatível.</string>
+    <string name="publication_error_use_epub_reader_instead">Use o leitor de EPUB para esta publicação.</string>
+    <string name="publication_error_page_image_damaged_or_too_large">Esta imagem de página está danificada ou excede as dimensões compatíveis.</string>
+    <string name="publication_error_page_image_decode_failed">Não foi possível decodificar esta imagem de página.</string>
+    <string name="publication_error_epub_missing_container">Este EPUB não tem contêiner de publicação.</string>
+    <string name="publication_error_publication_has_no_readable_pages">Esta publicação não tem páginas legíveis.</string>
+
+    <!-- Falhas ao importar fontes gerenciadas -->
+    <string name="font_error_read_failed">O ShelfOS não conseguiu ler essa fonte.</string>
+    <string name="font_error_unsupported_extension">Escolha um arquivo de fonte .ttf ou .otf.</string>
+    <string name="font_error_too_large">Essa fonte é maior do que o ShelfOS suporta.</string>
+    <string name="font_error_truncated_or_damaged">Essa fonte está truncada ou danificada.</string>
+    <string name="font_error_collection_unsupported">Coleções de fontes (.ttc) ainda não são compatíveis.</string>
+    <string name="font_error_not_sfnt">Esse arquivo não é uma fonte TrueType ou OpenType compatível.</string>
+    <string name="font_error_missing_tables">Essa fonte está sem tabelas obrigatórias.</string>
+    <string name="font_error_damaged_or_unsupported">Essa fonte está danificada ou não é compatível.</string>
+    <string name="font_error_family_not_found">Essa fonte gerenciada não existe mais.</string>
+    <string name="font_error_finish_import_failed">O ShelfOS não conseguiu terminar de importar essa fonte.</string>
+    <string name="font_error_finish_replace_failed">O ShelfOS não conseguiu terminar de substituir essa fonte.</string>
+
+    <!-- Nomes das fontes internas (o id estável, builtin:serif/builtin:sans, não muda) -->
+    <string name="font_builtin_serif">Com serifa</string>
+    <string name="font_builtin_sans">Sem serifa</string>
 </resources>

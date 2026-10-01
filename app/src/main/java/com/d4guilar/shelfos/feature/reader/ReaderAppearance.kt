@@ -15,7 +15,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.core.designsystem.ShelfChoiceChip
+import com.d4guilar.shelfos.core.designsystem.UiMessage
 import com.d4guilar.shelfos.core.designsystem.formatPercent
+import com.d4guilar.shelfos.core.designsystem.resolve
 import com.d4guilar.shelfos.core.reader.*
 import com.d4guilar.shelfos.domain.library.ReadingDirection
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
@@ -32,7 +34,7 @@ fun ReaderAppearance(preferences: ReaderPreferences, capabilities: ReaderCapabil
     onApply: (before: ReaderPreferences, after: ReaderPreferences, globally: Boolean) -> Unit,
     onReset: (globally: Boolean) -> Unit,
     fontFamilies: List<ManagedFontFamily> = emptyList(),
-    fontImportError: String? = null,
+    fontImportError: UiMessage? = null,
     onImportFont: (() -> Unit)? = null,
     onRemoveFont: ((String) -> Unit)? = null,
 ) {
@@ -64,13 +66,13 @@ fun ReaderAppearance(preferences: ReaderPreferences, capabilities: ReaderCapabil
                                 BUILTIN_SERIF_FONT_ID -> BookFont.SERIF
                                 else -> draft.font ?: BookFont.SERIF
                             })
-                        }, family.displayName)
+                        }, builtinFontLabelRes(family.id)?.let { stringResource(it) } ?: family.displayName)
                         if (family.source == ManagedFontSource.USER && onRemoveFont != null)
                             TextButton({ onRemoveFont(family.id) }) { Text(stringResource(R.string.action_remove)) }
                     }
                 }
                 onImportFont?.let { TextButton(it) { Text(stringResource(R.string.appearance_import_font)) } }
-                fontImportError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                fontImportError?.let { Text(it.resolve(), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 Text(stringResource(R.string.appearance_text_size, formatPercent(((draft.fontSize ?: 1.0) * 100).toInt())))
                 Slider((draft.fontSize ?: 1.0).toFloat(), { draft = draft.copy(fontSize = it.toDouble()) }, valueRange = .7f..2.5f)
                 Text(stringResource(R.string.appearance_line_spacing))
@@ -104,6 +106,16 @@ fun ReaderAppearance(preferences: ReaderPreferences, capabilities: ReaderCapabil
         }
     }, confirmButton = { TextButton({ onApply(initial, draft, globally); onDismiss() }) { Text(stringResource(R.string.action_apply)) } },
         dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.action_cancel)) } })
+}
+
+/** The two builtin font families' display names are ShelfOS-owned UI copy, not font metadata (unlike a USER
+ * family's [ManagedFontFamily.displayName], which is the imported file's own name and stays as-is) — localized
+ * here rather than in [ManagedFontFamily] itself, whose stable [BUILTIN_SERIF_FONT_ID]/[BUILTIN_SANS_FONT_ID]
+ * identity is unchanged. */
+private fun builtinFontLabelRes(familyId: String): Int? = when (familyId) {
+    BUILTIN_SERIF_FONT_ID -> R.string.font_builtin_serif
+    BUILTIN_SANS_FONT_ID -> R.string.font_builtin_sans
+    else -> null
 }
 
 private fun PagePalette.labelRes(): Int = when (this) {

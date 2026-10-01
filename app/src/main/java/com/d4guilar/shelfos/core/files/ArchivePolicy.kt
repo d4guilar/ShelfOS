@@ -4,6 +4,7 @@ package com.d4guilar.shelfos.core.files
 import android.os.ParcelFileDescriptor
 import com.d4guilar.shelfos.domain.importing.isPageImage
 import com.d4guilar.shelfos.domain.library.PublicationException
+import com.d4guilar.shelfos.domain.library.PublicationExceptionDetail
 import com.d4guilar.shelfos.domain.library.PublicationProblem
 
 object ArchivePolicy {
@@ -22,13 +23,13 @@ object ArchivePolicy {
     fun entries(zip: SeekableZip): List<SeekableZip.Entry> {
         var expanded = 0L
         return zip.entries.onEach { entry ->
-            if (!safeName(entry.name)) throw PublicationException(PublicationProblem.CORRUPT, "The archive contains an unsafe entry path.")
+            if (!safeName(entry.name)) throw PublicationException(PublicationProblem.CORRUPT, PublicationExceptionDetail.UNSAFE_ENTRY_PATH)
             if (entry.size > 8L * 1024 * 1024 * 1024)
-                throw PublicationException(PublicationProblem.TOO_LARGE, "The archive contains an unsupported entry size.")
+                throw PublicationException(PublicationProblem.TOO_LARGE, PublicationExceptionDetail.UNSUPPORTED_ENTRY_SIZE)
             expanded += entry.size
             if (expanded > 64L * 1024 * 1024 * 1024 ||
                 entry.size > 1024 * 1024 && entry.size / entry.compressedSize.coerceAtLeast(1) > 1000)
-                throw PublicationException(PublicationProblem.TOO_LARGE, "The archive expands beyond safe limits.")
+                throw PublicationException(PublicationProblem.TOO_LARGE, PublicationExceptionDetail.EXPANDS_BEYOND_SAFE_LIMITS)
         }
     }
 
@@ -36,7 +37,7 @@ object ArchivePolicy {
         .also { pages ->
             if (pages.isEmpty()) throw PublicationException(PublicationProblem.EMPTY_ARCHIVE)
             if (pages.any { it.encrypted }) throw PublicationException(PublicationProblem.PROTECTED)
-            if (pages.any { it.size > MAX_IMAGE_BYTES }) throw PublicationException(PublicationProblem.TOO_LARGE, "An image page exceeds the supported size.")
+            if (pages.any { it.size > MAX_IMAGE_BYTES }) throw PublicationException(PublicationProblem.TOO_LARGE, PublicationExceptionDetail.IMAGE_PAGE_TOO_LARGE)
         }.sortedWith { a, b -> naturalCompare(a.name, b.name) }
 }
 

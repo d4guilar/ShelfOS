@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.core.designsystem.UiMessage
+import com.d4guilar.shelfos.core.designsystem.readerMessage
 import com.d4guilar.shelfos.core.reader.*
 import com.d4guilar.shelfos.data.library.BookmarkRepository
 import com.d4guilar.shelfos.data.library.LibraryRepository

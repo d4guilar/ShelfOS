@@ -22,7 +22,7 @@ class FixedReaderFactory(private val files: PublicationFiles) {
             return when (item.format) {
                 PublicationFormat.PDF -> PdfPages(descriptor)
                 PublicationFormat.CBZ -> ArchivePages(descriptor)
-                PublicationFormat.EPUB -> throw PublicationException(PublicationProblem.UNSUPPORTED_FORMAT, "Use the EPUB reader for this publication.")
+                PublicationFormat.EPUB -> throw PublicationException(PublicationProblem.UNSUPPORTED_FORMAT, PublicationExceptionDetail.USE_EPUB_READER_INSTEAD)
             }
         } catch (error: Throwable) { descriptor.close(); throw error }
     }
@@ -52,12 +52,12 @@ private class ArchivePages(private val descriptor: ParcelFileDescriptor) : Fixed
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         zip.open(entry).use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0 || bounds.outWidth.toLong() * bounds.outHeight > 100_000_000)
-            throw PublicationException(PublicationProblem.CORRUPT, "This page image is damaged or exceeds supported dimensions.")
+            throw PublicationException(PublicationProblem.CORRUPT, PublicationExceptionDetail.PAGE_IMAGE_DAMAGED_OR_TOO_LARGE)
         var sample = 1
         while (maxOf(bounds.outWidth, bounds.outHeight) / sample > MAX_PAGE_PIXELS) sample *= 2
         return zip.open(entry).use {
             BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
-        } ?: throw PublicationException(PublicationProblem.CORRUPT, "This page image could not be decoded.")
+        } ?: throw PublicationException(PublicationProblem.CORRUPT, PublicationExceptionDetail.PAGE_IMAGE_DECODE_FAILED)
     }
     override fun close() { try { zip.close() } finally { descriptor.close() } }
 }

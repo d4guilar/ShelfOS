@@ -239,4 +239,39 @@
     <string name="problem_copy_failed_message">The private copy could not be completed. The original file is untouched.</string>
     <string name="problem_unreadable_message">This publication could not be opened. It may be unavailable or damaged.</string>
     <string name="problem_unreadable_import_message">This file could not be imported. Check that it is available and not damaged.</string>
+
+    <!-- Specific publication failure details (win over the generic problem message above when present) -->
+    <string name="publication_error_unsafe_entry_path">The archive contains an unsafe entry path.</string>
+    <string name="publication_error_unsupported_entry_size">The archive contains an unsupported entry size.</string>
+    <string name="publication_error_expands_beyond_safe_limits">The archive expands beyond safe limits.</string>
+    <string name="publication_error_image_page_too_large">An image page exceeds the supported size.</string>
+    <string name="publication_error_pdf_has_no_pages">This PDF has no pages.</string>
+    <string name="publication_error_unsupported_compression_method">The archive uses an unsupported compression method.</string>
+    <string name="publication_error_too_many_entries">The archive has too many entries.</string>
+    <string name="publication_error_archive_damaged_or_incomplete">This archive is damaged or incomplete.</string>
+    <string name="publication_error_epub_content_too_large">This EPUB has exceptionally large content resources and is not supported yet.</string>
+    <string name="publication_error_epub_unsupported_entity_declarations">This EPUB contains unsupported entity declarations.</string>
+    <string name="publication_error_epub_invalid_or_unsupported">This EPUB is invalid or unsupported.</string>
+    <string name="publication_error_use_epub_reader_instead">Use the EPUB reader for this publication.</string>
+    <string name="publication_error_page_image_damaged_or_too_large">This page image is damaged or exceeds supported dimensions.</string>
+    <string name="publication_error_page_image_decode_failed">This page image could not be decoded.</string>
+    <string name="publication_error_epub_missing_container">This EPUB has no publication container.</string>
+    <string name="publication_error_publication_has_no_readable_pages">This publication has no readable pages.</string>
+
+    <!-- Managed font import failures -->
+    <string name="font_error_read_failed">ShelfOS could not read that font.</string>
+    <string name="font_error_unsupported_extension">Choose a .ttf or .otf font file.</string>
+    <string name="font_error_too_large">That font is larger than ShelfOS supports.</string>
+    <string name="font_error_truncated_or_damaged">That font is truncated or damaged.</string>
+    <string name="font_error_collection_unsupported">Font collections (.ttc) are not supported yet.</string>
+    <string name="font_error_not_sfnt">That file is not a supported TrueType or OpenType font.</string>
+    <string name="font_error_missing_tables">That font is missing required tables.</string>
+    <string name="font_error_damaged_or_unsupported">That font is damaged or unsupported.</string>
+    <string name="font_error_family_not_found">That managed font no longer exists.</string>
+    <string name="font_error_finish_import_failed">ShelfOS could not finish importing that font.</string>
+    <string name="font_error_finish_replace_failed">ShelfOS could not finish replacing that font.</string>
+
+    <!-- Built-in font chip labels (the font's own stable id, builtin:serif/builtin:sans, is unchanged) -->
+    <string name="font_builtin_serif">Serif</string>
+    <string name="font_builtin_sans">Sans</string>
 </resources>

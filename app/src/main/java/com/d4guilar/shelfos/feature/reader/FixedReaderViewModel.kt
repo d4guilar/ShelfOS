@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.core.designsystem.UiMessage
+import com.d4guilar.shelfos.core.designsystem.readerMessage
 import com.d4guilar.shelfos.core.reader.*
 import com.d4guilar.shelfos.data.library.LibraryRepository
 import com.d4guilar.shelfos.domain.library.*
@@ -51,7 +52,7 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
             val count = withContext(Dispatchers.IO) { mutex.withLock {
                 val engine = factory.open(item)
                 if (closed) { engine.close(); throw CancellationException("Reader closed while opening") }
-                if (engine.pageCount <= 0) { engine.close(); throw PublicationException(PublicationProblem.CORRUPT, "This publication has no readable pages.") }
+                if (engine.pageCount <= 0) { engine.close(); throw PublicationException(PublicationProblem.CORRUPT, PublicationExceptionDetail.PUBLICATION_HAS_NO_READABLE_PAGES) }
                 session = engine
                 engine.pageCount
             } }

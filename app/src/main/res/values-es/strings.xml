@@ -84,7 +84,7 @@
     <!-- Importación -->
     <string name="import_dialog_adding_title">Añadiendo publicación</string>
     <string name="import_dialog_keep_copy_title">¿Conservar una copia sin conexión?</string>
-    <string name="import_dialog_keep_copy_body">Este proveedor no puede ofrecer acceso duradero y con posición de búsqueda. ShelfOS puede guardar una copia privada, usando el tamaño completo del archivo en el almacenamiento del dispositivo. El original no se modifica.</string>
+    <string name="import_dialog_keep_copy_body">Este proveedor no puede ofrecer acceso duradero con acceso aleatorio. ShelfOS puede guardar una copia privada, usando el tamaño completo del archivo en el almacenamiento del dispositivo. El original no se modifica.</string>
     <string name="action_copy_and_continue">Copiar y continuar</string>
     <string name="import_action_add_to_library">Añadir a la biblioteca</string>
     <string name="import_possible_duplicate_notice">Ya hay un archivo con el mismo nombre y tamaño en tu biblioteca. ¿Quieres añadir este como una entrada independiente?</string>
@@ -192,7 +192,7 @@
     <!-- Diálogo de apariencia -->
     <string name="appearance_dialog_title">Apariencia de lectura</string>
     <string name="appearance_presentation">Presentación</string>
-    <string name="appearance_presentation_publisher">Editorial</string>
+    <string name="appearance_presentation_publisher">Estilos del editor</string>
     <string name="appearance_publisher_notice">Se respetan los estilos del editor del EPUB original. El archivo original no se modifica.</string>
     <string name="appearance_book_style">Estilo del libro</string>
     <string name="appearance_style_editorial">Editorial</string>
@@ -228,7 +228,7 @@
     <string name="problem_permission_lost_import_message">Se denegó el acceso a este archivo. Vuelve a elegirlo.</string>
     <string name="problem_source_unavailable_message">No se puede acceder al archivo original. Puede que se haya movido, eliminado o desconectado. Tu posición de lectura y tus cambios se conservan.</string>
     <string name="problem_source_unavailable_import_message">El archivo seleccionado no está disponible. Comprueba que todavía existe e inténtalo de nuevo.</string>
-    <string name="problem_needs_copy_message">Este proveedor no puede ofrecer acceso duradero y con posición de búsqueda. ShelfOS necesita una copia privada sin conexión.</string>
+    <string name="problem_needs_copy_message">Este proveedor no puede ofrecer acceso duradero con acceso aleatorio. ShelfOS necesita una copia privada sin conexión.</string>
     <string name="problem_unsupported_format_message">Elige una publicación PDF, EPUB o CBZ.</string>
     <string name="problem_unsupported_layout_message">La lectura de EPUB de maquetación fija no es compatible en esta versión. Las páginas fijas de PDF y CBZ sí son compatibles.</string>
     <string name="problem_protected_message">Esta publicación está protegida con contraseña o usa DRM. ShelfOS no puede abrir publicaciones protegidas.</string>
@@ -239,4 +239,39 @@
     <string name="problem_copy_failed_message">No se pudo completar la copia privada. El archivo original no se ha visto afectado.</string>
     <string name="problem_unreadable_message">Esta publicación no se pudo abrir. Puede no estar disponible o estar dañada.</string>
     <string name="problem_unreadable_import_message">No se pudo importar este archivo. Comprueba que esté disponible y no esté dañado.</string>
+
+    <!-- Detalles específicos de errores de publicación (sustituyen al mensaje genérico anterior cuando existen) -->
+    <string name="publication_error_unsafe_entry_path">El archivo contiene una ruta de entrada no segura.</string>
+    <string name="publication_error_unsupported_entry_size">El archivo contiene una entrada de tamaño no compatible.</string>
+    <string name="publication_error_expands_beyond_safe_limits">El archivo se expande más allá de los límites seguros.</string>
+    <string name="publication_error_image_page_too_large">Una página de imagen supera el tamaño compatible.</string>
+    <string name="publication_error_pdf_has_no_pages">Este PDF no tiene páginas.</string>
+    <string name="publication_error_unsupported_compression_method">El archivo usa un método de compresión no compatible.</string>
+    <string name="publication_error_too_many_entries">El archivo tiene demasiadas entradas.</string>
+    <string name="publication_error_archive_damaged_or_incomplete">Este archivo comprimido está dañado o incompleto.</string>
+    <string name="publication_error_epub_content_too_large">Este EPUB tiene recursos de contenido excepcionalmente grandes y todavía no es compatible.</string>
+    <string name="publication_error_epub_unsupported_entity_declarations">Este EPUB contiene declaraciones de entidad no compatibles.</string>
+    <string name="publication_error_epub_invalid_or_unsupported">Este EPUB no es válido o no es compatible.</string>
+    <string name="publication_error_use_epub_reader_instead">Usa el lector de EPUB para esta publicación.</string>
+    <string name="publication_error_page_image_damaged_or_too_large">Esta imagen de página está dañada o supera las dimensiones compatibles.</string>
+    <string name="publication_error_page_image_decode_failed">No se pudo decodificar esta imagen de página.</string>
+    <string name="publication_error_epub_missing_container">Este EPUB no tiene contenedor de publicación.</string>
+    <string name="publication_error_publication_has_no_readable_pages">Esta publicación no tiene páginas legibles.</string>
+
+    <!-- Errores al importar fuentes gestionadas -->
+    <string name="font_error_read_failed">ShelfOS no pudo leer esa fuente.</string>
+    <string name="font_error_unsupported_extension">Elige un archivo de fuente .ttf o .otf.</string>
+    <string name="font_error_too_large">Esa fuente es más grande de lo que ShelfOS admite.</string>
+    <string name="font_error_truncated_or_damaged">Esa fuente está truncada o dañada.</string>
+    <string name="font_error_collection_unsupported">Las colecciones de fuentes (.ttc) todavía no son compatibles.</string>
+    <string name="font_error_not_sfnt">Ese archivo no es una fuente TrueType u OpenType compatible.</string>
+    <string name="font_error_missing_tables">A esa fuente le faltan tablas obligatorias.</string>
+    <string name="font_error_damaged_or_unsupported">Esa fuente está dañada o no es compatible.</string>
+    <string name="font_error_family_not_found">Esa fuente gestionada ya no existe.</string>
+    <string name="font_error_finish_import_failed">ShelfOS no pudo terminar de importar esa fuente.</string>
+    <string name="font_error_finish_replace_failed">ShelfOS no pudo terminar de reemplazar esa fuente.</string>
+
+    <!-- Nombres de las fuentes integradas (el id estable, builtin:serif/builtin:sans, no cambia) -->
+    <string name="font_builtin_serif">Con serif</string>
+    <string name="font_builtin_sans">Sin serif</string>
 </resources>
