@@ -1,14 +1,19 @@
 # Phase 2C implementation plan: Original PDF hardening and fidelity
 
-Status: **investigation/planning pass, 2026-10-01**, on branch
-`phase-2/pdf-fidelity` (base `main` at `7dcfd38`). This document is the
-canonical Phase 2C planning location referenced by
+Status: **investigation CLOSED, 2026-10-01 — no production render change
+justified** (see §22c), on branch `phase-2/pdf-fidelity` (base `main` at
+`7dcfd38`). This document is the canonical Phase 2C planning location
+referenced by
 [`PHASE_2_PLAN.md`](PHASE_2_PLAN.md#2c--original-pdf-hardening-and-fidelity-investigationplanning-active).
-**No production code changes were made during this pass.** This is discovery
-and architecture planning only, per AGENTS.md's "do not build yet unless
-explicitly requested" guidance and the owner's explicit instruction for this
-pass. Adapted PDF, OCR, AI enhancement, annotations and a new PDF engine
-remain out of scope here, as they are everywhere else in the repository.
+**No production code changes were made during this investigation.** §§1-21
+record the original discovery/architecture-planning pass; §§22a-22c record
+three physical-device validation passes (RP5 measurement, a live owner visual
+session, and a final dense-control closure) whose combined evidence concludes
+that current PDF rendering behavior should be **retained as-is** — the field
+complaint was source/conversion-limited, not a ShelfOS rendering defect, and
+no tested resolution change produced a confirmed visible improvement. Adapted
+PDF, OCR, AI enhancement, annotations and a new PDF engine remain out of
+scope here, as they are everywhere else in the repository.
 
 ## 1. Motivation and question being investigated
 
@@ -1219,6 +1224,90 @@ contradicted." The live visual evidence requires a more conservative revision:
   remained green throughout; no `ArchivePages`/CBZ code was ever modified).
 - **ADR**: still not warranted — if anything, this pass argues for *less*
   durable architecture change than §21 anticipated, not a new one to record.
+
+## 22c. Final evidence closure: dense vector control on RP5 (2026-10-01)
+
+§22b left one open question: whether landscape Fit Width's MEASURED
+mathematical under-render (2048 → ~1582px bitmap width vs. the RP5's ~1920px
+landscape viewport, a 1.21x upscale) is *visually* harmful on a PDF with no
+source-resolution ceiling — the New X-Men file's own severe conversion loss
+could not answer that. This section closes that question with a
+purpose-built control.
+
+### Dense control PDF (MEASURED, generated this pass)
+
+A deterministic, locally generated 612x792pt (US Letter portrait — same page
+shape as the New X-Men PDF, so the render-formula math is directly
+comparable) vector/text PDF, built via `android.graphics.pdf.PdfDocument`
+(already used by the repository's own `OriginalFixtures.pdf()`, no new
+dependency). Content: six body-text blocks at 6-24pt, a fine 4pt-pitch
+grid, thin diagonal strokes, ten concentric circles, and a 3pt-pitch
+high-contrast checker strip — chosen specifically to expose rasterization
+differences with no embedded raster image and therefore no source-resolution
+ceiling. Generated and used as a temporary test artifact only (via a
+temporary androidTest exporter, deleted after use; `git diff --stat 4ce9209`
+confirmed empty before this section's commit) — not retained in the
+repository for this pass, per this task's own fixture policy.
+
+### Required viewport-sufficient target (MEASURED/ANALYTICAL)
+
+Using the same longest-edge formula as `PdfPages.render()`
+(`scale = target / max(width, height)`) against this page's 612x792pt shape
+and the RP5's measured ~1920px landscape viewport width:
+
+- At 2048 (current default): bitmap ≈ 1582 x 2048px (~12.4MB) — a 1.21x
+  upscale is required to fill the 1920px-wide Fit Width viewport, matching
+  §22a's New X-Men measurement exactly (same page shape).
+- Minimum viewport-sufficient longest edge: **~2485** (`1920 * 792/612`),
+  giving a bitmap ≈ 1920 x 2485px (~18.2MB) — the bitmap's own width now
+  exactly matches the viewport, eliminating the mathematical upscale. This
+  is smaller than the previously-discussed 3072 (~27.8MB); the `MAX_PAGE_PIXELS`
+  constant was temporarily set to this computed value (not 3072) for the
+  comparison, confirming the earlier guidance not to assume 3072's memory
+  cost when the actual viewport-derived target is smaller.
+
+### Owner visual A/B (OWNER VISUAL OBSERVATION)
+
+- 2048, Fit Width, landscape: *"looks clean."*
+- 2048 → 2485 (viewport-sufficient), Fit Width, landscape, same page: **C —
+  effectively the same.** Per this task's own protocol, a "C" result was not
+  chased further.
+- 2048 vs. 2485, Fit Page, portrait, same page: **same — no visible
+  difference**, consistent with §22a's expectation that Fit Page already has
+  headroom at 2048.
+- Because viewport-sufficient did not visibly beat 2048, the optional 3072
+  comparison (Step 7 of this task) was correctly skipped — there is nothing
+  to confirm diminishing returns against.
+
+### Decision
+
+**NO PRODUCTION RENDER CHANGE IS JUSTIFIED.** Even on a dense, high-detail,
+non-source-limited vector/text control specifically built to remove the
+New X-Men file's conversion-loss confound, eliminating the MEASURED Fit-Width
+mathematical upscale produced no owner-visible improvement, at either Fit
+Width (the case with the upscale) or Fit Page (the control). Combined with
+§22b's finding that raising the render target was actively harmful on the
+real-world source-limited PDF, there is no remaining evidence-backed case for
+changing `MAX_PAGE_PIXELS`, Fit Width's sizing, or any zoom-rerender
+behavior. The mathematical under-render documented in §22a is real but has
+not been shown to produce a perceptible problem on this hardware with this
+evidence.
+
+**This finalizes Phase 2C's investigation**: the original field complaint was
+source/conversion-limited (§22b), the one remaining ShelfOS-side mathematical
+gap does not produce a visible defect on a clean control (this section), and
+raising render resolution carries a demonstrated downside risk with no
+demonstrated upside. Current PDF rendering behavior (`MAX_PAGE_PIXELS = 2048`,
+no zoom rerender, no cache, no prefetch, CBZ unchanged) is **retained
+as-is**. A phase concluding "no code change is warranted" is treated here as
+a valid, complete outcome, per this task's own explicit framing — not as an
+unfinished phase.
+
+Should future evidence reopen this (e.g. a well-made high-resolution scanned
+PDF, or a lower-end device than the RP5), the viewport-sufficient target
+formula and dense-fixture-generation approach documented above remain
+reusable starting points; nothing here is lost by the fixture not being
+retained in-repo this pass.
 
 ## 23. Deferred 2D work (restated from §16.14 for clarity)
 

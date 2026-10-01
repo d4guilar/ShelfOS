@@ -45,11 +45,13 @@ was completed before merge. **2B.3 (EPUB publication search) is accepted and
   `VALIDATION.md`. **The ShelfOS interface localization foundation is also
   accepted and merged to `main` via PR #15** at commit
   `7dcfd384167edc8639d74c1757da96c88f84d282` — a cross-cutting foundation, not
-  a numbered Phase 2 increment; see `ROADMAP.md`. **2C is in an
-  investigation/implementation-planning pass** (this document's §3 2C
-  section and [`PHASE_2C_IMPLEMENTATION_PLAN.md`](PHASE_2C_IMPLEMENTATION_PLAN.md),
-  2026-10-01, on `phase-2/pdf-fidelity`); no 2C production code exists yet.
-  2D remains planned only; none of its work has started. See `VALIDATION.md`'s
+  a numbered Phase 2 increment; see `ROADMAP.md`. **2C's investigation is
+  CLOSED: no production PDF rendering change was found to be justified**
+  (this document's §3 2C section and
+  [`PHASE_2C_IMPLEMENTATION_PLAN.md`](PHASE_2C_IMPLEMENTATION_PLAN.md) §22c,
+  2026-10-01, on `phase-2/pdf-fidelity`); no 2C production code was written or
+  is planned from this investigation. 2D remains planned only; none of its
+  work has started. See `VALIDATION.md`'s
 "Phase 2A.1"/"Phase 2B.1"/"Phase 2B.2"/"Phase 2B.2.1"/"Phase 2B.2.2"
 sections for evidence and explicitly-unclaimed items. This document is the
 canonical Phase 2 planning location referenced by

@@ -1,5 +1,29 @@
 # Validation
 
+## Phase 2C evidence closure — no production render change justified (2026-10-01)
+
+Status: **Phase 2C investigation CLOSED. DECISION: no production PDF
+rendering change.** Full detail in
+[`PHASE_2C_IMPLEMENTATION_PLAN.md`](PHASE_2C_IMPLEMENTATION_PLAN.md#22c-final-evidence-closure-dense-vector-control-on-rp5-2026-10-01).
+
+- **MEASURED**: a purpose-built, locally generated dense vector/text PDF
+  (same 612x792pt page shape as the New X-Men file, no embedded raster, no
+  source-resolution ceiling) was rendered on the RP5 at the current 2048
+  default (bitmap ≈1582x2048px, a 1.21x upscale versus the ~1920px landscape
+  viewport in Fit Width) and at a computed viewport-sufficient target of
+  ~2485 (bitmap ≈1920x2485px, ~18.2MB vs. 2048's ~12.4MB).
+- **OWNER VISUAL OBSERVATION**: 2048 Fit Width "looks clean"; 2048 vs. 2485
+  Fit Width — **C, effectively the same**; 2048 vs. 2485 Fit Page — **same,
+  no visible difference**.
+- **DECISION**: even with the source-quality confound fully removed, closing
+  the measured Fit Width upscale produced no visible improvement. Combined
+  with the prior live session's finding that raising render resolution was
+  actively harmful on the real-world source-limited PDF, there is no
+  remaining evidence-backed case for any PDF rendering change. Current
+  behavior (`MAX_PAGE_PIXELS = 2048`, no zoom rerender, no cache, no
+  prefetch, CBZ unchanged) is **retained as-is**. No production code was
+  changed in this pass or the two preceding Phase 2C validation passes.
+
 ## Phase 2C live visual fidelity validation (2026-10-01)
 
 Status: **Phase 2C live owner visual A/B session — explicitly NOT
