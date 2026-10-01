@@ -1,5 +1,66 @@
 # Validation
 
+## Localization foundation complete (2026-09-30)
+
+The ShelfOS interface localization foundation is **implemented and validated** on
+`feat/localization-foundation` at `e6cc519` (`ce32d5f` implementation + `e6cc519` error
+and lifecycle remediation). Independent targeted QA returned **PASS WITH NON-BLOCKING
+FOLLOW-UPS**: all previously identified MEDIUM findings are fixed, with no remaining HIGH
+or MEDIUM localization findings. The branch is not yet merged or pushed.
+
+Delivered scope: AppCompat per-app locales (`AppCompatDelegate.setApplicationLocales` /
+`getApplicationLocales` with `LocaleListCompat`) driving an in-app
+`Settings → Language` selector; System default / English / Español / Português (Brasil)
+with English as canonical fallback and `pt-BR` for Brazilian Portuguese; locale-neutral
+language identity with no Room schema, table or migration; current production UI moved to
+string resources; locale-neutral typed error and import-progress models mapped to
+localized resources at the presentation boundary; locale-aware formatting on the touched
+paths; and localized accessibility copy. Localization changes ShelfOS-owned UI only —
+there is no publication-translation engine, and publication/user data is never translated.
+ShelfOS does not declare `android:localeConfig`, so it is not exposed in Android
+Settings → Apps → App language.
+
+Validation evidence:
+
+- Full JVM unit suite: **157 / 157 passed**, 0 failed, 0 skipped (initial implementation
+  was 150 / 150)
+- Full connected suite, API 35: **93 / 93 passed**, 0 failed, 0 skipped
+- Focused `AppLanguageInstrumentedTest`: **3 / 3 passed**
+- Additional targeted runs: repeated `AppLanguageInstrumentedTest`, then
+  `AppearanceRestorationTest` immediately afterward with no locale leakage, plus
+  `ManagedFontRepositoryTest` and `EpubManagedFontAppearanceTest`
+- Gradle gate: **PASS** — `compileDebugKotlin`, `compileDebugAndroidTestKotlin`,
+  `assembleDebug`, `testDebugUnitTest`, `lintDebug`, `assembleDebugAndroidTest`
+- Dependencies: **unchanged**; Room/schema: **unchanged**; `git diff --check`: **PASS**
+
+Independent QA found four MEDIUM issues during the cycle, all fixed in `e6cc519`: a
+locale-test cleanup/recreation flake, the API 24–32 import-progress locale path,
+untranslated publication exception details, and untranslated font-import errors.
+
+### Non-blocking infrastructure flake (not a localization defect)
+
+Independent QA observed one intermittent, unrelated instrumentation teardown failure in
+`NavigationSmokeTest.escapeAndGamepadBEstablishModalityWhileRevealingChromeInFixedReader`
+(signature: activity never reaches requested state `DESTROYED`, last observed `PAUSED`). A
+dedicated read-only triage then ran that exact test repeatedly — 5 / 5 PASS on baseline
+`1a03ce5` and 5 / 5 PASS on `e6cc519`, with no infrastructure crash across those runs. No
+evidence implicated the localization/AppCompat migration. Classified
+**EMULATOR / INFRA FLAKE**; not merge-blocking, and not recorded as a localization defect.
+
+### Remaining non-blocking follow-ups
+
+1. **API 24–32 device validation** — the import-progress architecture fix is considered
+   sound and is architecture/unit validated, but has not yet been connected-tested on an
+   API 24–32 AVD/device. Device verification pending; no claim that it is broken.
+2. **External locale-change observation** — `AppLanguageRepository`'s `StateFlow` is
+   initialized from the current locale and can become stale if the app locale changes
+   externally while ShelfOS runs. LOW priority and non-blocking. Today users cannot
+   trigger this through Android Settings because ShelfOS exposes no
+   `localeConfig`/system App Languages integration, and no such feature is promised.
+3. **Optional translation polish** — the Spanish and Brazilian Portuguese "durable
+   seekable access" wording is technically correct but slightly repetitive. Optional
+   polish only; not a reason to reopen implementation.
+
 ## Phase 2B.4 managed fonts + ShelfOS reading presentation — complete (2026-09-30)
 
 Phase 2B.4 is **implemented and complete** on `phase-2/managed-fonts` at `93d0aaf`

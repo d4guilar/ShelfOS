@@ -499,22 +499,30 @@ to be designed deliberately as its own feature.
 
 ### Initial locales
 
-The intended initial official app locales are:
+The initial official app locales are **implemented and shipped**:
 
 - System default (the default behavior)
 - English
 - Español
-- Português (Brasil)
+- Português (Brasil) — specifically `pt-BR`, not generic Portuguese
 
-System default follows the Android system language. When the user explicitly chooses
-English, Español or Português (Brasil), ShelfOS respects that choice independently of
-the system language.
+English is the canonical/fallback language.
+
+System default means "follow Android's system language"; it is represented as an empty
+locale override rather than snapshotting the current language into a permanent ShelfOS
+preference. When the user explicitly chooses English, Español or Português (Brasil),
+ShelfOS respects that choice independently of the system language.
+
+ShelfOS provides its own in-app language selector. It does **not** declare
+`android:localeConfig`, so ShelfOS does not appear in Android Settings → Apps → App
+language. Do not describe the system-level App Languages settings integration as
+existing.
 
 ### Language setting
 
-Conceptually `Settings → General → Language`, offering System default / English /
-Español / Português (Brasil), following the existing Settings information architecture.
-Settings is not redesigned to fit this requirement.
+The language control lives in the existing Settings UI as `Settings → Language`,
+offering System default / English / Español / Português (Brasil). Settings was not
+redesigned for this requirement.
 
 ### What must be localizable
 
@@ -525,6 +533,12 @@ accessibility labels and content descriptions, settings descriptions, system mes
 pluralized strings, and locale-aware formatting of dates, numbers, percentages and file
 sizes where applicable. Theme-owned ShelfOS UI copy resolves through the same
 localization system.
+
+Current production UI is localization-ready across navigation, Library, Search, Notes,
+Shelves, Settings, Favorites, Books, Comics, Manga, Documents, import UI, reader chrome,
+Appearance, Publisher/ShelfOS presentation controls, managed-font UI, accessibility
+copy, errors, empty states and progress/status copy. Publication and user data are not
+translated.
 
 ### What localization never covers
 

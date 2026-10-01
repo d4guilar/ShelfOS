@@ -462,11 +462,12 @@ No PlayStation trademark, logo, button iconography, boot audio, copyrighted visu
 
 ---
 
-## Localization foundation — near-term core requirement (pre-launch)
+## Localization foundation — COMPLETE
 
-Not a new numbered phase: this is a cross-cutting foundation that should be established
-before substantial future UI expansion makes hard-coded strings expensive to retrofit,
-and before release. It does not move Phase 2C or any other phase.
+Not a numbered phase: this is a cross-cutting foundation, and it is **complete** on
+`feat/localization-foundation` (`ce32d5f` + `e6cc519`, QA PASS with non-blocking
+follow-ups). It did not move Phase 2C or any other phase, and phase numbering is
+unchanged.
 
 ### Scope
 
@@ -478,11 +479,14 @@ and before release. It does not move Phase 2C or any other phase.
   that changes only ShelfOS-owned UI text
 - theme-owned ShelfOS copy resolving through the same resources
 
-### Done when
+### Done when (met)
 
 The interface runs in English, Español and Português (Brasil) with no hard-coded
 English strings in current production UI, and changing the app language changes only
 ShelfOS-owned UI text — never publication content or imported metadata.
+
+Validation evidence and the remaining non-blocking follow-ups are recorded in
+[`VALIDATION.md`](VALIDATION.md).
 
 See [`PRODUCT.md`](PRODUCT.md#20-interface-language) and [`ARCHITECTURE.md`](ARCHITECTURE.md#localization-architecture).
 
