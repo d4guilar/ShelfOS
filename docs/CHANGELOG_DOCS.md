@@ -1,5 +1,29 @@
 # Documentation Changelog
 
+## Phase 2D.4 / Phase 2 documented as complete (2026-10-02)
+
+- Reconciled documentation with the completed, final Phase 2 acceptance pass on
+  `phase-2/final-reader-acceptance` (candidate `2f2116a`). Full JVM 200/200, full
+  connected 121/122 (one confirmed-transient infra flake under emulator CPU load,
+  passed clean on isolated retry), full Gradle gate green, zero production code
+  changed.
+- Added `docs/PHASE_2D_IMPLEMENTATION_PLAN.md` §22: the full 2D.4 implementation
+  record — owner-physical RP5 acceptance (all three outstanding 2D.3 questions,
+  "All 3: Pass"), large synthetic PDF/CBZ fixture evidence, the
+  `FixedReader`-level malformed-publication resilience tests, the twelve-clause
+  final Phase 2 acceptance matrix (all PASS), the Part-Z device-targeting finding
+  (`ANDROID_SERIAL` reliably restricts `connectedDebugAndroidTest` to one device
+  even with a second attached, so no physical disconnect was needed), and the
+  final decision: **PHASE 2 COMPLETE**.
+- Added `docs/VALIDATION.md`'s "Phase 2D.4" entry with the validation-log summary
+  of the same evidence.
+- Updated `docs/PHASE_2_PLAN.md`'s 2D section and `docs/ROADMAP.md`'s Phase 2
+  section to record 2D.1–2D.4 and Phase 2 as COMPLETE, without renumbering any
+  phase or rewriting prior (2D.1–2D.3) historical records.
+- Two new test files only (`SyntheticLargePdfAcceptanceTest.kt`,
+  `MalformedFixedReaderResilienceTest.kt`, both `app/src/androidTest`); no
+  production code, Room/schema, or dependency change in this slice.
+
 ## Localization foundation documented as complete (2026-09-30)
 
 - Reconciled documentation with the completed, independently validated localization

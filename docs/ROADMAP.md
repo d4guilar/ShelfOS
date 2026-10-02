@@ -220,8 +220,10 @@ flow accepted and merged via PR #11 at `ab612a46`; 2B.3 EPUB publication
 search accepted and merged via PR #12; **2B.4 managed fonts and ShelfOS
 reading presentation accepted and merged via PR #13**; **2C's PDF-fidelity
 investigation is closed** (no production rendering change justified — see
-`PHASE_2C_IMPLEMENTATION_PLAN.md` §22c); **2D's discovery/implementation-
-planning pass is ACTIVE** (see `PHASE_2D_IMPLEMENTATION_PLAN.md`)) and
+`PHASE_2C_IMPLEMENTATION_PLAN.md` §22c); **2D (2D.1–2D.4) is COMPLETE and
+Phase 2 is COMPLETE** (2026-10-02 — see `PHASE_2D_IMPLEMENTATION_PLAN.md`
+§22 and `docs/VALIDATION.md`'s "Phase 2D.4" entry for the full final
+acceptance record)) and
 acceptance criteria. The
 original inventory below is retained for coverage; items already accepted in
 Phase 1 are marked accordingly.

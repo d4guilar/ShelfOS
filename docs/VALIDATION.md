@@ -1,5 +1,73 @@
 # Validation
 
+## Phase 2D.4 — performance/resilience + final Phase 2 acceptance (2026-10-02)
+
+**Status: PHASE 2 COMPLETE.** Branch `phase-2/final-reader-acceptance` (base
+`main` `6e38b77`), candidate frozen at `2f2116a`. Full detail, the acceptance
+matrix, severity classification and the Part-Z device-targeting finding are
+in `docs/PHASE_2D_IMPLEMENTATION_PLAN.md` §22; this entry is the validation-
+log summary.
+
+**Owner-physical RP5 acceptance:** all three outstanding 2D.3 questions
+(B-button reveal-then-exit, D-pad focus across reader controls, Manga/RTL
+L1/R1/D-pad direction) — owner-confirmed **"All 3: Pass"** (2026-10-02).
+
+**New test coverage added** (`app/src/androidTest`, no production code
+touched): `SyntheticLargePdfAcceptanceTest` (1 test: 140-page synthetic PDF,
+open + 60 sequential page-turns + a fast overlapping-navigation/cancellation
+sequence, PSS before/after) and `MalformedFixedReaderResilienceTest` (4
+tests: truncated PDF, truncated CBZ, CBZ with a non-image page, mixed good/
+bad-page CBZ — each confirming the existing graceful-error UI, Retry vs.
+Back-to-library, no crash).
+
+**Full JVM** (`:app:testDebugUnitTest --rerun-tasks --offline`): **200
+tests, 200 passed, 0 failed, 0 skipped.** Run twice (once standalone, once
+as part of the final Gradle gate) with identical results.
+
+**Full connected** (`:app:connectedDebugAndroidTest --offline`, restricted
+to the emulator via `ANDROID_SERIAL=emulator-5554` with the RP5 still
+attached — see the device-targeting finding below): **122 tests, 121
+passed, 1 failed** on the full run
+(`NavigationSmokeTest.fixedReaderZoomFitAndGlobalAppearancePersistAcrossRecreation`,
+`ComposeNotIdleException: Global time out`, after 32m03s of sustained load,
+coinciding with `android.hardware.graphics.composer3-service.ranchu` at 92%
+kernel CPU per `adb shell dumpsys cpuinfo`). An isolated retry of that one
+test passed in 83s. Classified **infrastructure flake, not a product
+defect** — the test itself was not modified. All formerly-flaky-suspect
+large-fixture tests (`SyntheticLoadAcceptanceTest`, `SyntheticLargePdfAcceptanceTest`,
+`MalformedFixedReaderResilienceTest`, `FixedReaderTransformBoundsTest`,
+`FixedReaderRecreationTest`) passed cleanly within the same full run.
+
+**Device-targeting finding:** the brief anticipated that
+`connectedDebugAndroidTest` might run on every attached device at once,
+requiring the RP5 to be physically disconnected before the final gate.
+Empirically, `ANDROID_SERIAL=emulator-5554` restricted every run in this
+slice (six separate invocations) to the emulator alone — confirmed via each
+run's own `Running tests on devices: shelfos-phase0(AVD) - 15` log line and
+via the RP5 never appearing in any result XML, despite `adb devices -l`
+showing it attached and online throughout. No physical disconnect was
+needed.
+
+**Full Gradle gate**
+(`compileDebugKotlin compileDebugAndroidTestKotlin assembleDebug
+testDebugUnitTest lintDebug assembleDebugAndroidTest --rerun-tasks
+--offline`): **BUILD SUCCESSFUL**, 86/86 tasks executed, debug and
+androidTest APKs both assembled, lint completed with no abort-triggering
+errors, JVM suite 200/200 within the same gate run.
+
+**Scope audit:** `git diff --stat main...phase-2/final-reader-acceptance --
+app/src/main` is empty — no production code changed anywhere in this slice,
+so no CBR/comic-spread/multi-column/OCR/Adapted-PDF/AI/annotation/cloud/
+Series/Library-Sources/bulk-import/theme/input-remapping/plugin scope could
+have leaked in.
+
+**`git diff --check`:** PASS. **Working tree:** clean after the closure
+commit. **Pushed:** no (local commits only, per standing policy).
+
+Phase 2D.4 is marked **COMPLETE**. This closes Phase 2D (2D.1–2D.4) and
+Phase 2 as a whole — see `docs/PHASE_2D_IMPLEMENTATION_PLAN.md` §22 for the
+full twelve-clause acceptance table and final decision.
+
 ## Phase 2D.3 — input/accessibility/focus closure (2026-10-02)
 
 Evidence-first closure slice (`docs/PHASE_2D_IMPLEMENTATION_PLAN.md`'s own
