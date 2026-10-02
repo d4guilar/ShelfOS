@@ -295,4 +295,59 @@ class FixedReaderTransformTest {
         assertTrue("horizontal pan must open up once zoomed, even though Y stays locked", maxXAtTwo > 0f)
         assertEquals(0f, fixedReaderMaxPanY(tallContent, 500f, scale = 2f, fitWidth = true), 0f) // Y stays 0 throughout
     }
+
+    // ---- fixedReaderVerticalScaleOverflow: zoomed Fit Width top/bottom reachability remediation ----
+
+    @Test fun verticalScaleOverflowIsZeroAtScaleOne() {
+        // No zoom, no graphicsLayer bulge -> no reserved space -> ordinary unzoomed Fit Width is unchanged.
+        assertEquals(0f, fixedReaderVerticalScaleOverflow(2400f, scale = 1f), 0f)
+    }
+
+    @Test fun verticalScaleOverflowIsHalfContentHeightAtScaleTwo() {
+        // (2-1) * 2400 / 2 = 1200
+        assertEquals(1200f, fixedReaderVerticalScaleOverflow(2400f, scale = 2f), 0.01f)
+    }
+
+    @Test fun verticalScaleOverflowIsDoubleContentHeightAtScaleFive() {
+        // (5-1) * 2400 / 2 = 4800
+        assertEquals(4800f, fixedReaderVerticalScaleOverflow(2400f, scale = 5f), 0.01f)
+    }
+
+    @Test fun verticalScaleOverflowGrowsLinearlyWithScale() {
+        val h = 1000f
+        val atTwo = fixedReaderVerticalScaleOverflow(h, 2f)
+        val atThree = fixedReaderVerticalScaleOverflow(h, 3f)
+        val atFour = fixedReaderVerticalScaleOverflow(h, 4f)
+        assertEquals(atThree - atTwo, atFour - atThree, 0.001f)
+        assertTrue(atFour > atThree && atThree > atTwo)
+    }
+
+    @Test fun verticalScaleOverflowReservedTotalMatchesScaledContentHeightExactly() {
+        // The whole point of the fix: content + 2*overflow == scale*content, for every scale tested, including
+        // the QA-flagged 2x case and the 5x stress case.
+        val h = 2400f
+        listOf(1f, 2f, 5f).forEach { scale ->
+            val overflow = fixedReaderVerticalScaleOverflow(h, scale)
+            assertEquals("scale=$scale: H + 2*overflow must equal scale*H", h * scale, h + 2f * overflow, 0.01f)
+        }
+    }
+
+    @Test fun verticalScaleOverflowTreatsNonPositiveOrNonFiniteScaleAsOne() {
+        assertEquals(0f, fixedReaderVerticalScaleOverflow(1000f, 0f), 0f)
+        assertEquals(0f, fixedReaderVerticalScaleOverflow(1000f, -3f), 0f)
+        assertEquals(0f, fixedReaderVerticalScaleOverflow(1000f, Float.NaN), 0f)
+    }
+
+    @Test fun verticalScaleOverflowIsZeroForNonPositiveOrNonFiniteContentHeight() {
+        assertEquals(0f, fixedReaderVerticalScaleOverflow(0f, 2f), 0f)
+        assertEquals(0f, fixedReaderVerticalScaleOverflow(-500f, 2f), 0f)
+        assertEquals(0f, fixedReaderVerticalScaleOverflow(Float.NaN, 2f), 0f)
+        assertEquals(0f, fixedReaderVerticalScaleOverflow(Float.POSITIVE_INFINITY, 2f), 0f)
+    }
+
+    @Test fun verticalScaleOverflowNeverProducesInfiniteOrNaNForExtremeFiniteInputs() {
+        val result = fixedReaderVerticalScaleOverflow(Float.MAX_VALUE / 2, 5f)
+        assertTrue(result.isFinite())
+        assertTrue(result >= 0f)
+    }
 }

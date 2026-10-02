@@ -44,7 +44,9 @@ import com.d4guilar.shelfos.core.reader.fixedReaderClampPan
 import com.d4guilar.shelfos.core.reader.fixedReaderFittedContentSize
 import com.d4guilar.shelfos.core.reader.fixedReaderMaxPan
 import com.d4guilar.shelfos.core.reader.fixedReaderMaxPanY
+import com.d4guilar.shelfos.core.reader.fixedReaderVerticalScaleOverflow
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
+import androidx.compose.ui.platform.LocalDensity
 import com.d4guilar.shelfos.domain.library.*
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -234,21 +236,48 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                 val image = remember(bitmap) { bitmap.asImageBitmap() }
                 key(state.page) {
                     val scrollState = rememberScrollState()
-                    Box(if (fitWidth) Modifier.fillMaxSize().verticalScroll(scrollState) else Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Image(image, String.format(pageOfCountTemplate, state.page + 1, state.count),
-                            (if (fitWidth) Modifier.fillMaxWidth().aspectRatio(bitmap.width.toFloat() / bitmap.height) else Modifier.fillMaxSize())
-                                // Fit Width never applies translationY (verticalScroll owns vertical movement there,
-                                // see the gesture handler and viewport-resize LaunchedEffect above); panY is always
-                                // 0 in that mode, but the graphicsLayer also forces it structurally so the two
-                                // vertical-movement systems can never both act on the same gesture.
-                                .graphicsLayer { scaleX = scale; scaleY = scale; translationX = panX; translationY = if (fitWidth) 0f else panY }, contentScale = ContentScale.Fit)
+                    val density = LocalDensity.current
+                    // Phase 2D.1 remediation, round two (zoomed Fit Width top/bottom reachability): `graphicsLayer`
+                    // scales the Image visually around its own layout center without changing its *layout* size, so
+                    // `verticalScroll` only ever sees the unscaled fitted height `H` -- its scroll range stayed
+                    // `max(0, H - viewport)` when the visually-scaled content actually needs `max(0, scale*H -
+                    // viewport)`, permanently hiding the outer fraction of a zoomed tall page at both ends. Fix:
+                    // reserve `overflow` of blank layout space above and below the Image, OUTSIDE its graphicsLayer
+                    // (so the reserved space is never itself scaled), making the scrollable column's measured height
+                    // exactly `H + 2*overflow == scale*H` -- matching the visual extent and handing verticalScroll
+                    // the correct range for free. See fixedReaderVerticalScaleOverflow's doc for the full math. Fit
+                    // Page needs none of this: it has no scroll container.
+                    val fitWidthContentHeight = if (fitWidth) fixedReaderFittedContentSize(bitmap.width.toFloat(),
+                        bitmap.height.toFloat(), viewportSize.width.toFloat(), viewportSize.height.toFloat(), true).height else 0f
+                    val verticalOverflowPx = if (fitWidth) fixedReaderVerticalScaleOverflow(fitWidthContentHeight, scale) else 0f
+                    val verticalOverflowDp = with(density) { verticalOverflowPx.toDp() }
+                    if (fitWidth) {
+                        Column(Modifier.fillMaxSize().verticalScroll(scrollState), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Spacer(Modifier.height(verticalOverflowDp))
+                            Image(image, String.format(pageOfCountTemplate, state.page + 1, state.count),
+                                Modifier.fillMaxWidth().aspectRatio(bitmap.width.toFloat() / bitmap.height)
+                                    // Fit Width never applies translationY (verticalScroll owns all vertical movement
+                                    // there); panY is always 0 in that mode, but the graphicsLayer also forces it
+                                    // structurally so the two vertical-movement systems can never both act at once.
+                                    .graphicsLayer { scaleX = scale; scaleY = scale; translationX = panX; translationY = 0f },
+                                contentScale = ContentScale.Fit)
+                            Spacer(Modifier.height(verticalOverflowDp))
+                        }
+                    } else {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Image(image, String.format(pageOfCountTemplate, state.page + 1, state.count),
+                                Modifier.fillMaxSize().graphicsLayer { scaleX = scale; scaleY = scale; translationX = panX; translationY = panY },
+                                contentScale = ContentScale.Fit)
+                        }
                     }
                     // Phase 2D.1 remediation test seam: exposes the real verticalScroll state (value/maxValue) that
-                    // Fit Width's vertical movement now exclusively relies on, so instrumented tests can drive and
-                    // assert real scroll-extreme geometry without a larger debug-only API, mirroring the existing
-                    // reader_transform_probe pattern below.
+                    // Fit Width's vertical movement now exclusively relies on, plus the live fitted (unscaled)
+                    // content height, so instrumented tests can independently compute the real scaled visible
+                    // bitmap-space range (scroll position / (scale*H) * bitmapHeight) and assert actual edge
+                    // visibility rather than only scroll-state values -- mirroring the existing reader_transform_probe
+                    // pattern below.
                     if (fitWidth) Text("", Modifier.size(0.dp).testTag("reader_scroll_probe").clearAndSetSemantics {
-                        stateDescription = "${scrollState.value},${scrollState.maxValue}"
+                        stateDescription = "${scrollState.value},${scrollState.maxValue},$fitWidthContentHeight"
                     })
                 }
                 // Phase 2D.1 test seam: zero-size and semantics-cleared (invisible to users and TalkBack), but

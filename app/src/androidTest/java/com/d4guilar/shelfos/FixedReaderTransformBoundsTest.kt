@@ -64,13 +64,34 @@ class FixedReaderTransformBoundsTest {
     }
     private fun viewportSize() = compose.onNodeWithTag("reader_page").fetchSemanticsNode().size
 
-    /** Fit Width's live `verticalScroll` offset/max, as reported by the production `reader_scroll_probe` seam. */
-    private data class ScrollExtent(val value: Int, val max: Int)
+    /** Fit Width's live `verticalScroll` offset/max plus the live unscaled fitted content height `H`, as reported
+     * by the production `reader_scroll_probe` seam (Phase 2D.1 remediation round two: `H` was added so tests can
+     * independently compute the real visible bitmap-space range, not just read scroll-state numbers). */
+    private data class ScrollExtent(val value: Int, val max: Int, val fittedHeight: Float)
     private fun scrollExtent(): ScrollExtent {
         val node = compose.onNodeWithTag("reader_scroll_probe").fetchSemanticsNode()
-        val raw = node.config.getOrNull(SemanticsProperties.StateDescription) ?: "0,0"
-        val (value, max) = raw.split(",")
-        return ScrollExtent(value.toInt(), max.toInt())
+        val raw = node.config.getOrNull(SemanticsProperties.StateDescription) ?: "0,0,0"
+        val (value, max, h) = raw.split(",")
+        return ScrollExtent(value.toInt(), max.toInt(), h.toFloat())
+    }
+
+    /** Geometry proof, not a state-value proof (Phase 2D.1 remediation round two, Step 23): maps the real
+     * verticalScroll offset back through the real `scale` and fitted content height `H` into the original
+     * bitmap's own pixel coordinate space, and returns the inclusive bitmap-Y range currently visible inside the
+     * viewport. Derivation: `graphicsLayer`'s center-origin scale of the H-tall Image, combined with this
+     * remediation's `H + 2*overflow == scale*H` reserved spacing, places bitmap row `y` (of [bitmapHeight] total)
+     * at scroll-column position `scale * H * (y / bitmapHeight)` -- so the inverse, `columnY * bitmapHeight /
+     * (scale * H)`, recovers the bitmap row visible at a given scroll-column position. This is exactly "the
+     * scaled content's actual edge position relative to the viewport," expressed in the original page's own
+     * coordinates, not a re-assertion of scroll/pan state. */
+    private fun visibleBitmapYRange(bitmapHeight: Float): ClosedFloatingPointRange<Float> {
+        val scroll = scrollExtent()
+        val scale = transform().scale
+        val viewportHeight = viewportSize().height.toFloat()
+        val scaledColumnHeight = scale * scroll.fittedHeight
+        val top = scroll.value * bitmapHeight / scaledColumnHeight
+        val bottom = (scroll.value + viewportHeight) * bitmapHeight / scaledColumnHeight
+        return top..bottom
     }
 
     /** Requests whichever orientation the device is not already in, mirroring [EpubRecreationTest]'s own
@@ -105,6 +126,21 @@ class FixedReaderTransformBoundsTest {
         compose.onNodeWithText("Reset zoom").assertExists()
     }
 
+    /** Drives a real two-finger pinch-out gesture through the production gesture code to reach (after the
+     * production `[1,5]` coerce) the maximum 5x zoom -- the UI's own "Zoom in" button only ever toggles 1x/2x, so
+     * the 5x stress case (Step 10) needs a real pinch, not the button. */
+    private fun pinchZoomToMax() {
+        compose.onNodeWithTag("reader_page").performTouchInput {
+            val c = center
+            down(0, c + Offset(-20f, -20f))
+            down(1, c + Offset(20f, 20f))
+            moveTo(0, c + Offset(-400f, -400f))
+            moveTo(1, c + Offset(400f, 400f))
+            up(0); up(1)
+        }
+        compose.waitForIdle()
+    }
+
     /** Repeated one-finger vertical swipes on the reader viewport, large enough to traverse the full tall-page
      * scroll range in a handful of gestures; relies on the production gesture handler leaving single-finger
      * vertical drags unconsumed in Fit Width so `verticalScroll`'s own detector moves them (Phase 2D.1
@@ -118,6 +154,22 @@ class FixedReaderTransformBoundsTest {
             }
             compose.waitForIdle()
         }
+    }
+
+    /** Swipes until the real `verticalScroll` offset actually reaches its floor (`up = false`) or ceiling
+     * (`up = true`), rather than a fixed repeat count -- the scroll RANGE itself scales with zoom (Phase 2D.1
+     * remediation round two), so a fixed-repeat count calibrated for one zoom level/device can fall short at a
+     * higher zoom or a taller screen (observed directly: 20 fixed repeats reliably covered the 2x range but fell
+     * short of the much larger 5x range on both devices). Capped so a genuine bug (scroll that never reaches its
+     * bound) fails loudly instead of looping forever. */
+    private fun swipeVerticalToExtreme(up: Boolean, maxAttempts: Int = 60) {
+        repeat(maxAttempts) {
+            val extent = scrollExtent()
+            if (if (up) extent.value == extent.max else extent.value == 0) return
+            swipeVertical(up, repeats = 1)
+        }
+        assertTrue("did not reach the scroll ${if (up) "ceiling" else "floor"} within $maxAttempts swipes " +
+            "(current=${scrollExtent()})", false)
     }
 
     /** Pinches outward (zoom in) then drags one finger far beyond any sane edge (the owner's reported trigger),
@@ -255,7 +307,12 @@ class FixedReaderTransformBoundsTest {
         assertEquals("zoom must be unaffected by a pure vertical drag", 2f, after.scale, 0f)
     }
 
-    /** Symmetric case at the BOTTOM of the scroll range: scroll all the way down, then drag further upward. */
+    /** Symmetric case at the BOTTOM of the scroll range: scroll all the way down, then drag further upward.
+     *
+     * Phase 2D.1 remediation round two note: `max` must be captured AFTER zooming in, not before -- this
+     * remediation makes the scroll range itself grow with zoom (`scale*H - viewport`, not the flat `H -
+     * viewport` the first remediation pass assumed), so a pre-zoom `max` is stale by the time the drag runs and
+     * produces a false failure (caught by this round's own instrumented run). */
     @Test fun fitWidthTallPageBottomDragBeyondEdgeStaysWithinBounds() {
         awaitLibrary()
         rotateToLandscape()
@@ -263,12 +320,12 @@ class FixedReaderTransformBoundsTest {
         awaitPage("1 / 2")
         switchToFitWidth()
         awaitTag("reader_scroll_probe")
-        val max = scrollExtent().max
-        assertTrue("fixture must actually produce a scrollable (tall) Fit Width page", max > 0)
+        assertTrue("fixture must actually produce a scrollable (tall) Fit Width page", scrollExtent().max > 0)
         zoomIn()
         assertEquals(2f, transform().scale, 0f)
+        val max = scrollExtent().max // captured AFTER zoom: the real, current (zoomed) ceiling.
         // Scroll all the way to the bottom first, then keep dragging upward (finger moves up) past the edge.
-        swipeVertical(up = true, repeats = 10)
+        swipeVerticalToExtreme(up = true)
         assertEquals("must actually reach the bottom before testing the beyond-edge drag", max, scrollExtent().value)
         swipeVertical(up = true)
         val after = transform()
@@ -296,5 +353,160 @@ class FixedReaderTransformBoundsTest {
         assertEquals("scale must remain untouched by a pure vertical drag", 1f, after.scale, 0f)
         assertTrue("the drag must have actually scrolled the content (scroll owns vertical movement here)",
             scrollExtent().value > 0)
+    }
+
+    // ---- Phase 2D.1 remediation, round two: zoomed Fit Width top/bottom reachability (independent QA finding
+    // after 06bcc14) ----
+    //
+    // QA: "Fit Width + tall page + zoom + translationY=0 causes the TOP and BOTTOM portions of the page to
+    // become unreachable" -- graphicsLayer visually scales the Image around its own center without changing its
+    // *layout* size, so verticalScroll's range stayed H-V instead of the visually-required scale*H-V. These
+    // tests prove ACTUAL VISIBILITY of the fixture's own top/bottom markers (y=80 and y=2340 of the 400x2400
+    // `tallPdf` bitmap) via visibleBitmapYRange's real geometry, not merely panY/scrollState values (Step 23).
+
+    private val tallPdfBitmapHeight = 2400f
+    private val topMarkerBitmapY = 30f // OriginalFixtures.tallPdf's "top" text baseline
+    private val bottomMarkerBitmapY = 2380f // OriginalFixtures.tallPdf's "bottom" text baseline
+
+    private fun openTallPdfFitWidthZoomed() {
+        awaitLibrary()
+        rotateToLandscape()
+        read("test-pdf-tall")
+        awaitPage("1 / 2")
+        switchToFitWidth()
+        awaitTag("reader_scroll_probe")
+        assertTrue("fixture must actually produce a scrollable (tall) Fit Width page", scrollExtent().max > 0)
+    }
+
+    /** The core, device-independent, non-tautological regression proof (Step 3): the real production
+     * `verticalScroll`'s own `maxValue` -- not a number this test computes independently, but the actual
+     * ScrollState Compose maintains -- must equal `scale*H - viewport` (the expected scaled scroll extent),
+     * not the pre-remediation-round-two `H - viewport`. This is what makes every row of the page reachable: a
+     * continuous scroll range from `0` to this correct `max` sweeps the visible window continuously from bitmap
+     * row `0` to row `bitmapHeight` with no gap, which is the formal statement of "top/bottom reachable." */
+    private fun assertScrollRangeMatchesScaledContent(scale: Float) {
+        val scroll = scrollExtent()
+        val viewportHeight = viewportSize().height.toFloat()
+        val expectedMax = (scale * scroll.fittedHeight - viewportHeight).coerceAtLeast(0f)
+        assertEquals("scale=$scale: real verticalScroll.maxValue must equal scale*H-viewport (H=${scroll.fittedHeight}, " +
+            "viewport=$viewportHeight), proving the full scaled page height is reachable, not just the unscaled H",
+            expectedMax, scroll.max.toFloat(), viewportHeight * 0.02f) // 2% tolerance for Dp<->px rounding
+    }
+
+    @Test fun fitWidthTallPageTopMarkerVisibleAtScaleTwoAfterScrollingToTop() {
+        openTallPdfFitWidthZoomed()
+        zoomIn()
+        assertEquals(2f, transform().scale, 0f)
+        swipeVertical(up = false) // drag toward the top, same gesture as the beyond-edge test above
+        assertEquals(0, scrollExtent().value)
+        assertScrollRangeMatchesScaledContent(2f)
+        val visible = visibleBitmapYRange(tallPdfBitmapHeight)
+        assertTrue("top marker (bitmap y=$topMarkerBitmapY) must be visible at the top of scroll @2x, " +
+            "visible range was $visible", topMarkerBitmapY in visible)
+    }
+
+    @Test fun fitWidthTallPageBottomMarkerVisibleAtScaleTwoAfterScrollingToBottom() {
+        openTallPdfFitWidthZoomed()
+        zoomIn()
+        assertEquals(2f, transform().scale, 0f)
+        swipeVerticalToExtreme(up = true)
+        val reached = scrollExtent()
+        assertEquals("must actually reach the bottom before checking visibility", reached.max, reached.value)
+        assertScrollRangeMatchesScaledContent(2f)
+        val visible = visibleBitmapYRange(tallPdfBitmapHeight)
+        assertTrue("bottom marker (bitmap y=$bottomMarkerBitmapY) must be visible at the bottom of scroll @2x, " +
+            "visible range was $visible", bottomMarkerBitmapY in visible)
+    }
+
+    /** Scale-5 stress case (Step 10): catches reachability math that only happens to work near 2x. At 5x on this
+     * deliberately extreme 1:6-aspect fixture in a wide landscape viewport, a single screenful shows only
+     * roughly the nearest 1-2% of the page -- too thin a field of view for any one fixed marker position to
+     * reliably land inside on both the RP5 and the emulator's own slightly different exact aspect ratios (this
+     * was confirmed empirically: an earlier version of this test placed the marker too far from the edge and
+     * failed on both devices at 5x even though the actual fix was correct). The real, device-independent,
+     * regression-sensitive proof at this extreme zoom is [assertScrollRangeMatchesScaledContent]: if the real
+     * `verticalScroll.maxValue` matches `scale*H - viewport` exactly, reachability of every row -- including the
+     * very top/bottom -- follows directly (see that function's doc), without needing a marker to physically land
+     * in a vanishingly small per-screen field of view. */
+    @Test fun fitWidthTallPageTopReachableAtScaleFiveViaScrollRangeProof() {
+        openTallPdfFitWidthZoomed()
+        pinchZoomToMax()
+        assertEquals(5f, transform().scale, 0f)
+        swipeVertical(up = false, repeats = 10)
+        assertEquals(0, scrollExtent().value)
+        assertScrollRangeMatchesScaledContent(5f)
+        val visible = visibleBitmapYRange(tallPdfBitmapHeight)
+        assertEquals("at the scroll floor the visible window must start exactly at the true top of the page",
+            0f, visible.start, 0.5f)
+    }
+
+    @Test fun fitWidthTallPageBottomReachableAtScaleFiveViaScrollRangeProof() {
+        openTallPdfFitWidthZoomed()
+        pinchZoomToMax()
+        assertEquals(5f, transform().scale, 0f)
+        swipeVerticalToExtreme(up = true)
+        val reached = scrollExtent()
+        assertEquals("must actually reach the bottom before checking visibility", reached.max, reached.value)
+        assertScrollRangeMatchesScaledContent(5f)
+        val visible = visibleBitmapYRange(tallPdfBitmapHeight)
+        assertEquals("at the scroll ceiling the visible window must end exactly at the true bottom of the page",
+            tallPdfBitmapHeight, visible.endInclusive, tallPdfBitmapHeight * 0.02f)
+    }
+
+    /** Step 11 (scale-1 regression): at the default, untransformed scale, no artificial padding is reserved --
+     * the scroll range must equal the plain unscaled `H - viewport`, exactly as it did before this remediation,
+     * not `H + 2*overflow - viewport` with a nonzero overflow. */
+    @Test fun fitWidthTallPageScaleOneHasNoArtificialScrollPadding() {
+        openTallPdfFitWidthZoomed()
+        val scroll = scrollExtent()
+        assertEquals(1f, transform().scale, 0f)
+        val viewportHeight = viewportSize().height.toFloat()
+        val expectedMax = (scroll.fittedHeight - viewportHeight).coerceAtLeast(0f)
+        assertEquals("scale=1 must reserve zero extra scroll space (ordinary unzoomed Fit Width)",
+            expectedMax, scroll.max.toFloat(), 1.5f)
+    }
+
+    /** Step 15 (double-tap/reset regression, a LOW gap the prior remediation left open): zoom via double-tap,
+     * scroll somewhere in the middle, then double-tap again to reset -- scale/panX/panY must return to their
+     * defaults, the reserved overflow must collapse back to zero (scroll max returns to the unscaled value), and
+     * the resulting scroll position must remain valid (never exceed the new, smaller max). */
+    @Test fun fitWidthTallPageDoubleTapResetCollapsesOverflowAndStaysReachable() {
+        openTallPdfFitWidthZoomed()
+        val baselineMax = scrollExtent().max
+        compose.onNodeWithTag("reader_page").performTouchInput { doubleClick(center) }
+        compose.waitForIdle()
+        assertEquals(2f, transform().scale, 0f)
+        swipeVertical(up = true, repeats = 3) // move somewhere in the middle of the zoomed range
+        val midScroll = scrollExtent()
+        assertTrue("must have actually scrolled somewhere before resetting", midScroll.value > 0)
+        compose.onNodeWithTag("reader_page").performTouchInput { doubleClick(center) }
+        compose.waitForIdle()
+        val after = transform()
+        val afterScroll = scrollExtent()
+        assertEquals("double-tap reset must restore scale to 1", 1f, after.scale, 0f)
+        assertEquals("panX must reset", 0f, after.panX, 0f)
+        assertEquals("panY must stay 0 (Fit Width never uses it)", 0f, after.panY, 0f)
+        assertEquals("the reserved overflow must collapse back to the plain unscaled scroll range",
+            baselineMax, afterScroll.max)
+        assertTrue("scroll position must remain within the new, smaller max (no invalid/stale offset)",
+            afterScroll.value <= afterScroll.max)
+    }
+
+    /** Step 12: the vertical-reachability fix must not break zoomed Fit Width's horizontal pan, which is still
+     * owned entirely by `graphicsLayer.translationX` (verticalScroll only ever handles the Y axis). */
+    @Test fun fitWidthZoomedHorizontalPanStillWorksAndStaysWithinBounds() {
+        openTallPdfFitWidthZoomed()
+        zoomIn()
+        assertEquals(2f, transform().scale, 0f)
+        val viewport = viewportSize()
+        compose.onNodeWithTag("reader_page").performTouchInput {
+            swipe(start = Offset(centerX + 10f, centerY), end = Offset(right - 5f, centerY), durationMillis = 120)
+        }
+        compose.waitForIdle()
+        val after = transform()
+        assertEquals("a horizontal-dominant drag must not change zoom", 2f, after.scale, 0f)
+        val maxSanePanX = viewport.width.toFloat() * 2.5f
+        assertTrue("panX must stay bounded", kotlin.math.abs(after.panX) <= maxSanePanX)
+        assertEquals("horizontal pan must not leak into Fit Width's locked Y axis", 0f, after.panY, 0f)
     }
 }

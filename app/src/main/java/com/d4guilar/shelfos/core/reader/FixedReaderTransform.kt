@@ -22,6 +22,19 @@ package com.d4guilar.shelfos.core.reader
  * enough to push the page out of view. The fix lives entirely in [FixedReaderScreen]: Fit Width now forces
  * `panY`/`translationY` to `0` and lets `verticalScroll` own all vertical movement; this file's pan-bound
  * functions remain fit-mode-agnostic by design; only the width axis's pan bound is still used for Fit Width.
+ *
+ * Phase 2D.1 remediation, round two (zoomed Fit Width top/bottom reachability, an independent QA finding after
+ * `06bcc14`): forcing `translationY` to `0` fixed the gray-escape/double-movement defects but exposed a third
+ * one. `graphicsLayer`'s `scaleX`/`scaleY` visually scale the `Image` around its own layout center without
+ * changing its *layout* size — `verticalScroll` only ever measures the unscaled fitted height `H`, so its scroll
+ * range stays `max(0, H - viewport)` when the visually-scaled content actually needs `max(0, scale*H -
+ * viewport)`. At `scale == 2`, the outer ~25% of the page at each end becomes permanently unreachable; at `scale
+ * == 5`, ~40% at each end. [fixedReaderVerticalScaleOverflow] is the fix's pure half: a center-origin scale by
+ * `scale` bulges the visual content by `(scale-1)*contentHeight/2` above and below the Image's own layout
+ * bounds. [FixedReaderScreen] reserves exactly that much blank layout space (spacers) above and below the Image,
+ * *outside* its `graphicsLayer`, so the scrollable column's measured height becomes `H + 2*overflow ==
+ * scale*H` — exactly matching the visual extent and giving `verticalScroll` the correct range for free, with no
+ * second vertical-movement mechanism and no change to the `translationY == 0` invariant above.
  */
 
 /** One axis's content size already fitted (at 1x zoom) inside its viewport. */
@@ -98,3 +111,24 @@ fun fixedReaderClampPan(value: Float, max: Float): Float {
  */
 fun fixedReaderMaxPanY(contentSize: FixedReaderContentSize, viewportHeight: Float, scale: Float, fitWidth: Boolean): Float =
     if (fitWidth) 0f else fixedReaderMaxPan(contentSize.height, viewportHeight, scale)
+
+/**
+ * How far a center-origin `graphicsLayer` scale of [scale] visually bulges [contentHeight]-tall content above
+ * (and, symmetrically, below) its own unscaled layout bounds: `max(0, (scale-1) * contentHeight / 2)`.
+ *
+ * [FixedReaderScreen] reserves exactly this much blank layout space above and below Fit Width's `Image` —
+ * *outside* its `graphicsLayer`, so the reserved space itself is never also scaled — so the scrollable column's
+ * total measured height becomes `contentHeight + 2 * overflow == scale * contentHeight`, matching the visually
+ * scaled extent exactly and handing `verticalScroll` the correct `max(0, scale*contentHeight - viewport)` range
+ * without any second vertical-movement mechanism. At `scale == 1` this is exactly `0` (no added space, ordinary
+ * unzoomed Fit Width is unchanged); it grows linearly with zoom on both sides symmetrically.
+ *
+ * Defensive: a non-finite/non-positive [scale] is treated as `1f` (yielding `0` overflow); a non-finite or
+ * non-positive [contentHeight] yields `0`. The result is always finite and non-negative.
+ */
+fun fixedReaderVerticalScaleOverflow(contentHeight: Float, scale: Float): Float {
+    val safeScale = if (scale.isFinite() && scale > 0f) scale else 1f
+    if (!contentHeight.isFinite() || contentHeight <= 0f) return 0f
+    val overflow = (safeScale - 1f) * contentHeight / 2f
+    return if (overflow.isFinite() && overflow > 0f) overflow else 0f
+}
