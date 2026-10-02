@@ -53,8 +53,7 @@ tall enough page to expose that gap.** Full detail in
 ## Phase 2D.1 remediation — Fit Width tall-content blocker (2026-10-02)
 
 Status: **IMPLEMENTED, automated evidence on both devices PASSED, owner RP5
-physical acceptance NOT YET OBTAINED for this remediation specifically.**
-Full detail in
+physical acceptance PASSED.** Full detail in
 [`PHASE_2D_IMPLEMENTATION_PLAN.md`](PHASE_2D_IMPLEMENTATION_PLAN.md#211-2d1-remediation--fit-width-tall-content-blocker-2026-10-02).
 
 - **Independent QA verdict (authoritative)**: BLOCKED. Fit Page was correct;
@@ -98,12 +97,10 @@ Full detail in
 - **Scope**: the same four files as the original 2D.1 slice plus one fixture
   addition (`OriginalFixtures.tallPdf`) — no PDF rasterization, CBZ decoding,
   EPUB, persistence, Room schema, or dependency changes.
-- **RP5 OWNER PHYSICAL ACCEPTANCE FOR THIS REMEDIATION: NOT YET OBTAINED —
-  pending a separate live session with the owner.** The instrumented evidence
-  above runs real multi-touch pointer events through the production gesture
-  code on the physical RP5 itself, which is real and valuable, but it is not
-  a substitute for the owner physically pinch-zooming/dragging a tall Fit
-  Width page at both scroll extremes by hand.
+- **RP5 OWNER PHYSICAL ACCEPTANCE FOR THIS REMEDIATION: PASS.** The owner
+  installed the committed remediation build (`06bcc14`) on the real RP5 and
+  performed the pinch-zoom/drag-to-top/drag-to-bottom sequence on a tall Fit
+  Width page by hand, plus a Fit Page sanity check: *"ALL GOOD!"*
 
 ## Phase 2C evidence closure — no production render change justified (2026-10-01)
 

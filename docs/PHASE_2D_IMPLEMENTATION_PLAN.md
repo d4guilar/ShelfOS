@@ -1258,11 +1258,9 @@ decoding, EPUB, persistence, Room schema, or dependency changes.
 
 ### RP5 physical acceptance for this remediation
 
-**NOT YET OBTAINED — pending a separate live session with the owner.** This
-remediation pass's own instrumented-test evidence above (which drives real
-multi-touch pointer events through the production gesture code on the
-physical RP5, not synthetic swipes) is real and valuable, but it is not a
-substitute for the owner physically pinch-zooming/dragging a tall Fit Width
-page at both scroll extremes by hand, the same way the original §21
-acceptance was obtained. Do not treat the automated evidence above as
-closing this gap.
+**OWNER VISUAL OBSERVATION: PASS (2026-10-02).** The owner installed the
+committed remediation build (`06bcc14`) on the physical RP5 and performed the
+real pinch-zoom/drag-to-top/drag-to-bottom sequence on a tall Fit Width page
+by hand, plus a Fit Page sanity check: *"ALL GOOD!"* This closes the evidence
+gap the remediation's own instrumented-test evidence (above) could not
+substitute for.
