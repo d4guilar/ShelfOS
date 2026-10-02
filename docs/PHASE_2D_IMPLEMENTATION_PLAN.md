@@ -8,10 +8,32 @@ acceptance are all closed; a proportional lean close-out pass (full JVM
 200/200, `NavigationSmokeTest` 26/26 on the canonical emulator, `git diff
 --check` PASS) ran against this exact HEAD with no further production
 changes. See `docs/VALIDATION.md`'s "Phase 2D.1 close-out" entry and §21 for
-the full 2D.1 implementation record. **2D.2-2D.4 remain planning-only; no
-other 2D production code exists yet.** This document is the canonical Phase
-2D planning location referenced by [`PHASE_2_PLAN.md`](PHASE_2_PLAN.md)'s §3
-2D section.
+the full 2D.1 implementation record.
+
+**2D.2 (recreation/resize continuity closure) is also COMPLETE**
+(2026-10-02, branch `phase-2/reader-continuity`, base `8a3e4d1`), as a
+validation-only slice: no production code changes were required. This pass
+confirmed, with real evidence (not assumption), that EPUB/PDF/CBZ already
+survive Activity recreation and **true `adb shell am kill` process death**
+(distinct from `ActivityScenario.recreate()` and from `am force-stop`) with
+truthful durable position/preferences/bookmarks, safe transient zoom/pan
+reset, no resurrected stale EPUB search state, and no 2D.1 resize regression
+(`FixedReaderTransformBoundsTest` 15/15 green). One suspected gap from the
+state-ownership audit (Fit Width's `rememberSaveable` scroll value vs. the
+non-`rememberSaveable` zoom `scale` it depends on, across recreation) was
+concretely tested and found **not reproducible**. A new
+`FixedReaderRecreationTest.kt` (7 cases) closes the one real coverage gap
+found — the fixed reader previously had no recreation test analogous to
+`EpubRecreationTest`. Full detail, the state-ownership map, the TRUE
+process-death method/evidence table, and honest validation limitations are
+in `docs/VALIDATION.md`'s "Phase 2D.2 — recreation & resize continuity
+closure" entry; this document's own §5/§13 continuity analysis is **not
+rewritten** — 2D.2 is additive empirical confirmation of what §5 already
+predicted from code reading, not a re-investigation.
+
+**2D.3-2D.4 remain planning-only; no other 2D production code exists yet.**
+This document is the canonical Phase 2D planning location referenced by
+[`PHASE_2_PLAN.md`](PHASE_2_PLAN.md)'s §3 2D section.
 
 This pass read, in order: `AGENTS.md`, `docs/PHASE_2_PLAN.md`,
 `docs/ROADMAP.md`, `docs/ARCHITECTURE.md`, `docs/features/READER.md`,

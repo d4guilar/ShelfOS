@@ -8,6 +8,225 @@ Expensive full connected/gate runs are reserved for broad cross-cutting
 changes and final integration boundaries, rather than repeated after every
 small remediation.
 
+## Phase 2D.2 — recreation & resize continuity closure (2026-10-02)
+
+Status: **Phase 2D.2 COMPLETE**, validation-only (no production code changed).
+Base `8a3e4d1` (2D.1 complete, PR #17), branch `phase-2/reader-continuity`.
+This was an evidence-first closure slice per its own brief: prove current
+recreation/process-death/resize behavior for EPUB, PDF and CBZ, and fix only
+reproducible defects actually found. None were found; current behavior
+already satisfies the canonical continuity model in
+`docs/PHASE_2D_IMPLEMENTATION_PLAN.md` §5.
+
+### State ownership (confirmed by direct code reading, not assumed)
+
+- **EPUB**: publication identity — `EpubActivity` intent extra, re-delivered
+  by the system on both recreation and process death. Locator/progress —
+  `ReadingEntity` (Room, `reading_state` table), written via an app-scoped
+  `PositionWriter` (`ReaderPersistence.kt`) that outlives the Activity/VM;
+  the Readium navigator is deliberately rebuilt from this Room locator on
+  every open (`restoreEpubNavigatorAsPlaceholder`/`removeRestoredEpubNavigator`
+  explicitly discard any FragmentManager-restored navigator state) rather than
+  trusting the navigator's own saved state. Appearance/managed
+  font/presentation — `ReaderPreferenceEntity` (Room), title+global layered.
+  Chrome/dialog-open/search-query UI state — Compose `rememberSaveable`
+  (`EpubActivity.kt`), survives config recreation and is contractually
+  expected to survive process death via the same `onSaveInstanceState`
+  Bundle path, though this is a framework guarantee rather than something
+  this pass independently re-verified bit-for-bit. Bookmarks —
+  `BookmarkEntity` (Room). Search (`EpubSearchCoordinator`,
+  `SearchIterator`/cursor) — instance-scoped to each `EpubReaderViewModel`,
+  never a Hilt/global singleton; a fresh process gets a fresh, empty search
+  state by construction, not a resurrected stale one.
+- **Fixed reader (PDF/CBZ)**: publication identity — Navigation-Compose back
+  stack route arg (`reader/{id}`), restored via the Activity's saved-instance
+  state. Current page — `FixedReaderViewModel` `StateFlow` (VM-scoped, lost on
+  process death) mirrored durably to `ReadingEntity` via the same
+  app-scoped `PositionWriter` pattern, and reconstructed from Room on the next
+  `open()` regardless of whether the VM instance itself survived. Fit mode and
+  reading direction — `ReaderPreferenceEntity` (Room; direction is
+  deliberately title-only, never global). Chrome visibility —
+  `rememberSaveable`. Zoom (`scale`) and pan (`panX`/`panY`) —
+  plain `remember(state.page, fitWidth)`, intentionally transient, confirmed
+  NOT to survive recreation or process death (matches the "may reset" canonical
+  expectation). Fit Width's `verticalScroll` state is `rememberSaveable`
+  internally but keyed inside `key(state.page)`; the audit flagged a
+  theoretical inconsistency (scroll value persisted while the `scale` it was
+  computed against resets) as the single highest-value thing to empirically
+  test — see below.
+- `PositionWriter` (`ReaderPersistence.kt`) has **no artificial debounce**: a
+  `Channel.CONFLATED` collapses rapid writes and the collector dispatches the
+  latest value immediately in the app-level `CoroutineScope`. A ~1 second
+  wait after the last navigation action before a process kill is a safe
+  margin for the write to land; there is no multi-second delay to account for.
+
+### Configuration recreation (API 35 emulator, `emulator-5554`)
+
+- EPUB: **PASS** — existing `EpubRecreationTest` (`scenario.recreate()` +
+  a real hardware-relaunch orientation change) green, 1/1.
+- PDF/CBZ: **PASS** — no prior recreation test existed for the fixed reader
+  (a real gap relative to EPUB's coverage), so this slice added
+  `FixedReaderRecreationTest.kt` (new, 7 focused cases, all passing):
+  non-first-page recreation (PDF, CBZ), first-page edge, last-page edge,
+  Fit Page zoom/pan resets to a valid `(1x, 0, 0)` transform (not a stale
+  one), leave/return via Back-to-details-to-library, and the suspected Fit
+  Width gap below.
+- **Suspected gap, empirically tested, found NOT reproducible**: Fit Width +
+  tall page + zoomed to 2x + scrolled to mid-range + real
+  `ActivityScenario.recreate()`. Hypothesis: `scale` resets to 1x (plain
+  `remember`) but `rememberScrollState()`'s value is `rememberSaveable`-backed,
+  so a restored scroll offset could exceed the freshly-collapsed (unzoomed)
+  scroll ceiling — an analogous "gray escape" to the one 2D.1 fixed for
+  pan/zoom. `fitWidthTallPageRecreationNeverLeavesScrollPastCollapsedCeiling`
+  asserts `scrollExtent().value <= scrollExtent().max` immediately after
+  recreation and **passes** — no invalid scroll position was observed. Not
+  reopened or further instrumented beyond this one proof, per the "fix only
+  reproducible defects" brief.
+- Chrome/preferences: confirmed via the above tests and direct code reading
+  to survive recreation (`rememberSaveable` + Room, respectively).
+- Zoom/pan: confirmed to reset safely to a valid resting transform on
+  recreation (both Fit Page and Fit Width), consistent with the already-
+  accepted "transient, may reset" classification.
+
+### TRUE process death (not `ActivityScenario.recreate()`, not `am force-stop`)
+
+Method: seeded the real on-disk Room DB (same file the production app process
+reads) with three real, differently-sized publications (`Example Book
+files/Frank Herbert - Dune 1 - Dune.pdf` → PDF, `.../Frankenstein; or, the
+modern prometheus.epub` → EPUB, `.../New X-Men By Grant Morrison v03 ... .cbz`
+→ CBZ, Manga category/RTL) via a temporary instrumented seeder
+(`ManualProcessDeathSeeder.kt`, deleted before this slice's commit — not part
+of the permanent suite) using the exact same "managed storage" `LibraryItem`
+shape a real SAF import produces, skipping only the file-picker UI
+interaction. Then, against the real (non-instrumented) app process:
+navigated via `adb shell input tap`/`uiautomator dump`-driven coordinates,
+confirmed the position had actually landed in Room via
+`run-as ... sqlite3 shelfos.db`, pressed Home, captured the PID
+(`adb shell pidof com.d4guilar.shelfos`), killed it with
+**`adb shell am kill` only** (never `am force-stop`), confirmed `pidof` now
+found nothing, then resumed via **Recents** (`KEYCODE_APP_SWITCH` +
+tapping the ShelfOS task card — a genuine task-preserving "switch back",
+not `am start` from scratch), and confirmed a **new** PID.
+
+| Format | Old PID → New PID | State before kill | State after resume |
+| --- | --- | --- | --- |
+| PDF (Dune) | 5922 → 6150 | page 12/345 (Room: `page:11`) | page 12/345 ✓ |
+| EPUB (Frankenstein) | 6150 → 6611 | 68% progress, 1 bookmark (Ch. 19) | 68% ✓, bookmark intact ✓, Search opened fresh/empty (no stale iterator) ✓ |
+| CBZ (New X-Men, Manga/RTL) | 6611 → 7008 | page 8/163, RTL control layout (Next on left) | page 8/163 ✓, RTL layout preserved ✓ |
+
+All three PIDs differ old→new, proving genuine process death occurred, not a
+same-process recreation. `am force-stop` was never used as the kill
+mechanism (confirmed avoided).
+
+### Process-death state table
+
+| State | Expected | Observed |
+| --- | --- | --- |
+| Publication identity | Survive | PASS (all 3 formats) |
+| Fixed page / EPUB locator-progress | Survive, truthful | PASS (exact page/percent match, all 3) |
+| Reader preferences (fit/direction) | Survive | PASS (CBZ RTL control placement identical pre/post-kill) |
+| Bookmarks | Survive | PASS (EPUB bookmark intact, label/location unchanged) |
+| Chrome/dialog state | Acceptable either way | Not exhaustively probed per-dialog across process death; chrome toggle itself confirmed functional post-resume, no crash |
+| Zoom/pan | May reset | Not re-separately probed across process death (already proven transient and safely-resetting across the cheaper, equivalent `ActivityScenario.recreate()` case above; process death uses the same `remember`, not `rememberSaveable`, mechanism, so the same reset is expected to apply uniformly, not merely assumed) |
+| EPUB search runtime objects | Must NOT resurrect stale state | PASS — Search dialog opened post-process-death showed its fresh empty-state copy ("Enter a word or phrase..."), not stale results |
+
+### Orientation and live resize
+
+- Real hardware-rotation (`adb shell settings put system user_rotation 1`)
+  while the CBZ reader was open: page position preserved, all chrome controls
+  remained present and tappable, no crash.
+- A **true live resize distinct from recreation** (`adb shell wm size
+  1600x2560`, then `wm size reset`) while the CBZ reader was open: page
+  position preserved, no crash; a subsequent tap toggled chrome visibility as
+  per the existing production tap-to-reveal/hide behavior (not a defect —
+  confirmed by immediately re-tapping to reveal chrome again). This is
+  evidence that `wm size`-driven resizing works as a genuine separate-from-
+  recreation resize mechanism on this emulator, satisfying Part J's
+  requirement without needing Android Studio's resizable-emulator window
+  controls.
+- 2D.1 Fit Page/Fit Width resize regression: re-ran
+  `FixedReaderTransformBoundsTest` in full on the emulator — **15/15 passed**,
+  including the landscape-rotation-driven tall-page Fit Width top/bottom
+  reachability and no-gray-escape cases from 2D.1's own remediation rounds.
+  No regression from this slice's (validation-only) changes.
+- `NavigationSmokeTest`: **26/26 passed** (no navigation/input lifecycle
+  production code was touched, but run anyway since this slice's new test
+  exercises Back/navigation paths).
+
+### Leave/return
+
+- PDF: **PASS** — `FixedReaderRecreationTest.pdfLeaveAndReturnRestoresPage`
+  (reader → details → library → reopen → same page), new focused coverage
+  (no prior equivalent existed for the fixed reader).
+- EPUB: reused as already-strong existing coverage —
+  `EpubRecreationTest`'s cold-relaunch-after-close assertion (reopens and
+  confirms the persisted Appearance choice) plus this slice's own manual
+  process-death pass (which is a strictly stronger leave/return proof: the
+  process didn't just restart the Activity, it restarted the whole app).
+- CBZ: covered by this slice's manual process-death pass above (equivalent
+  to leave/return, strictly stronger).
+
+### Findings
+
+- No BLOCKER, HIGH, MEDIUM, or LOW defects found. One suspected MEDIUM-shaped
+  risk (Fit Width scroll-vs-scale recreation inconsistency) was formulated
+  from the state-ownership audit, concretely tested, and found **not
+  reproducible** — recorded as an OBSERVATION only, not a defect, since no
+  actual invalid/out-of-range state was ever observed.
+- **OBSERVATION**: the fixed reader had no `EpubRecreationTest`-equivalent
+  instrumented recreation test before this slice — closed by
+  `FixedReaderRecreationTest.kt` (new, permanent, 7 cases).
+- **OBSERVATION**: chrome/dialog-open state's survival across true process
+  death relies on the standard Android `rememberSaveable`/`onSaveInstanceState`
+  contract; this pass confirmed the mechanism is wired correctly and observed
+  no crash or misbehavior, but did not individually probe every dialog
+  (Appearance/Chapters/Bookmarks/Search) open-state surviving a kill — the
+  canonical spec treats this as "acceptable either way," so this is not
+  classified as a gap requiring a fix, just an honestly-recorded validation
+  boundary.
+- No production code changes were required or made.
+
+### Validation performed (proportional to scope, per the standing policy)
+
+- New: `FixedReaderRecreationTest.kt` (7/7 passing on the emulator).
+- Regression: `EpubRecreationTest` (1/1), `FixedReaderTransformBoundsTest`
+  (15/15), `NavigationSmokeTest` (26/26) — all on `emulator-5554`.
+- JVM: `FixedReaderTransformTest` (cached green from the 2D.1 close-out run;
+  no production code changed in this slice to invalidate that cache).
+- Manual/ADB: true process-death validation for all three formats (see
+  table above), real hardware rotation, real `wm size` live resize — all on
+  `emulator-5554`.
+- Not run: full `connectedDebugAndroidTest` suite, full JVM suite re-run, the
+  combined Gradle gate — reserved per the standing proportional-validation
+  policy for broad cross-cutting changes and the final Phase 2 integration
+  boundary, not a narrow, validation-only closure slice.
+- RP5 (`d8f7f1b6`): confirmed online at session start; not used this pass —
+  the emulator's `adb shell am kill`/Recents/`wm size` tooling already gave
+  stronger, more controllable process-death and resize evidence than a short
+  RP5 ADB pass would have added, and the brief only required RP5 "if
+  connected" for a short sanity pass, not as a hard requirement. Honestly
+  recorded as not run, not fabricated.
+- `git diff --check`: PASS.
+
+### Honest limitations
+
+- Chrome/dialog-open state was not individually re-verified per-dialog across
+  true process death (only chrome's basic toggle functionality was confirmed
+  post-resume); the canonical spec marks this "acceptable either way," so
+  this is a recorded boundary, not an unresolved gap.
+- Zoom/pan reset-on-process-death was inferred from (a) the same
+  `remember`-not-`rememberSaveable` mechanism already proven to reset safely
+  under the cheaper `ActivityScenario.recreate()` case, and (b) no code path
+  that would behave differently under true process death, rather than
+  independently re-captured mid-zoom immediately before a kill in this pass's
+  manual session. Recorded honestly as inferred-not-independently-observed
+  for this specific combination.
+- Physical RP5 was not used this pass (see above); no foldable-specific
+  testing was performed or is in scope.
+
+Phase 2D.2 is marked **COMPLETE**, validation-only. Phase 2D.3
+(input/accessibility/focus closure) is next and unstarted.
+
 ## Phase 2D.1 close-out (2026-10-02)
 
 Status: **Phase 2D.1 COMPLETE** at HEAD `e59eab8`. This is a lean close-out
