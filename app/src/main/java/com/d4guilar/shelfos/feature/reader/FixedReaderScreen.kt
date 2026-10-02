@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -29,6 +30,7 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -38,6 +40,9 @@ import com.d4guilar.shelfos.core.designsystem.resolve
 import com.d4guilar.shelfos.core.input.*
 import com.d4guilar.shelfos.core.reader.FitMode
 import com.d4guilar.shelfos.core.reader.capabilities
+import com.d4guilar.shelfos.core.reader.fixedReaderClampPan
+import com.d4guilar.shelfos.core.reader.fixedReaderFittedContentSize
+import com.d4guilar.shelfos.core.reader.fixedReaderMaxPan
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import com.d4guilar.shelfos.domain.library.*
 import kotlin.math.abs
@@ -61,9 +66,15 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
     var topFocused by remember { mutableStateOf(false) }
     var bottomFocused by remember { mutableStateOf(false) }
     var controlFocusRequests by remember { mutableIntStateOf(0) }
-    var scale by remember(state.page) { mutableFloatStateOf(1f) }
-    var panX by remember(state.page) { mutableFloatStateOf(0f) }
-    var panY by remember(state.page) { mutableFloatStateOf(0f) }
+    // Fit-mode change is folded into the same page-change reset key (Phase 2D.1): switching Fit Page <-> Fit
+    // Width while zoomed/panned would otherwise keep a transform computed for the old fit's content geometry.
+    val fitWidth = state.preferences.fit == FitMode.WIDTH
+    var scale by remember(state.page, fitWidth) { mutableFloatStateOf(1f) }
+    var panX by remember(state.page, fitWidth) { mutableFloatStateOf(0f) }
+    var panY by remember(state.page, fitWidth) { mutableFloatStateOf(0f) }
+    // Live viewport size (Phase 2D.1): the gesture handler already reads a fresh `size` on every pointer event,
+    // but an idle transform must also be re-clamped after a resize/rotation/fold with no new gesture.
+    var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     var sliderTarget by remember { mutableStateOf<Float?>(null) }
     val pageFocus = remember { FocusRequester() }
     val firstControl = remember { FocusRequester() }
@@ -93,6 +104,16 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
 
     LaunchedEffect(Unit) { pageFocus.requestFocus() }
     LaunchedEffect(controlFocusRequests) { if (controlFocusRequests > 0) runCatching { firstControl.requestFocus() } }
+    // Phase 2D.1: re-clamp an idle transform whenever the viewport, zoom, fit mode or bitmap changes, so a
+    // resize/rotation/fold that happens outside an active gesture can never leave panX/panY out of bounds.
+    LaunchedEffect(viewportSize, scale, fitWidth, state.bitmap) {
+        val bitmap = state.bitmap
+        if (bitmap == null || viewportSize.width <= 0 || viewportSize.height <= 0) return@LaunchedEffect
+        val content = fixedReaderFittedContentSize(bitmap.width.toFloat(), bitmap.height.toFloat(),
+            viewportSize.width.toFloat(), viewportSize.height.toFloat(), fitWidth)
+        panX = fixedReaderClampPan(panX, fixedReaderMaxPan(content.width, viewportSize.width.toFloat(), scale))
+        panY = fixedReaderClampPan(panY, fixedReaderMaxPan(content.height, viewportSize.height.toFloat(), scale))
+    }
     BackHandler { backPress() }
     if (appearance && item != null) ReaderAppearance(state.preferences, capabilities(item.format), { appearance = false },
         vm::applyAppearance, vm::resetAppearance)
@@ -130,6 +151,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically) { InputKeycap(it); Text(stringResource(R.string.action_back), color = t.colors.secondary, style = t.typography.labelSmall) } }
         }
         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().focusRequester(pageFocus).focusable().testTag("reader_page")
+            .onSizeChanged { viewportSize = it }
             .semantics {
                 // Tap zones (edges turn pages, center toggles chrome) and double-tap-to-zoom are unchanged;
                 // this only adds an accessibility action, exposed exclusively while chrome is hidden, so
@@ -161,9 +183,18 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                         val pan = event.calculatePan()
                         if (event.changes.count { it.pressed } > 1 || scale > 1f) {
                             transformed = true
-                            scale = (scale * zoom).coerceIn(1f, 5f)
-                            panX = (panX + pan.x).coerceIn(-size.width * scale, size.width * scale)
-                            panY = (panY + pan.y).coerceIn(-size.height * scale, size.height * scale)
+                            val bitmap = state.bitmap
+                            if (bitmap != null) {
+                                // Phase 2D.1: clamp against the actual fitted-content-vs-viewport geometry (not
+                                // the viewport's own size) using the NEW scale/translation together, so the
+                                // page can never be dragged past its own real edge into empty space.
+                                val newScale = (scale * zoom).coerceIn(1f, 5f)
+                                val content = fixedReaderFittedContentSize(bitmap.width.toFloat(), bitmap.height.toFloat(),
+                                    size.width.toFloat(), size.height.toFloat(), fitWidth)
+                                scale = newScale
+                                panX = fixedReaderClampPan(panX + pan.x, fixedReaderMaxPan(content.width, size.width.toFloat(), newScale))
+                                panY = fixedReaderClampPan(panY + pan.y, fixedReaderMaxPan(content.height, size.height.toFloat(), newScale))
+                            }
                             event.changes.forEach { it.consume() }
                         } else {
                             horizontal += pan.x; vertical += pan.y
@@ -180,7 +211,6 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
             }, contentAlignment = Alignment.Center) {
             state.bitmap?.let { bitmap ->
                 val image = remember(bitmap) { bitmap.asImageBitmap() }
-                val fitWidth = state.preferences.fit == FitMode.WIDTH
                 key(state.page) {
                     Box(if (fitWidth) Modifier.fillMaxSize().verticalScroll(rememberScrollState()) else Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Image(image, String.format(pageOfCountTemplate, state.page + 1, state.count),
@@ -188,6 +218,12 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                                 .graphicsLayer { scaleX = scale; scaleY = scale; translationX = panX; translationY = panY }, contentScale = ContentScale.Fit)
                     }
                 }
+                // Phase 2D.1 test seam: zero-size and semantics-cleared (invisible to users and TalkBack), but
+                // queryable by testTag so instrumented tests can assert the real production scale/pan state stays
+                // within bounds after a gesture, without a larger debug-only state-exposure API.
+                Text("", Modifier.size(0.dp).testTag("reader_transform_probe").clearAndSetSemantics {
+                    stateDescription = "$scale,$panX,$panY"
+                })
             }
             if (state.loading && state.error == null) CircularProgressIndicator()
             state.error?.let { message -> Surface(color = t.colors.surface, shape = t.shapes.small) {

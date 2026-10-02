@@ -1,5 +1,45 @@
 # Validation
 
+## Phase 2D.1 — fixed-reader transform/bounds correctness (2026-10-02)
+
+Status: **IMPLEMENTED, pending independent review and owner RP5 physical
+acceptance.** Full detail in
+[`PHASE_2D_IMPLEMENTATION_PLAN.md`](PHASE_2D_IMPLEMENTATION_PLAN.md#21-2d1-implementation-record-2026-10-02).
+
+- **OWNER LIVE REPRODUCTION** (before any code was written, on the physical
+  RP5): *"If I zoom out pulling to the gray side, it just overrides the
+  actual pdf page and I can continue moving until even the page is completely
+  gone, having to change page for it to even reset. This is the same on both
+  sides or up and down."*
+- **MEASURED root cause**: `FixedReaderScreen`'s pinch/pan gesture handler
+  clamped translation to the full viewport dimension times scale, unrelated
+  to how far the actual fitted, scaled page content extends past the
+  viewport — permitting the page to be dragged fully off-screen, exactly
+  matching the reproduction above. Fixed via a new pure, Compose-free,
+  Context-free helper (`core.reader.FixedReaderTransform.kt`) computing the
+  correct `max(0, (scaledContent - viewport) / 2)` bound per axis, plus two
+  adjacent fixes: switching Fit Page ↔ Fit Width now resets the transform
+  (previously could carry an invalid transform into the new geometry), and an
+  idle transform is now re-clamped after a viewport resize/rotation/fold even
+  without an active gesture.
+- **Test evidence**: 29/29 new JVM tests; 5/5 new instrumented tests on both
+  the physical RP5 and the API 35 emulator; 26/26 `NavigationSmokeTest`
+  regression on both devices (no input/accessibility/Back/RTL regression);
+  186/186 full JVM suite; final Gradle gate BUILD SUCCESSFUL (86/86 tasks);
+  full connected suite 98/98 clean on the emulator, and 98/98 clean on the
+  RP5 for this slice's own tests specifically (the RP5's unrelated failures —
+  in EPUB bookmark/search keyboard-focus tests this change never touches —
+  were isolated to a pre-existing, already-documented RP5 touch-mode/focus
+  quirk from this project's own prior validation history, not a regression).
+  `git diff --check`: PASS.
+- **Scope**: one modified production file (`FixedReaderScreen.kt`) plus three
+  new files (pure helper, JVM test, instrumented test). No PDF resolution,
+  CBZ sampling, EPUB, persistence, or input-remapping code touched;
+  dependencies and Room schema unchanged.
+- **Pending**: owner physically pinch-zooming the real RP5 by hand remains
+  the final acceptance step and has not yet been performed; independent
+  targeted QA of this slice has not yet run.
+
 ## Phase 2C evidence closure — no production render change justified (2026-10-01)
 
 Status: **Phase 2C investigation CLOSED. DECISION: no production PDF

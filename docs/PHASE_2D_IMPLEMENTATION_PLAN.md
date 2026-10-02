@@ -1,10 +1,12 @@
 # Phase 2D implementation plan: reader continuity, adaptive/accessibility/performance closure
 
-Status: **discovery/implementation-planning pass, ACTIVE** (2026-10-01), on
-`phase-2/reader-closure` (base `main` at `0d8a6a0`, the commit that merged
-Phase 2C's closed investigation via PR #16). No 2D production code exists yet.
-This document is the canonical Phase 2D planning location referenced by
-[`PHASE_2_PLAN.md`](PHASE_2_PLAN.md)'s §3 2D section.
+Status: **2D.1 (fixed-reader transform/bounds correctness) IMPLEMENTED,
+pending independent review and owner RP5 physical acceptance** (2026-10-02),
+on `phase-2/reader-closure` (base `main` at `0d8a6a0`, the commit that merged
+Phase 2C's closed investigation via PR #16). 2D.2-2D.4 remain planning-only;
+no other 2D production code exists yet. See §21 for the 2D.1 implementation
+record. This document is the canonical Phase 2D planning location referenced
+by [`PHASE_2_PLAN.md`](PHASE_2_PLAN.md)'s §3 2D section.
 
 This pass read, in order: `AGENTS.md`, `docs/PHASE_2_PLAN.md`,
 `docs/ROADMAP.md`, `docs/ARCHITECTURE.md`, `docs/features/READER.md`,
@@ -1000,3 +1002,143 @@ warranted at that time, but not from this discovery pass's findings alone.
 | EPUB multi-column reflow | No — left open, no current need | — |
 | Any PDF render-resolution change | No — Phase 2C closed this | — |
 | CBR | No — future Comics/Manga priority, not 2D | — |
+
+## 21. 2D.1 implementation record (2026-10-02)
+
+**IMPLEMENTED, pending independent review and owner RP5 physical acceptance.**
+Scope held exactly to §9/§12's 2D.1 slice (fixed-reader transform/bounds
+correctness) — no PDF resolution, CBZ sampling, EPUB, persistence, or input-
+remapping changes.
+
+### Live reproduction (gate cleared before implementation)
+
+Per §2.8's honesty note, the owner personally reproduced the defect live on
+the physical RP5 before any code was written: *"If I zoom out pulling to the
+gray side, it just overrides the actual pdf page and I can continue moving
+until even the page is completely gone, having to change page for it to even
+reset. This is the same on both sides or up and down."* This confirmed §2's
+code-inspection diagnosis was not merely theoretical.
+
+### Root cause and fix
+
+Confirmed exactly as §2.1/§2.2 predicted: `FixedReaderScreen`'s pinch/pan
+gesture handler clamped `panX`/`panY` to the viewport's own width/height
+multiplied by `scale` — the full viewport dimension times scale, unrelated to
+how far the actual fitted, scaled content extends past the viewport. This
+permitted dragging a page's content completely off-screen, matching the
+reproduction above exactly.
+
+Fix: a new pure, Compose-free, Context-free file,
+`app/src/main/java/com/d4guilar/shelfos/core/reader/FixedReaderTransform.kt`,
+with three functions:
+
+- `fixedReaderFittedContentSize(bitmapWidth, bitmapHeight, viewportWidth,
+  viewportHeight, fitWidth)` — the unscaled (1x) fitted content size, mirroring
+  `ContentScale.Fit`'s letterbox math for Fit Page, and
+  `fillMaxWidth().aspectRatio(...)`'s width-bound sizing for Fit Width (whose
+  height may exceed the viewport, already handled by the screen's own
+  `verticalScroll`, independent of this pan model — confirmed, not
+  redesigned).
+- `fixedReaderMaxPan(contentSize, viewportSize, scale)` — the correct geometric
+  model from §2.5: zero if the scaled content already fits, otherwise half the
+  excess of the scaled content over the viewport.
+- `fixedReaderClampPan(value, max)` — defensive coercion.
+
+All three are defensive against non-finite/non-positive/zero inputs (return a
+safe `0` bound rather than propagating `NaN`/`Infinity`), and deliberately
+take no reading-direction (`rtl`) input — pan bounds are purely geometric.
+
+`FixedReaderScreen.kt` changes (43 insertions / 7 deletions, one file):
+
+- The pinch/pan gesture block now computes the fitted content size from
+  `state.bitmap` and the live gesture `size`, then clamps `panX`/`panY` using
+  the **new** `scale` and **new** candidate translation together in the same
+  update (not against stale pre-zoom geometry).
+- **Fit-mode-change reset (§2's adjacent LOW finding)**: `scale`/`panX`/`panY`'s
+  `remember` keys now include `fitWidth` alongside `state.page`
+  (`remember(state.page, fitWidth) { ... }`) — switching Fit Page ↔ Fit Width
+  now resets the transform exactly like a page change already did. Chosen per
+  §6's "smallest predictable behavior" guidance; no evidence found justifying
+  "preserve + re-clamp" complexity instead.
+- **Viewport-resize re-clamp (§4)**: a new `viewportSize` state, updated via
+  `Modifier.onSizeChanged` on the `reader_page` Box, drives a
+  `LaunchedEffect(viewportSize, scale, fitWidth, state.bitmap)` that re-clamps
+  `panX`/`panY` against the live viewport whenever any of these change —
+  guaranteeing an idle (non-gesturing) transform cannot remain invalid after a
+  resize/rotation/fold.
+
+### Test coverage
+
+- **JVM** (`app/src/test/java/com/d4guilar/shelfos/core/reader/FixedReaderTransformTest.kt`):
+  **29/29 passed.** Covers every acceptance case in §13 (content smaller/
+  larger than viewport on one/both axes, in-range/out-of-range translation,
+  zoom increase/decrease re-clamping, default-zoom recentering, content/
+  viewport size changes, invalid/zero/negative/non-finite dimensions, extreme
+  finite values — no NaN/Infinity output).
+- **Instrumented** (new `app/src/androidTest/java/com/d4guilar/shelfos/FixedReaderTransformBoundsTest.kt`,
+  5 tests: PDF pinch-zoom-drag stays within bounds, CBZ pinch-zoom-drag stays
+  within bounds + navigation still works, default zoom reports zero
+  transform, fit-mode change resets transform, page change resets transform):
+  **5/5 passed on both the physical RP5 and the API 35 emulator**, in two
+  independent full-suite runs.
+- **Regression** (`NavigationSmokeTest`, pre-existing, unchanged, 26 tests
+  covering Back/Escape/gamepad-B chrome semantics, keyboard/controller hint
+  derivation, RTL manga key mapping, focus order, accessibility actions):
+  **26/26 passed on both RP5 and emulator**, both runs — no input,
+  accessibility, Back-semantics, or RTL regression from this change.
+- **Full JVM suite**: **186/186 passed, 0 failed, 0 skipped**
+  (`:app:testDebugUnitTest --rerun-tasks --offline`).
+- **Final Gradle gate** (`compileDebugKotlin compileDebugAndroidTestKotlin
+  assembleDebug testDebugUnitTest lintDebug assembleDebugAndroidTest
+  --rerun-tasks --offline`): **BUILD SUCCESSFUL, 86/86 tasks.**
+- **Full connected suite, both devices**: run twice. First run hit a
+  genuinely degraded emulator (composer/allocator processes consuming
+  69%/49% CPU, load average 7.64 from earlier concurrent build activity),
+  confirmed by a clean 7-second pass of the same test immediately after an
+  emulator restart. On a fresh emulator: **98/98 passed, 0 failed** — every
+  test, including this slice's own new coverage. On the RP5 in that same
+  run: 98 tests, 16 failures, every one sharing the identical
+  `IllegalStateException: No compose hierarchies found... Activity did not
+  launch` signature (a device-state symptom — confirmed the test APK had
+  been uninstalled by Gradle between runs and the RP5 screen state was
+  stale), **not a single failure in this slice's own new tests or in
+  `NavigationSmokeTest`, both of which passed 0 failures on RP5 in the same
+  run.** Reinstalling and re-running each originally-failed class
+  individually on RP5 resolved all but two: `EpubBookmarkTest.bookmarksDialogIsReachableAndOperableThroughKeyboardFocus`
+  and two `EpubSearchTest` keyboard-focus cases — both touch-mode/keyboard-
+  focus RP5 quirks already documented as device-specific in this project's
+  own prior validation history (Phase 2B.2.1/2B.2.2 sections of
+  `VALIDATION.md`), on code this slice never touches (confirmed via
+  `git diff --stat`: only `FixedReaderScreen.kt` plus the three new files
+  changed — no EPUB, bookmark, or search code).
+- `git diff --check`: **PASS.**
+
+### RP5 physical acceptance — still pending
+
+This implementation pass's own testing on RP5 (above) drove real multi-touch
+pointer events through the actual production gesture code via the
+instrumented test suite, which is stronger automated evidence than a manual
+adb-synthesized gesture would have been. **It is not a substitute for the
+owner physically pinch-zooming the real device by hand**, which remains the
+final acceptance step per §9's own plan and has not yet been performed.
+Recommended walkthrough: zoom in, pan to an edge, zoom back out — confirm the
+page no longer floats beyond its edge and excessive gray margin cannot be
+exposed; confirm Fit Page remains centered at default zoom; confirm Fit Width
+remains usable; confirm double-tap/reset still behaves correctly; repeat for
+both a PDF and a CBZ.
+
+### Scope discipline confirmed
+
+`git diff --stat` against the pre-implementation commit shows exactly one
+modified production file (`FixedReaderScreen.kt`) and three new files (the
+pure helper, the JVM test, the instrumented test) — no `PdfPages`,
+`ArchivePages`, PDF resolution, CBZ sampling, EPUB, persistence, or input-
+remapping code touched. Dependencies and Room schema: unchanged.
+
+### Remaining 2D work (unchanged by this slice)
+
+2D.2 (recreation/resize continuity closure), 2D.3 (input/accessibility/focus
+closure), and 2D.4 (performance/resilience + final physical acceptance)
+remain exactly as scoped in §12 — this slice closes only the fixed-reader
+transform/bounds defect and its two adjacent findings (fit-mode-change reset,
+viewport-resize re-clamp).

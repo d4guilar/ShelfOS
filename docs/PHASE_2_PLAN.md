@@ -2486,15 +2486,19 @@ expanded on, not a duplicate plan.
   actually needs.
 - AI upscaling is explicitly not part of Phase 2.
 
-### 2D — Reader continuity, adaptive/accessibility/performance closure (discovery/implementation-planning pass ACTIVE, 2026-10-01)
+### 2D — Reader continuity, adaptive/accessibility/performance closure (2D.1 implemented, pending review; 2D.2-2D.4 planning, 2026-10-02)
 
-**2D's discovery/implementation-planning pass is ACTIVE** on
-`phase-2/reader-closure` (base `main` at `0d8a6a0`); see
-[`PHASE_2D_IMPLEMENTATION_PLAN.md`](PHASE_2D_IMPLEMENTATION_PLAN.md) for the
-full architecture audit, the reproduced fixed-reader pan/zoom-bounds root
-cause, continuity/input/accessibility/performance findings, severity
-classification and the recommended 2D.1–2D.4 slice sequence. No 2D
-production code exists yet.
+**2D.1 (fixed-reader transform/bounds correctness) is IMPLEMENTED, pending
+independent review and owner RP5 physical acceptance**, on
+`phase-2/reader-closure` (base `main` at `0d8a6a0`). The pan/zoom-bounds
+defect below was live-reproduced by the owner on the physical RP5, then
+fixed via a pure, Compose-free clamp helper plus two adjacent corrections
+(fit-mode-change transform reset, viewport-resize re-clamp) — see
+[`PHASE_2D_IMPLEMENTATION_PLAN.md`](PHASE_2D_IMPLEMENTATION_PLAN.md) §21 for
+the full implementation record and test evidence. **2D.2-2D.4 remain
+planning-only**; see the same document for the full architecture audit,
+continuity/input/accessibility/performance findings, severity classification
+and the remaining slice sequence.
 
 - Configuration/process restoration hardening beyond what 2A's chrome-state
   fix touches (rotation, fold/unfold, multi-window resize).
@@ -2514,15 +2518,15 @@ production code exists yet.
   descriptions, focus order review across the reader screens.
 - Performance profiling and malformed/large-document resilience passes.
 - Final physical-device acceptance gate for the whole Phase 2 scope.
-- **New in this pass:** a reproducible fixed-page (`FixedReaderScreen`,
-  shared PDF/CBZ) pan/zoom-bounds defect — pinch-zoom/pan can translate the
+- **2D.1 implemented 2026-10-02:** the fixed-page (`FixedReaderScreen`,
+  shared PDF/CBZ) pan/zoom-bounds defect — pinch-zoom/pan could translate the
   page beyond its valid scaled bounds, exposing excess letterbox/margin
-  space, because the gesture code clamps translation to the viewport's own
+  space, because the gesture code clamped translation to the viewport's own
   size times scale rather than to the actual scaled-content-vs-viewport
-  relationship. Root-caused by code/math inspection (not yet by a live
-  gesture session); classified MEDIUM; recommended as 2D.1. See
-  `PHASE_2D_IMPLEMENTATION_PLAN.md` §2 for the full analysis and §13 for the
-  future acceptance-test cases.
+  relationship — was live-reproduced by the owner on the physical RP5, then
+  fixed. Classified MEDIUM. See `PHASE_2D_IMPLEMENTATION_PLAN.md` §21 for the
+  implementation record and §2/§13 for the original analysis and acceptance
+  cases.
 
 ## 4. Out of scope for Phase 2 (all increments)
 
