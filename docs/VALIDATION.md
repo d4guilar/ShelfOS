@@ -1,5 +1,210 @@
 # Validation
 
+## Validation policy (standing, 2026-10-02)
+
+Validation depth is proportional to change scope. Narrow fixes use focused
+tests plus relevant regression coverage (e.g. `NavigationSmokeTest`).
+Expensive full connected/gate runs are reserved for broad cross-cutting
+changes and final integration boundaries, rather than repeated after every
+small remediation.
+
+## Phase 2D.1 close-out (2026-10-02)
+
+Status: **Phase 2D.1 COMPLETE** at HEAD `e59eab8`. This is a lean close-out
+pass, not a re-investigation: the two prior remediation rounds
+(`06bcc14`, `d0ea51b`) already found and fixed the real issues, with strong
+targeted evidence (43/43 focused JVM including the overflow-helper cases,
+15/15 focused instrumentation on both the emulator and the physical RP5,
+owner physical RP5 acceptance, `git diff --check` PASS, clean tree).
+Per the standing proportional-validation policy above, this close-out ran
+one additional regression check rather than a full connected suite or
+Gradle gate re-run:
+
+- `git status --short`: clean. `git log -1 --oneline`: `e59eab8`.
+  `git diff --check`: PASS.
+- Full JVM suite (`:app:testDebugUnitTest --rerun-tasks --offline`):
+  **200/200 passed, 0 failed, 0 skipped**, including `FixedReaderTransformTest`
+  (43/43, overflow-helper cases present).
+- `NavigationSmokeTest` on the canonical API 35 emulator (full class,
+  `connectedDebugAndroidTest` filtered to this class): **26/26 passed, 0
+  failed, 0 skipped**, no retries needed — fixed-reader touch, page
+  navigation, Back, keyboard/controller modality, PDF, CBZ, and RTL coverage
+  within the class all passed.
+- No full `connectedDebugAndroidTest` suite or combined Gradle gate was
+  re-run for this close-out, consistent with the proportional-validation
+  policy for a narrow, already-validated slice. No production code was
+  changed in this pass — docs only.
+
+Phase 2D.1 is marked **COMPLETE**. Phase 2D.2 (recreation/resize continuity
+closure) remains next and unstarted.
+
+## Phase 2D.1 — fixed-reader transform/bounds correctness (2026-10-02)
+
+Status: **First pass IMPLEMENTED, but independent QA returned BLOCKED (Fit
+Width tall-content blocker); see the 2026-10-02 remediation entry below for
+the fix. The owner RP5 acceptance quoted here did not happen to exercise a
+tall enough page to expose that gap.** Full detail in
+[`PHASE_2D_IMPLEMENTATION_PLAN.md`](PHASE_2D_IMPLEMENTATION_PLAN.md#21-2d1-implementation-record-2026-10-02).
+
+- **OWNER LIVE REPRODUCTION** (before any code was written, on the physical
+  RP5): *"If I zoom out pulling to the gray side, it just overrides the
+  actual pdf page and I can continue moving until even the page is completely
+  gone, having to change page for it to even reset. This is the same on both
+  sides or up and down."*
+- **MEASURED root cause**: `FixedReaderScreen`'s pinch/pan gesture handler
+  clamped translation to the full viewport dimension times scale, unrelated
+  to how far the actual fitted, scaled page content extends past the
+  viewport — permitting the page to be dragged fully off-screen, exactly
+  matching the reproduction above. Fixed via a new pure, Compose-free,
+  Context-free helper (`core.reader.FixedReaderTransform.kt`) computing the
+  correct `max(0, (scaledContent - viewport) / 2)` bound per axis, plus two
+  adjacent fixes: switching Fit Page ↔ Fit Width now resets the transform
+  (previously could carry an invalid transform into the new geometry), and an
+  idle transform is now re-clamped after a viewport resize/rotation/fold even
+  without an active gesture.
+  **Correction (2026-10-02): this pass's own claim that Fit Width's
+  `verticalScroll` was "independent of this pan model" was false** — see the
+  remediation entry below. The formula above was only ever correct for Fit
+  Page; Fit Width's tall-content case needed a different Y-axis model.
+- **Test evidence**: 29/29 new JVM tests; 5/5 new instrumented tests on both
+  the physical RP5 and the API 35 emulator; 26/26 `NavigationSmokeTest`
+  regression on both devices (no input/accessibility/Back/RTL regression);
+  186/186 full JVM suite; final Gradle gate BUILD SUCCESSFUL (86/86 tasks);
+  full connected suite 98/98 clean on the emulator, and 98/98 clean on the
+  RP5 for this slice's own tests specifically (the RP5's unrelated failures —
+  in EPUB bookmark/search keyboard-focus tests this change never touches —
+  were isolated to a pre-existing, already-documented RP5 touch-mode/focus
+  quirk from this project's own prior validation history, not a regression).
+  `git diff --check`: PASS.
+- **Scope**: one modified production file (`FixedReaderScreen.kt`) plus three
+  new files (pure helper, JVM test, instrumented test). No PDF resolution,
+  CBZ sampling, EPUB, persistence, or input-remapping code touched;
+  dependencies and Room schema unchanged.
+- **OWNER PHYSICAL ACCEPTANCE: PASS (for the gestures actually exercised).**
+  The owner installed the fix build on the real RP5 and performed the
+  pinch-zoom-in/pan-to-edge/zoom-back-out sequence by hand: *"pass! Zoom in
+  and zoom out dont go out of bounds or slides of screen, fit width too. All
+  good."* This did not happen to include a tall-enough page in a landscape
+  viewport to trigger the gap the 2026-10-02 remediation below closes —
+  independent targeted QA subsequently found and reproduced that gap.
+
+## Phase 2D.1 remediation — Fit Width tall-content blocker (2026-10-02)
+
+Status: **IMPLEMENTED, automated evidence on both devices PASSED, owner RP5
+physical acceptance PASSED.** Full detail in
+[`PHASE_2D_IMPLEMENTATION_PLAN.md`](PHASE_2D_IMPLEMENTATION_PLAN.md#211-2d1-remediation--fit-width-tall-content-blocker-2026-10-02).
+
+- **Independent QA verdict (authoritative)**: BLOCKED. Fit Page was correct;
+  Fit Width with content taller than the viewport could still be dragged out
+  of bounds into gray — landscape viewport, tall page, Fit Width, zoom to
+  ~2x, scroll to top, drag downward repeatedly (and the symmetric case at the
+  bottom dragging up).
+- **MEASURED root cause**: the shared pan-bound formula has no fit-mode
+  concept, so it was also fed Fit Width's fitted content *height* — which
+  routinely exceeds the viewport by design (that is what `verticalScroll` is
+  for) — the same way it is fed Fit Page's always-viewport-sized content.
+  This produced a nonzero Y bound even at `scale == 1`, and let
+  `graphicsLayer.translationY` and `verticalScroll` both move the same
+  one-finger drag at once (double movement), a pre-existing defect QA also
+  flagged.
+- **Chosen model: verticalScroll-only (Option B).** Fit Width's vertical
+  movement now belongs entirely to `verticalScroll`; the pan transform's Y
+  axis is forced to `0` in that mode via a new pure function,
+  `fixedReaderMaxPanY(contentSize, viewportHeight, scale, fitWidth)`, used
+  both by the gesture handler and the viewport-resize re-clamp. The gesture
+  handler only treats a Fit Width gesture as a zoom/pan transform for a real
+  multi-finger pinch or a horizontal-dominant one-finger drag while already
+  zoomed; a vertical-dominant one-finger drag is left unconsumed so
+  `verticalScroll`'s own detector moves it, eliminating the double-movement
+  defect at its source rather than only bounding it. Fit Page is unaffected
+  (no scroll container, same full pinch-zoom + clamped pan X/Y as before).
+  `pointerInput(state.page, rtl)` → `pointerInput(state.page, rtl, fitWidth)`
+  so the gesture coroutine restarts when fit mode changes mid-session.
+- **Test evidence**: JVM 35/35 (29 existing + 6 new: `fixedReaderMaxPanY` at
+  scale 1/2/5 for tall content, the H ≤ V case, a 5→2→1 zoom-down sequence,
+  Fit Page parity, horizontal-pan-unaffected; two previously weak tests —
+  `case4`'s `maxX != maxY` tautology and `case10`'s identical-input PDF/CBZ
+  tautology — strengthened to assert exact values / genuinely different
+  shapes). Instrumented: new tall-page PDF fixture
+  (`OriginalFixtures.tallPdf`, 1:6 aspect) in a rotated landscape viewport;
+  3 new tests (zoomed drag beyond TOP edge stays bounded, beyond BOTTOM edge
+  stays bounded, scale-1 vertical movement comes from scroll not pan) plus
+  the 5 existing tests, **8/8 passed on both the physical RP5 and the API 35
+  emulator.** `NavigationSmokeTest` regression: 26/26 on both devices. Full
+  JVM suite: 192/192 passed, 0 failed, 0 skipped. `git diff --check`: PASS.
+- **Scope**: the same four files as the original 2D.1 slice plus one fixture
+  addition (`OriginalFixtures.tallPdf`) — no PDF rasterization, CBZ decoding,
+  EPUB, persistence, Room schema, or dependency changes.
+- **RP5 OWNER PHYSICAL ACCEPTANCE FOR THIS REMEDIATION: PASS.** The owner
+  installed the committed remediation build (`06bcc14`) on the real RP5 and
+  performed the pinch-zoom/drag-to-top/drag-to-bottom sequence on a tall Fit
+  Width page by hand, plus a Fit Page sanity check: *"ALL GOOD!"*
+
+## Phase 2D.1 remediation, round two — zoomed Fit Width top/bottom reachability (2026-10-02)
+
+Status: **IMPLEMENTED, automated evidence on both devices PASSED, RP5 owner
+physical acceptance for THIS round PASSED.** Full detail in
+[`PHASE_2D_IMPLEMENTATION_PLAN.md`](PHASE_2D_IMPLEMENTATION_PLAN.md#212-2d1-remediation-round-two--zoomed-fit-width-topbottom-reachability-2026-10-02).
+
+- **Independent QA finding (authoritative, after `06bcc14`)**: the `06bcc14`
+  fix correctly removed gray-escape and double-vertical-movement, but Fit
+  Width zoomed in on a tall page still made the outer top/bottom fraction of
+  the page permanently unreachable by scrolling (~25% at each end at 2x,
+  ~40% at 5x).
+- **MEASURED root cause**: `graphicsLayer` scales the `Image` visually around
+  its own layout center without changing its *layout* size, so
+  `verticalScroll` only ever measured the unscaled fitted height `H` — never
+  the visually-scaled `scale*H` actually painted — leaving its scroll range
+  at `H - viewport` instead of the correct `scale*H - viewport`.
+- **Chosen fix: scroll-range compensation.** A new pure function,
+  `fixedReaderVerticalScaleOverflow(contentHeight, scale)` (`max(0,
+  (scale-1)*contentHeight/2)`), and a `Column` with blank `Spacer`s of that
+  height above/below the `Image` — *outside* its `graphicsLayer`, so the
+  reserved space is never itself scaled — make the scrollable column's
+  measured height exactly `H + 2*overflow == scale*H`, matching the visual
+  extent and giving `verticalScroll` the correct range for free.
+  `graphicsLayer.translationY` stays forced to `0` in Fit Width exactly as
+  `06bcc14` established; no second vertical-movement mechanism was added.
+- **Test evidence, including a self-correction during this pass**: JVM
+  43/43 passed (35 existing + 8 new for the overflow helper). Instrumented:
+  **this pass's first attempt at the new reachability tests failed on both
+  devices** — not because the fix was wrong, but because (1) the fixture's
+  extreme 1:6 aspect ratio in a wide landscape viewport meant a single
+  screenful at 2x/5x zoom showed too little of the page for the original
+  marker positions (`y=80`/`y=2340` of 2400px) to land inside, and (2) a
+  fixed swipe-repeat count calibrated for the old flat scroll range fell
+  short of the new, correctly-larger zoomed range at 5x on both devices.
+  Both were fixed (markers moved closer to the true edges for the 2x cases;
+  the 5x stress case proved instead via a direct, device-independent check
+  that the real `verticalScroll.maxValue` equals the expected `scale*H -
+  viewport`; swipe helper changed to swipe-until-actually-reached rather
+  than a fixed count). After these fixes: **15/15 instrumented tests passed
+  on both the physical RP5 and the API 35 emulator**, confirmed via direct
+  `adb shell am instrument -e class
+  com.d4guilar.shelfos.FixedReaderTransformBoundsTest` runs on each device.
+  `git diff --check`: PASS.
+- **Validation-depth note (owner-directed, this iteration only)**: at the
+  owner's explicit mid-task instruction, this iteration's validation was
+  narrowed to the focused JVM test class and focused instrumentation (direct
+  `adb shell am instrument` on both devices, not the Gradle
+  `connectedAndroidTest` task) plus `git diff --check`/`git diff --stat`. The
+  full JVM suite, `NavigationSmokeTest`, the full connected suite, and the
+  final combined Gradle gate were **not** re-run for this specific iteration
+  — the owner asked that this tradeoff (narrower validation on narrow
+  iterative fixes, to avoid repeated ~40-minute waits) be surfaced here for a
+  standing policy decision rather than re-litigated each time.
+- **Scope**: the same four files as the first 2D.1 remediation plus the
+  `OriginalFixtures.tallPdf` marker-position adjustment (same fixture, same
+  page dimensions, markers moved closer to the true page edges) — no PDF
+  rasterization, CBZ decoding, EPUB, persistence, Room schema, or dependency
+  changes.
+- **RP5 OWNER PHYSICAL ACCEPTANCE FOR THIS ROUND: PASS.** The owner installed
+  the committed fix (`d0ea51b`) on the physical RP5 and confirmed live: a
+  tall Fit Width page zoomed to ~2x showed true top and bottom content after
+  scrolling fully in each direction, no gray escape dragging past either
+  edge, horizontal pan still worked, and Fit Page remained unaffected —
+  reported as *"all good."*
+
 ## Phase 2C evidence closure — no production render change justified (2026-10-01)
 
 Status: **Phase 2C investigation CLOSED. DECISION: no production PDF

@@ -25,6 +25,34 @@ object OriginalFixtures {
         } finally { pdf.close() }
         return item(file, "test-pdf", PublicationFormat.PDF)
     }
+    /** A deliberately tall page (1:6 aspect) for Phase 2D.1's Fit Width remediation: in a landscape viewport,
+     * Fit Width's fitted content height (`viewportWidth * bitmapHeight / bitmapWidth`) comfortably exceeds the
+     * viewport height even without zooming, reproducing the "tall content" geometry the original 2D.1 pass
+     * never exercised.
+     *
+     * Phase 2D.1 remediation round two (zoomed top/bottom reachability): the top/bottom marker baselines are
+     * placed at `y=30`/`y=2380` (close to, but inside, the page's own edges) rather than the original pass's
+     * `y=80`/`y=2340` -- at 2x zoom on this extreme 1:6-aspect page in a wide landscape viewport, a single
+     * screenful only shows roughly the nearest 3-5% of the page, so a marker further from the true edge than
+     * this would sit just outside the first/last screenful even though the true edge itself is fully reachable
+     * (see [FixedReaderTransformBoundsTest] for why the 5x stress case proves reachability via the scroll-range
+     * formula directly instead of this marker, whose remaining field-of-view at 5x is too thin to contain any
+     * fixed marker position reliably across two different devices' exact aspect ratios). */
+    fun tallPdf(context: Context): LibraryItem {
+        val file = File(context.filesDir, "publications/test-original-tall.pdf").also { it.parentFile!!.mkdirs() }
+        val pdf = PdfDocument()
+        try {
+            repeat(2) { index ->
+                val page = pdf.startPage(PdfDocument.PageInfo.Builder(400, 2400, index + 1).create())
+                page.canvas.drawColor(Color.WHITE)
+                page.canvas.drawText("ShelfOS tall test page top ${index + 1}", 20f, 30f, Paint().apply { color = Color.BLACK; textSize = 18f })
+                page.canvas.drawText("ShelfOS tall test page bottom ${index + 1}", 20f, 2380f, Paint().apply { color = Color.BLACK; textSize = 18f })
+                pdf.finishPage(page)
+            }
+            file.outputStream().use(pdf::writeTo)
+        } finally { pdf.close() }
+        return item(file, "test-pdf-tall", PublicationFormat.PDF)
+    }
     fun cbz(context: Context): LibraryItem {
         val file = File(context.filesDir, "publications/test-original.cbz").also { it.parentFile!!.mkdirs() }
         ZipOutputStream(file.outputStream()).use { zip ->
