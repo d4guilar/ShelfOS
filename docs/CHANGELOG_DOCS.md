@@ -1,5 +1,16 @@
 # Documentation Changelog
 
+## Post-Phase-2 EPUB XHTML regression recorded (2026-10-02)
+
+- Added `docs/VALIDATION.md`'s "POST-PHASE-2 EPUB XHTML REGRESSION" entry for a maintenance fix on
+  `fix/epub-xhtml-head-injection`. A real EPUB (Project Gutenberg's *Frankenstein*) rendered every chapter as
+  an XML parse error, also reproduced independently with two minimal synthetic EPUBs. The rendition sanitizer
+  round-tripped well-formed XHTML through an HTML parser/serializer. XML content documents are now parsed and
+  serialized as XML, selected by declared media type.
+- The Phase 2 acceptance record is unchanged. It passed against its then-current fixtures, none of which
+  contained a void or self-closed XHTML element. The defect was not known during the final gate.
+- No other document changed: no product, architecture or roadmap behavior changed.
+
 ## Phase 2D.4 / Phase 2 documented as complete (2026-10-02)
 
 - Reconciled documentation with the completed, final Phase 2 acceptance pass on
