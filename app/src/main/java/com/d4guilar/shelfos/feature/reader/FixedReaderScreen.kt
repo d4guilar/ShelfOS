@@ -95,6 +95,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
     fun nextHintDescription(hint: String) = String.format(nextLabel, hint)
     val pageOfCountTemplate = stringResource(R.string.content_desc_page_of_count)
     val openingLabel = stringResource(R.string.reader_opening)
+    val pageSliderDescription = stringResource(R.string.content_desc_page_slider)
 
     fun hideControls() { controls = false; pageFocus.requestFocus() }
     fun toggleControls(moveFocus: Boolean) {
@@ -309,6 +310,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                         enabled = state.page + 1 < state.count) { Text(stringResource(R.string.action_next)); nextHint?.let { InputKeycap(it, Modifier.padding(start = 4.dp)) } }
                 }
                 if (state.count > 1) Slider(sliderTarget ?: state.page.toFloat(), { sliderTarget = it },
+                    Modifier.semantics { contentDescription = pageSliderDescription },
                     valueRange = 0f..(state.count - 1).toFloat(),
                     onValueChangeFinished = { sliderTarget?.let { vm.showPage(it.roundToInt()) }; sliderTarget = null })
             }

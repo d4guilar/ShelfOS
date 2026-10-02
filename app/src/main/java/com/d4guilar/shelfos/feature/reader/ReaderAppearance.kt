@@ -12,6 +12,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.core.designsystem.ShelfChoiceChip
@@ -73,12 +75,18 @@ fun ReaderAppearance(preferences: ReaderPreferences, capabilities: ReaderCapabil
                 }
                 onImportFont?.let { TextButton(it) { Text(stringResource(R.string.appearance_import_font)) } }
                 fontImportError?.let { Text(it.resolve(), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                Text(stringResource(R.string.appearance_text_size, formatPercent(((draft.fontSize ?: 1.0) * 100).toInt())))
-                Slider((draft.fontSize ?: 1.0).toFloat(), { draft = draft.copy(fontSize = it.toDouble()) }, valueRange = .7f..2.5f)
-                Text(stringResource(R.string.appearance_line_spacing))
-                Slider((draft.lineHeight ?: 1.5).toFloat(), { draft = draft.copy(lineHeight = it.toDouble()) }, valueRange = 1f..2.5f)
-                Text(stringResource(R.string.appearance_page_margins))
-                Slider((draft.margins ?: 1.0).toFloat(), { draft = draft.copy(margins = it.toDouble()) }, valueRange = 0f..3f)
+                val textSizeDescription = stringResource(R.string.appearance_text_size, formatPercent(((draft.fontSize ?: 1.0) * 100).toInt()))
+                Text(textSizeDescription)
+                Slider((draft.fontSize ?: 1.0).toFloat(), { draft = draft.copy(fontSize = it.toDouble()) },
+                    Modifier.semantics { contentDescription = textSizeDescription }, valueRange = .7f..2.5f)
+                val lineSpacingDescription = stringResource(R.string.appearance_line_spacing)
+                Text(lineSpacingDescription)
+                Slider((draft.lineHeight ?: 1.5).toFloat(), { draft = draft.copy(lineHeight = it.toDouble()) },
+                    Modifier.semantics { contentDescription = lineSpacingDescription }, valueRange = 1f..2.5f)
+                val pageMarginsDescription = stringResource(R.string.appearance_page_margins)
+                Text(pageMarginsDescription)
+                Slider((draft.margins ?: 1.0).toFloat(), { draft = draft.copy(margins = it.toDouble()) },
+                    Modifier.semantics { contentDescription = pageMarginsDescription }, valueRange = 0f..3f)
                 Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(draft.justified ?: false, { draft = draft.copy(justified = it) }); Text(stringResource(R.string.appearance_justified_text)) }
                 Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(draft.scroll ?: false, { draft = draft.copy(scroll = it) }); Text(stringResource(R.string.appearance_continuous_scrolling)) }
                 Text(stringResource(R.string.appearance_page_colors))

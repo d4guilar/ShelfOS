@@ -438,6 +438,33 @@ class NavigationSmokeTest {
         compose.onNodeWithText("Cancel").performClick()
     }
 
+    /**
+     * Phase 2D.3 accessibility-audit fix: Compose's Slider carries no accessible name by itself — a preceding
+     * sibling Text label is not announced as part of it. The fixed reader's page-jump slider is a meaningful,
+     * otherwise-unnamed action (it jumps to an arbitrary page), so TalkBack must announce it, not just its
+     * numeric position/range.
+     */
+    @Test fun fixedReaderPageSliderIsAccessiblyLabeled() {
+        awaitLibrary()
+        read("test-pdf")
+        awaitPage("1 / 3")
+        compose.onNode(hasContentDescription("Jump to page")).assertExists()
+    }
+
+    /** Same unlabeled-Slider gap, for the EPUB-only Appearance typography controls (text size/line spacing/page
+     *  margins are real, meaningful sliders, not decorative). */
+    @Test fun epubAppearanceSlidersAreAccessiblyLabeled() {
+        awaitLibrary()
+        read("test-epub")
+        awaitTag("epub_reader", 30_000)
+        compose.waitUntil(30_000) { compose.onAllNodes(hasText("Appearance") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Appearance").performClick()
+        compose.onNode(hasContentDescription("Text size", substring = true)).assertExists()
+        compose.onNode(hasContentDescription("Line spacing")).assertExists()
+        compose.onNode(hasContentDescription("Page margins")).assertExists()
+        compose.onNodeWithText("Cancel").performClick()
+    }
+
     @Test fun libraryScrollRestoresAfterReaderAndRapidTitleSwitchingKeepsTheRightSession() = runBlocking<Unit> {
         val base = OriginalFixtures.pdf(instrumentation.targetContext)
         val extraIds = (0 until 30).map { "scroll-$it" }

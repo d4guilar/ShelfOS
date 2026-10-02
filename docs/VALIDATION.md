@@ -1,5 +1,216 @@
 # Validation
 
+## Phase 2D.3 — input/accessibility/focus closure (2026-10-02)
+
+Evidence-first closure slice (`docs/PHASE_2D_IMPLEMENTATION_PLAN.md`'s own
+§7/§8/§10 RP5-physical, focus-order/TalkBack and localization-layout gaps).
+Read `AGENTS.md`, `PHASE_2D_IMPLEMENTATION_PLAN.md` (2D.1/2D.2's settled
+records), `ARCHITECTURE.md`, `features/READER.md`, `features/COMICS_MANGA.md`,
+`design/READER_UX.md`, `design/INPUT_SYSTEM.md`, `VALIDATION.md`, and
+re-inspected `InputMapper`/`ShelfCommand`/`InputModality`/`InputHints`,
+`FixedReaderScreen.kt`, `EpubActivity.kt`, `ReaderAppearance.kt`,
+`NavigationSmokeTest.kt`, `InputModalityClassificationTest.kt` directly
+(not trusting docs alone). 2D.1's transform/bounds geometry and 2D.2's
+recreation/resize conclusions were not reopened; no evidence surfaced
+questioning either.
+
+### Input ownership map (Part A)
+
+Confirmed by reading `core.input` directly: `ShelfCommand`
+(`NEXT_PAGE`/`PREVIOUS_PAGE`/`CONFIRM`/`BACK`/`OPEN_MENU`/`SEARCH`/
+`TOGGLE_BOOKMARK`), `InputMapper.command`/`readerCommand` resolve identically
+for both readers from one shared keymap; `InputModality`
+(`TOUCH`/`KEYBOARD`/`CONTROLLER`) and `InputHints` are also fully shared,
+validated against the real `InputMapper` bindings rather than hardcoded.
+Chrome/Back (`backPress()`) is duplicated per-reader (pre-existing,
+previously-deferred refactor target, unchanged) but behaviorally identical.
+Touch remains screen-specific `pointerInput`, not routed through
+`ShelfCommand` (pre-existing, previously-deferred gap, unchanged). No new
+divergence found between EPUB and fixed-page command resolution.
+
+### Keyboard/controller walkthrough (Parts B, C)
+
+`NavigationSmokeTest.kt` already encodes this walkthrough end-to-end and was
+re-run, not re-invented: real `KeyEvent` injection for Escape, Page Up/Down,
+arrows (LTR and RTL/Manga CBZ), gamepad L1/R1/A/B, Ctrl+F, Tab/D-pad focus
+traversal, across EPUB/PDF/CBZ. Executed on both real hardware:
+
+- **Emulator (`emulator-5554`, API 35, `shelfos-phase0`)**: 36/36 passed
+  (34 pre-existing + 2 new, see below), before and after this slice's
+  production fix.
+- **RP5 (`d8f7f1b6`, Retroid Pocket 5, API 33) — ADB-injected, not owner
+  physical button press**: 34/34 passed (the suite as it existed before this
+  slice's two new tests were added; the RP5 run was taken as the hardware
+  baseline before adding them, the emulator run after). This is real
+  `instrumentation.sendKeyDownUpSync`/`sendKeySync` injection routed through
+  the RP5's actual Android input stack and this build's actual
+  `dispatchKeyEvent`/`onPreviewKeyEvent` code — genuine evidence that
+  keyboard/gamepad key codes, chrome reveal-then-exit (ADR-0023), RTL Manga
+  CBZ keyboard mapping, and focus-hint derivation all work on this physical
+  device — but it is **not** a substitute for an owner's own hand on a
+  physical D-pad/trigger, since ADB injects already-resolved `KeyEvent`s
+  rather than exercising the RP5's own button-to-keycode hardware mapping
+  end to end. See "Remaining owner-only questions" below.
+
+### Back/chrome semantics (Part G)
+
+Unchanged from ADR-0023, re-confirmed by `backRevealsHiddenControlsBeforeLeavingTheReader`/
+`epubBackRevealsHiddenControlsBeforeLeavingTheReader` and the RP5/emulator
+runs above: hidden chrome → Back/Escape/B reveals; visible chrome → Back
+exits. Dialogs (Appearance/Chapters/Search/Bookmarks) dismiss via Compose's
+own default `AlertDialog` back-dismiss, unchanged by this slice.
+
+### Input modality/hints, including the known EPUB edge-tap asymmetry (Part D)
+
+Re-confirmed harmless by code re-reading, not newly tested: `InputHints`
+hints are chrome-gated and command-derived for both readers
+(`hiddenChromeNeverExposesInputHints`, `controllerInputShowsControllerHintsThenTouchClearsThem`,
+etc., all still green). The known, already-documented asymmetry
+(`docs/design/INPUT_SYSTEM.md` §10) — EPUB edge-tap page turns happen inside
+Readium's navigator and never update tracked modality, so an edge-tap-only
+EPUB session after a keyboard/controller session can show a stale hint until
+the next center-tap or key press — was re-examined against this slice's own
+criterion (does it have a *visible* user consequence beyond the
+already-documented cosmetic staleness). It does not newly regress anything,
+has no functional consequence (the actual accepted command set still works
+via center-tap/keys regardless of displayed hint style), and remains
+classified **LOW/harmless**, same as `PHASE_2D_IMPLEMENTATION_PLAN.md` §11's
+existing classification — not escalated, not fixed (Part S's narrow-fix gate:
+fixing it would mean routing EPUB edge-tap through the modality tracker,
+which is the broader, previously-deferred "unify touch into `ShelfCommand`"
+item, not a small fix).
+
+### Focus order (Parts E, F, K)
+
+By code re-reading and the existing `FocusRequester` wiring
+(`pageFocus`/`firstControl`/`controlFocusRequests` in both readers): opening
+chrome moves focus to the first control; hiding it returns focus to the page
+surface; no `FocusRequester` targets a node that becomes non-composed while
+chrome is hidden (hidden chrome's controls are not emitted at all while
+`controls == false`, so they cannot hold stale focus). `EpubSearchTest`'s
+`acceptedCtrlFAndKeyboardFocusCanOpenSearchAndActivateAResult` and
+`EpubChapterHighlightTest`'s filter/jump tests independently exercise
+keyboard focus into the Search field, a search result, and the Chapters
+filter/list — all dismissible, all returning to a navigable reader. No focus
+trap found in either reader's chrome, Appearance, Chapters, Search, or
+Bookmarks.
+
+### Accessibility semantics audit (Part H) — one real, fixed defect
+
+Re-auditing `FixedReaderScreen.kt`/`EpubActivity.kt`/`ReaderAppearance.kt`
+confirmed the existing chrome `stateDescription`/conditional reveal-action
+pattern (2A) is unchanged and correct — no stale/duplicate reveal action
+while chrome is visible. **New finding**: all four `Slider` controls in the
+app (`FixedReaderScreen`'s page-jump slider; `ReaderAppearance`'s text
+size/line spacing/page margins sliders, EPUB-only) had no accessible name —
+Compose's `Slider` does not inherit a preceding sibling `Text`'s label, so
+TalkBack would announce only a bare numeric value/range, not what the slider
+does. Classified **MEDIUM** (a real, reproducible-by-code-inspection unnamed
+action on a meaningful control, not merely a style nit) — fixed narrowly per
+Part S: added `Modifier.semantics { contentDescription = ... }` to each of
+the 4 sliders, reusing each slider's own already-resolved label string
+(`content_desc_page_slider` new string; `appearance_text_size`/
+`appearance_line_spacing`/`appearance_page_margins` reused). No other
+unnamed/icon-only action, duplicate announcement, or hidden-but-exposed
+control was found in either reader's chrome or the Chapters/Search/Bookmarks
+dialog interiors.
+
+### TalkBack (Part I)
+
+Checked `adb shell settings get secure enabled_accessibility_services` on
+both devices: emulator returned `null`, RP5 returned only
+`com.rp.gameassistant/...ForegroundAppMonitorV4Service` (the RP5's own
+overlay service, not a screen reader). `pm list packages | grep talkback`
+found no TalkBack package on either device. Per the brief's own instruction,
+no accessibility software was installed. **Recorded honestly: semantic-code
+audit complete (above), manual TalkBack validation unavailable on both
+current test targets** — not a failure, a documented boundary.
+
+### Reduced motion (Part N)
+
+Unchanged: no `AnimatedVisibility`/`animate*AsState` in either reader; chrome
+show/hide remains an instant recomposition. `readerEntryTransitionIsSkippedUnderReducedMotion`
+(existing, re-run as part of the suite above) confirms the reader remains
+usable with `animator_duration_scale = 0`.
+
+### Localization/layout (Part O)
+
+`values`/`values-es`/`values-pt-rBR` all carry 224 strings (parity, no
+missing translations) and every reader-chrome/Appearance/Chapters/Search/
+Bookmarks string used by `FixedReaderScreen.kt`/`EpubActivity.kt`/
+`ReaderAppearance.kt` is translated in both locales (spot-checked by key, not
+exhaustively). Structurally, the reader chrome does not use fixed-width rows
+that could clip longer localized text: `FixedReaderScreen`'s top row uses
+`horizontalScroll`, and `EpubActivity`'s top row uses `FlowRow` — both reflow
+rather than clip regardless of string length or viewport width. Compact vs.
+expanded viewport resize for the reader was already validated in 2D.2 (real
+`wm size` live resize, `docs/VALIDATION.md`'s "Orientation and live resize");
+this slice did not find a new layout regression from the Slider
+accessibility fix above (purely a semantics-tree addition, no visual change).
+Not independently re-verified: a live side-by-side ES/pt-BR screenshot
+comparison at forced-expanded size (code-structural reasoning above is judged
+sufficient given no adaptive layout branch exists per 2D's §6 finding, and no
+field report of localized clipping exists).
+
+### RTL/Manga input (Part Q)
+
+`mangaReadsRightToLeftWithKeyboardAndPageKeysStaySemantic` and
+`keyboardHintsReflectRtlSwapInMangaCbz` (existing, re-run on both devices
+above) confirm CBZ Manga RTL keyboard/D-pad direction and hint labels resolve
+correctly; 2D.1's geometry is unchanged and not conflated with reading
+direction, per this slice's own instruction.
+
+### Findings (Part R)
+
+- **MEDIUM (fixed)**: four unlabeled `Slider` controls (accessibility
+  semantics gap, above).
+- **LOW (pre-existing, not escalated, not fixed)**: EPUB edge-tap modality
+  staleness (already documented, no new visible consequence found).
+- **OBSERVATIONS**: chrome/Back-state logic still duplicated per-reader;
+  touch still not routed through `ShelfCommand`; no adaptive compact/expanded
+  layout branch exists yet — all pre-existing, previously deferred, unchanged
+  by this slice.
+- No BLOCKER/HIGH found.
+
+### Tests added
+
+- `NavigationSmokeTest.fixedReaderPageSliderIsAccessiblyLabeled` and
+  `NavigationSmokeTest.epubAppearanceSlidersAreAccessiblyLabeled` (new,
+  regression coverage for the fixed defect above).
+
+### Validation performed (proportional to scope, per the standing policy)
+
+- `NavigationSmokeTest`: 34/34 on RP5 (`d8f7f1b6`, pre-fix baseline), 34/34
+  then 36/36 on the emulator (`emulator-5554`, pre-fix then post-fix with the
+  2 new tests), all green.
+- `git diff --check`: PASS.
+- Not run: full JVM suite, full `connectedDebugAndroidTest` suite, the
+  combined Gradle gate — reserved per the standing policy for broad
+  cross-cutting changes and the final Phase 2 integration boundary (2D.4),
+  not this narrow closure slice.
+
+### Remaining owner-only questions
+
+ADB-injected RP5 evidence above cannot fully substitute for an owner's own
+hand on the device. If a live RP5 session becomes available, the smallest
+set of genuinely owner-only checks left open:
+
+1. Press the physical B button with chrome hidden on the RP5, across EPUB,
+   PDF and CBZ — does it reveal controls instead of leaving the reader?
+2. D-pad through the visible reader controls on the RP5 — can you reach
+   Appearance, Previous and Next without focus disappearing or jumping
+   somewhere unexpected?
+3. Open the Manga/CBZ fixture (or any RTL title) on the RP5 — do the
+   physical L1/R1 and D-pad left/right controls navigate in the expected
+   (mirrored) reading direction, matching what you see on screen?
+
+None of these were skipped out of doubt about the result — ADB's
+`sendKeyDownUpSync` already proved the same key codes produce the same
+behavior on this exact hardware/build. They are listed because this task's
+own constraint is that ADB injection of an already-resolved `KeyEvent` is not
+identical evidence to the RP5's own physical button-to-keycode hardware path
+and a human's own perception of focus/timing.
+
 ## Validation policy (standing, 2026-10-02)
 
 Validation depth is proportional to change scope. Narrow fixes use focused
