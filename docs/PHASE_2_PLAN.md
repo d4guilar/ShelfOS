@@ -2486,10 +2486,10 @@ expanded on, not a duplicate plan.
   actually needs.
 - AI upscaling is explicitly not part of Phase 2.
 
-### 2D — Reader continuity, adaptive/accessibility/performance closure (2D.1 implemented, pending review; 2D.2-2D.4 planning, 2026-10-02)
+### 2D — Reader continuity, adaptive/accessibility/performance closure (2D.1 implemented, owner RP5-accepted, pending review; 2D.2-2D.4 planning, 2026-10-02)
 
-**2D.1 (fixed-reader transform/bounds correctness) is IMPLEMENTED, pending
-independent review and owner RP5 physical acceptance**, on
+**2D.1 (fixed-reader transform/bounds correctness) is IMPLEMENTED, owner RP5
+physical acceptance PASSED, pending independent review**, on
 `phase-2/reader-closure` (base `main` at `0d8a6a0`). The pan/zoom-bounds
 defect below was live-reproduced by the owner on the physical RP5, then
 fixed via a pure, Compose-free clamp helper plus two adjacent corrections

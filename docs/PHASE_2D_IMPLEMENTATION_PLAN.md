@@ -1113,19 +1113,14 @@ take no reading-direction (`rtl`) input — pan bounds are purely geometric.
   changed — no EPUB, bookmark, or search code).
 - `git diff --check`: **PASS.**
 
-### RP5 physical acceptance — still pending
+### RP5 physical acceptance — OWNER VISUAL OBSERVATION: PASS (2026-10-02)
 
-This implementation pass's own testing on RP5 (above) drove real multi-touch
-pointer events through the actual production gesture code via the
-instrumented test suite, which is stronger automated evidence than a manual
-adb-synthesized gesture would have been. **It is not a substitute for the
-owner physically pinch-zooming the real device by hand**, which remains the
-final acceptance step per §9's own plan and has not yet been performed.
-Recommended walkthrough: zoom in, pan to an edge, zoom back out — confirm the
-page no longer floats beyond its edge and excessive gray margin cannot be
-exposed; confirm Fit Page remains centered at default zoom; confirm Fit Width
-remains usable; confirm double-tap/reset still behaves correctly; repeat for
-both a PDF and a CBZ.
+The owner installed the committed fix build on the physical RP5 and performed
+the real pinch-zoom-in/pan-to-edge/zoom-back-out sequence by hand — the exact
+gesture that originally exposed the defect. Reported result: *"pass! Zoom in
+and zoom out dont go out of bounds or slides of screen, fit width too. All
+good."* This closes the one evidence gap this implementation pass's own
+RP5 instrumented testing (above) could not substitute for.
 
 ### Scope discipline confirmed
 

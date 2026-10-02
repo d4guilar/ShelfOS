@@ -2,8 +2,8 @@
 
 ## Phase 2D.1 — fixed-reader transform/bounds correctness (2026-10-02)
 
-Status: **IMPLEMENTED, pending independent review and owner RP5 physical
-acceptance.** Full detail in
+Status: **IMPLEMENTED, owner RP5 physical acceptance PASSED, pending
+independent review.** Full detail in
 [`PHASE_2D_IMPLEMENTATION_PLAN.md`](PHASE_2D_IMPLEMENTATION_PLAN.md#21-2d1-implementation-record-2026-10-02).
 
 - **OWNER LIVE REPRODUCTION** (before any code was written, on the physical
@@ -36,9 +36,11 @@ acceptance.** Full detail in
   new files (pure helper, JVM test, instrumented test). No PDF resolution,
   CBZ sampling, EPUB, persistence, or input-remapping code touched;
   dependencies and Room schema unchanged.
-- **Pending**: owner physically pinch-zooming the real RP5 by hand remains
-  the final acceptance step and has not yet been performed; independent
-  targeted QA of this slice has not yet run.
+- **OWNER PHYSICAL ACCEPTANCE: PASS.** The owner installed the fix build on
+  the real RP5 and performed the pinch-zoom-in/pan-to-edge/zoom-back-out
+  sequence by hand: *"pass! Zoom in and zoom out dont go out of bounds or
+  slides of screen, fit width too. All good."* Independent targeted QA of
+  this slice has not yet run.
 
 ## Phase 2C evidence closure — no production render change justified (2026-10-01)
 
