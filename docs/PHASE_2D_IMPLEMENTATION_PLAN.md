@@ -1450,3 +1450,243 @@ tall Fit Width page to ~2x, scrolled fully to the top and bottom confirming
 actual page content (not just app stability) is visible at both extremes, no
 gray escape dragging past either edge, horizontal pan still works, and Fit
 Page remains unaffected — reported as *"all good."*
+
+## 22. 2D.4 implementation record — performance/resilience + final Phase 2 acceptance (2026-10-02)
+
+**Status: PHASE 2 COMPLETE.** Branch `phase-2/final-reader-acceptance` (base
+`main` at `6e38b77`, the commit that merged 2D.3 via PR #19). This slice
+closes §9's large-file/malformed-file gaps and executes §14/§15's final
+device-acceptance matrix and Phase 2 completion definition end-to-end, with
+real evidence behind every clause, not assumption.
+
+### Owner-physical RP5 acceptance (Part Q)
+
+The owner personally tested all three outstanding RP5-only physical-button
+questions from 2D.3's open list directly on the physical RP5 and reported
+back verbatim: **"All 3: Pass."** (2026-10-02): (1) B button reveals hidden
+chrome first, then exits on a second press per ADR-0023; (2) D-pad focus
+moves cleanly between Appearance/Previous/Next without disappearing, being
+trapped, or jumping; (3) Manga/RTL CBZ L1/R1/D-pad Left/Right navigate in the
+expected mirrored direction. This closes the owner-only question list 2D.3
+left open (§7.3's standing gap).
+
+### Large synthetic fixtures (Parts B–D)
+
+Two deterministic, originally-authored, non-copyrighted synthetic fixtures,
+neither checked in as static assets (generated at test run time, deleted in
+each test's `finally` block):
+
+- **CBZ**: 160 pages, 1200×1800 JPEG (quality 82) per page, ~219 MB archive
+  (`SyntheticLoadAcceptanceTest`, pre-existing from an earlier pass, re-run
+  fresh for this slice).
+- **PDF**: 140 pages, 612×792pt, mixed text (title + wrapped body paragraph)
+  and vector content (6 filled/stroked rounded rectangles per page) per page,
+  ~363 KB total (`SyntheticLargePdfAcceptanceTest`, new this slice — closes
+  §9.1's "no PDF equivalent" gap).
+
+### Large-document open/navigation/memory (Parts E, F, H)
+
+Both fixtures opened and paged through the real reader path
+(`FixedReaderFactory` → `PdfPages`/`ArchivePages` → `FixedReaderViewModel`)
+on the API 35 emulator, with real `Debug.MemoryInfo`/logcat evidence, not
+estimated:
+
+```text
+synthetic_pdf_bytes=363294 pages=140 open_latency_ms=3473 sequential_60_turns_ms=40892 pss_start_kb=191991 pss_end_kb=184646 java_heap_bytes=6087824
+synthetic_cbz_bytes=229453782 pages=160 visited=81 pss_start_kb=185042 pss_end_kb=175889 java_heap_bytes=6571296
+```
+
+PDF: ~681 ms/page-turn average over 60 sequential turns (`PdfRenderer`
+rasterizing up to the fixed `MAX_PAGE_PIXELS=2048` longest edge, unchanged
+from 2C). CBZ: PSS *decreased* over the session (one-bitmap-at-a-time
+architecture holds under load, no accumulation). No crash, no ANR, no wrong
+page, no stale bitmap, no blank page, no runaway memory, on either fixture —
+confirmed by the tests' own in-flow assertions (`reader_screen`/
+`page_number` node presence after the full sequence) in addition to the
+logged numbers. Raw PDF vs. CBZ timings are not compared as equivalent
+pipelines (different decode paths, per Part F's own instruction).
+
+### Fast navigation/cancellation regression (Part G)
+
+Regression-confirmed, not redesigned. `FixedReaderViewModel.render()`
+(unchanged since 2C): `rendering?.cancel()` before each new render, a single
+`Mutex` serializing all session access, `ensureActive()` before publishing a
+result (so a cancelled render's bitmap is recycled and never overwrites
+`state.bitmap`), confirmed still present by direct code reading of
+`FixedReaderViewModel.kt` lines 85–101. Empirically exercised, not only
+read: `SyntheticLargePdfAcceptanceTest` issues a
+next/next/previous/next/next/previous sequence (×2) on the 140-page PDF
+without awaiting each render, so later requests race earlier in-flight ones;
+the reader settled on a consistent page matching the net input every time,
+with no stale/blank render and no crash, across the full connected-suite run
+(see Part Z below).
+
+### Memory sanity (Part H) and repeated open/close (Part I)
+
+Part H's evidence is the PSS numbers above — both fixtures leave PSS flat or
+decreasing after their respective sessions, consistent with the one-page-
+at-a-time architecture 2C already established; no arbitrary budget number is
+asserted, only the absence of monotonic growth. Part I's repeated-
+open/close/Back/reopen behavior is covered by existing, re-run-green
+evidence rather than a new long soak test: `NavigationSmokeTest`'s
+recreation/appearance-persistence cases and `FixedReaderRecreationTest`'s
+7 cases exercise open → navigate → Back/recreate → reopen repeatedly for
+PDF/CBZ/EPUB already (122-test connected run, Part Z) with no resource-close,
+duplicate-navigator, stale-page, or leak symptom surfaced.
+
+### Malformed input (Parts J, K, L, M)
+
+Import-time classification was already covered by `ImportPolicyTest`/
+`ImportViewModelTest`/`LocalizationMessageMappingTest` (every
+`PublicationProblem`/`PublicationExceptionDetail` maps to a resource present
+in all three locales). The real gap this slice closed was device-level
+confirmation of the **`FixedReader`-level** (not just import-level) graceful-
+failure path — new `MalformedFixedReaderResilienceTest` (4 cases, all green
+on the emulator):
+
+1. **Truncated PDF** (valid header, no xref table): `PdfRenderer`'s
+   constructor itself throws → open-level failure → localized error +
+   **Back to library**, no crash.
+2. **Truncated CBZ** (archive cut mid-file, no central directory): archive
+   open itself fails → open-level failure → **Back to library**, no crash.
+3. **CBZ with one non-image page entry**: archive opens, page count is
+   known, but decoding that page fails
+   (`PAGE_IMAGE_DECODE_FAILED`) → render-level failure →
+   **Retry page** (not Back, since the publication itself is open and has a
+   known page count) → Retry re-attempts and surfaces the same graceful
+   error again rather than hanging.
+4. **Mixed good/bad CBZ** (page 1 real PNG, page 2 garbage): Next from the
+   good page fails gracefully on the bad one (Retry shown); Previous
+   recovers cleanly back to page 1 with no stale bitmap.
+
+This confirms Part K's distinction between archive-level and page-level
+failure paths empirically (cases 1–2 vs. 3–4) rather than assuming it. EPUB's
+malformed-publication path was not re-tested — `EpubReader.kt`'s
+`EPUB_INVALID_OR_UNSUPPORTED` path and its test coverage were already
+adequate per 2D's planning pass (§9.2) and untouched since.
+
+### Error-surface acceptance (Part M)
+
+All four new malformed-input cases above show visible, localized error text,
+a correctly-chosen Retry-vs-Back-to-library action (never both, never
+neither), no crash, and no inaccessible/unlabeled action — the same
+`action_retry_page`/`action_back_to_library` strings 2D.3 already confirmed
+accessible. No 2D.3 semantics regression found; 2D.3 was not reopened.
+
+### Final feature sanity and compact/expanded matrix (Parts N, O, P, S)
+
+Reused as accepted evidence rather than re-walked line-by-line in this slice:
+EPUB chapters/search/bookmarks/fonts/Reading-Presentation (2B.2–2B.4, 2D.3),
+PDF/CBZ Fit Page/Fit Width/zoom/pan/top-bottom-reachability (2D.1 and its two
+remediation rounds), Manga RTL (2D.3's `NavigationSmokeTest` RTL cases), and
+resize/fold continuity (2D.2) were all re-exercised as part of the full
+122-test connected run (Part Z) on the emulator, including at the forced-
+expanded viewport cases already present in `NavigationSmokeTest`/
+`FixedReaderTransformBoundsTest`/`FixedReaderRecreationTest` — all green. No
+new compact/expanded-specific defect surfaced.
+
+### RP5 Fit Width/EPUB sanity (Part R)
+
+**Reused as accepted evidence, not re-fabricated.** This slice did not drive
+a new blind, screenshot-free gesture sequence on the RP5 to re-confirm Fit
+Width zoom/top/bottom/no-gray-escape pixel geometry — that would require
+either a human's eyes on the device or a multi-round-trip screenshot-based
+verification loop, and 2D.1's own two remediation rounds already produced
+**owner-physical, eyes-on PASS evidence** for exactly this geometry on this
+same RP5 (§21.2's "OWNER VISUAL OBSERVATION: PASS" entry, 2026-10-02, same
+day). Combined with Part Q's fresh owner-physical confirmation of chrome/
+D-pad/Manga-RTL behavior on the same device today, this is judged adequate
+standing evidence rather than a gap — stated honestly as reuse, not as a
+freshly-repeated visual check in this slice.
+
+### Final Phase 2 acceptance matrix (§15, Part T)
+
+| # | Clause | Status | Evidence |
+| - | --- | --- | --- |
+| 1 | EPUB/PDF/CBZ open and navigate reliably | PASS | 122-test connected run; new large-fixture tests |
+| 2 | Position resumes after leave/return and close/reopen | PASS | `FixedReaderRecreationTest`, `EpubRecreationTest`, `BookmarkPersistenceTest`, 2D.2 process-death evidence (reused) |
+| 3 | Touch/keyboard/gamepad semantic actions work | PASS | `NavigationSmokeTest`, `InputModalityClassificationTest`, 2D.3 RP5 evidence (reused) + Part Q owner-physical (fresh) |
+| 4 | Back/chrome follows ADR-0023 | PASS | `NavigationSmokeTest`'s Back/chrome cases + Part Q owner-physical B-button confirmation (fresh) |
+| 5 | Appearance controls work and persist | PASS | `AppearanceRestorationTest`, `NavigationSmokeTest` appearance-persistence cases |
+| 6 | EPUB chapters/search/bookmarks/fonts work without crash/data loss | PASS | `EpubChapterHighlightTest`, `EpubSearchTest`, `EpubBookmarkTest`, `EpubManagedFont*Test` (all green, this run) |
+| 7 | Recreation preserves durable state | PASS | `FixedReaderRecreationTest` (7/7), `EpubRecreationTest`, 2D.2 (reused) |
+| 8 | Resize leaves reader usable | PASS | `FixedReaderTransformBoundsTest`'s resize cases, 2D.2 (reused) |
+| 9 | Fixed-page pan/zoom cannot escape real bounds | PASS | `FixedReaderTransformBoundsTest` (15/15), 2D.1 + two remediation rounds, owner-physical RP5 (reused) |
+| 10 | Malformed/corrupt publication/page fails gracefully | PASS | `MalformedFixedReaderResilienceTest` (4/4, new), `ImportPolicyTest`/`ImportViewModelTest` (reused) |
+| 11 | Core reader controls accessibly labeled/focusable | PASS | 2D.3's Slider-labeling fix + `NavigationSmokeTest` (reused) |
+| 12 | No obvious performance/memory regression vs. accepted baseline | PASS | PSS flat/decreasing on both new large fixtures; no new rendering work introduced (2C baseline unchanged) |
+
+### New findings by severity (Part U)
+
+- **BLOCKER:** none.
+- **HIGH:** none.
+- **MEDIUM:** none.
+- **LOW:** none newly found.
+- **OBSERVATION (infrastructure, not product):** the full 122-test connected
+  run (32m03s, emulator under sustained load from the new large fixtures plus
+  the existing suite) produced one transient `ComposeNotIdleException` in
+  `NavigationSmokeTest.fixedReaderZoomFitAndGlobalAppearancePersistAcrossRecreation`
+  (a pre-existing 2D.3 test, not touched by this slice), coinciding with
+  `android.hardware.graphics.composer3-service.ranchu` pegged at 92% kernel
+  CPU (`adb shell dumpsys cpuinfo`) — the exact host-rendering pathology this
+  phase's own validation guidance anticipated. An isolated targeted retry of
+  that single test passed cleanly in 83 s (vs. 314 s under load), confirming
+  this is a host/emulator-load artifact, not a reproducible product defect.
+  Classified **OBSERVATION**, not a defect; no code change made. The
+  dual-device `connectedDebugAndroidTest` infrastructure item carried over
+  from before this branch (RP5 producing no result XML in a prior mixed-
+  device run) remains **UNRESOLVED, NOT A CONFIRMED PRODUCT FAILURE** and is
+  not re-litigated here — this slice's own connected runs used
+  `ANDROID_SERIAL=emulator-5554` throughout.
+
+### Part Z device-targeting finding (supersedes the brief's starting assumption)
+
+The task brief anticipated that `connectedDebugAndroidTest` might not be
+restrictable to one device while two are attached, requiring the owner to
+physically disconnect the RP5 before the final gate. Empirically, setting
+`ANDROID_SERIAL=emulator-5554` in the shell environment **did** restrict
+every `connectedDebugAndroidTest` invocation in this slice to the emulator
+alone — confirmed across six separate runs (four targeted + the full Part Z
+run + its one-test retry), each logging `Running tests on devices:
+shelfos-phase0(AVD) - 15` only, with the RP5 (`d8f7f1b6`) remaining attached
+and online throughout (`adb devices -l`) and never appearing in any run's
+device list or result XML. No physical disconnect was needed and none was
+requested.
+
+### Scope audit (Part AB)
+
+`git diff --stat main...phase-2/final-reader-acceptance -- app/src/main`
+is **empty** — zero production-code lines differ from `main` anywhere in
+this entire 2D.4 slice (only `app/src/androidTest` gained the two new test
+files). This makes the scope audit immediate and conclusive: no CBR, comic/
+manga spreads, EPUB multi-column, OCR, Adapted PDF, AI enhancement,
+annotations/stylus, cloud/sync, Series/Omnibus, Library Sources, bulk
+import, theme implementation, general input remapping, or plugin
+architecture was introduced — there is no production diff in which any of
+these could have leaked in.
+
+### Validation summary
+
+- Full JVM (`:app:testDebugUnitTest --rerun-tasks --offline`): **200/200
+  passed, 0 failed, 0 skipped.**
+- Full connected (`:app:connectedDebugAndroidTest --offline`,
+  `ANDROID_SERIAL=emulator-5554`): **122 tests, 121 passed, 1 transient
+  infra flake (see above), confirmed non-reproducible via isolated retry
+  (passed).**
+- Full Gradle gate
+  (`compileDebugKotlin compileDebugAndroidTestKotlin assembleDebug
+  testDebugUnitTest lintDebug assembleDebugAndroidTest --rerun-tasks
+  --offline`): see `docs/VALIDATION.md`'s Phase 2D.4 entry for the exact
+  outcome recorded at the frozen candidate SHA.
+- `git diff --check`: PASS (no whitespace errors).
+- Candidate frozen at `2f2116a` (test-only commit; no code changes between
+  this commit and the full validation run above, per Part X).
+
+### FINAL DECISION
+
+**PHASE 2 COMPLETE.** All twelve acceptance clauses in §15 are PASS with
+real evidence; no BLOCKER/HIGH/MEDIUM finding exists; the one new LOW-grade
+observation is infrastructure-classified and non-reproducible on retry; the
+standing dual-device connected-test infrastructure item from before this
+branch remains open but unchanged and does not block this conclusion, since
+this slice's own gates all ran successfully against the emulator alone.

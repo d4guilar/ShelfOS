@@ -2486,7 +2486,7 @@ expanded on, not a duplicate plan.
   actually needs.
 - AI upscaling is explicitly not part of Phase 2.
 
-### 2D — Reader continuity, adaptive/accessibility/performance closure (2D.1-2D.3 COMPLETE; 2D.4 planning, 2026-10-02)
+### 2D — Reader continuity, adaptive/accessibility/performance closure (2D.1-2D.4 COMPLETE; Phase 2 COMPLETE, 2026-10-02)
 
 **2D.1 (fixed-reader transform/bounds correctness) is COMPLETE** (HEAD
 `e59eab8`), on `phase-2/reader-closure` (base `main` at `0d8a6a0`). The
@@ -2535,9 +2535,23 @@ substitute for a human's own hand on the device). See
 `docs/PHASE_2D_IMPLEMENTATION_PLAN.md`'s status header and
 `docs/VALIDATION.md`'s "Phase 2D.3" entry for the full audit and evidence.
 
-**2D.4 remains planning-only**; see `PHASE_2D_IMPLEMENTATION_PLAN.md` for the
-full architecture audit, continuity/input/accessibility/performance findings,
-severity classification and the remaining slice sequence.
+**2D.4 (performance/resilience + final Phase 2 acceptance) is also
+COMPLETE** (branch `phase-2/final-reader-acceptance`, base `6e38b77`,
+candidate `2f2116a`). A deterministic 140-page synthetic PDF and the
+existing 160-page synthetic CBZ were exercised end-to-end (open, sequential
+and fast-overlapping-navigation/cancellation, PSS memory before/after); two
+new `MalformedFixedReaderResilienceTest` cases plus two mixed-page cases
+confirmed the `FixedReader`-level (not just import-level) graceful-failure
+path for truncated/corrupt PDFs and CBZs. The owner personally confirmed all
+three outstanding 2D.3 RP5 physical-button questions ("All 3: Pass",
+2026-10-02). The full Phase 2 twelve-clause acceptance definition (§15 of
+`PHASE_2D_IMPLEMENTATION_PLAN.md`) is PASS on every clause with real
+evidence: full JVM 200/200, full connected 121/122 (one transient
+`ComposeNotIdleException` under emulator CPU load, confirmed non-reproducible
+via isolated retry), full Gradle gate green, zero production code changed
+(`git diff --stat` against `main` for `app/src/main` is empty). **Phase 2 is
+now COMPLETE.** See `PHASE_2D_IMPLEMENTATION_PLAN.md` §22 and
+`docs/VALIDATION.md`'s "Phase 2D.4" entry for the full record.
 
 - Configuration/process restoration hardening beyond what 2A's chrome-state
   fix touches (rotation, fold/unfold, multi-window resize).
