@@ -1,5 +1,43 @@
 # Validation
 
+## Validation policy (standing, 2026-10-02)
+
+Validation depth is proportional to change scope. Narrow fixes use focused
+tests plus relevant regression coverage (e.g. `NavigationSmokeTest`).
+Expensive full connected/gate runs are reserved for broad cross-cutting
+changes and final integration boundaries, rather than repeated after every
+small remediation.
+
+## Phase 2D.1 close-out (2026-10-02)
+
+Status: **Phase 2D.1 COMPLETE** at HEAD `e59eab8`. This is a lean close-out
+pass, not a re-investigation: the two prior remediation rounds
+(`06bcc14`, `d0ea51b`) already found and fixed the real issues, with strong
+targeted evidence (43/43 focused JVM including the overflow-helper cases,
+15/15 focused instrumentation on both the emulator and the physical RP5,
+owner physical RP5 acceptance, `git diff --check` PASS, clean tree).
+Per the standing proportional-validation policy above, this close-out ran
+one additional regression check rather than a full connected suite or
+Gradle gate re-run:
+
+- `git status --short`: clean. `git log -1 --oneline`: `e59eab8`.
+  `git diff --check`: PASS.
+- Full JVM suite (`:app:testDebugUnitTest --rerun-tasks --offline`):
+  **200/200 passed, 0 failed, 0 skipped**, including `FixedReaderTransformTest`
+  (43/43, overflow-helper cases present).
+- `NavigationSmokeTest` on the canonical API 35 emulator (full class,
+  `connectedDebugAndroidTest` filtered to this class): **26/26 passed, 0
+  failed, 0 skipped**, no retries needed — fixed-reader touch, page
+  navigation, Back, keyboard/controller modality, PDF, CBZ, and RTL coverage
+  within the class all passed.
+- No full `connectedDebugAndroidTest` suite or combined Gradle gate was
+  re-run for this close-out, consistent with the proportional-validation
+  policy for a narrow, already-validated slice. No production code was
+  changed in this pass — docs only.
+
+Phase 2D.1 is marked **COMPLETE**. Phase 2D.2 (recreation/resize continuity
+closure) remains next and unstarted.
+
 ## Phase 2D.1 — fixed-reader transform/bounds correctness (2026-10-02)
 
 Status: **First pass IMPLEMENTED, but independent QA returned BLOCKED (Fit

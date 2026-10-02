@@ -1,12 +1,17 @@
 # Phase 2D implementation plan: reader continuity, adaptive/accessibility/performance closure
 
-Status: **2D.1 (fixed-reader transform/bounds correctness) IMPLEMENTED,
-pending independent review and owner RP5 physical acceptance** (2026-10-02),
-on `phase-2/reader-closure` (base `main` at `0d8a6a0`, the commit that merged
-Phase 2C's closed investigation via PR #16). 2D.2-2D.4 remain planning-only;
-no other 2D production code exists yet. See §21 for the 2D.1 implementation
-record. This document is the canonical Phase 2D planning location referenced
-by [`PHASE_2_PLAN.md`](PHASE_2_PLAN.md)'s §3 2D section.
+Status: **2D.1 (fixed-reader transform/bounds correctness) COMPLETE**
+(2026-10-02, HEAD `e59eab8`), on `phase-2/reader-closure` (base `main` at
+`0d8a6a0`, the commit that merged Phase 2C's closed investigation via
+PR #16). Independent QA, two remediation rounds, and owner RP5 physical
+acceptance are all closed; a proportional lean close-out pass (full JVM
+200/200, `NavigationSmokeTest` 26/26 on the canonical emulator, `git diff
+--check` PASS) ran against this exact HEAD with no further production
+changes. See `docs/VALIDATION.md`'s "Phase 2D.1 close-out" entry and §21 for
+the full 2D.1 implementation record. **2D.2-2D.4 remain planning-only; no
+other 2D production code exists yet.** This document is the canonical Phase
+2D planning location referenced by [`PHASE_2_PLAN.md`](PHASE_2_PLAN.md)'s §3
+2D section.
 
 This pass read, in order: `AGENTS.md`, `docs/PHASE_2_PLAN.md`,
 `docs/ROADMAP.md`, `docs/ARCHITECTURE.md`, `docs/features/READER.md`,

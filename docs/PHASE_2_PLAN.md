@@ -2486,17 +2486,21 @@ expanded on, not a duplicate plan.
   actually needs.
 - AI upscaling is explicitly not part of Phase 2.
 
-### 2D — Reader continuity, adaptive/accessibility/performance closure (2D.1 implemented, owner RP5-accepted, pending review; 2D.2-2D.4 planning, 2026-10-02)
+### 2D — Reader continuity, adaptive/accessibility/performance closure (2D.1 COMPLETE; 2D.2-2D.4 planning, 2026-10-02)
 
-**2D.1 (fixed-reader transform/bounds correctness) is IMPLEMENTED, owner RP5
-physical acceptance PASSED, pending independent review**, on
-`phase-2/reader-closure` (base `main` at `0d8a6a0`). The pan/zoom-bounds
-defect below was live-reproduced by the owner on the physical RP5, then
-fixed via a pure, Compose-free clamp helper plus two adjacent corrections
-(fit-mode-change transform reset, viewport-resize re-clamp) — see
-[`PHASE_2D_IMPLEMENTATION_PLAN.md`](PHASE_2D_IMPLEMENTATION_PLAN.md) §21 for
-the full implementation record and test evidence. **2D.2-2D.4 remain
-planning-only**; see the same document for the full architecture audit,
+**2D.1 (fixed-reader transform/bounds correctness) is COMPLETE** (HEAD
+`e59eab8`), on `phase-2/reader-closure` (base `main` at `0d8a6a0`). The
+pan/zoom-bounds defect below was live-reproduced by the owner on the
+physical RP5, then fixed via a pure, Compose-free clamp helper plus two
+adjacent corrections (fit-mode-change transform reset, viewport-resize
+re-clamp), with two further remediation rounds closing a Fit Width
+tall-content blocker and a zoomed top/bottom reachability gap. Independent
+QA, owner RP5 physical acceptance, and a final proportional lean close-out
+pass (full JVM 200/200, `NavigationSmokeTest` 26/26) are all closed — see
+[`PHASE_2D_IMPLEMENTATION_PLAN.md`](PHASE_2D_IMPLEMENTATION_PLAN.md) §21 and
+`docs/VALIDATION.md`'s "Phase 2D.1 close-out" entry for the full
+implementation record and test evidence. **2D.2-2D.4 remain planning-only**;
+see the same document for the full architecture audit,
 continuity/input/accessibility/performance findings, severity classification
 and the remaining slice sequence.
 
