@@ -2486,7 +2486,7 @@ expanded on, not a duplicate plan.
   actually needs.
 - AI upscaling is explicitly not part of Phase 2.
 
-### 2D — Reader continuity, adaptive/accessibility/performance closure (2D.1 COMPLETE; 2D.2-2D.4 planning, 2026-10-02)
+### 2D — Reader continuity, adaptive/accessibility/performance closure (2D.1-2D.2 COMPLETE; 2D.3-2D.4 planning, 2026-10-02)
 
 **2D.1 (fixed-reader transform/bounds correctness) is COMPLETE** (HEAD
 `e59eab8`), on `phase-2/reader-closure` (base `main` at `0d8a6a0`). The
@@ -2499,8 +2499,22 @@ QA, owner RP5 physical acceptance, and a final proportional lean close-out
 pass (full JVM 200/200, `NavigationSmokeTest` 26/26) are all closed — see
 [`PHASE_2D_IMPLEMENTATION_PLAN.md`](PHASE_2D_IMPLEMENTATION_PLAN.md) §21 and
 `docs/VALIDATION.md`'s "Phase 2D.1 close-out" entry for the full
-implementation record and test evidence. **2D.2-2D.4 remain planning-only**;
-see the same document for the full architecture audit,
+implementation record and test evidence.
+
+**2D.2 (recreation/resize continuity closure) is also COMPLETE** (branch
+`phase-2/reader-continuity`, base `8a3e4d1`), validation-only — no production
+code changes were needed. A real `adb shell am kill` process-death pass
+(not `am force-stop`, not `ActivityScenario.recreate()`) across EPUB, PDF and
+CBZ confirmed durable position/preferences/bookmarks survive truthfully,
+transient zoom/pan reset safely, EPUB search state is never resurrected
+stale, and 2D.1's resize/bounds invariants hold after a real live `wm size`
+resize and rotation. One suspected gap (Fit Width's saved scroll value vs.
+its non-saved zoom scale, across recreation) was concretely tested and found
+not reproducible. See `docs/PHASE_2D_IMPLEMENTATION_PLAN.md`'s status header
+and `docs/VALIDATION.md`'s "Phase 2D.2" entry for the full state-ownership
+map, process-death method/evidence, and the new `FixedReaderRecreationTest.kt`
+coverage this slice added. **2D.3-2D.4 remain planning-only**; see
+`PHASE_2D_IMPLEMENTATION_PLAN.md` for the full architecture audit,
 continuity/input/accessibility/performance findings, severity classification
 and the remaining slice sequence.
 
