@@ -102,6 +102,72 @@ physical acceptance PASSED.** Full detail in
   performed the pinch-zoom/drag-to-top/drag-to-bottom sequence on a tall Fit
   Width page by hand, plus a Fit Page sanity check: *"ALL GOOD!"*
 
+## Phase 2D.1 remediation, round two — zoomed Fit Width top/bottom reachability (2026-10-02)
+
+Status: **IMPLEMENTED, automated evidence on both devices PASSED. RP5 owner
+physical acceptance for THIS round NOT YET OBTAINED.** Full detail in
+[`PHASE_2D_IMPLEMENTATION_PLAN.md`](PHASE_2D_IMPLEMENTATION_PLAN.md#212-2d1-remediation-round-two--zoomed-fit-width-topbottom-reachability-2026-10-02).
+
+- **Independent QA finding (authoritative, after `06bcc14`)**: the `06bcc14`
+  fix correctly removed gray-escape and double-vertical-movement, but Fit
+  Width zoomed in on a tall page still made the outer top/bottom fraction of
+  the page permanently unreachable by scrolling (~25% at each end at 2x,
+  ~40% at 5x).
+- **MEASURED root cause**: `graphicsLayer` scales the `Image` visually around
+  its own layout center without changing its *layout* size, so
+  `verticalScroll` only ever measured the unscaled fitted height `H` — never
+  the visually-scaled `scale*H` actually painted — leaving its scroll range
+  at `H - viewport` instead of the correct `scale*H - viewport`.
+- **Chosen fix: scroll-range compensation.** A new pure function,
+  `fixedReaderVerticalScaleOverflow(contentHeight, scale)` (`max(0,
+  (scale-1)*contentHeight/2)`), and a `Column` with blank `Spacer`s of that
+  height above/below the `Image` — *outside* its `graphicsLayer`, so the
+  reserved space is never itself scaled — make the scrollable column's
+  measured height exactly `H + 2*overflow == scale*H`, matching the visual
+  extent and giving `verticalScroll` the correct range for free.
+  `graphicsLayer.translationY` stays forced to `0` in Fit Width exactly as
+  `06bcc14` established; no second vertical-movement mechanism was added.
+- **Test evidence, including a self-correction during this pass**: JVM
+  43/43 passed (35 existing + 8 new for the overflow helper). Instrumented:
+  **this pass's first attempt at the new reachability tests failed on both
+  devices** — not because the fix was wrong, but because (1) the fixture's
+  extreme 1:6 aspect ratio in a wide landscape viewport meant a single
+  screenful at 2x/5x zoom showed too little of the page for the original
+  marker positions (`y=80`/`y=2340` of 2400px) to land inside, and (2) a
+  fixed swipe-repeat count calibrated for the old flat scroll range fell
+  short of the new, correctly-larger zoomed range at 5x on both devices.
+  Both were fixed (markers moved closer to the true edges for the 2x cases;
+  the 5x stress case proved instead via a direct, device-independent check
+  that the real `verticalScroll.maxValue` equals the expected `scale*H -
+  viewport`; swipe helper changed to swipe-until-actually-reached rather
+  than a fixed count). After these fixes: **15/15 instrumented tests passed
+  on both the physical RP5 and the API 35 emulator**, confirmed via direct
+  `adb shell am instrument -e class
+  com.d4guilar.shelfos.FixedReaderTransformBoundsTest` runs on each device.
+  `git diff --check`: PASS.
+- **Validation-depth note (owner-directed, this iteration only)**: at the
+  owner's explicit mid-task instruction, this iteration's validation was
+  narrowed to the focused JVM test class and focused instrumentation (direct
+  `adb shell am instrument` on both devices, not the Gradle
+  `connectedAndroidTest` task) plus `git diff --check`/`git diff --stat`. The
+  full JVM suite, `NavigationSmokeTest`, the full connected suite, and the
+  final combined Gradle gate were **not** re-run for this specific iteration
+  — the owner asked that this tradeoff (narrower validation on narrow
+  iterative fixes, to avoid repeated ~40-minute waits) be surfaced here for a
+  standing policy decision rather than re-litigated each time.
+- **Scope**: the same four files as the first 2D.1 remediation plus the
+  `OriginalFixtures.tallPdf` marker-position adjustment (same fixture, same
+  page dimensions, markers moved closer to the true page edges) — no PDF
+  rasterization, CBZ decoding, EPUB, persistence, Room schema, or dependency
+  changes.
+- **RP5 OWNER PHYSICAL ACCEPTANCE FOR THIS ROUND: NOT YET OBTAINED — pending
+  a separate live session with the owner.** A subagent has no live channel to
+  the owner. Needed: zoom a tall Fit Width page to ~2x on the physical RP5,
+  confirm the true top is visible after scrolling fully up and the true
+  bottom after scrolling fully down, confirm no gray escape at either edge,
+  confirm horizontal pan and double-tap zoom reset still work, confirm Fit
+  Page is unaffected, and ideally repeat with a CBZ.
+
 ## Phase 2C evidence closure — no production render change justified (2026-10-01)
 
 Status: **Phase 2C investigation CLOSED. DECISION: no production PDF

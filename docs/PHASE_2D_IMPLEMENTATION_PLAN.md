@@ -1264,3 +1264,139 @@ real pinch-zoom/drag-to-top/drag-to-bottom sequence on a tall Fit Width page
 by hand, plus a Fit Page sanity check: *"ALL GOOD!"* This closes the evidence
 gap the remediation's own instrumented-test evidence (above) could not
 substitute for.
+
+## 21.2. 2D.1 remediation, round two — zoomed Fit Width top/bottom reachability (2026-10-02)
+
+**The `06bcc14` remediation above was itself incomplete.** It correctly
+removed the gray-escape and double-vertical-movement defects, but a second,
+independent QA pass found a third defect in the same area: with a tall Fit
+Width page zoomed in, the outer top/bottom fraction of the page became
+permanently unreachable by scrolling. This section documents that finding and
+its fix honestly, as a second incomplete-then-fixed iteration on the same
+slice, not as a clean pass.
+
+### Root cause
+
+`graphicsLayer`'s `scaleX`/`scaleY` visually scale the `Image` around its own
+layout center without changing its *layout* size. `06bcc14` correctly made
+`verticalScroll` the sole owner of Fit Width's vertical movement, but
+`verticalScroll` only ever measured the **unscaled** fitted height `H` of the
+`Image`'s own layout box — never the visually-scaled `scale * H` the
+`graphicsLayer` actually painted. At `scale == 2`, a center-origin scale
+bulges the visual content by `(scale-1)*H/2` above and below the Image's own
+layout bounds; that bulge was invisible to `verticalScroll`'s measurement, so
+its scroll range stayed `max(0, H - viewport)` instead of the
+visually-correct `max(0, scale*H - viewport)`. Concretely: at `scale == 2`
+roughly the outer 25% of the page at each end was stuck outside any reachable
+scroll position; at `scale == 5`, roughly the outer 40% at each end.
+
+### Chosen architecture: scroll-range compensation (the plan's preferred option)
+
+The investigation confirmed the preferred architecture was structurally
+achievable as built: `FixedReaderScreen`'s Fit Width render path is
+`Box(reader_page, pointerInput, onSizeChanged) -> Box(verticalScroll) ->
+Image(graphicsLayer)` with no intervening layout between the scrollable
+container and the Image. This meant blank spacer space could be inserted
+*outside* the `Image`'s own `graphicsLayer` modifier (which is exactly where
+it must live — spacers inside the scaled layer would themselves be scaled,
+defeating the compensation) while staying inside the scrollable container, by
+replacing the single-child `Box` with a `Column`:
+`Spacer(overflow) -> Image(graphicsLayer) -> Spacer(overflow)`.
+
+A new pure function, `core.reader.FixedReaderTransform.kt`'s
+`fixedReaderVerticalScaleOverflow(contentHeight, scale)`, returns
+`max(0, (scale-1) * contentHeight / 2)` — exactly the per-side visual bulge.
+`FixedReaderScreen` reserves that much blank layout space (converted to `Dp`
+via `LocalDensity`) above and below the `Image`, so the scrollable column's
+total measured height becomes `H + 2*overflow == scale*H`, matching the
+visual extent exactly and handing `verticalScroll` the correct range for
+free. No second vertical-movement mechanism was introduced:
+`graphicsLayer.translationY` stays forced to `0` in Fit Width exactly as
+`06bcc14` established, and the gesture-classification logic from that pass
+(vertical-dominant one-finger drags left unconsumed for `verticalScroll`) is
+untouched. Fallback A (resize the `Image`'s own layout to `scale*H` directly)
+and fallback B (bounded post-scroll-edge `translationY`) were not needed —
+the spacer-based compensation worked structurally on the first attempt.
+
+### Test evidence and a self-correction during this pass
+
+**JVM** (`FixedReaderTransformTest.kt`): **43/43 passed** (35 existing + 8
+new covering `fixedReaderVerticalScaleOverflow` at scale 1/2/5, linear growth,
+the `H + 2*overflow == scale*H` identity at scale 1/2/5, and the same
+defensive non-finite/non-positive/extreme-value cases as the rest of the
+file).
+
+**Instrumented** (`FixedReaderTransformBoundsTest.kt`, 15 tests total): this
+pass's first attempt at the new reachability tests **initially failed on
+both devices**, and the failures were genuinely instructive rather than
+calibration noise to wave away:
+
+- Two tests asserted the fixture's existing top/bottom text markers
+  (`y=80`/`y=2340` of the 400x2400 bitmap) were visible at the scroll
+  floor/ceiling. Both failed on both devices at `scale == 2`, and worse at
+  `scale == 5` — not because the fix was wrong, but because this fixture's
+  extreme 1:6 aspect ratio in a wide landscape viewport means a single
+  screenful at `scale == 2` shows only the nearest ~3-6% of the page, and at
+  `scale == 5` only ~1-2% (confirmed with real on-device numbers: visible
+  window sizes of 59-67 bitmap px at 2x and 24-27 bitmap px at 5x, out of a
+  2400px-tall page, varying slightly between the RP5 and the emulator's own
+  exact aspect ratio). The original markers, placed at 80px and 2340px in
+  from each edge, simply sat just outside that thin field of view. Fix:
+  moved the markers to `y=30`/`y=2380` (closer to the true edges) for the
+  `scale == 2` tests, and replaced the `scale == 5` stress case's proof with
+  a direct, device-independent check that the real `verticalScroll.maxValue`
+  equals the expected `scale*H - viewport` — which is both the actual
+  regression-sensitive fact being tested and immune to any fixed marker
+  position's field-of-view problem at extreme zoom (see
+  `assertScrollRangeMatchesScaledContent`'s doc in the test file).
+- One new test, plus one pre-existing `06bcc14` test
+  (`fitWidthTallPageBottomDragBeyondEdgeStaysWithinBounds`), initially
+  flaked on reaching the scroll ceiling before asserting against it: a fixed
+  swipe-repeat count calibrated for `06bcc14`'s flat `H - viewport` range
+  fell short once this pass correctly made the range scale with zoom (a much
+  larger ceiling at `scale == 5` than a fixed repeat count assumed). Fixed by
+  replacing the fixed-repeat swipe helper with `swipeVerticalToExtreme`,
+  which swipes until the real scroll state actually reports it has reached
+  its floor/ceiling (capped, so a genuine stuck-scroll bug still fails
+  loudly instead of looping forever).
+
+After both fixes, **15/15 instrumented tests passed on both the physical RP5
+and the API 35 emulator**, confirmed via direct `adb shell am instrument`
+runs (see the coordinator-directed scope note below on why the full
+connected suite was not re-run for this iteration).
+
+**Scope note on this pass's validation depth**: at the owner's explicit
+mid-task instruction, this iteration's validation was deliberately narrowed
+to the focused JVM test class, focused instrumentation via direct `adb shell
+am instrument` on both devices, and `git diff --check`/`git diff --stat` —
+the full `:app:testDebugUnitTest` suite, `NavigationSmokeTest`, the full
+`:app:connectedDebugAndroidTest` suite, and the final combined Gradle gate
+were **not** re-run for this specific iteration, to avoid a repeated ~40
+minute wait on a narrow fix layered on already-validated shared code. The
+owner asked for this tradeoff to be surfaced here for a standing policy
+decision rather than re-litigated per iteration. `git diff --check`: PASS.
+`git diff --stat` against `b2c8761` touches exactly the same files as the
+first 2D.1 remediation plus the fixture's marker-position adjustment
+(`OriginalFixtures.tallPdf`) — no PDF rasterization, CBZ decoding, EPUB,
+persistence, Room schema, or dependency changes.
+
+### Scope discipline confirmed
+
+`git diff --stat` against `b2c8761` (the pre-round-two commit): five files —
+`FixedReaderScreen.kt`, `FixedReaderTransform.kt`, the JVM test, the
+instrumented test, and `OriginalFixtures.kt` (marker position only, same
+fixture, same page dimensions). No renderer, decoder, persistence, or
+dependency changes.
+
+### RP5 owner physical acceptance for this remediation
+
+**NOT YET OBTAINED — pending a separate live session with the owner.** This
+pass's own validation is limited to automated JVM and instrumented evidence
+on both devices (above); a subagent has no live channel to the owner. The
+specific live check still needed: zoom a tall Fit Width page to ~2x on the
+physical RP5, scroll fully to the top and confirm the top of the page is
+actually visible (not merely that the app does not crash), scroll fully to
+the bottom and confirm the bottom is visible, confirm no gray escape dragging
+past either edge, confirm horizontal pan still works while zoomed, confirm
+double-tap zoom reset still works and leaves the page reachable, confirm Fit
+Page is still unaffected, and ideally repeat with a CBZ.
