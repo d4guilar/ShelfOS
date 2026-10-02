@@ -1,5 +1,97 @@
 # Validation
 
+## POST-PHASE-2 EPUB XHTML REGRESSION (2026-10-02)
+
+**Status: FIXED on `fix/epub-xhtml-head-injection` (base `main` `3625324`), pending independent QA.**
+This is a post-Phase-2 maintenance fix. The Phase 2 acceptance record below is unchanged and stays accurate
+for what it tested: it passed against its then-current EPUB fixtures. Nobody knew about this defect during the
+final Phase 2 gate. A later real EPUB exposed an XHTML case those fixtures never covered.
+
+**How it was found.** While capturing Reddit screenshots, the real Project Gutenberg *Frankenstein* EPUB
+(`Example Book files/`) rendered every chapter as Chromium's XML error page: *"This page contains the
+following errors: error on line 30 at column 8: Opening and ending tag mismatch: meta line 22 and head"*.
+The screenshot agent confirmed the source chapter was well-formed and reproduced the failure with two
+minimal synthetic EPUBs (`Frankenstein_test_min.epub`, `Frankenstein_test_min2.epub`).
+
+**Baseline reproduced before any change (API 35 emulator, base `3625324`).**
+
+- Frankenstein: Letter 2 and Chapter 4 both showed the error page above.
+- `Frankenstein_test_min.epub`: *"error on line 28 at column 8: Opening and ending tag mismatch: meta line
+  21 and head"*.
+- A production-replica probe of the sanitizer (same jsoup 1.23.2 calls) under a strict XML parser showed all
+  33 of Frankenstein's XHTML resources are well-formed as authored and malformed after sanitizing.
+  `min2.xhtml` has no `<meta>` and fails on `<br>` instead.
+
+**Root cause (proven, not the hypothesis).** ShelfOS does not inject any markup into `<head>`. The defect is
+the rendition sanitizer `sanitizeEpubHtml` in `core/reader/EpubReader.kt`. Every `.xhtml/.html/.htm/.svg`
+resource passes through it via Readium's `TransformingContainer`, and it parsed every document with jsoup's
+**HTML5** parser and re-serialized it as **HTML**. For a document Readium serves as `application/xhtml+xml`,
+which the WebView parses as XML, that round trip:
+
+- dropped the self-closing slash from every void element (`<meta …/>` became `<meta …>`, `<link …/>` became
+  `<link …>`, `<br/>` became `<br>`), so XML parsing fails;
+- reopened a self-closed empty anchor (`<a id="letter1"/>`): the HTML parser wraps the heading text in it and
+  duplicates it after the heading, giving two elements with the same id;
+- turned the XML declaration into a bogus comment.
+
+**Affected subset.** Not universal. It hits any XHTML (`application/xhtml+xml`) content document that
+contains a void element (`meta`, `link`, `br`, `hr`, `img`, …) or a self-closed non-void element. That covers
+most real EPUBs. It is independent of Publisher/ShelfOS presentation and managed fonts, since the sanitizer
+runs before either. Every earlier XHTML fixture happened to contain no void or self-closed element, so its HTML
+round trip stayed XML-well-formed. Documents served as `text/html` were and remain unaffected.
+
+**Fix.** The transform now looks up each resource's media type in the publication manifest. XML content
+documents (`application/xhtml+xml`, `image/svg+xml`) are parsed with jsoup's XML parser and serialized with XML
+syntax. When the resource isn't in the manifest, the file extension is the fallback. The same sanitizing rules
+apply in both paths (script/iframe/object/embed/form/base/`meta[http-equiv]` removal, event-handler and
+remote/`javascript:` link stripping), and `text/html` documents keep the existing HTML path. A declared XML
+encoding is rewritten to `UTF-8` to match the output bytes, and no declaration is added where the source had
+none. The source EPUB is never modified. No dependency, Room or schema change.
+
+**Regression coverage (original content, not Frankenstein).**
+
+- `OriginalFixtures.strictXhtmlEpub`: an XML declaration, self-closed `<meta/>`/`<link/>`, `<a id/>`,
+  `<br/>`/`<hr/>`, `epub:type`/`xml:lang`, inline script and `onclick`, plus a second chapter named `.html` but
+  declared `application/xhtml+xml`.
+- `EpubStrictXhtmlRenderingTest` (instrumented, 2 tests) **failed 2/2 before the fix and passes 2/2 after**:
+  - It reads the exact bytes the production `EpubReaderFactory` pipeline serves for each chapter and asserts they
+    are well-formed XML. It also asserts a unique, empty anchor, that script and `onclick` are stripped, and that
+    head content and `epub:type` are kept.
+  - It opens the fixture in the real reader and asserts, through the WebView's accessibility tree, that the
+    chapter text renders and Chromium's "This page contains the following errors" page does not appear.
+- `EpubXhtmlSanitizerTest` (JVM, 9 tests) covers the transform boundary directly:
+  - well-formedness and anchor structure;
+  - active-content stripping in XML mode;
+  - head, text and namespaced-attribute preservation;
+  - the declared-encoding rewrite (ISO-8859-1 source) and HTML named entities;
+  - the unchanged `text/html` path;
+  - media-type-driven (not extension-driven) parser selection.
+
+**Validation (API 35 emulator, `ANDROID_SERIAL=emulator-5554`).**
+
+- Full JVM: 209/209 (the earlier 200 plus the 9 new).
+- Focused EPUB instrumentation: 36 tests across `EpubStrictXhtmlRenderingTest`, `EpubBookmarkTest`,
+  `EpubBookmarkLocationInstrumentedTest`, `EpubChapterHighlightTest`, `EpubSearchTest`,
+  `EpubSearchServiceInstrumentedTest`, `EpubRecreationTest`, the three `EpubManagedFont*` tests,
+  `ManagedFontRepositoryTest` and `ReaderStateTest`.
+  - 35/36 passed in one run. The miss was a 10 s `awaitAddEnabled` wait in `EpubBookmarkTest` on the first test
+    after a cold emulator restart; the class then passed 9/9 twice.
+- Earlier in the session the emulator degraded and produced system-wide input-focus ANRs: the launcher's main
+  thread was blocked in `libhwui` waiting on its render thread, and an "Application Not Responding" dialog held
+  focus. Under that condition `EpubRecreationTest` failed or hit an ANR at the same rate on the unmodified base
+  and on the fix (2/3 passes each, measured with the same protocol). For that test's fixture the served bytes are
+  identical before and after the fix. The emulator process was restarted, after which the class passed.
+- `git diff --check`: PASS.
+
+**Real *Frankenstein* acceptance after the fix (API 35 emulator).**
+
+- Letter 1, Chapter 4, Chapter 5, Chapter 12 and the final Chapter 24 all render text, with no XML error page.
+- Chapter-dialog navigation and the Next page turn work.
+- Publisher presentation and ShelfOS presentation (Spacious, then Editorial preset) both apply and render.
+- The previously missing Reddit capture `docs/design/screenshots/reddit_androidapps_02_epub.png` (local-only,
+  git-ignored like the rest of that folder) was taken only after this validation: Chapter 5, ShelfOS
+  presentation, 1600×2560 tablet window cropped to 1600×2465 like the other Reddit captures.
+
 ## Phase 2D.4 — performance/resilience + final Phase 2 acceptance (2026-10-02)
 
 **Status: PHASE 2 COMPLETE.** Branch `phase-2/final-reader-acceptance` (base

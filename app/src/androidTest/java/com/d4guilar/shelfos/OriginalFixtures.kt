@@ -146,6 +146,39 @@ object OriginalFixtures {
         } }
         return item(file, "test-epub-long-chapter", PublicationFormat.EPUB)
     }
+    /** Post-Phase-2 XHTML regression: strict, well-formed XHTML using exactly the XML-only syntax a real EPUB
+     * (Project Gutenberg's Frankenstein) exposed — an XML declaration, self-closed `<meta/>`/`<link/>` in `<head>`,
+     * a self-closed empty anchor (`<a id="…"/>`), `<br/>`/`<hr/>`, `epub:type`/`xml:lang` — plus inline script and
+     * an event-handler attribute the sanitizer must still strip. Chapter two uses an `.html` file name declared as
+     * `application/xhtml+xml`, because the WebView parses by declared media type, not by file extension. */
+    fun strictXhtmlEpub(context: Context): LibraryItem {
+        val file = File(context.filesDir, "publications/test-original-strict-xhtml.epub").also { it.parentFile!!.mkdirs() }
+        fun chapter(n: Int) = """<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en"><head>
+<meta charset="utf-8"/><title>Strict Chapter $n</title>
+<link href="style.css" rel="stylesheet" type="text/css"/>
+<meta name="generator" content="ShelfOS original fixture"/>
+<script>document.title = 'injected';</script>
+</head>
+<body><section epub:type="chapter"><h2><a id="strict-$n"/>Strict Chapter $n</h2>
+<p onclick="bad()">STRICT-XHTML-MARKER-$n first line<br/>second line after a break.</p>
+<hr/>
+<p>A quiet closing paragraph written for this test publication.</p>
+</section></body></html>"""
+        val entries = mapOf(
+            "mimetype" to "application/epub+zip",
+            "META-INF/container.xml" to """<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>""",
+            "OEBPS/content.opf" to """<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:shelfos-strict-xhtml-test</dc:identifier><dc:title>Strict XHTML Test Book</dc:title><dc:language>en</dc:language><meta property="dcterms:modified">2026-10-02T00:00:00Z</meta></metadata><manifest><item id="ch1" href="chapter1.xhtml" media-type="application/xhtml+xml"/><item id="ch2" href="chapter2.html" media-type="application/xhtml+xml"/><item id="css" href="style.css" media-type="text/css"/><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/></manifest><spine><itemref idref="ch1"/><itemref idref="ch2"/></spine></package>""",
+            "OEBPS/nav.xhtml" to """<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><meta charset="utf-8"/><title>Contents</title></head><body><nav epub:type="toc"><ol><li><a href="chapter1.xhtml">Strict Chapter 1</a></li><li><a href="chapter2.html">Strict Chapter 2</a></li></ol></nav></body></html>""",
+            "OEBPS/style.css" to "p { line-height: 1.4; }",
+            "OEBPS/chapter1.xhtml" to chapter(1),
+            "OEBPS/chapter2.html" to chapter(2),
+        )
+        ZipOutputStream(file.outputStream()).use { zip -> entries.forEach { (name, text) ->
+            zip.putNextEntry(ZipEntry(name)); zip.write(text.toByteArray()); zip.closeEntry()
+        } }
+        return item(file, "test-epub-strict-xhtml", PublicationFormat.EPUB)
+    }
     private fun item(file: File, id: String, format: PublicationFormat) = LibraryItem(id, "Original ${format.name} fixture", "ShelfOS test",
         MediaCategory.BOOK, "test:$id", format, file.name, file.length(), managedPath = file.path)
 }

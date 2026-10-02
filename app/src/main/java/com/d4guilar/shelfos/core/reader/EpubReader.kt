@@ -11,6 +11,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
+import org.jsoup.nodes.Entities
+import org.jsoup.nodes.XmlDeclaration
+import org.jsoup.parser.Parser
 import org.readium.r2.navigator.epub.*
 import org.readium.r2.navigator.epub.css.FontStyle
 import org.readium.r2.navigator.epub.css.FontWeight
@@ -22,6 +26,7 @@ import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.util.*
 import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.http.*
+import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.shared.util.resource.TransformingContainer
 import org.readium.r2.shared.util.resource.TransformingResource
 import org.readium.r2.shared.util.file.FileResource
@@ -99,9 +104,11 @@ class EpubReaderFactory(private val context: Context, private val files: Publica
             val publication = PublicationOpener(EpubParser(offlineClient)).open(asset, allowUserInteraction = false,
                 onCreatePublication = {
                 val publicationContainer = TransformingContainer(container) { resourceUrl, resource ->
-                    if (resourceUrl.toString().substringBefore('?').substringAfterLast('.').lowercase() in setOf("xhtml", "html", "htm", "svg"))
-                        TransformingResource(resource) { data -> Try.success(sanitizeEpubHtml(data)) }
-                    else resource
+                    val extension = resourceUrl.toString().substringBefore('?').substringAfterLast('.').lowercase()
+                    if (extension in setOf("xhtml", "html", "htm", "svg")) {
+                        val xml = isXmlContentDocument(manifest.linkWithHref(resourceUrl)?.mediaType, extension)
+                        TransformingResource(resource) { data -> Try.success(sanitizeEpubHtml(data, xml)) }
+                    } else resource
                 }
                 container = CompositeContainer(listOf(ManagedFontContainer(::liveFontMap), publicationContainer))
             }).getOrElse { error ->
@@ -121,9 +128,22 @@ class EpubReaderFactory(private val context: Context, private val files: Publica
     }
 }
 
-/** Only the rendition is transformed; no bytes are written back to the publication. */
-internal fun sanitizeEpubHtml(bytes: ByteArray): ByteArray {
-    val document = Jsoup.parse(bytes.inputStream(), null, "")
+/**
+ * Whether the WebView will parse this content document as XML: it follows the media type the publication declares
+ * (`application/xhtml+xml`, `image/svg+xml`), which Readium serves it as, not the file name; the extension is only a
+ * fallback for a resource missing from the manifest.
+ */
+internal fun isXmlContentDocument(declared: MediaType?, extension: String): Boolean =
+    declared?.let { it.matches(MediaType.XHTML) || it.matches(MediaType.SVG) } ?: (extension == "xhtml" || extension == "svg")
+
+/**
+ * Only the rendition is transformed; no bytes are written back to the publication. An [xml] document (XHTML/SVG) is
+ * parsed and re-serialized as XML: an HTML round trip turns well-formed XHTML into markup the WebView's XML parser
+ * rejects (`<meta …>`/`<br>` lose their self-closing slash) and restructures self-closed elements such as an empty
+ * `<a id="…"/>` (post-Phase-2 EPUB XHTML regression). Non-XML (`text/html`) documents keep the HTML path.
+ */
+internal fun sanitizeEpubHtml(bytes: ByteArray, xml: Boolean = false): ByteArray {
+    val document = if (xml) Jsoup.parse(bytes.inputStream(), null, "", Parser.xmlParser()) else Jsoup.parse(bytes.inputStream(), null, "")
     document.select("script, iframe, object, embed, form, base, meta[http-equiv]").remove()
     document.allElements.forEach { element ->
         element.attributes().asList().forEach { attribute ->
@@ -133,6 +153,11 @@ internal fun sanitizeEpubHtml(bytes: ByteArray): ByteArray {
                         (value.startsWith("javascript:") || value.startsWith("file:") || value.startsWith("http:") || value.startsWith("https:") || value.startsWith("//"))))
                 element.removeAttr(attribute.key)
         }
+    }
+    if (xml) {
+        document.outputSettings().syntax(Document.OutputSettings.Syntax.xml).escapeMode(Entities.EscapeMode.xhtml)
+        // The bytes below are always UTF-8, so a declared encoding must say so too; a missing one already means UTF-8.
+        (document.childNodes().firstOrNull() as? XmlDeclaration)?.takeIf { it.hasAttr("encoding") }?.attr("encoding", "UTF-8")
     }
     document.outputSettings().charset(Charsets.UTF_8).prettyPrint(false)
     return document.outerHtml().toByteArray(Charsets.UTF_8)
