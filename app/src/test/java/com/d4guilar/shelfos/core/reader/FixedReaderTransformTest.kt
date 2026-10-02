@@ -43,7 +43,8 @@ class FixedReaderTransformTest {
 
     @Test fun fitWidthHeightCanExceedViewportHeight() {
         // A tall page in a short viewport: fit-width height exceeds the viewport (handled by verticalScroll,
-        // independent of this pan model) rather than being clamped here.
+        // via fixedReaderMaxPanY forcing the pan transform's own Y bound to 0, not by anything in
+        // fixedReaderFittedContentSize) rather than being clamped here.
         val content = fixedReaderFittedContentSize(300f, 1200f, 300f, 400f, fitWidth = true)
         assertEquals(300f, content.width, 0.01f)
         assertTrue(content.height > 400f)
@@ -175,12 +176,13 @@ class FixedReaderTransformTest {
         assertTrue(maxY > 0f)
     }
 
-    @Test fun case4PageLargerThanViewportBothAxesClampIndependently() {
+    @Test fun case4PageLargerThanViewportBothAxesClampToExactIndependentValues() {
+        // width: content 500 * scale 2 = 1000, viewport 300 -> (1000-300)/2 = 350
+        // height: content 600 * scale 2 = 1200, viewport 200 -> (1200-200)/2 = 500
         val maxX = fixedReaderMaxPan(500f, 300f, 2f)
         val maxY = fixedReaderMaxPan(600f, 200f, 2f)
-        assertTrue(maxX > 0f)
-        assertTrue(maxY > 0f)
-        assertTrue(maxX != maxY)
+        assertEquals(350f, maxX, 0.01f)
+        assertEquals(500f, maxY, 0.01f)
     }
 
     @Test fun case5ZoomInExpandsRangeAndKeepsPreviouslyValidTranslationValid() {
@@ -214,14 +216,83 @@ class FixedReaderTransformTest {
         assertEquals(0f, fixedReaderClampPan(stale, newMax), 0f)
     }
 
-    @Test fun case10PdfAndCbzShareIdenticalClampBehaviorForEquivalentInputs() {
-        // The helper has no format concept at all; identical geometric inputs must yield identical outputs
-        // regardless of which format (PDF bitmap vs. CBZ-decoded bitmap) supplied the dimensions.
-        val pdfLikeContent = fixedReaderFittedContentSize(400f, 600f, 350f, 700f, fitWidth = false)
-        val cbzLikeContent = fixedReaderFittedContentSize(400f, 600f, 350f, 700f, fitWidth = false)
-        assertEquals(pdfLikeContent, cbzLikeContent)
-        val pdfMax = fixedReaderMaxPan(pdfLikeContent.width, 350f, 2f)
-        val cbzMax = fixedReaderMaxPan(cbzLikeContent.width, 350f, 2f)
-        assertEquals(pdfMax, cbzMax, 0f)
+    @Test fun case10FunctionsTakeNoFormatInputAndAreGovernedOnlyByDimensions() {
+        // The real defect this guards against: a format-specific branch accidentally sneaking into the shared
+        // geometry (e.g. "if PDF do X, if CBZ do Y"). None of these functions accept a format parameter at all —
+        // PDF's rasterized bitmap and CBZ's decoded bitmap are indistinguishable to this file by construction,
+        // not merely by coincidence of equal test inputs. Proving that requires two *different* dimension sets
+        // that a format-aware implementation might plausibly special-case, confirming each still obeys the same
+        // single geometric formula rather than one of them silently taking a different code path.
+        val wideLandscapeBitmap = fixedReaderFittedContentSize(1200f, 400f, 350f, 700f, fitWidth = false) // PDF-shaped
+        val tallPortraitBitmap = fixedReaderFittedContentSize(400f, 1200f, 350f, 700f, fitWidth = false) // CBZ-shaped
+        // Width-limited fit: width pinned to the viewport, height follows the aspect ratio.
+        assertEquals(350f, wideLandscapeBitmap.width, 0.01f)
+        assertEquals(350f * (400f / 1200f), wideLandscapeBitmap.height, 0.01f)
+        // Height-limited fit: height pinned to the viewport, width follows the aspect ratio.
+        assertEquals(700f * (400f / 1200f), tallPortraitBitmap.width, 0.01f)
+        assertEquals(700f, tallPortraitBitmap.height, 0.01f)
+        // Both still obey the exact same fixedReaderMaxPan formula afterward, with no branch on which produced them.
+        assertEquals((wideLandscapeBitmap.width * 3f - 350f) / 2f, fixedReaderMaxPan(wideLandscapeBitmap.width, 350f, 3f), 0.01f)
+        assertEquals((tallPortraitBitmap.height * 3f - 700f) / 2f, fixedReaderMaxPan(tallPortraitBitmap.height, 700f, 3f), 0.01f)
+    }
+
+    // ---- fixedReaderMaxPanY: Fit Width's tall-content remediation (QA-flagged blocker) ----
+
+    @Test fun maxPanYIsZeroForFitWidthAtScaleOneEvenWhenContentIsMuchTallerThanViewport() {
+        // The exact shape of the reported blocker: a tall page (H >> V) in landscape Fit Width. At the default,
+        // untransformed scale, vertical movement must come entirely from verticalScroll, never from the pan
+        // transform -- unlike Fit Page, where the old (pre-remediation) formula would have returned (H-V)/2 > 0
+        // here, which was the root cause of the page being draggable into gray even at low zoom.
+        val tallContent = fixedReaderFittedContentSize(400f, 2400f, 1200f, 500f, fitWidth = true)
+        assertTrue("fixture must actually reproduce H > V", tallContent.height > 500f)
+        assertEquals(0f, fixedReaderMaxPanY(tallContent, 500f, scale = 1f, fitWidth = true), 0f)
+    }
+
+    @Test fun maxPanYIsZeroForFitWidthTallContentAtScaleTwoAndFive() {
+        // QA explicitly asked for scale 1, 2 and 5: Fit Width's Y bound must stay 0 at every zoom level, since
+        // the chosen remediation model (Option B) gives verticalScroll sole ownership of vertical movement for
+        // this axis regardless of how far zoomed in the user is.
+        val tallContent = fixedReaderFittedContentSize(400f, 2400f, 1200f, 500f, fitWidth = true)
+        assertEquals(0f, fixedReaderMaxPanY(tallContent, 500f, scale = 2f, fitWidth = true), 0f)
+        assertEquals(0f, fixedReaderMaxPanY(tallContent, 500f, scale = 5f, fitWidth = true), 0f)
+    }
+
+    @Test fun maxPanYIsZeroForFitWidthWhenContentAlreadyFitsViewportHeight() {
+        // The H <= V case (short/wide page, or a portrait viewport): still always 0 for Fit Width, same as Fit
+        // Page's own untransformed case -- Fit Width simply never uses the pan transform's Y axis at all.
+        val shortContent = fixedReaderFittedContentSize(400f, 300f, 400f, 900f, fitWidth = true)
+        assertTrue(shortContent.height <= 900f)
+        assertEquals(0f, fixedReaderMaxPanY(shortContent, 900f, scale = 1f, fitWidth = true), 0f)
+        assertEquals(0f, fixedReaderMaxPanY(shortContent, 900f, scale = 3f, fitWidth = true), 0f)
+    }
+
+    @Test fun maxPanYZoomDownSequenceStaysZeroThroughoutForFitWidth() {
+        // A full zoom-in-then-out sequence (5 -> 2 -> 1) must never produce a nonzero Fit Width Y bound at any
+        // point, confirming there is no intermediate scale where the old per-viewport formula could resurface.
+        val tallContent = fixedReaderFittedContentSize(400f, 2400f, 1200f, 500f, fitWidth = true)
+        listOf(5f, 2f, 1f).forEach { scale ->
+            assertEquals("scale=$scale must yield a zero Fit Width Y bound", 0f,
+                fixedReaderMaxPanY(tallContent, 500f, scale, fitWidth = true), 0f)
+        }
+    }
+
+    @Test fun maxPanYDelegatesToStandardFormulaForFitPageRegardlessOfContentShape() {
+        // Fit Page must be completely unaffected by the Fit Width remediation: fixedReaderMaxPanY(fitWidth =
+        // false) must equal the plain fixedReaderMaxPan(contentSize.height, ...) result exactly.
+        val content = fixedReaderFittedContentSize(400f, 800f, 1000f, 400f, fitWidth = false) // height-limited fit
+        val expected = fixedReaderMaxPan(content.height, 400f, 3f)
+        assertTrue("fixture must actually exercise a positive bound", expected > 0f)
+        assertEquals(expected, fixedReaderMaxPanY(content, 400f, scale = 3f, fitWidth = false), 0f)
+    }
+
+    @Test fun maxPanYForFitWidthDoesNotAffectHorizontalPanWhichStillGrowsWithZoom() {
+        // Confirms the remediation is Y-axis-only: Fit Width's horizontal pan bound (via plain fixedReaderMaxPan
+        // on contentSize.width) must still grow normally with zoom, exactly like Fit Page's X axis.
+        val tallContent = fixedReaderFittedContentSize(400f, 2400f, 1200f, 500f, fitWidth = true)
+        val maxXAtOne = fixedReaderMaxPan(tallContent.width, 1200f, 1f)
+        val maxXAtTwo = fixedReaderMaxPan(tallContent.width, 1200f, 2f)
+        assertEquals(0f, maxXAtOne, 0f) // content width == viewport width at scale 1 in Fit Width
+        assertTrue("horizontal pan must open up once zoomed, even though Y stays locked", maxXAtTwo > 0f)
+        assertEquals(0f, fixedReaderMaxPanY(tallContent, 500f, scale = 2f, fitWidth = true), 0f) // Y stays 0 throughout
     }
 }

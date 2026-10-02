@@ -43,6 +43,7 @@ import com.d4guilar.shelfos.core.reader.capabilities
 import com.d4guilar.shelfos.core.reader.fixedReaderClampPan
 import com.d4guilar.shelfos.core.reader.fixedReaderFittedContentSize
 import com.d4guilar.shelfos.core.reader.fixedReaderMaxPan
+import com.d4guilar.shelfos.core.reader.fixedReaderMaxPanY
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import com.d4guilar.shelfos.domain.library.*
 import kotlin.math.abs
@@ -112,7 +113,12 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
         val content = fixedReaderFittedContentSize(bitmap.width.toFloat(), bitmap.height.toFloat(),
             viewportSize.width.toFloat(), viewportSize.height.toFloat(), fitWidth)
         panX = fixedReaderClampPan(panX, fixedReaderMaxPan(content.width, viewportSize.width.toFloat(), scale))
-        panY = fixedReaderClampPan(panY, fixedReaderMaxPan(content.height, viewportSize.height.toFloat(), scale))
+        // Phase 2D.1 remediation (Fit Width tall-content blocker): Fit Width's vertical movement belongs
+        // entirely to `verticalScroll`, never to this graphicsLayer pan (see fixedReaderMaxPanY's doc and the
+        // gesture handler below for why the previous shared Y formula allowed the page to be dragged into gray
+        // when the fitted content was taller than the viewport). This re-clamp can therefore never resurrect a
+        // stale nonzero Fit Width panY across a resize/rotation/fold.
+        panY = fixedReaderClampPan(panY, fixedReaderMaxPanY(content, viewportSize.height.toFloat(), scale, fitWidth))
     }
     BackHandler { backPress() }
     if (appearance && item != null) ReaderAppearance(state.preferences, capabilities(item.format), { appearance = false },
@@ -171,7 +177,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                         else -> toggleControls(moveFocus = false)
                     }
                 })
-            }.pointerInput(state.page, rtl) {
+            }.pointerInput(state.page, rtl, fitWidth) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     var horizontal = 0f
@@ -181,7 +187,22 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                         val event = awaitPointerEvent()
                         val zoom = event.calculateZoom()
                         val pan = event.calculatePan()
-                        if (event.changes.count { it.pressed } > 1 || scale > 1f) {
+                        val pointerCount = event.changes.count { it.pressed }
+                        // Phase 2D.1 remediation (Fit Width tall-content blocker): Fit Width's `Image` lives
+                        // inside `verticalScroll`, which already owns vertical movement for content taller than
+                        // the viewport. Letting this handler ALSO drive `translationY` from the same one-finger
+                        // drag double-moved the page (both systems advancing together) and, worse, the old
+                        // shared Y clamp measured excess against the viewport alone, not the already-tall
+                        // content, so panY could grow unbounded and push the page into gray. The fix: in Fit
+                        // Width, only a real pinch (2+ pointers) or a one-finger drag that is horizontal-
+                        // dominant *while already zoomed* is treated as a transform gesture; a one-finger
+                        // vertical-dominant drag is left unconsumed so `verticalScroll`'s own gesture detector
+                        // handles it, and panY is never written here (it stays at the 0 the fit-mode/page reset
+                        // already gives it). Fit Page is unaffected: it has no scroll container, so it keeps the
+                        // original full pinch-zoom + clamped pan X/Y behavior unchanged below.
+                        val isTransformGesture = if (fitWidth) pointerCount > 1 || (scale > 1f && abs(pan.x) > abs(pan.y))
+                            else pointerCount > 1 || scale > 1f
+                        if (isTransformGesture) {
                             transformed = true
                             val bitmap = state.bitmap
                             if (bitmap != null) {
@@ -193,7 +214,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                                     size.width.toFloat(), size.height.toFloat(), fitWidth)
                                 scale = newScale
                                 panX = fixedReaderClampPan(panX + pan.x, fixedReaderMaxPan(content.width, size.width.toFloat(), newScale))
-                                panY = fixedReaderClampPan(panY + pan.y, fixedReaderMaxPan(content.height, size.height.toFloat(), newScale))
+                                panY = fixedReaderClampPan(panY + pan.y, fixedReaderMaxPanY(content, size.height.toFloat(), newScale, fitWidth))
                             }
                             event.changes.forEach { it.consume() }
                         } else {
@@ -212,11 +233,23 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
             state.bitmap?.let { bitmap ->
                 val image = remember(bitmap) { bitmap.asImageBitmap() }
                 key(state.page) {
-                    Box(if (fitWidth) Modifier.fillMaxSize().verticalScroll(rememberScrollState()) else Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    val scrollState = rememberScrollState()
+                    Box(if (fitWidth) Modifier.fillMaxSize().verticalScroll(scrollState) else Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Image(image, String.format(pageOfCountTemplate, state.page + 1, state.count),
                             (if (fitWidth) Modifier.fillMaxWidth().aspectRatio(bitmap.width.toFloat() / bitmap.height) else Modifier.fillMaxSize())
-                                .graphicsLayer { scaleX = scale; scaleY = scale; translationX = panX; translationY = panY }, contentScale = ContentScale.Fit)
+                                // Fit Width never applies translationY (verticalScroll owns vertical movement there,
+                                // see the gesture handler and viewport-resize LaunchedEffect above); panY is always
+                                // 0 in that mode, but the graphicsLayer also forces it structurally so the two
+                                // vertical-movement systems can never both act on the same gesture.
+                                .graphicsLayer { scaleX = scale; scaleY = scale; translationX = panX; translationY = if (fitWidth) 0f else panY }, contentScale = ContentScale.Fit)
                     }
+                    // Phase 2D.1 remediation test seam: exposes the real verticalScroll state (value/maxValue) that
+                    // Fit Width's vertical movement now exclusively relies on, so instrumented tests can drive and
+                    // assert real scroll-extreme geometry without a larger debug-only API, mirroring the existing
+                    // reader_transform_probe pattern below.
+                    if (fitWidth) Text("", Modifier.size(0.dp).testTag("reader_scroll_probe").clearAndSetSemantics {
+                        stateDescription = "${scrollState.value},${scrollState.maxValue}"
+                    })
                 }
                 // Phase 2D.1 test seam: zero-size and semantics-cleared (invisible to users and TalkBack), but
                 // queryable by testTag so instrumented tests can assert the real production scale/pan state stays

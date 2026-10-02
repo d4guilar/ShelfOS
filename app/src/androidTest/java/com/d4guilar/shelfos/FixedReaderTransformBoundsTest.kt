@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos
 
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -32,10 +34,10 @@ class FixedReaderTransformBoundsTest {
 
     @Before fun seedOriginalFixtures() = runBlocking<Unit> {
         val context = instrumentation.targetContext
-        listOf(OriginalFixtures.pdf(context), OriginalFixtures.cbz(context)).forEach { container.library.add(it) }
+        listOf(OriginalFixtures.pdf(context), OriginalFixtures.cbz(context), OriginalFixtures.tallPdf(context)).forEach { container.library.add(it) }
     }
     @After fun removeFixtures() = runBlocking<Unit> {
-        listOf("test-pdf", "test-cbz").forEach { container.library.remove(it) }
+        listOf("test-pdf", "test-cbz", "test-pdf-tall").forEach { container.library.remove(it) }
         container.library.preferences("", "{}")
     }
 
@@ -61,6 +63,62 @@ class FixedReaderTransformBoundsTest {
         return Transform(s.toFloat(), x.toFloat(), y.toFloat())
     }
     private fun viewportSize() = compose.onNodeWithTag("reader_page").fetchSemanticsNode().size
+
+    /** Fit Width's live `verticalScroll` offset/max, as reported by the production `reader_scroll_probe` seam. */
+    private data class ScrollExtent(val value: Int, val max: Int)
+    private fun scrollExtent(): ScrollExtent {
+        val node = compose.onNodeWithTag("reader_scroll_probe").fetchSemanticsNode()
+        val raw = node.config.getOrNull(SemanticsProperties.StateDescription) ?: "0,0"
+        val (value, max) = raw.split(",")
+        return ScrollExtent(value.toInt(), max.toInt())
+    }
+
+    /** Requests whichever orientation the device is not already in, mirroring [EpubRecreationTest]'s own
+     * rotation helper, so this also rotates hardware that is locked to one orientation by default. Fit Width's
+     * tall-content blocker needs a landscape viewport (wide, short) to reproduce reliably: the fitted height
+     * (`viewportWidth * bitmapHeight / bitmapWidth`) scales with viewport *width*, which landscape maximizes,
+     * while the viewport height it must exceed is minimized. */
+    private fun rotateToLandscape() {
+        var before: android.app.Activity? = null
+        compose.activityRule.scenario.onActivity { before = it }
+        val startOrientation = before!!.resources.configuration.orientation
+        if (startOrientation == Configuration.ORIENTATION_LANDSCAPE) return
+        compose.activityRule.scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+        compose.waitUntil(30_000) {
+            var orientation = startOrientation
+            compose.activityRule.scenario.onActivity { orientation = it.resources.configuration.orientation }
+            orientation == Configuration.ORIENTATION_LANDSCAPE
+        }
+        compose.waitForIdle()
+    }
+
+    private fun switchToFitWidth() {
+        compose.onNodeWithText("Appearance").performClick()
+        compose.onNodeWithText("Fit width").performClick().assertIsSelected()
+        compose.onNodeWithText("Apply").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Reading appearance").fetchSemanticsNodes().isEmpty() }
+        compose.waitForIdle()
+    }
+
+    private fun zoomIn() {
+        compose.onNodeWithText("Zoom in").performClick()
+        compose.onNodeWithText("Reset zoom").assertExists()
+    }
+
+    /** Repeated one-finger vertical swipes on the reader viewport, large enough to traverse the full tall-page
+     * scroll range in a handful of gestures; relies on the production gesture handler leaving single-finger
+     * vertical drags unconsumed in Fit Width so `verticalScroll`'s own detector moves them (Phase 2D.1
+     * remediation: this is exactly the path that must NOT also move `panY`). */
+    private fun swipeVertical(up: Boolean, repeats: Int = 6) {
+        repeat(repeats) {
+            compose.onNodeWithTag("reader_page").performTouchInput {
+                val startY = if (up) bottom - 20f else top + 20f
+                val endY = if (up) top + 20f else bottom - 20f
+                swipe(start = Offset(centerX, startY), end = Offset(centerX, endY), durationMillis = 120)
+            }
+            compose.waitForIdle()
+        }
+    }
 
     /** Pinches outward (zoom in) then drags one finger far beyond any sane edge (the owner's reported trigger),
      * asserting the resulting transform never exceeds a bound tied to the real content/viewport geometry — the
@@ -162,5 +220,81 @@ class FixedReaderTransformBoundsTest {
         assertEquals(1f, after.scale, 0f)
         assertEquals(0f, after.panX, 0f)
         assertEquals(0f, after.panY, 0f)
+    }
+
+    // ---- Phase 2D.1 remediation: Fit Width tall-content blocker (independent QA finding) ----
+    //
+    // Reproduces the blocker QA reported: "landscape viewport, tall PDF page, Fit Width, zoom to ~2x, scroll to
+    // top, drag downward repeatedly -> the page can be translated completely out of view, leaving solid gray."
+    // and the symmetric case at the bottom scrolling up. The chosen remediation (Option B: verticalScroll owns
+    // all Fit Width vertical movement, graphicsLayer.translationY is always 0 there) is asserted via the exact
+    // production state (panY, and the real ScrollState's value/maxValue), not a loose sanity bound.
+
+    /** At the TOP of the scroll range, zoomed in, dragging further downward (beyond the top edge) must leave the
+     * scroll offset at its floor (0) and must NOT move panY at all -- the old defect's root cause was exactly a
+     * nonzero Fit Width panY bound that let the page translate away from this scroll-owned content entirely. */
+    @Test fun fitWidthTallPageTopDragBeyondEdgeStaysWithinBounds() {
+        awaitLibrary()
+        rotateToLandscape()
+        read("test-pdf-tall")
+        awaitPage("1 / 2")
+        switchToFitWidth()
+        awaitTag("reader_scroll_probe")
+        assertTrue("fixture must actually produce a scrollable (tall) Fit Width page",
+            scrollExtent().max > 0)
+        assertEquals("fresh page/fit mode must start scrolled to the top", 0, scrollExtent().value)
+        zoomIn()
+        assertEquals(2f, transform().scale, 0f)
+        // Already at the top; drag further down (finger moves down the screen) repeatedly, the owner's reported
+        // trigger for the page escaping into gray.
+        swipeVertical(up = false)
+        val after = transform()
+        val scroll = scrollExtent()
+        assertEquals("Fit Width must never move vertically via the pan transform", 0f, after.panY, 0f)
+        assertEquals("scroll cannot go past its own top floor", 0, scroll.value)
+        assertEquals("zoom must be unaffected by a pure vertical drag", 2f, after.scale, 0f)
+    }
+
+    /** Symmetric case at the BOTTOM of the scroll range: scroll all the way down, then drag further upward. */
+    @Test fun fitWidthTallPageBottomDragBeyondEdgeStaysWithinBounds() {
+        awaitLibrary()
+        rotateToLandscape()
+        read("test-pdf-tall")
+        awaitPage("1 / 2")
+        switchToFitWidth()
+        awaitTag("reader_scroll_probe")
+        val max = scrollExtent().max
+        assertTrue("fixture must actually produce a scrollable (tall) Fit Width page", max > 0)
+        zoomIn()
+        assertEquals(2f, transform().scale, 0f)
+        // Scroll all the way to the bottom first, then keep dragging upward (finger moves up) past the edge.
+        swipeVertical(up = true, repeats = 10)
+        assertEquals("must actually reach the bottom before testing the beyond-edge drag", max, scrollExtent().value)
+        swipeVertical(up = true)
+        val after = transform()
+        val scroll = scrollExtent()
+        assertEquals("Fit Width must never move vertically via the pan transform", 0f, after.panY, 0f)
+        assertEquals("scroll cannot go past its own bottom ceiling", max, scroll.value)
+        assertEquals("zoom must be unaffected by a pure vertical drag", 2f, after.scale, 0f)
+    }
+
+    /** Phase 2D.1 Step 8 regression: at the default, untransformed scale, Fit Width's vertical movement must
+     * come from verticalScroll, not from a free graphicsLayer pan -- the old formula allowed a nonzero Fit Width
+     * panY bound even at scale == 1 whenever the fitted content was taller than the viewport. */
+    @Test fun fitWidthTallPageScaleOneVerticalMovementComesFromScrollNotPan() {
+        awaitLibrary()
+        rotateToLandscape()
+        read("test-pdf-tall")
+        awaitPage("1 / 2")
+        switchToFitWidth()
+        awaitTag("reader_scroll_probe")
+        assertEquals(1f, transform().scale, 0f)
+        assertEquals(0, scrollExtent().value)
+        swipeVertical(up = true, repeats = 3)
+        val after = transform()
+        assertEquals("panY must stay 0 at scale 1 in Fit Width", 0f, after.panY, 0f)
+        assertEquals("scale must remain untouched by a pure vertical drag", 1f, after.scale, 0f)
+        assertTrue("the drag must have actually scrolled the content (scroll owns vertical movement here)",
+            scrollExtent().value > 0)
     }
 }

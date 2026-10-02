@@ -2,8 +2,10 @@
 
 ## Phase 2D.1 — fixed-reader transform/bounds correctness (2026-10-02)
 
-Status: **IMPLEMENTED, owner RP5 physical acceptance PASSED, pending
-independent review.** Full detail in
+Status: **First pass IMPLEMENTED, but independent QA returned BLOCKED (Fit
+Width tall-content blocker); see the 2026-10-02 remediation entry below for
+the fix. The owner RP5 acceptance quoted here did not happen to exercise a
+tall enough page to expose that gap.** Full detail in
 [`PHASE_2D_IMPLEMENTATION_PLAN.md`](PHASE_2D_IMPLEMENTATION_PLAN.md#21-2d1-implementation-record-2026-10-02).
 
 - **OWNER LIVE REPRODUCTION** (before any code was written, on the physical
@@ -22,6 +24,10 @@ independent review.** Full detail in
   (previously could carry an invalid transform into the new geometry), and an
   idle transform is now re-clamped after a viewport resize/rotation/fold even
   without an active gesture.
+  **Correction (2026-10-02): this pass's own claim that Fit Width's
+  `verticalScroll` was "independent of this pan model" was false** — see the
+  remediation entry below. The formula above was only ever correct for Fit
+  Page; Fit Width's tall-content case needed a different Y-axis model.
 - **Test evidence**: 29/29 new JVM tests; 5/5 new instrumented tests on both
   the physical RP5 and the API 35 emulator; 26/26 `NavigationSmokeTest`
   regression on both devices (no input/accessibility/Back/RTL regression);
@@ -36,11 +42,68 @@ independent review.** Full detail in
   new files (pure helper, JVM test, instrumented test). No PDF resolution,
   CBZ sampling, EPUB, persistence, or input-remapping code touched;
   dependencies and Room schema unchanged.
-- **OWNER PHYSICAL ACCEPTANCE: PASS.** The owner installed the fix build on
-  the real RP5 and performed the pinch-zoom-in/pan-to-edge/zoom-back-out
-  sequence by hand: *"pass! Zoom in and zoom out dont go out of bounds or
-  slides of screen, fit width too. All good."* Independent targeted QA of
-  this slice has not yet run.
+- **OWNER PHYSICAL ACCEPTANCE: PASS (for the gestures actually exercised).**
+  The owner installed the fix build on the real RP5 and performed the
+  pinch-zoom-in/pan-to-edge/zoom-back-out sequence by hand: *"pass! Zoom in
+  and zoom out dont go out of bounds or slides of screen, fit width too. All
+  good."* This did not happen to include a tall-enough page in a landscape
+  viewport to trigger the gap the 2026-10-02 remediation below closes —
+  independent targeted QA subsequently found and reproduced that gap.
+
+## Phase 2D.1 remediation — Fit Width tall-content blocker (2026-10-02)
+
+Status: **IMPLEMENTED, automated evidence on both devices PASSED, owner RP5
+physical acceptance NOT YET OBTAINED for this remediation specifically.**
+Full detail in
+[`PHASE_2D_IMPLEMENTATION_PLAN.md`](PHASE_2D_IMPLEMENTATION_PLAN.md#211-2d1-remediation--fit-width-tall-content-blocker-2026-10-02).
+
+- **Independent QA verdict (authoritative)**: BLOCKED. Fit Page was correct;
+  Fit Width with content taller than the viewport could still be dragged out
+  of bounds into gray — landscape viewport, tall page, Fit Width, zoom to
+  ~2x, scroll to top, drag downward repeatedly (and the symmetric case at the
+  bottom dragging up).
+- **MEASURED root cause**: the shared pan-bound formula has no fit-mode
+  concept, so it was also fed Fit Width's fitted content *height* — which
+  routinely exceeds the viewport by design (that is what `verticalScroll` is
+  for) — the same way it is fed Fit Page's always-viewport-sized content.
+  This produced a nonzero Y bound even at `scale == 1`, and let
+  `graphicsLayer.translationY` and `verticalScroll` both move the same
+  one-finger drag at once (double movement), a pre-existing defect QA also
+  flagged.
+- **Chosen model: verticalScroll-only (Option B).** Fit Width's vertical
+  movement now belongs entirely to `verticalScroll`; the pan transform's Y
+  axis is forced to `0` in that mode via a new pure function,
+  `fixedReaderMaxPanY(contentSize, viewportHeight, scale, fitWidth)`, used
+  both by the gesture handler and the viewport-resize re-clamp. The gesture
+  handler only treats a Fit Width gesture as a zoom/pan transform for a real
+  multi-finger pinch or a horizontal-dominant one-finger drag while already
+  zoomed; a vertical-dominant one-finger drag is left unconsumed so
+  `verticalScroll`'s own detector moves it, eliminating the double-movement
+  defect at its source rather than only bounding it. Fit Page is unaffected
+  (no scroll container, same full pinch-zoom + clamped pan X/Y as before).
+  `pointerInput(state.page, rtl)` → `pointerInput(state.page, rtl, fitWidth)`
+  so the gesture coroutine restarts when fit mode changes mid-session.
+- **Test evidence**: JVM 35/35 (29 existing + 6 new: `fixedReaderMaxPanY` at
+  scale 1/2/5 for tall content, the H ≤ V case, a 5→2→1 zoom-down sequence,
+  Fit Page parity, horizontal-pan-unaffected; two previously weak tests —
+  `case4`'s `maxX != maxY` tautology and `case10`'s identical-input PDF/CBZ
+  tautology — strengthened to assert exact values / genuinely different
+  shapes). Instrumented: new tall-page PDF fixture
+  (`OriginalFixtures.tallPdf`, 1:6 aspect) in a rotated landscape viewport;
+  3 new tests (zoomed drag beyond TOP edge stays bounded, beyond BOTTOM edge
+  stays bounded, scale-1 vertical movement comes from scroll not pan) plus
+  the 5 existing tests, **8/8 passed on both the physical RP5 and the API 35
+  emulator.** `NavigationSmokeTest` regression: 26/26 on both devices. Full
+  JVM suite: 192/192 passed, 0 failed, 0 skipped. `git diff --check`: PASS.
+- **Scope**: the same four files as the original 2D.1 slice plus one fixture
+  addition (`OriginalFixtures.tallPdf`) — no PDF rasterization, CBZ decoding,
+  EPUB, persistence, Room schema, or dependency changes.
+- **RP5 OWNER PHYSICAL ACCEPTANCE FOR THIS REMEDIATION: NOT YET OBTAINED —
+  pending a separate live session with the owner.** The instrumented evidence
+  above runs real multi-touch pointer events through the production gesture
+  code on the physical RP5 itself, which is real and valuable, but it is not
+  a substitute for the owner physically pinch-zooming/dragging a tall Fit
+  Width page at both scroll extremes by hand.
 
 ## Phase 2C evidence closure — no production render change justified (2026-10-01)
 

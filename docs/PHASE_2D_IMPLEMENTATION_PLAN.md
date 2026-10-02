@@ -1036,9 +1036,16 @@ with three functions:
   viewportHeight, fitWidth)` — the unscaled (1x) fitted content size, mirroring
   `ContentScale.Fit`'s letterbox math for Fit Page, and
   `fillMaxWidth().aspectRatio(...)`'s width-bound sizing for Fit Width (whose
-  height may exceed the viewport, already handled by the screen's own
-  `verticalScroll`, independent of this pan model — confirmed, not
-  redesigned).
+  height may exceed the viewport, handled by the screen's own `verticalScroll`).
+
+  > **Correction (2026-10-02, 2D.1 remediation, §21.1 below):** this entry
+  > originally claimed Fit Width's `verticalScroll` was "independent of this
+  > pan model" and that this was "confirmed, not redesigned." That was false.
+  > Nothing stopped the screen from also feeding this tall content height into
+  > `fixedReaderMaxPan`/`translationY` the same way Fit Page does, and it did —
+  > letting the pan transform and `verticalScroll` both move the same gesture
+  > at once, with a Y bound measured against the viewport alone rather than
+  > the already-tall content. Independent QA caught this; see §21.1.
 - `fixedReaderMaxPan(contentSize, viewportSize, scale)` — the correct geometric
   model from §2.5: zero if the scaled content already fits, otherwise half the
   excess of the scaled content over the viewport.
@@ -1137,3 +1144,125 @@ closure), and 2D.4 (performance/resilience + final physical acceptance)
 remain exactly as scoped in §12 — this slice closes only the fixed-reader
 transform/bounds defect and its two adjacent findings (fit-mode-change reset,
 viewport-resize re-clamp).
+
+## 21.1. 2D.1 remediation — Fit Width tall-content blocker (2026-10-02)
+
+**The first 2D.1 pass above was incomplete.** It fixed Fit Page correctly, but
+independent QA returned the slice **BLOCKED**: Fit Width with content taller
+than the viewport could still be dragged out of bounds into gray, the exact
+defect class §21 was supposed to close. The owner's own RP5 "fit width too.
+All good" acceptance quoted above did not happen to exercise a page tall
+enough, in a landscape viewport, to expose this — the defect requires fitted
+content height to exceed the viewport height, which §21's own JVM/instrumented
+fixtures never constructed. This section documents the remediation
+honestly as incomplete-then-fixed, not as a clean first pass.
+
+### Root cause
+
+`fixedReaderMaxPan` has no fit-mode concept, so `FixedReaderScreen` fed it
+Fit Width's fitted content *height* (which routinely exceeds the viewport —
+by design, that's what `verticalScroll` is for) the same way it feeds Fit
+Page's always-viewport-sized content. Two concrete problems resulted:
+
+1. **Wrong bound.** The formula `max(0, (scaledContent - viewport) / 2)`
+   measures excess against the *viewport*, not against content that is
+   already taller than the viewport before any zoom. At `scale == 1` with a
+   tall page, this yielded a *large positive* Y bound instead of the correct
+   `0` — the page could be dragged via `graphicsLayer.translationY` even
+   completely unzoomed.
+2. **Double vertical movement.** Fit Width's `Image` sits inside
+   `Modifier.verticalScroll`, which already owns vertical movement for
+   content taller than the viewport. The pinch/pan gesture handler's
+   `awaitEachGesture` loop sits on an *ancestor* of that scrollable; in
+   Compose's `Main` pointer pass, the descendant `verticalScroll` detector
+   sees — and can already consume/scroll from — a one-finger vertical drag
+   before the ancestor handler runs, which then *also* read the same raw
+   `pan.y` and added it to `translationY`. The same physical drag moved the
+   content twice, through two independent systems, neither aware of the
+   other.
+
+### Chosen model: verticalScroll-only (Option B)
+
+Rather than deriving a fit-mode-aware Y formula for the shared pan clamp
+(Option A — keep `translationY`, just bound it correctly against
+`max(contentHeight, viewportHeight)`), the simpler and more predictable model
+was chosen: **Fit Width's vertical movement belongs entirely to
+`verticalScroll`; the pan transform never touches the Y axis in that mode.**
+Horizontal `graphicsLayer` pan is retained for Fit Width (needed once zoomed,
+since the fitted width equals the viewport at `scale == 1`). Fit Page is
+completely unaffected — it has no scroll container, so it keeps its original
+full pinch-zoom + clamped pan X/Y behavior.
+
+Implementation (`FixedReaderTransform.kt` / `FixedReaderScreen.kt`):
+
+- A new pure function, `fixedReaderMaxPanY(contentSize, viewportHeight,
+  scale, fitWidth)`, returns `0` unconditionally for Fit Width (at every
+  scale) and otherwise delegates to the existing `fixedReaderMaxPan`. This
+  keeps the "Fit Width Y is always 0" invariant in one directly JVM-testable
+  place instead of duplicated inline checks.
+- The gesture handler now only treats a Fit Width gesture as a *transform*
+  (pinch-zoom/pan, consuming the touch events) when it is a real multi-finger
+  pinch, or a one-finger drag that is horizontal-dominant while already
+  zoomed. A one-finger vertical-dominant drag is left unconsumed so
+  `verticalScroll`'s own detector handles it natively — this is what
+  eliminates the double-movement defect, not merely bounding it.
+- `graphicsLayer.translationY` is forced to `0` for Fit Width as a second,
+  structural safeguard, even though `panY` itself can no longer become
+  nonzero in that mode.
+- The viewport-resize re-clamp `LaunchedEffect` uses the same
+  `fixedReaderMaxPanY` function, so a resize/rotation/fold cannot resurrect a
+  stale nonzero Fit Width `panY` either.
+- `pointerInput(state.page, rtl)` → `pointerInput(state.page, rtl, fitWidth)`:
+  the gesture coroutine reads `fitWidth` from its enclosing closure for the
+  branching above, so it must restart (not silently keep running the old
+  closure's logic) when fit mode changes mid-session.
+
+### Test evidence
+
+- **JVM** (`FixedReaderTransformTest.kt`): **35/35 passed** (29 existing + 6
+  new). New coverage: `fixedReaderMaxPanY` at scale 1/2/5 for H > V (all
+  exactly `0`), the H ≤ V case, a full 5→2→1 zoom-down sequence, confirmation
+  that Fit Page's `fixedReaderMaxPanY` still equals the plain
+  `fixedReaderMaxPan` result exactly, and confirmation that Fit Width's
+  horizontal bound still grows normally with zoom while Y stays locked.
+  Two previously weak tests were strengthened rather than left as loose sanity
+  checks: `case4` now asserts exact computed values instead of only
+  `maxX != maxY`, and `case10` now exercises two genuinely different
+  width/height-limited fit shapes (rather than two identical calls) to prove
+  there is no format-shaped branch, not merely that equal inputs produce
+  equal outputs.
+- **Instrumented** (`FixedReaderTransformBoundsTest.kt`, +3 new tests, 8
+  total): a new tall-page PDF fixture (`OriginalFixtures.tallPdf`, 400×2400,
+  1:6 aspect) in a rotated landscape viewport reliably reproduces fitted
+  content height far exceeding viewport height. New tests, driven through the
+  real production gesture code (not synthetic adb swipes): zoomed-in drag
+  beyond the TOP edge stays bounded (`panY == 0`, scroll floor holds at `0`);
+  zoomed-in drag beyond the BOTTOM edge stays bounded (`panY == 0`, scroll
+  ceiling holds at its real `maxValue`); at `scale == 1`, vertical drags move
+  the real `verticalScroll` state (not `panY`). **8/8 passed on both the
+  physical RP5 and the API 35 emulator.**
+- **Regression**: `NavigationSmokeTest`, pre-existing and unchanged — **26/26
+  passed on both RP5 and emulator.**
+- **Full JVM suite**: **192/192 passed, 0 failed, 0 skipped.**
+- **Full connected suite, both devices**: see `VALIDATION.md`'s corresponding
+  entry for the exact run-level counts from this remediation pass.
+- `git diff --check` against `7964a98`: **PASS.**
+
+### Scope discipline confirmed
+
+`git diff --stat` against `7964a98` (the pre-remediation commit) touches
+exactly the same four files as the original 2D.1 slice (`FixedReaderScreen.kt`,
+`FixedReaderTransform.kt`, the JVM test, the instrumented test) plus one
+fixture addition (`OriginalFixtures.tallPdf`) — no PDF rasterization, CBZ
+decoding, EPUB, persistence, Room schema, or dependency changes.
+
+### RP5 physical acceptance for this remediation
+
+**NOT YET OBTAINED — pending a separate live session with the owner.** This
+remediation pass's own instrumented-test evidence above (which drives real
+multi-touch pointer events through the production gesture code on the
+physical RP5, not synthetic swipes) is real and valuable, but it is not a
+substitute for the owner physically pinch-zooming/dragging a tall Fit Width
+page at both scroll extremes by hand, the same way the original §21
+acceptance was obtained. Do not treat the automated evidence above as
+closing this gap.

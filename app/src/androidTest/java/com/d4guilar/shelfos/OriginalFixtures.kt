@@ -25,6 +25,25 @@ object OriginalFixtures {
         } finally { pdf.close() }
         return item(file, "test-pdf", PublicationFormat.PDF)
     }
+    /** A deliberately tall page (1:6 aspect) for Phase 2D.1's Fit Width remediation: in a landscape viewport,
+     * Fit Width's fitted content height (`viewportWidth * bitmapHeight / bitmapWidth`) comfortably exceeds the
+     * viewport height even without zooming, reproducing the "tall content" geometry the original 2D.1 pass
+     * never exercised. */
+    fun tallPdf(context: Context): LibraryItem {
+        val file = File(context.filesDir, "publications/test-original-tall.pdf").also { it.parentFile!!.mkdirs() }
+        val pdf = PdfDocument()
+        try {
+            repeat(2) { index ->
+                val page = pdf.startPage(PdfDocument.PageInfo.Builder(400, 2400, index + 1).create())
+                page.canvas.drawColor(Color.WHITE)
+                page.canvas.drawText("ShelfOS tall test page top ${index + 1}", 20f, 80f, Paint().apply { color = Color.BLACK; textSize = 18f })
+                page.canvas.drawText("ShelfOS tall test page bottom ${index + 1}", 20f, 2340f, Paint().apply { color = Color.BLACK; textSize = 18f })
+                pdf.finishPage(page)
+            }
+            file.outputStream().use(pdf::writeTo)
+        } finally { pdf.close() }
+        return item(file, "test-pdf-tall", PublicationFormat.PDF)
+    }
     fun cbz(context: Context): LibraryItem {
         val file = File(context.filesDir, "publications/test-original.cbz").also { it.parentFile!!.mkdirs() }
         ZipOutputStream(file.outputStream()).use { zip ->
