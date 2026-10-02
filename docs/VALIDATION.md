@@ -104,8 +104,8 @@ physical acceptance PASSED.** Full detail in
 
 ## Phase 2D.1 remediation, round two — zoomed Fit Width top/bottom reachability (2026-10-02)
 
-Status: **IMPLEMENTED, automated evidence on both devices PASSED. RP5 owner
-physical acceptance for THIS round NOT YET OBTAINED.** Full detail in
+Status: **IMPLEMENTED, automated evidence on both devices PASSED, RP5 owner
+physical acceptance for THIS round PASSED.** Full detail in
 [`PHASE_2D_IMPLEMENTATION_PLAN.md`](PHASE_2D_IMPLEMENTATION_PLAN.md#212-2d1-remediation-round-two--zoomed-fit-width-topbottom-reachability-2026-10-02).
 
 - **Independent QA finding (authoritative, after `06bcc14`)**: the `06bcc14`
@@ -160,13 +160,12 @@ physical acceptance for THIS round NOT YET OBTAINED.** Full detail in
   page dimensions, markers moved closer to the true page edges) — no PDF
   rasterization, CBZ decoding, EPUB, persistence, Room schema, or dependency
   changes.
-- **RP5 OWNER PHYSICAL ACCEPTANCE FOR THIS ROUND: NOT YET OBTAINED — pending
-  a separate live session with the owner.** A subagent has no live channel to
-  the owner. Needed: zoom a tall Fit Width page to ~2x on the physical RP5,
-  confirm the true top is visible after scrolling fully up and the true
-  bottom after scrolling fully down, confirm no gray escape at either edge,
-  confirm horizontal pan and double-tap zoom reset still work, confirm Fit
-  Page is unaffected, and ideally repeat with a CBZ.
+- **RP5 OWNER PHYSICAL ACCEPTANCE FOR THIS ROUND: PASS.** The owner installed
+  the committed fix (`d0ea51b`) on the physical RP5 and confirmed live: a
+  tall Fit Width page zoomed to ~2x showed true top and bottom content after
+  scrolling fully in each direction, no gray escape dragging past either
+  edge, horizontal pan still worked, and Fit Page remained unaffected —
+  reported as *"all good."*
 
 ## Phase 2C evidence closure — no production render change justified (2026-10-01)
 

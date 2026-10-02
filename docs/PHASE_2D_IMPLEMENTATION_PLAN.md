@@ -1390,13 +1390,9 @@ dependency changes.
 
 ### RP5 owner physical acceptance for this remediation
 
-**NOT YET OBTAINED — pending a separate live session with the owner.** This
-pass's own validation is limited to automated JVM and instrumented evidence
-on both devices (above); a subagent has no live channel to the owner. The
-specific live check still needed: zoom a tall Fit Width page to ~2x on the
-physical RP5, scroll fully to the top and confirm the top of the page is
-actually visible (not merely that the app does not crash), scroll fully to
-the bottom and confirm the bottom is visible, confirm no gray escape dragging
-past either edge, confirm horizontal pan still works while zoomed, confirm
-double-tap zoom reset still works and leaves the page reachable, confirm Fit
-Page is still unaffected, and ideally repeat with a CBZ.
+**OWNER VISUAL OBSERVATION: PASS (2026-10-02).** The owner installed the
+committed fix (`d0ea51b`) on the physical RP5 and confirmed it live: zoomed a
+tall Fit Width page to ~2x, scrolled fully to the top and bottom confirming
+actual page content (not just app stability) is visible at both extremes, no
+gray escape dragging past either edge, horizontal pan still works, and Fit
+Page remains unaffected — reported as *"all good."*
