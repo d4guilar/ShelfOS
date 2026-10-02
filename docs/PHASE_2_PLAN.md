@@ -2486,7 +2486,7 @@ expanded on, not a duplicate plan.
   actually needs.
 - AI upscaling is explicitly not part of Phase 2.
 
-### 2D — Reader continuity, adaptive/accessibility/performance closure (2D.1-2D.2 COMPLETE; 2D.3-2D.4 planning, 2026-10-02)
+### 2D — Reader continuity, adaptive/accessibility/performance closure (2D.1-2D.3 COMPLETE; 2D.4 planning, 2026-10-02)
 
 **2D.1 (fixed-reader transform/bounds correctness) is COMPLETE** (HEAD
 `e59eab8`), on `phase-2/reader-closure` (base `main` at `0d8a6a0`). The
@@ -2513,10 +2513,31 @@ its non-saved zoom scale, across recreation) was concretely tested and found
 not reproducible. See `docs/PHASE_2D_IMPLEMENTATION_PLAN.md`'s status header
 and `docs/VALIDATION.md`'s "Phase 2D.2" entry for the full state-ownership
 map, process-death method/evidence, and the new `FixedReaderRecreationTest.kt`
-coverage this slice added. **2D.3-2D.4 remain planning-only**; see
-`PHASE_2D_IMPLEMENTATION_PLAN.md` for the full architecture audit,
-continuity/input/accessibility/performance findings, severity classification
-and the remaining slice sequence.
+coverage this slice added.
+
+**2D.3 (input/accessibility/focus closure) is also COMPLETE** (branch
+`phase-2/reader-accessibility`, base `4f7984e`). An evidence-first audit of
+keyboard/controller input, Back/chrome semantics, focus order (reader chrome,
+Appearance, EPUB Chapters/Search/Bookmarks), accessibility semantics,
+TalkBack availability, reduced motion and EN/ES/pt-BR reader layout found the
+existing architecture already correct except one real, narrow defect: all
+four `Slider` controls (fixed-reader page jump; Appearance text size/line
+spacing/page margins) had no accessible name, fixed by adding a
+`contentDescription` to each. `NavigationSmokeTest` (real keyboard/gamepad
+key injection, RTL Manga CBZ, chrome/focus/Back coverage) passed on both the
+emulator (36/36, including 2 new regression tests) and, as genuine
+ADB-injected hardware evidence, on the physical RP5 (34/34). The known EPUB
+edge-tap modality-staleness asymmetry remains classified LOW/harmless, not
+newly regressed. TalkBack is confirmed unavailable on both current test
+targets; the semantic-code audit is complete. A short list of owner-only RP5
+physical-button questions remains open (ADB injection cannot fully
+substitute for a human's own hand on the device). See
+`docs/PHASE_2D_IMPLEMENTATION_PLAN.md`'s status header and
+`docs/VALIDATION.md`'s "Phase 2D.3" entry for the full audit and evidence.
+
+**2D.4 remains planning-only**; see `PHASE_2D_IMPLEMENTATION_PLAN.md` for the
+full architecture audit, continuity/input/accessibility/performance findings,
+severity classification and the remaining slice sequence.
 
 - Configuration/process restoration hardening beyond what 2A's chrome-state
   fix touches (rotation, fold/unfold, multi-window resize).

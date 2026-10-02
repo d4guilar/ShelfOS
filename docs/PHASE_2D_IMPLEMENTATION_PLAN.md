@@ -31,7 +31,34 @@ closure" entry; this document's own §5/§13 continuity analysis is **not
 rewritten** — 2D.2 is additive empirical confirmation of what §5 already
 predicted from code reading, not a re-investigation.
 
-**2D.3-2D.4 remain planning-only; no other 2D production code exists yet.**
+**2D.3 (input/accessibility/focus closure) is also COMPLETE**
+(2026-10-02, branch `phase-2/reader-accessibility`, base `4f7984e`). An
+evidence-first pass against the input-ownership map, keyboard/controller
+behavior, focus order, accessibility semantics, TalkBack availability,
+reduced motion and EN/ES/pt-BR layout found the existing architecture already
+correct for all of these except one real, narrow accessibility semantics
+defect: all four `Slider` controls in the app (the fixed reader's page-jump
+slider; `ReaderAppearance`'s text size/line spacing/page margins sliders)
+carried no accessible name, since Compose's `Slider` does not inherit a
+preceding sibling `Text`'s label. Fixed by adding
+`Modifier.semantics { contentDescription = ... }` to each, reusing each
+slider's own already-resolved label string (one new string resource,
+`content_desc_page_slider`, added to all three locales). `NavigationSmokeTest`
+(including real keyboard/gamepad `KeyEvent` injection, RTL Manga CBZ, and
+chrome/focus/Back coverage) was re-run green on both the emulator (36/36,
+including 2 new regression tests for this fix) and, as ADB-injected hardware
+evidence, on the RP5 (34/34, pre-fix baseline). The known, already-documented
+EPUB edge-tap modality-staleness asymmetry was re-examined and remains
+classified LOW/harmless — no new visible consequence found, not escalated,
+not fixed (fixing it is the broader, already-deferred "route touch through
+`ShelfCommand`" item, out of this slice's narrow-fix scope). TalkBack is
+confirmed unavailable on both current test targets; the semantic-code audit
+is complete. A short list of genuinely owner-only RP5 physical-button
+questions remains open (ADB injection cannot fully substitute for a human's
+own hand on the device) — see `docs/VALIDATION.md`'s "Phase 2D.3" entry for
+the full audit, test evidence, and that question list.
+
+**2D.4 remains planning-only; no other 2D production code exists yet.**
 This document is the canonical Phase 2D planning location referenced by
 [`PHASE_2_PLAN.md`](PHASE_2_PLAN.md)'s §3 2D section.
 
