@@ -108,6 +108,110 @@ and reasoned-through review of the (intentionally minimal, additive) `FixedReade
 `FixedReaderScreen` changes; closing that broader regression gap with a clean environment
 is deferred to 3F's full acceptance matrix rather than re-attempted here.
 
+## 23. Codex R1 remediation (post-3A)
+
+Independent review (Codex) of `c48dd33` (§22's commit) returned **CHANGES REQUIRED**: the
+`PageSource`/container direction was judged fundamentally sound (not restarted), but six
+findings required a remediation pass before acceptance. This section is a factual record of
+each finding and exactly what changed in response, all on one remediation commit on top of
+`c48dd33` (not an amend). No new feature, format, or UI surface was added; scope stayed
+strictly inside §22's original boundaries (no thumbnails, no spreads, no CBR, no live
+zoom-triggered re-render).
+
+**Finding 1 (HIGH) — fidelity floor regression.** A small/narrow known viewport (e.g.
+720x1280) could resolve to a target *below* Phase 2's flat `2048` fidelity for ordinary
+reading (a real regression, not an improvement, since live zoom re-render does not exist to
+compensate). **Remediation**: `PageRenderRequest.DEFAULT_MAX_DIMENSION` (`2048`) is now
+explicitly documented and used as a **reading-quality floor** — `resolveRenderTarget`
+(replacing `resolveRenderTargetLongestEdge`) takes `max(viewportScale, readingFloorScale)`,
+so a normal reading render's longest edge never falls below `2048` merely because the
+viewport/fit combination implied a smaller scale, while a larger viewport can still exceed it
+(3A's original point, preserved). The per-request `maxDimension` ceiling is applied *after*
+the floor, so a future, deliberately smaller request (e.g. a thumbnail) still opts out of the
+floor simply by tightening `maxDimension` — no speculative "render purpose" enum was added;
+the floor/ceiling distinction alone was enough.
+
+**Finding 2 (HIGH) — Fit Width is aspect-blind.** The original `resolveRenderTargetLongestEdge`
+took only the request (viewport + ceiling), never the page's own dimensions, so it could not
+tell `FitMode.WIDTH`'s actual rendered-content box (viewport width, page-aspect-derived
+height, which may greatly exceed viewport height) apart from a plain viewport-longest-edge
+target — a tall page in a landscape viewport resolved to a tiny, severely-on-screen-upscaled
+bitmap. **Remediation**: `resolveRenderTarget(sourceWidth, sourceHeight, request)` now takes
+the page's own bounds (CBZ's existing bounds-only decode pass; PDF's `page.width`/
+`page.height`) alongside `PageRenderRequest.fit: FitMode`, and computes `FitMode.PAGE`/
+`FitMode.WIDTH` exactly as `fixedReaderFittedContentSize` does for display, before any ceiling
+applies. `FixedReaderViewModel.render` now passes the title's actual fit preference
+(`_state.value.preferences.fit`) into the request. No Compose type leaks into `core`; no tiled
+rendering or live zoom re-render was added.
+
+**Finding 3 (HIGH) — 4096 bounds one bitmap, not peak memory.** A single `SAFE_MAX_DIMENSION`
+(4096) longest-edge bound does not bound peak memory: at `ARGB_8888`, a `4096x4096` bitmap is
+~64MiB, and more than one same-session bitmap can be live at once during a page transition.
+**Remediation**: two changes.
+1. **Explicit byte-budget policy** — `RenderMemoryPolicy` (new, in `FixedReader.kt`) derives a
+   conservative `SESSION_BUDGET_BYTES = 96MiB` total, divided by `MAX_CONCURRENT_BITMAPS = 3`
+   (the displayed bitmap, a newly-rendering bitmap, and — only for a brief window — a
+   stale/cancelled result; see point 2) into `MAX_BITMAP_BYTES ≈ 32MiB` per render.
+   `resolveRenderTarget` applies this as an aspect-preserving pixel-budget reduction *after*
+   the floor/viewport/ceiling steps, with overflow-safe `Double` arithmetic throughout and a
+   final defensive per-axis `coerceIn(1, SAFE_MAX_DIMENSION)`. `SAFE_MAX_DIMENSION` (4096)
+   remains as a secondary, independent per-axis ceiling (modest-hardware raster/texture
+   compatibility), not the primary memory-safety argument anymore. A square request that
+   previously would have reached the full 4096x4096 (~64MiB) now resolves to roughly a
+   2896x2896 square (~32MiB) instead — "no square 64MiB bitmap merely because its edge is
+   ≤4096," as required.
+2. **Tightened render/cancellation lifecycle** — `FixedReaderViewModel.render` previously
+   released its `Mutex` as soon as `session.render()` returned, *before* checking
+   cancellation and recycling a stale result; a newer render (already launched by a fast
+   page-turn that had already called `rendering?.cancel()` on the older job) could start its
+   own decode while that older job's just-decoded bitmap was still alive, unpublished and
+   unrecycled — three same-session bitmaps live at once (displayed + stale + newly-decoding).
+   The decode, the `ensureActive()` cancellation check, and the publish-or-recycle outcome now
+   all happen *inside* the same `mutex.withLock` critical section, so a newer render can never
+   begin decoding until the previous one has resolved its bitmap's fate. See the updated doc
+   comment on `FixedReaderViewModel.render` for the full reasoning. A currently-displayed
+   bitmap already shown by Compose is still never force-recycled (unchanged, to avoid a
+   visual-corruption/crash risk) — that bitmap's disposal stays GC-governed, bounded to at
+   most one prior reference, not something this lifecycle change claims to control directly.
+
+**Finding 4 (MEDIUM) — insufficient memory evidence.** **Remediation**: a new instrumented
+test, `FixedReaderViewModelLifecycleTest.rapidPageTurnsDoNotAccumulateStaleBitmapsOrGrowMemoryUnboundedly`,
+drives a real `FixedReaderViewModel` (not just `FixedReaderFactory`) through a representative
+high-resolution (6000x4000) 6-page CBZ: displayed bitmap (page 0) → 5 rapid un-awaited
+page-turns (exercising cancellation mid-decode) → settle → 6 more rapid back-and-forth
+turns → settle, recording each observed bitmap's dimensions/estimated bytes and process PSS
+(`android.os.Debug.getPss()`) before and after the sequence. See `docs/VALIDATION.md` for the
+captured evidence and pass result. A second new test in the same file,
+`viewportReportedByScreenReachesTheActualRenderRequest`, is the Finding-4-adjacent "viewport
+plumbing end-to-end" proof: it calls `updateViewport` + `retry()` exactly as
+`FixedReaderScreen`'s `onSizeChanged` and the ViewModel's own render path do, and asserts the
+*next real decode's* dimensions change accordingly — proving the wiring, not just the pure
+`resolveRenderTarget` math.
+
+**Finding 5 (LOW) — misleading naming.** `ArchivePageSource` was actually ZIP-specific
+(backed by `SeekableZip`), not generically archive-format-agnostic. **Remediation**: renamed
+to `ZipPageSource`. The generic `PageSource` interface itself is unchanged.
+
+**Finding 6 (LOW) — stale doc wording.** §3 ("Current implementation inventory") was written
+before 3A landed and no longer described the fixed-reader render path accurately.
+**Remediation**: §3 now opens with an explicit "PRE-3A BASELINE" notice pointing to this
+section and §22 for the current render-path contract, rather than being silently left to look
+current.
+
+**What stayed exactly as judged sound**: the `PageSource` boundary (stream-based, no
+ZIP-entry types leaking through the generic interface, no whole-publication-extraction
+assumption, no promise of cheap random access — a future CBR adapter over a "solid" RAR
+archive can still implement `openPage` via sequential decode or a bounded app-private cache
+without reshaping `FixedReader.kt` or `ImagePageRenderer`). No CBR, libarchive, NDK/JNI,
+thumbnails UI, thumbnail cache, spreads, or live zoom re-render were implemented or stubbed in
+this remediation either.
+
+**Targeted validation**: see `docs/VALIDATION.md`'s "PHASE 3A — Codex R1 remediation" entry
+for the exact tests run and their results. Per the owner's explicit scope instruction, the
+full JVM suite and the full connected/instrumented regression matrix were **not** re-run here
+(the original candidate already has a full-suite PASS on record; both are reserved for
+Phase 3F's acceptance matrix) — only the tests this remediation's changes actually required.
+
 ## 2. Why Phase 3 is not green-field
 
 CBZ import/opening, image-sequence (fixed-layout) reading, LTR/RTL defaults with
@@ -123,6 +227,16 @@ job of Phase 3 is: (a) make Comics/Manga visually and navigationally first-class
 written, but never implemented.
 
 ## 3. Current implementation inventory (verified by code inspection)
+
+**PRE-3A BASELINE — superseded by §22/§23 for the fixed-reader render path.** This section was
+written before 3A's implementation landed and describes the codebase as it stood at that time
+(a single flat `MAX_PAGE_PIXELS` ceiling, no `PageRenderRequest`/`PageSource` split). It is kept
+as-is below for its still-accurate CBR/RAR gap analysis (archive layer, format enum, dependency
+inventory), which 3A and its Codex R1 remediation did not touch. For the current
+`core/reader/FixedReader.kt` contract (`PageRenderRequest`, `resolveRenderTarget`,
+`RenderMemoryPolicy`, the `PageSource`/`ZipPageSource`/`ImagePageRenderer` split), see §22 (what
+3A landed) and §23 (Codex R1's review and this remediation) instead of the "Fixed reader core"
+bullet immediately below, which describes the pre-3A state only.
 
 All paths under `app/src/`.
 
