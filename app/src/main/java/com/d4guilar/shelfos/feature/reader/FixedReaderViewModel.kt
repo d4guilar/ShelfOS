@@ -28,6 +28,12 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
     private var session: FixedReader? = null
     private var rendering: Job? = null
     @Volatile private var closed = false
+    // Last viewport size reported by FixedReaderScreen (Phase 3A). Read only when a *new* render is already about
+    // to happen (open/page-turn/retry); updating it on its own never triggers a render, so a resize/rotation/fold
+    // stream of onSizeChanged calls can never itself cause a render storm -- it only changes what resolution the
+    // next naturally-occurring render asks for.
+    @Volatile private var viewportWidth: Int = 0
+    @Volatile private var viewportHeight: Int = 0
     private val positions = PositionWriter<Int>(appScope, write = { page ->
         repository.reading(id, pageLocator(page), pageProgress(page, _state.value.count))
     }, onFailure = { _state.update { it.copy(error = UiMessage.Resource(R.string.reader_position_save_failed)) } })
@@ -82,20 +88,46 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
 
     fun retry() = render(_state.value.page)
 
+    /** Records the reader page surface's current measured size (Phase 3A). Does not itself trigger a render --
+     * see the field doc above -- so this is safe to call on every `onSizeChanged`, including during a continuous
+     * resize/rotation/fold-in-progress, without risking a render storm. */
+    fun updateViewport(width: Int, height: Int) {
+        if (width > 0 && height > 0) { viewportWidth = width; viewportHeight = height }
+    }
+
+    /**
+     * Renders [page] and either publishes or disposes of the result. Codex R1 finding 3 (peak memory): the
+     * decode, the cancellation check, and the publish-or-recycle outcome all now happen *inside* the same
+     * [mutex] critical section, on the IO dispatcher. Previously the lock was released as soon as `session.render`
+     * returned, before this job checked whether it had been cancelled and before it recycled a stale result --
+     * which let a newer render (already launched by a fast page-turn/retry that had already called
+     * `rendering?.cancel()` on this job) start its own decode while this job's just-decoded bitmap was still
+     * alive, unpublished and unrecycled. That allowed three same-session bitmaps to be live at once: the
+     * displayed one, this stale one, and the newer render's. Holding the lock across resolution-of-fate closes
+     * that window: a newer render can never begin decoding until this one has either published its bitmap to
+     * state or recycled it, so at most one "currently decoding or just-finished" bitmap exists at a time, plus
+     * whatever the UI still displays -- the two-bitmap case [RenderMemoryPolicy] budgets for as the normal case,
+     * with its third slot kept as a documented margin rather than something this lifecycle encourages.
+     */
     private fun render(page: Int) {
         rendering?.cancel()
         _state.update { it.copy(loading = true, error = null) }
+        val request = PageRenderRequest(viewportWidth, viewportHeight, fit = _state.value.preferences.fit ?: FitMode.PAGE)
         rendering = viewModelScope.launch {
-            var result: Bitmap? = null
-            try {
-                withContext(Dispatchers.IO) { mutex.withLock { result = requireNotNull(session).render(page) } }
-                ensureActive()
-                _state.update { it.copy(bitmap = result, loading = false) }
-                result = null // Published bitmaps are owned by Compose/GC, not manually recycled while displayed.
-            } catch (e: CancellationException) { result?.recycle(); throw e }
-            catch (e: Exception) {
-                result?.recycle()
-                _state.update { it.copy(bitmap = null, loading = false, error = e.readerMessage()) }
+            withContext(Dispatchers.IO) {
+                mutex.withLock {
+                    var result: Bitmap? = null
+                    try {
+                        result = requireNotNull(session).render(page, request)
+                        ensureActive() // Checked while still holding the lock -- see the method doc above.
+                        _state.update { it.copy(bitmap = result, loading = false) }
+                        result = null // Published bitmaps are owned by Compose/GC, not manually recycled while displayed.
+                    } catch (e: CancellationException) { result?.recycle(); throw e }
+                    catch (e: Exception) {
+                        result?.recycle()
+                        _state.update { it.copy(bitmap = null, loading = false, error = e.readerMessage()) }
+                    }
+                }
             }
         }
     }
