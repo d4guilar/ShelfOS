@@ -1,0 +1,770 @@
+# Phase 3 Implementation Plan — Comics and Manga
+
+Status: **PLANNING ONLY. No Phase 3 implementation has started.**
+
+## 1. Status / base
+
+- Base: `main` @ `178c27f` ("docs: define metadata and cover enrichment defaults (#22)").
+- Phase 0, Phase 1, and Phase 2 (including 2A–2D closure) are **COMPLETE** per
+  `docs/VALIDATION.md` and `docs/PHASE_2D_IMPLEMENTATION_PLAN.md`. This plan does not
+  change that status.
+- This document is the canonical Phase 3 planning/acceptance reference, written to the
+  same discipline level as the Phase 2 planning docs. It supersedes ad hoc CBR framing
+  scattered across `docs/ROADMAP.md`, `docs/PRODUCT.md`, `docs/features/COMICS_MANGA.md`,
+  and `docs/features/READER.md` (see §5).
+- Nothing in this document authorizes implementation. Per the owner's administrative
+  contract, actual Phase 3 work (3A onward) requires separate authorization after this
+  plan is reviewed.
+
+## 2. Why Phase 3 is not green-field
+
+CBZ import/opening, image-sequence (fixed-layout) reading, LTR/RTL defaults with
+per-title override, PDF Manga RTL, Fit Page/Fit Width, pinch-zoom/pan, progress/resume,
+process-recreation and resize continuity, keyboard/controller paging, immersive chrome,
+Back/chrome semantics (ADR-0023), malformed-file resilience, and large-fixture stress
+validation were already implemented and validated in Phase 1 and Phase 2 (2A–2D),
+confirmed in `docs/VALIDATION.md`. Phase 3 is an **extension** of this working
+foundation — it does not rebuild the reader, the archive layer, or the input system. The
+job of Phase 3 is: (a) make Comics/Manga visually and navigationally first-class
+(fidelity, thumbnails, spreads, foldables), and (b) close the one real format gap — CBR
+— that the architecture has reserved a slot for since `docs/ARCHITECTURE.md` was
+written, but never implemented.
+
+## 3. Current implementation inventory (verified by code inspection)
+
+All paths under `app/src/`.
+
+**Fixed reader core** — `core/reader/FixedReader.kt`:
+- `FixedReaderFactory.open(item)` dispatches on `PublicationFormat`: `PDF -> PdfPages`,
+  `CBZ -> ArchivePages`, `EPUB -> throws` (unsupported here). No CBR branch exists; there
+  is no third case to add it to — a new format value and a new container adapter are
+  both required.
+- `PdfPages` rasterizes via `android.graphics.pdf.PdfRenderer` at
+  `scale = MAX_PAGE_PIXELS / max(w,h)`, re-rendering on every `render()` call (no bitmap
+  cache across zoom levels).
+- `ArchivePages` (CBZ) decodes bounds-only first, rejects pages over 100MP, computes
+  `inSampleSize` to keep the longest edge at or under `MAX_PAGE_PIXELS`, then fully
+  decodes. Page ordering/selection is entirely delegated to `ArchivePolicy`.
+- `MAX_PAGE_PIXELS = 2048` is the single shared sampling/rasterization ceiling for both
+  PDF and CBZ, defined once in this file.
+- No spread/two-page logic exists anywhere in the reader stack (confirmed by source
+  search — zero hits for "spread"/"twoPage"). No thumbnail-generation code exists
+  anywhere in `app/src` (zero hits for "thumbnail" outside docs).
+
+**Geometry** — `core/reader/FixedReaderTransform.kt`: pure, format-agnostic functions
+(`fixedReaderFittedContentSize`, `fixedReaderMaxPan`, `fixedReaderClampPan`,
+`fixedReaderMaxPanY`, `fixedReaderVerticalScaleOverflow`). Explicitly documented as
+taking no format input — any future CBR page reuses this file unchanged. Zoom today is a
+**view-transform only**: pinch/double-tap scale a `graphicsLayer` on the *already
+decoded* bitmap (capped at 2048px longest edge); it is not a re-decode at higher
+resolution. 5x zoom magnifies a 2048px-capped bitmap, it does not fetch more source
+resolution.
+
+**Preferences/capabilities** — `core/reader/ReaderPreferences.kt`: `FitMode{PAGE,WIDTH}`,
+`ReaderCapabilities(typography,fit,zoom,direction)`; PDF and CBZ currently share an
+identical capability tuple (`typography=false, fit=true, zoom=true`) — a future CBR entry
+plugs into the same `PDF, CBZ ->` branch with no new capability concept needed. Locator
+format is versioned JSON (`{"version":1,"page":N}`), tolerant of damage/out-of-range.
+
+**Archive/file layer**:
+- `core/files/SeekableZip.kt` — minimal read-only ZIP reader over a seekable channel
+  (positional reads), because SAF file descriptors can't be reopened by path for
+  `java.util.zip.ZipFile`. Supports STORED/DEFLATE and ZIP64. Rejects encrypted entries.
+  Pure ZIP format; **no RAR support of any kind**.
+- `core/files/ArchivePolicy.kt` — the sole chokepoint for CBZ page enumeration:
+  `MAX_ENTRIES=100_000`, `MAX_IMAGE_BYTES=128MB`, zip-slip guard, zip-bomb ratio check,
+  natural sort (`page2` before `page10`) for page ordering. No `.cbr`/RAR awareness
+  anywhere in this file or in `isPageImage`/`classifyArchive`.
+- `core/files/PublicationFiles.kt` — `inspect()` classifies by magic bytes: `%PDF-` →
+  PDF; `PK\x03\x04` → opens as ZIP, classifies EPUB vs CBZ by `mimetype`/
+  `container.xml`. **The RAR magic byte (`Rar!\x1a\x07`) is never checked anywhere** — a
+  `.cbr` file today falls through to `UNSUPPORTED_FORMAT`.
+- `core/files/EmbeddedMetadata.kt` — `comicInfo()` parses `ComicInfo.xml`'s
+  `<Manga>YesAndRightToLeft</Manga>` into `rightToLeftManga: Boolean`, which
+  `ImportPolicy.suggestedCategory()` uses to default new CBZ imports into
+  `MediaCategory.MANGA` vs `COMIC`. This is the one concrete, already-working
+  RTL/Manga signal in the codebase.
+- No standalone `LibrarySource` entity exists in code yet; persistent source ownership
+  (ADR-0022, `docs/features/LIBRARY_SOURCES.md`) is a documentation/ADR concept only
+  today. Current model is `LibraryItem.sourceUri` + `managedPath` + persisted URI grants.
+
+**Reader presentation**:
+- `feature/reader/FixedReaderViewModel.kt` — opens one `FixedReader` session per item,
+  restores page via locator, persists position through a debounced writer, cancels
+  in-flight render jobs on page change, recycles orphaned bitmaps.
+- `feature/reader/FixedReaderScreen.kt` — single `Image` per page (`key(state.page)`),
+  no spread UI. RTL affects only tap-zone mirroring, swipe direction, button layout, and
+  `LocalLayoutDirection` — page identity/stored order is explicitly untouched per
+  in-code comment. Pinch-zoom clamps `1f..5f` with pan clamped via the pure transform
+  helpers. Back/Escape/gamepad-B follows ADR-0023 (reveal chrome, then exit).
+- `core/input/ShelfCommand.kt` / `InputMapper` — semantic commands
+  (`NEXT_PAGE`/`PREVIOUS_PAGE`/etc.) shared across touch/keyboard/gamepad, already
+  RTL-aware (`InputMapper.command(stroke, context, rightToLeft)` swaps LEFT/RIGHT but not
+  PAGE_UP/PAGE_DOWN or shoulder buttons). This is reusable unchanged for spreads/CBR.
+
+**Domain/data** — `domain/library/LibraryItem.kt`:
+- `enum class PublicationFormat { PDF, EPUB, CBZ }` — **confirmed: no CBR value exists
+  anywhere in the codebase.** This is a hard gate: CBR cannot be imported, classified, or
+  opened until this enum (and every exhaustive `when` over it) is extended.
+- `readingDirection(category, override)`: `override ?: if (MANGA) RTL else LTR` —
+  category-level default, per-title override already modeled.
+- `domain/importing/ImportPolicy.kt` — `classifyArchive`, `isPageImage`,
+  `suggestedCategory`, `existingSource`, `SourceMaintenance`. No RAR path.
+
+**Dependencies** — `gradle/libs.versions.toml` has zero matches for rar/junrar/zip4j/
+commons-compress. CBZ reading deliberately uses no third-party archive library (JDK
+`Inflater` + ShelfOS's own `SeekableZip`). This is existing precedent that a CBR solution
+should be evaluated against the same bar, not assumed to need a large dependency.
+
+**Tests** (ran as factual verification, not part of this pass's deliverable):
+`./gradlew.bat :app:testDebugUnitTest --tests "com.d4guilar.shelfos.core.reader.FixedReaderTransformTest" --tests "com.d4guilar.shelfos.SeekableZipTest" -q`
+— exit 0, no failures. Confirms `FixedReaderTransformTest` (354 lines, format-independence
+explicitly asserted) and `SeekableZipTest` (in-memory ZIP fixtures, byte-exact streaming)
+both currently pass. Also present and relevant: `FixedReaderTransformBoundsTest`,
+`FixedReaderRecreationTest`, `MalformedFixedReaderResilienceTest`,
+`NavigationSmokeTest`, `ReaderStateTest`, `SyntheticLargePdfAcceptanceTest`,
+`SyntheticLoadAcceptanceTest` — all CBZ/PDF-only; no CBR test exists (expected, since no
+CBR code exists); no dedicated Manga/RTL unit test exists (RTL is covered only indirectly
+through `FixedReaderTransformBoundsTest`/manual RP5 validation per
+`docs/PHASE_2D_IMPLEMENTATION_PLAN.md`).
+
+## 4. Gap analysis
+
+| Area | Status |
+|---|---|
+| CBZ open/read/decode | Implemented, validated (Phase 1/2) |
+| Single-page fit/zoom/pan | Implemented, validated (Phase 2D.1) |
+| Progress/resume/locator | Implemented, validated |
+| Process recreation/resize continuity | Implemented, validated (Phase 2D.2) |
+| Keyboard/controller paging, RTL-aware | Implemented, validated (Phase 2D.3) |
+| Malformed CBZ/PDF resilience | Implemented, validated (Phase 2D.4) |
+| Manga RTL default from `ComicInfo.xml` | Implemented |
+| High-res re-decode on zoom | **Not implemented** — zoom is bitmap scaling only |
+| Thumbnails (any kind) | **Not implemented** — no code exists |
+| Spreads (AUTO/SINGLE/SPREAD) | **Not implemented** — spec-only (`COMICS_MANGA.md`); interim policy is "AUTO resolves to single page" (ADR-0017) |
+| Foldable-aware two-page layout | **Not implemented** — `FOLDABLES.md` specifies intent, no comic-specific code |
+| CBR/RAR format support | **Not implemented** — no enum value, no magic-byte detection, no container adapter, no dependency |
+| `PublicationFormat` extensibility | Currently a 3-value enum with exhaustive `when`s in `FixedReaderFactory`, `ReaderCapabilities`, `ImportPolicy` — extending it is mechanical but touches multiple files |
+| Persistent `LibrarySource` entity | Documented (ADR-0022) but not implemented — not blocking for Phase 3, noted for completeness |
+
+## 5. CBR mandatory product decision
+
+**Resolution of the documentation contradiction**: `docs/ROADMAP.md` currently states
+CBR as a "high-priority" Phase 3 deliverable (line ~308) in the same file that lists bare
+"CBR" in a "Future / Exploration... not a committed delivery phase" bucket (line ~576).
+`docs/PRODUCT.md` §15 lists CBR among "long-term possibilities... timing not committed."
+These are inconsistent with each other and with the owner's direct instruction for this
+pass and the user's standing memory note (`cbr-support-priority.md`: "CBR is a must-have,
+not a someday item").
+
+**This plan's resolution, per explicit owner decision**: CBR is **mandatory Phase 3
+scope** — not optional, not deferred, not exploration. The question this plan answers is
+*how* to implement CBR compliantly, not *whether*. §12–13 schedule it as slice 3E, gated
+only on the dependency/license decision in §6, not on product priority. §20 flags the
+remaining open items (library selection, formal license sign-off) that still require
+owner/admin confirmation before implementation begins. Docs updated in this pass (§ "Also
+update" below) remove the stale "exploration/no committed phase" framing for CBR
+specifically while leaving genuinely-unscheduled items (DOCX, OCR, etc.) untouched.
+
+## 6. RAR/CBR technical investigation
+
+RAR is architecturally harder than ZIP for ShelfOS's model in one specific way that must
+be stated plainly: **RAR supports "solid" archives**, where decoding entry N can require
+sequentially decoding entries 1..N-1 because they share a compression dictionary. CBZ's
+`SeekableZip` exploits ZIP's independent-entry structure for true random-access,
+on-demand, out-of-order page decode. RAR does not uniformly offer this. A RAR archive
+built without solid compression (common for image collections, since solid compression
+gives little benefit on already-compressed JPEGs and real-world comic scanners
+frequently disable it) supports near-random access to individual entries. A solid RAR
+archive does not, regardless of which library is used — this is a property of the
+archive, not of the implementation. This is a factual format constraint, not a library
+limitation, and must be documented as a possible user-facing limitation/slow-path
+(e.g., "first open may take longer for solid archives") rather than something a library
+choice can wholly solve.
+
+**Candidates evaluated** (based on existing technical knowledge of the Java/Android RAR
+ecosystem; none of this was verified live — see verification flags below):
+
+1. **junrar** (pure Java/Kotlin RAR4/RAR5 reader, `com.github.junrar:junrar`).
+   - Language: pure Java — easiest Android integration, no native/JNI, minimal APK size
+     impact, straightforward testability.
+   - License: derived from RARLAB's original C "unrar" source, ported to Java. Historical
+     junrar distributions ship the "UnRAR License" (a non-OSI, field-of-use-restricted
+     license: free for decompression-only use in end-user applications, but it forbids
+     using the source to build a RAR-compatible *compressor*, imposes attribution/notice
+     obligations, and is not a license ShelfOS's `docs/LICENSING.md` ("avoid GPL/AGPL
+     casually," "every dependency reviewed individually") has an existing exception for.
+     **This is exactly the licensing tension the owner's brief asked to be flagged
+     explicitly** — not GPL, but a restrictive, non-standard field-of-use license that
+     needs its own explicit review and sign-off, not a default "it's pure Java so it's
+     fine" assumption.
+   - Maintenance/current license text: **needs live verification** — I cannot confirm
+     today's exact LICENSE file content, release cadence, or RAR5 completeness without
+     network access. Flagged as an open question (§20).
+   - Random access: junrar's historical API centers on sequential extraction per solid
+     archive handling; genuinely random per-entry access for non-solid archives is
+     usually fine, but needs to be verified against the current library version, not
+     assumed.
+   - Encrypted archives: historically unsupported or only partially supported for
+     decompression; needs verification.
+
+2. **SevenZipJBinding** (Java bindings to 7-Zip native code, including its RAR codec).
+   - Native/JNI, ships prebuilt `.so` per ABI — meaningful APK size impact, native crash
+     surface, more complex test strategy.
+   - 7-Zip's own RAR-reading codec is itself derived from unrar source under the same
+     restrictive UnRAR License family — bundling it does not avoid the licensing tension
+     above, it just relocates it into a native library ShelfOS would not control the
+     source review of as directly.
+   - Maintenance status: needs live verification; this project is historically
+     lower-velocity.
+   - Rejected as a **worse** candidate than junrar for ShelfOS: same license family, plus
+     native/JNI/ABI/size cost with no compensating random-access benefit.
+
+3. **libarchive** (BSD-licensed C library, used by `bsdtar`) built for Android via NDK.
+   - License: libarchive core is BSD-2/3-Clause. Critically, libarchive's RAR
+     (`archive_read_support_format_rar`) and RAR5
+     (`archive_read_support_format_rar5`) readers were implemented independently from
+     the published format behavior, **not derived from RARLAB's unrar source** — this
+     is the one candidate that does not inherit the UnRAR License's field-of-use
+     restrictions. This materially changes the license-compatibility picture relative to
+     options 1 and 2, consistent with `docs/LICENSING.md`'s stated preference to avoid
+     non-standard restrictive licenses.
+   - Cost: requires NDK/CMake build tooling ShelfOS does not currently have (the project
+     is pure Kotlin/Gradle today), a JNI boundary ShelfOS would own and test itself, and
+     per-ABI `.so` artifacts (`arm64-v8a`, `armeabi-v7a`, `x86_64`, optionally `x86`).
+     Android App Bundle (if ShelfOS's release pipeline already uses AAB — needs
+     verification, see §20) can deliver only the relevant ABI per device, bounding the
+     per-install size impact; APK-only distribution would not.
+   - Random access: libarchive's reader is fundamentally **sequential/streaming**, same
+     as its ZIP reader — it does not provide ZIP-style central-directory random access
+     even for RAR archives that are internally non-solid. Practical consequence: a
+     `ComicContainer` RAR adapter built on libarchive would need to either (a) do a
+     one-time sequential scan on open to build an in-memory index of entry offsets it can
+     re-seek to (works for non-solid archives, cheap relative to full extraction), or (b)
+     extract to a bounded app-private cache directory on first open and serve pages from
+     that cache thereafter (works for all RAR archives including solid ones, at the cost
+     of needing disk space and a cache-eviction policy). This does **not** modify or
+     replace the user's original CBR file — the cache is an ephemeral derived artifact,
+     consistent with AGENTS.md rule 4 and the "no conversion" rule in
+     `docs/features/SERIES.md`.
+   - Encrypted/password RAR: libarchive can detect a password-protected archive but
+     cannot decrypt without the password; ShelfOS's correct behavior is an explicit,
+     truthful error state ("password-protected RAR is not supported") reusing the
+     existing malformed-archive error UI pattern (`MalformedFixedReaderResilienceTest`'s
+     Retry/Back-to-library pattern), never silent failure or a misleading "corrupt file"
+     message.
+   - Maintenance: libarchive is a long-lived, widely-used project (used by `bsdtar`,
+     macOS, FreeBSD, many package managers); still, exact current release/CVE status
+     needs live verification (§20), as does the availability/maintenance of any existing
+     "libarchive for Android" wrapper project versus building it in-house.
+
+**Recommended direction**: pursue a **libarchive-based native adapter** as the
+compliant path, specifically because it is the only evaluated candidate that avoids the
+UnRAR License's field-of-use restrictions. This is a direction, not a final dependency
+approval — adding it requires the explicit dependency-review step in §16/§20 and (new)
+an ADR, since no existing ADR covers a RAR/archive library decision (next ADR number is
+0024). If live verification during that review surfaces a materially better
+BSD/MIT/Apache-licensed, independently-implemented RAR reader (pure Java or native) that
+this pass could not find from static knowledge, it should be substituted — the
+constraint is the license property (no UnRAR-License inheritance, no GPL/AGPL), not
+loyalty to libarchive specifically. **CBR remains mandatory Phase 3 scope regardless of
+which specific library is finally approved** — this investigation found a viable
+compliant path (libarchive), so "no good library exists" is not the conclusion here.
+
+**Decompression-safety**: whichever library is chosen, CBR entries must go through the
+same `ArchivePolicy`-equivalent limits already enforced for CBZ (max entries, max
+per-image bytes, zip-bomb-style expansion-ratio checks, path/name safety) — these limits
+are format-agnostic and should be generalized rather than duplicated.
+
+**SAF compatibility**: libarchive needs a readable byte stream/file descriptor, not
+necessarily a real filesystem path — the existing `PublicationFiles.open()` pattern
+(returns a `ParcelFileDescriptor`) should be reusable, but libarchive's C I/O layer would
+need a custom read callback bound to that FD (or its backing channel), mirroring what
+`SeekableZip` already does in pure Kotlin. This is a real integration task, not a trivial
+wrapper.
+
+## 7. Rendering / fidelity findings
+
+Current behavior (verified, §3): both PDF and CBZ pages are decoded/rasterized once per
+`render()` call at a resolution capped by `MAX_PAGE_PIXELS = 2048` (longest edge), using
+`ARGB_8888` throughout. Zoom (pinch/double-tap) is a pure Compose `graphicsLayer` scale
+of that already-decoded bitmap — it does not request a higher-resolution decode. For a
+4K/6K comic scan, this means 2048px is the ceiling even at 5x pinch-zoom, so fine detail
+beyond that ceiling cannot be recovered by zooming; the user sees a magnified but not
+sharper image past that point.
+
+**No defect is being claimed here** — `MAX_PAGE_PIXELS=2048` was a deliberate Phase 1/2
+memory/performance bound, not a bug, and `docs/features/COMICS_MANGA.md` cites a real
+field test (Samsung Tab A, CBZ, "sharp/clear/immersive") as evidence the existing
+renderer is not inherently blurry at normal zoom levels. The gap is specifically: Phase 3
+wants high-resolution zoom/re-render as declared scope (`docs/ROADMAP.md` Phase 3
+deliverables), and today there is no re-decode-at-higher-resolution path for either
+format.
+
+**Recommended direction** (discovery only, no implementation this pass): extend the
+page-render request from a single `index: Int` to a request carrying target
+size/scale/quality (e.g., `render(index, targetLongEdgePx)`), with:
+- A capped maximum re-decode resolution well above 2048 but still bounded (to be
+  determined empirically against real device memory budgets — not invented here).
+- Explicit non-caching of full-resolution zoomed bitmaps beyond the current page (only
+  the currently-visible page/spread should ever hold a high-resolution bitmap;
+  neighboring pages should hold low-resolution/thumbnail-grade bitmaps only).
+- A distinct, deliberately low-resolution decode path for thumbnails (§8) that never
+  shares a cache key with the full-resolution reading path, to avoid thumbnail browsing
+  evicting or being confused with reading-resolution bitmaps.
+- Cancellation-safety consistent with the existing `FixedReaderViewModel` pattern
+  (in-flight render jobs already get cancelled on page change — a re-decode-on-zoom path
+  must honor the same cancellation discipline, especially during rapid pinch gestures).
+- CBZ and PDF should be able to share one render-request API shape even though their
+  underlying decode primitives differ (`BitmapFactory` sampling vs. `PdfRenderer` scale)
+  — this is already true of the existing `render(index)` contract and should be
+  preserved, since a future CBR adapter needs to satisfy the same contract as CBZ.
+
+This plan does **not** choose exact pixel ceilings or write a new renderer — that is
+implementation work for the appropriate slice (§12), to be validated against real device
+memory evidence (PSS), not assumed from this document.
+
+## 8. Thumbnail architecture
+
+No thumbnail code exists today (§3/§4). Discovery conclusions (plan, not implementation):
+
+- **Generation strategy**: lazy, on-demand per visible-range in a thumbnail strip/grid —
+  never eagerly decode hundreds of pages at reader resolution. Use a bounded decode
+  (very small target size, e.g. a small fraction of `MAX_PAGE_PIXELS`) through the same
+  container abstraction used for full-page decode, not a separate file-reading path.
+- **Caching**: hybrid — an in-memory LRU bounded by byte budget (not item count, since
+  page dimensions vary wildly) for the currently-open book's visible/near-visible
+  thumbnail range, plus an optional on-disk cache keyed by a stable fingerprint (e.g.
+  `LibraryItem.id` + page index + a content fingerprint such as entry CRC/size, not a
+  mutable path) so thumbnails survive process death without needing to be memory-resident
+  across app restarts. Disk cache must be invalidated when the underlying source changes
+  (new CRC/size, or the item's `available` flag flips) — never trust a stale on-disk
+  thumbnail blindly.
+- **Jump-to-page / current-page indicator**: thumbnail strip should be fully usable via
+  touch, keyboard (arrow + Enter), and D-pad/gamepad using the existing `ShelfCommand`
+  semantic layer (§3) — not a new input scheme.
+- **RTL Manga**: thumbnail strip ordering follows the same `readingDirection` presentation
+  rule as page turns — physical left-to-right layout of the strip mirrors for RTL titles,
+  while underlying page index order is untouched (same invariant as page turning).
+- **Corrupt-page handling**: a thumbnail decode failure for one page must render a
+  placeholder (not crash, not block the strip), reusing the resilience pattern already
+  validated for full-page decode (`MalformedFixedReaderResilienceTest`).
+- **Cancellation**: scrolling the thumbnail strip quickly must cancel superseded decode
+  requests, same discipline as full-page rendering.
+- **Process recreation**: thumbnail strip scroll position and selection should be
+  `rememberSaveable` or re-derived from the restored page locator, not separately
+  persisted state.
+
+## 9. Spread model
+
+Discovery conclusion: adopt **AUTO / SINGLE / SPREAD** as the user-facing spread
+preference (names may change during implementation if architecture suggests a cleaner
+representation, but the three behaviors must be preserved):
+
+- **AUTO**: on a window wide enough to show two pages at a legible size (a size-class /
+  posture decision, never a device-model check — per `docs/design/FOLDABLES.md` and
+  AGENTS.md rule 18), show spreads; otherwise single page. Interior pages pair
+  (page 2+3, 4+5, ...), a cover/first page displays alone, and a final odd page displays
+  alone. A page that already contains scanned double-page art, or a portrait/landscape
+  page that doesn't pair cleanly, should not be forced into an artificial pairing — but
+  **reliable automatic landscape-page detection is not assumed to exist** for a first
+  implementation; a conservative heuristic (e.g., aspect-ratio threshold with manual
+  per-page or per-title override) is the honest starting point, with full automatic
+  detection deferred as an explicit non-goal if evidence during implementation shows it's
+  unreliable.
+- **SINGLE** / **SPREAD**: explicit user override, persisted per-title like other
+  `ReaderPreferences`, taking priority over AUTO.
+- **Manga RTL pairing**: physical left/right placement of a pair mirrors for RTL, but
+  **page order, stored page identity, and locator values never change** — this is the
+  non-negotiable invariant from the brief, and it is already structurally supported today
+  because `readingDirection` is purely a presentation concern (§3) separate from the
+  stored page array.
+- **Resize/rotation/fold while reading, process recreation**: the current logical
+  position (not "which half of a spread was visible") is the thing that must survive —
+  i.e., the locator continues to be a single page index, and spread presentation is
+  recomputed from window state + that index, not stored as its own persisted state. This
+  reuses the Phase 2D.2 recreation-continuity pattern directly.
+- **Fit Page / zoom in spread mode**: Fit Page's "page" becomes "the current visible pair"
+  for layout-fitting purposes; zoom/pan math is already format- and content-size-agnostic
+  (`FixedReaderTransform.kt`) and should extend to a pair's combined content size without
+  new geometry primitives, in principle — to be confirmed during implementation.
+- **Keyboard/controller Next/Previous**: must move by one logical page (not one spread)
+  internally when adjacent to a boundary case (e.g. leaving a solo cover into a pair),
+  reusing the existing semantic `ShelfCommand` layer unchanged.
+
+## 10. RTL / Manga semantics
+
+Already correctly modeled as a **presentation-only** concern: `MediaCategory.MANGA`
+defaults to RTL, per-title override exists, `ComicInfo.xml`'s `<Manga>` field feeds
+category suggestion at import, and `InputMapper` already swaps directional semantic
+commands for RTL contexts (validated on physical RP5 hardware in Phase 2D.3). Phase 3
+must extend this unchanged pattern to spreads (§9) and thumbnails (§8) rather than
+introduce a parallel RTL concept. The one standing gap: there is no dedicated automated
+unit test for `readingDirection()`/`ComicInfo.xml` RTL parsing (§3) — Phase 3 test
+strategy (§14) should close this regardless of which slice lands first, since every
+subsequent Comics/Manga feature depends on this being correct.
+
+## 11. Adaptive / foldable behavior
+
+`docs/design/FOLDABLES.md` already specifies the target behavior for comics specifically
+(§6 of that doc): AUTO single/spread decisions on fold state, configurable gutter, no
+artwork under an occluding hinge, RTL-aware spread placement, prefetching both visible
+pages, fast posture-transition handling, and explicit prohibition of hard-coded
+device-model checks (use window size class / `FoldingFeature` posture, per ADR-0010).
+Phase 3's foldable scope is **bounded to what spreads need**: hinge-aware layout for an
+already-open book, not the general adaptive-platform phase. Logical reading position and
+spread preference must survive fold/unfold exactly as they survive rotation/resize/
+recreation today (§9) — this is additive to the existing Phase 2D.2 continuity work, not
+a new persistence mechanism. No physical foldable device is confirmed available for this
+pass (see §15) — this is an honest gap to close with device availability before any
+foldable-dependent slice is marked done, not something to claim validated now.
+
+## 12. Proposed slice sequence
+
+The administrator's candidate sequence (3A rendering/fidelity → 3B thumbnails → 3C
+spreads/Manga pairing → 3D adaptive/foldable spreads → 3E native CBR → 3F resilience/
+performance/physical acceptance) is **largely confirmed by this discovery**, with one
+refinement:
+
+**Refinement**: CBR's hardest constraint (§6) is that RAR cannot always offer ZIP-style
+random access, and its dependency is native/JNI rather than pure Kotlin like the existing
+CBZ path. If the page-render API and `ComicContainer`-style abstraction are designed in
+3A without this constraint in mind, adding CBR later in 3E would likely force a rework of
+that abstraction. Therefore: **3A must define the container/page-source abstraction
+(not just the rendering ceiling) in a way that already accommodates a
+sequential-with-index-cache or extract-to-cache access pattern, even though CBR itself
+is not implemented until 3E.** This does not move CBR earlier in the delivery sequence
+(the native/JNI build infrastructure and license sign-off are substantial, independent
+work best kept isolated and last) — it only means 3A's abstraction design must not
+quietly assume ZIP-style random access as a universal property of "a comic container."
+With that adjustment, the administrator's ordering stands. CBR remains mandatory
+regardless of its position (§5).
+
+- **3A — Rendering/fidelity foundation.** Goal: extend page-render requests to carry
+  target resolution/quality; define a container/page-source abstraction general enough
+  for a future non-random-access (RAR) adapter; establish the thumbnail-vs-reading cache
+  separation (§7/§8) without yet building the thumbnail UI. User-visible: comic pages can
+  render at higher fidelity on zoom (ceiling to be determined empirically, not assumed).
+  Key areas: `FixedReader.kt`, `ArchivePolicy.kt`, `ReaderPreferences.kt`'s capability
+  model. No schema change expected. Tests: extend `FixedReaderTransformTest`-style pure
+  tests plus a new render-request contract test; memory/PSS evidence for a large CBZ.
+  Non-goals: thumbnails, spreads, CBR.
+
+- **3B — Page thumbnails/navigation.** Goal: jump-to-page UI via a bounded, cancellable,
+  lazily-decoded thumbnail strip (§8). Key areas: new `feature/reader` thumbnail
+  composable, a thumbnail decode path built on 3A's container abstraction, possibly a
+  small on-disk cache table (schema impact: likely yes — a thumbnail-cache table or
+  directory convention; to be scoped precisely at implementation time, not here).
+  Non-goals: spreads, CBR, foldable-specific thumbnail layout.
+
+- **3C — Spreads + Manga pairing.** Goal: AUTO/SINGLE/SPREAD (§9) for CBZ/PDF comics and
+  manga on existing (non-foldable) window sizes. Key areas: `FixedReaderScreen.kt`,
+  `ReaderPreferences.kt` (new per-title spread preference), `FixedReaderTransform.kt`
+  (pair-aware fitting, to be confirmed not require new primitives). Schema impact: one
+  new persisted preference field. Non-goals: foldable hinge-specific behavior (3D), CBR
+  (3E).
+
+- **3D — Adaptive/foldable comic spreads.** Goal: hinge-aware spread placement, gutter,
+  no-artwork-under-hinge, fold/unfold continuity (§11). Key areas: window
+  posture/size-class consumption in `FixedReaderScreen.kt`, reuse of 3C's spread model.
+  Requires a foldable device or emulator posture simulation for validation (§15).
+  Non-goals: the general adaptive-platform phase beyond comics; CBR.
+
+- **3E — Native CBR container support.** Goal: `.cbr` recognized and readable without
+  user conversion, source file untouched, through the 3A container abstraction. Key
+  areas: new `PublicationFormat.CBR` enum value (and every exhaustive `when` over it —
+  `FixedReaderFactory`, `ImportPolicy.classifyArchive`, `ReaderCapabilities`), magic-byte
+  detection in `PublicationFiles.inspect()`, a new native/JNI archive adapter (library
+  TBD per §6/§20), build-system changes (NDK/CMake — explicitly a dependency-policy
+  decision requiring separate authorization, §16). Schema impact: enum value addition
+  (Room-safe if stored as a string/ordinal already handled defensively — to confirm at
+  implementation time). This is very likely the largest single-slice engineering and
+  review cost in Phase 3 and should get dedicated Codex review before merge. Non-goals:
+  CB7, any other archive format; RAR-writing/repacking of any kind.
+
+- **3F — Final resilience/performance/physical acceptance.** Goal: run the full
+  acceptance matrix (§18) across formats, including CBR, on physical hardware (§15), plus
+  stress/perf evidence (§16). This is a closure slice, not new product surface.
+
+No slice except 3D/3F strictly requires a foldable device to validate its own core
+behavior (3D's primary gate does — flagged honestly in §15, not glossed over).
+
+## 13. Per-slice implementation contracts
+
+Each slice below reuses the table skeleton; "TBD at implementation time" marks items this
+discovery pass intentionally does not pre-decide.
+
+**3A** — Schema: none expected. Dependencies: none. Migration: none. Source-file
+ownership: unaffected (read-only rendering change). State/persistence: none new.
+Accessibility: no regression; higher-fidelity rendering should not change
+`contentDescription`/semantics. Keyboard/controller: unaffected. RTL: unaffected.
+Adaptive/foldable: unaffected. Process-death/config: must keep existing recreation
+continuity (Phase 2D.2) passing unchanged. Malformed-file: new render-request path must
+degrade exactly like today's single-resolution path (Retry/Back). Performance/memory:
+primary risk area — must produce PSS evidence before/after for a representative large
+CBZ. Tests required: pure unit tests for new render-request math, instrumented
+re-render-on-zoom test. Emulator validation: yes. Physical-device validation: recommended
+(memory behavior differs from emulator). Codex review: recommended (architecture-shaping
+slice). Non-goals: thumbnails, spreads, CBR. Done when: render requests can target a
+resolution above 2048px with bounded memory, verified by test + PSS evidence, with no
+regression in existing Phase 2 reader tests.
+
+**3B** — Schema: likely a thumbnail-cache table/convention (TBD). Dependencies: none
+expected (reuse existing bitmap decode). Migration: additive only if schema changes.
+Source-file ownership: unaffected. State/persistence: thumbnail cache is derived/
+disposable, never authoritative. Accessibility: thumbnail strip needs labeled,
+focus-navigable items (page-number content descriptions). Keyboard/controller: full
+jump-to-page via existing semantic commands. RTL: strip visual order mirrors for Manga.
+Adaptive/foldable: basic responsiveness only, hinge-specific behavior deferred to 3D.
+Process-death/config: strip position re-derivable from locator, not separately
+persisted. Malformed-file: per-thumbnail placeholder on decode failure, no crash.
+Performance/memory: bounded LRU, cancellation on fast scroll — primary risk area. Tests
+required: cancellation test, corrupt-page placeholder test, large-CBZ thumbnail
+scroll test. Emulator + physical validation both recommended. Codex review: recommended.
+Non-goals: spreads, CBR. Done when: a 300+ page CBZ's thumbnail strip scrolls smoothly
+with bounded memory and no crash on a corrupt page.
+
+**3C** — Schema: one new persisted spread-preference field. Dependencies: none.
+Migration: additive preference field, default AUTO. Source-file ownership: unaffected.
+State/persistence: spread preference persists like other `ReaderPreferences`. Accessibility:
+spread mode must not hide page-turn semantics from screen readers. Keyboard/controller:
+Next/Previous must move one logical page at spread boundaries (§9). RTL: pairing mirrors
+physically, page order/locator untouched (non-negotiable invariant). Adaptive/foldable:
+AUTO threshold uses size class, not device model; hinge-specific refinement is 3D.
+Process-death/config: locator-driven recompute, not separately persisted spread state.
+Malformed-file: a corrupt page within a pair must not blank the whole pair silently —
+needs an explicit per-page error state within the spread. Performance/memory: two pages
+decoded/rendered concurrently — must not double the 3A memory ceiling carelessly. Tests
+required: pairing-boundary unit tests (cover, odd final page, RTL mirroring,
+locator-invariant assertion), instrumented resize single↔spread test. Emulator + physical
+validation recommended. Codex review: recommended (RTL invariant is easy to violate
+silently). Non-goals: foldable hinge behavior, CBR. Done when: Comics (LTR) and Manga
+(RTL) both pair correctly including cover/odd-page cases, with the page-identity
+invariant covered by an automated test.
+
+**3D** — Schema: none expected beyond 3C's. Dependencies: none. Migration: none.
+State/persistence: fold/unfold must preserve logical position (reuse 3C/Phase 2D.2
+patterns, no new mechanism). Accessibility: hinge gutter must not break focus order.
+Keyboard/controller: unaffected by fold state. RTL: gutter/pairing placement must stay
+RTL-aware through fold transitions. Adaptive/foldable: this slice's entire purpose —
+window posture/`FoldingFeature` consumption, no device-model branches. Process-death/
+config: fold-triggered recreation must behave like any other recreation (Phase 2D.2).
+Malformed-file: unaffected beyond 3C. Performance: prefetch of both visible pages must
+respect 3A's memory ceiling. Tests required: posture-simulated instrumented test (emulator
+fold simulation) at minimum; physical foldable test if hardware is available (§15) —
+explicitly not fabricated if unavailable. Codex review: recommended. Non-goals: the
+general adaptive-platform phase; CBR. Done when: spreads adapt correctly to simulated
+fold/unfold with no artwork under the hinge and no lost position, with physical
+validation performed if and when hardware is available (tracked as an open item
+otherwise, not silently skipped).
+
+**3E** — Schema: `PublicationFormat` enum addition (Room storage strategy TBD —
+confirm ordinal vs. string storage at implementation time to assess migration risk).
+Dependencies: one new native/JNI dependency (§6/§16) — requires explicit separate
+authorization before addition, NDK/CMake build-system changes, new ABI artifacts.
+Migration: enum addition should be additive/non-breaking if storage is string-based;
+needs verification. Source-file ownership: a `.cbr` file must open read-only exactly like
+`.cbz` — zero write/convert path, ever. State/persistence: same locator/progress model as
+CBZ (no new persistence concept). Accessibility/keyboard/controller/RTL/adaptive: all
+inherited unchanged from CBZ once the container adapter satisfies the shared
+`ComicContainer` contract (§6, §12 refinement) — this is the entire point of the shared
+abstraction. Process-death/config: identical to CBZ. Malformed-file: corrupt/truncated
+RAR, non-image entries, and explicitly password-protected archives must all produce
+truthful, non-crashing error states (§6) — password-protected is a distinct, explicit
+"not supported" message, never misreported as generic corruption. Performance/memory:
+solid-archive sequential-scan or extract-to-cache cost (§6) must be measured and bounded;
+cache eviction policy required. Tests required: new archive-fixture tests mirroring
+`SeekableZipTest`/`MalformedFixedReaderResilienceTest` patterns for RAR, including a
+password-protected fixture and a solid-archive fixture. Emulator validation: yes.
+Physical-device validation: yes (native/JNI code behaves differently across ABIs/devices
+than emulator). Codex review: **required**, not just recommended — new native dependency,
+new license surface, largest blast radius in Phase 3. Non-goals: CB7, RAR-writing,
+converting CBR to any other format. Done when: the CBR acceptance gate (§17) passes in
+full, including a real-world CBR fixture, with dependency license obligations documented
+and satisfied.
+
+**3F** — Schema/dependencies/migration: none new (closure slice). Covers: full
+acceptance matrix (§18) across all formats including CBR, physical-device pass (§15),
+performance/memory evidence consolidation (§16), final accessibility pass. Codex review:
+recommended as a final gate. Non-goals: any new product surface. Done when: §18's matrix
+is fully exercised and results (including any honest gaps, e.g. missing hardware) are
+recorded truthfully.
+
+## 14. Testing strategy
+
+- Extend existing pure-function test patterns (`FixedReaderTransformTest`'s style) for
+  every new pure geometry/pairing/render-request function introduced in 3A/3C.
+- Extend instrumented patterns (`FixedReaderTransformBoundsTest`,
+  `FixedReaderRecreationTest`, `MalformedFixedReaderResilienceTest`) to synthetic CBR
+  fixtures once 3E lands — synthetic, non-copyrighted fixtures only, matching current
+  practice.
+- Add the standing gap noted in §10: a dedicated unit test for `readingDirection()` and
+  `ComicInfo.xml` RTL parsing, independent of which slice lands it.
+- No full Android validation matrix runs during planning (per this pass's instructions);
+  each slice's own test gate is scoped in §13.
+- Physical-device regression: every slice that touches input/RTL/foldable must re-run the
+  relevant subset of Phase 2D's physical validation (RP5 controller, available
+  tablet/phone), not just emulator tests, consistent with existing project practice.
+
+## 15. Physical-device strategy
+
+Per `docs/PHASE_2D_IMPLEMENTATION_PLAN.md`, physical validation previously used real RP5
+controller hardware and at least one real Android device for process-death testing
+(`adb shell am kill`). For Phase 3:
+- RP5 controller: available, reuse for keyboard/controller spread and thumbnail
+  navigation acceptance.
+- A representative phone and tablet window-size: availability for Phase 3 specifically
+  is **not confirmed by this planning pass** — this document does not assume hardware
+  that hasn't been verified as on hand. Flagged as an open item (§20).
+- Foldable device: **not confirmed available.** 3D's foldable-specific acceptance should
+  use Android Studio's foldable emulator posture simulation as the primary gate, with
+  physical foldable validation performed opportunistically if/when hardware becomes
+  available — this plan does not claim foldable hardware validation will happen on a
+  schedule it can't back up.
+- TalkBack: Phase 2D already documented TalkBack as unavailable on both test devices at
+  that time ("a documented boundary, not a failure") — Phase 3 should re-check this
+  before claiming any accessibility acceptance criterion closed.
+
+## 16. Performance / memory strategy
+
+- PSS evidence (as already practiced in `SyntheticLargePdfAcceptanceTest`) should be
+  captured before/after 3A's re-decode-on-zoom change, for a large synthetic CBZ fixture.
+- Thumbnail caching (3B) must have an explicit byte-budget LRU ceiling, never an
+  unbounded cache — consistent with `ArchivePolicy`'s existing posture of explicit
+  numeric ceilings everywhere.
+- Spread rendering (3C/3D) roughly doubles concurrent decoded-page memory; 3A's ceiling
+  work should account for this before 3C lands, not be revisited reactively.
+- CBR (3E) introduces a new memory risk class: solid-archive sequential decode or
+  extract-to-cache (§6) must have its own bounded cache/eviction policy, measured with
+  PSS on a real large CBR fixture, and must not be allowed to extract unboundedly to
+  disk without a size cap and cleanup-on-close/LRU policy.
+- Rapid-navigation cancellation (already validated for CBZ/PDF in Phase 2D.4) must be
+  re-validated for every new decode path (thumbnails, re-decode-on-zoom, CBR) rather than
+  assumed to transfer automatically.
+
+## 17. CBR acceptance gate
+
+CBR implementation (3E) is accepted only when all of the following hold, validated with
+real (non-synthetic where feasible) CBR fixtures in addition to synthetic ones used for
+license-safe automated tests:
+
+- `.cbr` files are recognized by magic byte, not merely by file extension.
+- A user can import a real `.cbr` file with zero conversion/renaming/repackaging step.
+- The original `.cbr` file is never modified, moved into a converted form, or deleted as
+  a side effect of reading.
+- Archive entries are enumerated safely (entry-count/size/expansion-ratio limits
+  equivalent to `ArchivePolicy`'s existing CBZ limits).
+- Natural page ordering matches CBZ's ordering semantics for equivalent filename patterns.
+- All image formats already supported for CBZ pages remain usable inside CBR.
+- Pages are decoded on demand, not wholesale-extracted eagerly — with the documented,
+  honest exception of the solid-archive / extract-to-bounded-cache fallback (§6), which
+  must itself be bounded and evicted, not an unbounded silent extraction.
+- Progress/resume works identically to CBZ.
+- LTR Comic and RTL Manga CBR titles both behave identically to their CBZ equivalents,
+  including spreads once 3C/3D have landed.
+- Fit Page/Fit Width/zoom work via the same shared reader semantics as CBZ — no
+  CBR-specific reader UI.
+- Thumbnails work for CBR once 3B has landed, through the same abstraction.
+- Malformed/corrupt/truncated CBR archives fail gracefully (Retry/Back pattern), never
+  crash.
+- Password-protected/encrypted RAR archives produce an explicit, truthful "not
+  supported" message — never a misleading generic error, never a silent partial read.
+- Process restoration/reopen behaves identically to CBZ (Phase 2D.2 pattern).
+- Controller/keyboard navigation works identically to CBZ.
+- Dependency license obligations (attribution/notice requirements of whichever library is
+  finally approved per §6/§20) are documented in `docs/DEPENDENCIES.md` and satisfied in
+  the shipped app (e.g., any required notice screen/file).
+- Full build/test/license gate passes — this bullet describes the bar for when
+  implementation actually happens; it is not satisfied or claimed satisfied by this
+  planning pass.
+
+## 18. Final Phase 3 acceptance matrix
+
+To be exercised at 3F, covering at minimum:
+
+- **Formats**: CBZ, CBR, Comic PDF, Manga CBZ, Manga CBR, Manga PDF.
+- **Source preservation**: unchanged original for every format, no conversion required,
+  no destructive mutation, verified by hash/byte comparison before/after a read session.
+- **Reading**: single-page, AUTO spread, forced single, forced spread, Fit Page, Fit
+  Width, zoom, high-res fidelity (post-3A), progress, resume — across all formats above.
+- **Navigation**: thumbnails, jump-to-page, touch, keyboard, D-pad, RTL — across all
+  formats above.
+- **State**: recreation, rotation, resize, real process death (`adb shell am kill`, not
+  `am force-stop`, per existing Phase 2D practice), reopen, preference restoration.
+- **Spreads**: LTR, RTL, first page, odd final page, portrait pair, wide-page behavior,
+  resize single↔spread, foldable case if hardware/emulator posture is available at the
+  time.
+- **Resilience**: corrupt CBZ, corrupt CBR, corrupt page image, non-image entry, empty
+  archive, huge-dimension page, unsupported-encrypted RAR, rapid-navigation
+  cancellation, unavailable/disconnected source.
+- **Performance**: long CBZ/CBR, rapid page turns, thumbnail browsing, spread rendering,
+  zoom re-render, memory/PSS evidence, no unbounded cache for any of the above.
+- **Accessibility**: semantics, page-nav labels, thumbnail labels, focus order, chrome
+  discoverability — re-verified truthfully against whatever TalkBack availability exists
+  at that time (§15).
+- **Physical devices**: RP5 controller acceptance; any tablet/phone/foldable hardware
+  actually available at validation time, reported truthfully — this matrix is not
+  considered satisfied by emulator-only evidence where a physical-device row is listed,
+  and any row that could not be physically validated must be recorded as such, not
+  silently marked done.
+
+## 19. Explicit non-goals (Phase 3)
+
+Series/Omnibus implementation (DB tables, UI, automatic grouping, multi-volume import,
+virtual transitions, volume-to-volume reader coordination) — explicitly out of Phase 3
+per the owner's brief; Phase 3 only verifies it doesn't foreclose future Series work
+(each CBZ/CBR volume stays an independent `LibraryItem`/source file; both formats share
+the `ImageSequenceReaderEngine` contract so a future Series can mix them, per
+`docs/features/SERIES.md`'s mixed-format section — already architecturally true today).
+Also out of scope, per the brief: separate reader stacks for CBZ vs CBR, extracting
+entire archives by default, filesystem-path assumptions that break SAF, static global
+bitmap caches, loading entire books into memory, format conversion as an implementation
+shortcut, page identity tied to screen/spread position, hard-coded device-model logic,
+coupling UI directly to archive implementation, guided panels, automatic panel detection,
+AI image enhancement, super-resolution, metadata provider work, OPDS/Calibre, cloud/sync,
+Notes/Highlights, Adapted PDF, theme work, billing, CB7, iOS, OCR.
+
+## 20. Open questions requiring owner/admin decision
+
+1. **RAR library final approval**: this pass recommends a libarchive-based native
+   adapter (§6) as the compliant direction, but does not approve adding it — that
+   requires a dedicated dependency-review pass (§16 policy) and likely a new ADR
+   (0024) once a specific library/version is chosen. Live verification of current
+   license text, maintenance activity, and RAR5 completeness is required before that
+   approval, and could not be performed in this offline planning pass.
+2. **Solid-archive behavior**: should a first CBR implementation support solid RAR
+   archives via extract-to-bounded-cache (more compatible, more disk/memory cost), or
+   explicitly decline solid archives in v1 with a truthful "not supported" message (less
+   compatible, simpler/safer first slice)? This plan does not decide this — it is a
+   real product trade-off for the owner.
+3. **AAB/per-ABI delivery**: does ShelfOS's release pipeline already use Android App
+   Bundle (needed to bound CBR's native-library size impact per install)? Not verified in
+   this pass.
+4. **Physical device inventory for Phase 3**: what tablet/foldable/additional phone
+   hardware is actually available for 3D/3F validation? §15 does not assume hardware that
+   hasn't been confirmed.
+5. **Automatic landscape-page detection** (§9): is a heuristic acceptable for a first
+   spread implementation, or should 3C ship manual-override-only until a more reliable
+   signal is found? This plan defaults to "heuristic + manual override" but flags it as a
+   product call.
+6. **Doc reconciliation depth**: this pass updated `docs/ROADMAP.md`, `docs/PRODUCT.md`,
+   and `AGENTS.md` minimally to remove the direct self-contradiction (§5); it left
+   `docs/ARCHITECTURE.md`, `docs/features/COMICS_MANGA.md`, and
+   `docs/features/READER.md` largely as-is because their existing "future CBR" framing
+   is still literally true (not yet implemented) and did not directly contradict
+   mandatory-scope status the way ROADMAP.md's two sections contradicted each other. If
+   the admin wants stronger "mandatory" language in those files too, that's a quick
+   follow-up, not a blocker.
+
+## 21. Recommended first implementation slice
+
+**3A (rendering/fidelity foundation)**, specifically narrowed to: (a) define the
+render-request contract (target resolution, not just index) and (b) define the
+container/page-source abstraction with the RAR-compatibility refinement from §12 — before
+writing any new UI (thumbnails, spreads) or touching the dependency graph (CBR). This is
+the lowest-risk, most foundational slice: it has no schema/dependency impact, builds
+directly on already-validated Phase 2 code, and its abstraction decisions are the ones
+most expensive to redo later if skipped or rushed. CBR (3E) should not be started before
+3A lands, both because of the shared-abstraction reason above and because its dependency
+review (§20.1) will independently take real calendar time regardless of engineering
+readiness.

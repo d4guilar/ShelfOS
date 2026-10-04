@@ -571,9 +571,10 @@ Begins only after Android architecture/product stability.
 Exploratory scope or deferred implementation; accepted adapter directions are
 sequenced above, not implemented. Community themes and cloud/sync are additionally
 demand-gated (see `design/THEMES.md` and the local-first section in `ARCHITECTURE.md`);
-nothing here is a committed delivery phase:
+nothing here is a committed delivery phase. (CBR is no longer in this list: it is
+mandatory Phase 3 scope, gated only on RAR dependency/license review, not an
+uncommitted exploration item — see `docs/PHASE_3_IMPLEMENTATION_PLAN.md`.)
 
-- CBR
 - DOCX
 - TXT / Markdown
 - OCR
