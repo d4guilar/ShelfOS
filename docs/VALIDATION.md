@@ -1,5 +1,119 @@
 # Validation
 
+## PHASE 3A — RENDERING FOUNDATION (2026-10-03)
+
+Status: **IMPLEMENTED, pending administrator/Codex review.** Scope, exact contract, and
+what remains for later slices are recorded in `docs/PHASE_3_IMPLEMENTATION_PLAN.md` §22.
+Base: `main` @ `c8fff36`. Branch: `phase-3/3a-rendering-foundation`.
+
+**What changed**: `core/reader/FixedReader.kt`'s `render(index): Bitmap` became
+`render(index, request: PageRenderRequest = PageRenderRequest.DEFAULT): Bitmap`, with a
+pure `resolveRenderTargetLongestEdge(request)` policy function replacing the flat
+`MAX_PAGE_PIXELS = 2048` constant, plus a private `PageSource`/`ArchivePageSource`/
+`ImagePageRenderer` container boundary generalizing CBZ's decode path away from direct
+`SeekableZip` coupling. `FixedReaderViewModel` gained `updateViewport(width, height)` and
+now builds each render's `PageRenderRequest` from the last-known viewport; `FixedReaderScreen`
+calls it from the existing `onSizeChanged`. No dependency, Room schema, or migration change.
+
+**JVM unit tests — PASS.** `./gradlew.bat :app:testDebugUnitTest -q` (exit 0), full suite,
+including the new `com.d4guilar.shelfos.core.reader.PageRenderRequestTest` (9 tests: unknown-
+viewport fallback reproduces the old flat `2048`; a 720x1280 viewport requests `1280` (less
+than the old default); a 2560x1600 viewport requests `2560` (exceeds the old `2048` cap); a
+1080x1920 viewport with `maxDimension=200` requests `200` (thumbnail-sized, bounded by the
+smaller of the two); a 50,000x50,000 viewport is bounded at the absolute `SAFE_MAX_DIMENSION
+= 4096`; a requested `maxDimension` above `4096` can never raise the result above `4096`;
+negative/zero/`Int.MAX_VALUE` inputs are treated as unspecified rather than thrown/overflowed;
+the result is always ≥1; the function is deterministic for a fixed request). One test
+(`requestedMaxDimensionCanNeverRaiseTheResultAboveTheSafeMaximum`) initially asserted the
+wrong expected value against its own premise (used a 1000px viewport, which legitimately
+caps the result at 1000 regardless of `maxDimension`); corrected to use a 10,000px viewport
+so the assertion actually exercises the ceiling it names, then re-ran green.
+
+**Lint — PASS.** `./gradlew.bat :app:lintDebug -q`, exit 0, no new findings.
+
+**Build — PASS.** `./gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest -q`,
+exit 0.
+
+**Instrumented evidence — PASS (new contract, directly targeted).**
+`com.d4guilar.shelfos.FixedReaderRenderRequestTest`, a new instrumented suite exercising
+`FixedReaderFactory` directly (no Compose UI driving, matching
+`LibraryPersistenceTest.pdfAndArchiveRenderAndArchiveUsesNaturalPageOrder`'s pattern) against
+real `BitmapFactory`/`PdfRenderer` decodes: **10 tests, 0 failed** (confirmed via
+`adb logcat`: "run finished: 10 tests, 0 failed, 0 ignored"), on a `shelfos-api37` emulator
+(`sdk_gphone64_x86_64`):
+- `cbzDefaultRequestPreservesTheOldTwoThousandFortyEightCap` — a synthetic 6000x4000 CBZ
+  page at the default request decodes to a bitmap with longest edge ≤2048 (unchanged).
+- `cbzLargerViewportRequestExceedsTheOldCapOnAHighResolutionSource` — the same source at a
+  3000x3000 viewport request decodes with longest edge >2048 and ≤3000 (real evidence the
+  new contract exceeds the old flat ceiling when a real viewport calls for it); wall time
+  ≈2.1s on the x86_64 emulator (`inSampleSize`=2, bitmap ≈3000x2000, ≈24MB ARGB_8888).
+- `cbzThumbnailLikeRequestProducesAMuchSmallerBitmap` — a 200x200/`maxDimension=200` request
+  decodes to longest edge ≤200 (contract already supports a future thumbnail-sized request).
+- `cbzOversizedRequestIsBoundedBySafeMaximumNotRequestedViewport` — a 20,000x20,000 request
+  is bounded at the 4096 safety ceiling, not the requested viewport; wall time ≈1.6s.
+- `cbzSourceSmallerThanRequestedTargetIsNeverUpscaled` — a 100x150 source at a 3000x3000
+  request decodes at its exact native 100x150 (no synthesized upscale).
+- `cbzMalformedImagePageStillFailsGracefullyWithANewStyleRequest` — a non-image archive
+  entry still throws `PublicationException` through the new request-shaped `render()` call.
+- `pdfDefaultRequestPreservesTheOldTwoThousandFortyEightCap` — unchanged default PDF cap.
+- `pdfLargerViewportRequestExceedsTheOldCap` — a 2200x3300 viewport request on a 400x600 PDF
+  page exceeds 2048 (wall time ≈32ms — PdfRenderer scales a vector page cheaply even well
+  above the old cap, unlike CBZ's raster resample cost above).
+- `pdfOversizedRequestIsBoundedBySafeMaximum` — bounded at 4096 regardless of a 50,000px
+  request.
+- `pdfPageOrderingIsUnaffectedByTheRequestShapeChange` — a 3-page PDF's natural order
+  (red/green/blue) is unchanged when every `render()` call now carries a non-default request.
+
+No obvious unbounded-allocation path was found: every decoded bitmap's longest edge is
+bounded by `resolveRenderTargetLongestEdge`'s `coerceIn(1, min(maxDimension,
+SAFE_MAX_DIMENSION=4096))`, and CBZ's `inSampleSize` only ever increases (never upscales),
+so the worst case for any single currently-displayed page is one `4096x4096` ARGB_8888
+bitmap (~64MB) — no spread/multi-page cache exists in this slice to multiply that.
+
+**Broader instrumented regression — ATTEMPTED, INCONCLUSIVE (environment, not product
+defect); explicitly deferred to Phase 3F, not silently skipped.** After the targeted
+evidence above, an attempt was made to also re-run `FixedReaderTransformBoundsTest`,
+`FixedReaderRecreationTest`, `MalformedFixedReaderResilienceTest`, `LibraryPersistenceTest`,
+`NavigationSmokeTest`, and the synthetic large-fixture acceptance tests as a broader
+regression check. Two independent environment problems were hit, neither caused by this
+slice's product code:
+1. **`shelfos-api37` AVD / Espresso `InputManager` incompatibility.** Every test that drives
+   a real touch gesture or raw `KeyEvent` through Espresso's `UiController` (pinch-zoom in
+   `FixedReaderTransformBoundsTest`, keyboard/gamepad dispatch in `NavigationSmokeTest`)
+   failed uniformly with `java.lang.NoSuchMethodException:
+   android.hardware.input.InputManager.getInstance` from
+   `androidx.test.espresso.base.InputManagerEventInjectionStrategy.initialize` — an
+   Espresso-version/AVD-system-image incompatibility unrelated to any ShelfOS code
+   (confirmed via `adb logcat`: every one of `NavigationSmokeTest`'s 28 tests and
+   `FixedReaderTransformBoundsTest`'s 15 tests failed with the identical stack trace, not a
+   ShelfOS assertion failure). Tests that don't need Espresso's native event injection
+   (`FixedReaderRenderRequestTest` above, which drives `FixedReaderFactory` directly) were
+   unaffected and passed cleanly on this same AVD.
+2. **API 24 fallback AVD, repeated external Gradle-daemon interruptions.** Switching to the
+   `shelfos-api24` AVD (confirmed booted, `ro.build.version.sdk=24`) avoided problem (1), but
+   two subsequent attempts to run `FixedReaderTransformBoundsTest` there were each
+   interrupted mid-build by an external `gradle --stop` ("Gradle build daemon has been
+   stopped: stop command received") before producing a result, and further broad regression
+   runs were administratively halted at that point to keep this slice's validation scoped
+   and timely (per the owner's explicit instruction) rather than repeatedly re-attempted.
+   **No test in this list is recorded as failing** — none of them actually completed a run
+   against the new contract; this is an honest "not obtained," not a pass being claimed.
+
+This gap is judged acceptable to close later rather than now because: `FixedReaderTransform.kt`
+(the pinch/pan/Fit Width geometry `FixedReaderTransformBoundsTest`/`FixedReaderRecreationTest`
+exercise) was **not touched** by this slice at all; `FixedReaderViewModel`'s and
+`FixedReaderScreen`'s changes are a new `updateViewport` field pair plus one additional method
+call at an existing call site, reasoned through directly in this review (no change to
+render-storm-relevant logic, recreation/locator logic, or error-handling control flow); and
+`MalformedFixedReaderResilienceTest`/`LibraryPersistenceTest`'s `render(2)`/`render(0)` calls
+use the default `PageRenderRequest`, which is proven byte-for-byte equivalent to the old
+behavior by both `PageRenderRequestTest` and `FixedReaderRenderRequestTest` above. Full
+re-validation of this broader matrix (plus Manga RTL navigation, which was not independently
+re-exercised here) is Phase 3F's explicit job, not re-litigated per-slice.
+
+**Dependencies/schema**: none added/changed. **EPUB**: untouched (no file in the EPUB
+reading path was touched). **CBR**: not implemented, not stubbed, not detected.
+
 ## POST-PHASE-2 EPUB XHTML REGRESSION (2026-10-02)
 
 **Status: FIXED on `fix/epub-xhtml-head-injection` (base `main` `3625324`), pending independent QA.**

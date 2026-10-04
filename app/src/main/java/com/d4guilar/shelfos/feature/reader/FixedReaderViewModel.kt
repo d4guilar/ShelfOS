@@ -28,6 +28,12 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
     private var session: FixedReader? = null
     private var rendering: Job? = null
     @Volatile private var closed = false
+    // Last viewport size reported by FixedReaderScreen (Phase 3A). Read only when a *new* render is already about
+    // to happen (open/page-turn/retry); updating it on its own never triggers a render, so a resize/rotation/fold
+    // stream of onSizeChanged calls can never itself cause a render storm -- it only changes what resolution the
+    // next naturally-occurring render asks for.
+    @Volatile private var viewportWidth: Int = 0
+    @Volatile private var viewportHeight: Int = 0
     private val positions = PositionWriter<Int>(appScope, write = { page ->
         repository.reading(id, pageLocator(page), pageProgress(page, _state.value.count))
     }, onFailure = { _state.update { it.copy(error = UiMessage.Resource(R.string.reader_position_save_failed)) } })
@@ -82,13 +88,21 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
 
     fun retry() = render(_state.value.page)
 
+    /** Records the reader page surface's current measured size (Phase 3A). Does not itself trigger a render --
+     * see the field doc above -- so this is safe to call on every `onSizeChanged`, including during a continuous
+     * resize/rotation/fold-in-progress, without risking a render storm. */
+    fun updateViewport(width: Int, height: Int) {
+        if (width > 0 && height > 0) { viewportWidth = width; viewportHeight = height }
+    }
+
     private fun render(page: Int) {
         rendering?.cancel()
         _state.update { it.copy(loading = true, error = null) }
+        val request = PageRenderRequest(viewportWidth, viewportHeight)
         rendering = viewModelScope.launch {
             var result: Bitmap? = null
             try {
-                withContext(Dispatchers.IO) { mutex.withLock { result = requireNotNull(session).render(page) } }
+                withContext(Dispatchers.IO) { mutex.withLock { result = requireNotNull(session).render(page, request) } }
                 ensureActive()
                 _state.update { it.copy(bitmap = result, loading = false) }
                 result = null // Published bitmaps are owned by Compose/GC, not manually recycled while displayed.

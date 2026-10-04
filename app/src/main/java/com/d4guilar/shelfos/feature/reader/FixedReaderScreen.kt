@@ -160,7 +160,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically) { InputKeycap(it); Text(stringResource(R.string.action_back), color = t.colors.secondary, style = t.typography.labelSmall) } }
         }
         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().focusRequester(pageFocus).focusable().testTag("reader_page")
-            .onSizeChanged { viewportSize = it }
+            .onSizeChanged { viewportSize = it; vm.updateViewport(it.width, it.height) }
             .semantics {
                 // Tap zones (edges turn pages, center toggles chrome) and double-tap-to-zoom are unchanged;
                 // this only adds an accessibility action, exposed exclusively while chrome is hidden, so
