@@ -168,8 +168,13 @@ Do not invent additional visual systems merely because the mock does not show a 
 - Keep provider logic behind ShelfOS metadata abstractions.
 - Persist provenance.
 - User edits always win.
-- Metadata network failure must never block local reading.
+- A user-selected cover always wins; automatic enrichment must never silently replace it.
+- Books/Comics/Manga should receive confident automatic cover and metadata enrichment
+  when that feature is implemented. This is accepted direction, not current behavior.
+- Metadata network failure must never block local reading or import.
+- Enrichment runs in the background after commit; it must not gate local usability.
 - Do not upload full publications for metadata lookup.
+- Do not add provider APIs, scraping or network code unless explicitly requested.
 
 
 ## Localization rules for agents

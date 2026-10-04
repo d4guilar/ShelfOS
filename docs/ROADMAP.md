@@ -166,14 +166,23 @@ inventory is not a requirement to add network APIs to the first reader build.
 - metadata provenance model
 - embedded metadata extraction
 - manual metadata editor
-- cover override
+- cover override (custom user cover from device)
+- cover candidate picker ("Find cover online")
 - identifier detection
 - Open Library provider
 - Google Books fallback/provider
 - confidence scoring
 - candidate confirmation UI
+- background automatic metadata enrichment after commit
+- best suitable cover selected by default for confidently matched items
 - local cover/metadata cache
 - Refresh metadata action
+
+Cover policy defaults live in [Metadata enrichment](features/METADATA_ENRICHMENT.md):
+a user-selected cover always wins, a confident online cover may improve a weak
+embedded/generated cover, and enrichment never blocks local import or reading.
+Specialist Comic/Manga metadata providers remain a later item in the
+advanced-organization/enrichment track above.
 
 ### Visual implementation milestone
 

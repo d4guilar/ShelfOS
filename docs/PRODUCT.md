@@ -174,6 +174,12 @@ Online services may improve metadata and covers after a publication is locally u
 Ordinary users should receive good default enrichment without configuring APIs or
 keys; optional bring-your-own-key providers are a later power-user enhancement.
 
+Enrichment runs after commit and in the background. It must never block import,
+staging, commit or reading, and network failure must not remove usable local data.
+
+Enrichment runs after commit and in the background. It must never block import,
+staging, commit or reading, and network failure must not remove usable local data.
+
 ## 8. Ownership and source files
 
 ShelfOS must never silently alter the source publication.
@@ -326,6 +332,18 @@ whether it works.
 ### Beautiful by default
 A non-technical user should get an attractive, coherent library without understanding
 metadata schemas, filenames, providers or API keys. Power users may configure more.
+
+Because ShelfOS is cover-first and its chrome is deliberately restrained, automatic cover
+quality is a major Library aesthetic requirement, not optional decoration. An import flow
+that succeeds but leaves confidently identifiable Books, Comics or Manga with poor generic
+artwork indefinitely is not the intended experience — while still never blocking local
+import or reading on network enrichment.
+
+Because ShelfOS is cover-first and its chrome is deliberately restrained, automatic cover
+quality is a major Library aesthetic requirement, not optional decoration. An import flow
+that succeeds but leaves confidently identifiable Books, Comics or Manga with poor generic
+artwork indefinitely is not the intended experience — while still never blocking local
+import or reading on network enrichment.
 
 ### Preserve source fidelity
 ShelfOS must not visibly degrade the source. Source-faithful rendering comes before
@@ -577,6 +595,45 @@ If online lookup fails, ShelfOS still reads the publication using embedded or us
 The user can always edit metadata and cover art.
 
 Manual edits take precedence over automatic refresh.
+
+### Automatic cover and metadata enrichment
+
+Once automatic enrichment is implemented, it should be the default experience rather
+than something users must discover:
+
+- Books, Comics and Manga should be automatically enriched when they can be identified
+  with sufficient confidence, including selecting the best suitable cover automatically.
+- The user should not normally need to look for a cover right after importing a
+  recognizable publication.
+- Comics and Manga deserve the same visual priority as Books, with cover matching
+  attentive to Series, issue/volume, edition, front cover and resolution.
+- Documents may keep embedded art, a first-page/thumbnail representation or a generated
+  fallback, and should not be aggressively matched to unrelated books; they remain fully
+  customizable by the user.
+- Enrichment is provider-neutral, runs in the background after commit, and caches
+  permitted results so the Library still looks correct offline.
+
+Cover precedence, in order:
+
+```text
+USER-SELECTED COVER
+>
+CONFIDENT HIGH-QUALITY ONLINE COVER
+>
+USABLE EMBEDDED COVER
+>
+GENERATED / FALLBACK COVER
+```
+
+A user-selected cover can never be silently replaced. A confident online cover may improve
+a weak embedded/generated one; a weak guess never replaces a good local cover.
+
+Edit Publication should let users **Choose from device** (creating a user override that
+subsequent refresh must preserve) and **Find cover online** through ShelfOS's
+provider-neutral metadata layer, never through an individual provider.
+
+Full behavior, precedence and scope rules are owned by
+[Metadata enrichment](features/METADATA_ENRICHMENT.md).
 
 ## Themes as layers, not alternate products
 
