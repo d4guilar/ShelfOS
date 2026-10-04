@@ -386,10 +386,11 @@ pressure, mandatory sharing, streaks or intrusive rewards. The publication stays
 
 ## 15. Long-term possibilities
 
-Beyond the accepted ingestion/organization direction; timing is not committed:
+Beyond the accepted ingestion/organization direction; timing is not committed. (CBR is
+an exception: it is mandatory Phase 3 scope, not an uncommitted long-term possibility —
+see `docs/ROADMAP.md` Phase 3 and `docs/PHASE_3_IMPLEMENTATION_PLAN.md`.)
 
 - DOCX
-- CBR
 - OCR
 - advanced Adapted PDF refinement (accepted direction; implementation later)
 - stylus handwriting
