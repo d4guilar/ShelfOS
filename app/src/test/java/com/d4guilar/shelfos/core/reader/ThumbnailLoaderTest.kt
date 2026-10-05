@@ -68,6 +68,62 @@ class ByteBudgetedLruCacheTest {
         assertEquals(0L, cache.sizeBytes)
         assertFalse(cache.contains(1))
     }
+
+    // Codex R1 finding 1: a byte budget alone never bounds entry count for zero-byte or near-zero-byte values
+    // (exactly ThumbnailLoader's ThumbnailResult.Failed and tiny-bitmap cases) -- these cover the added,
+    // independent maxEntries bound.
+
+    @Test fun entryCountIsBoundedEvenWhenEveryValueContributesZeroBytes() {
+        // A huge byte budget (never the limiting factor here) paired with a small maxEntries: every value "costs"
+        // 0 bytes, exactly like ThumbnailResult.Failed -- without a separate entry-count bound this would grow
+        // forever.
+        val cache = ByteBudgetedLruCache<Int, Int>(1_000_000, maxEntries = 10) { 0L }
+        repeat(1000) { cache.put(it, 0) }
+        assertEquals(10, cache.count)
+        assertEquals(0L, cache.sizeBytes)
+        // Only the 10 most-recently-put keys should remain (990..999).
+        (990..999).forEach { assertTrue("expected key $it to remain", cache.contains(it)) }
+        assertFalse(cache.contains(0))
+    }
+
+    @Test fun entryCountIsBoundedForManyTinySuccessfulValues() {
+        // Each value costs 1 byte -- nowhere near a 1,000,000-byte budget -- so only the entry-count bound limits
+        // residency, matching many tiny real thumbnails that individually never approach the byte budget.
+        val cache = ByteBudgetedLruCache<Int, Int>(1_000_000, maxEntries = 25) { 1L }
+        repeat(500) { cache.put(it, 1) }
+        assertEquals(25, cache.count)
+        assertTrue(cache.sizeBytes <= 25)
+    }
+
+    @Test fun entryCountEvictionStillUsesLruOrderNotInsertionOrder() {
+        val cache = ByteBudgetedLruCache<Int, Int>(1_000_000, maxEntries = 3) { 0L }
+        cache.put(1, 0); cache.put(2, 0); cache.put(3, 0)
+        cache.get(1) // touch 1 -- 2 becomes the least-recently-used, not 1, despite 1 being inserted first.
+        cache.put(4, 0) // count would exceed maxEntries(3) -- exactly one entry-count eviction is needed.
+        assertTrue("recently-touched entry should survive an entry-count eviction", cache.contains(1))
+        assertFalse("the untouched, older entry should be evicted on count, not insertion order", cache.contains(2))
+        assertTrue(cache.contains(3) && cache.contains(4))
+        assertEquals(3, cache.count)
+    }
+
+    @Test fun byteBudgetEvictionStillWorksWhenEntryCountNeverExceedsItsOwnBound() {
+        // maxEntries is generous here -- only the byte budget should ever trigger eviction, proving the two bounds
+        // operate independently rather than one silently disabling the other.
+        val cache = ByteBudgetedLruCache<Int, Int>(25, maxEntries = 1000) { it.toLong() }
+        cache.put(1, 10); cache.put(2, 10); cache.put(3, 10) // 30 > 25 budget -> the oldest (1) must go
+        assertFalse(cache.contains(1))
+        assertTrue(cache.contains(2) && cache.contains(3))
+        assertTrue(cache.sizeBytes <= 25)
+    }
+
+    @Test fun replacingAnExistingKeyUnderBothBoundsAccountsBytesCorrectlyAndNeverDoubleCountsEntries() {
+        val cache = ByteBudgetedLruCache<Int, Int>(100, maxEntries = 5) { it.toLong() }
+        cache.put(1, 10); cache.put(2, 20); cache.put(3, 30)
+        cache.put(1, 50) // replacement, not a new entry -- count must not grow and bytes must not double-count.
+        assertEquals(3, cache.count)
+        assertEquals(100L, cache.sizeBytes)
+        assertTrue(cache.contains(1) && cache.contains(2) && cache.contains(3))
+    }
 }
 
 class NextThumbnailToLoadTest {
@@ -176,6 +232,69 @@ class ThumbnailLoaderTest {
         assertNotNull(loader.peek(5))
         loader.close()
         assertNull(loader.peek(5))
+    }
+
+    // Codex R1 finding 3: dismissing the thumbnail strip must stop the active prefetch window without closing the
+    // whole loader (the reader session stays open) -- these cover deactivate()'s contract directly.
+
+    @Test fun deactivateStopsRemainingPrefetchForTheActiveWindow() = runTest {
+        val decoded = mutableListOf<Int>()
+        val loader = ThumbnailLoader(scope = this, pageCount = 1000, prefetch = 6, sizeOf = { 1L }) { page ->
+            decoded += page
+            delay(10) // slow enough that deactivate() can interrupt the window before every page finishes
+            FakeThumbnail(page)
+        }
+        loader.setVisibleRange(500) // starts decoding the 13-page window around 500
+        runCurrent() // let the window actually start (at least one decode in flight) before interrupting it
+        assertTrue("expected the active window to have started work", decoded.isNotEmpty())
+        val decodedBeforeDeactivate = decoded.size
+        loader.deactivate()
+        advanceUntilIdle()
+        // At most one already-started synchronous decode may finish after deactivate() (it isn't cooperatively
+        // cancellable mid-call); no further pages from the dismissed window should begin after that.
+        assertTrue("expected at most one more decode to finish after deactivate(), got ${decoded.size - decodedBeforeDeactivate} more",
+            decoded.size - decodedBeforeDeactivate <= 1)
+        loader.close()
+    }
+
+    @Test fun deactivatePreservesAlreadyCachedThumbnails() = runTest {
+        val loader = ThumbnailLoader(scope = this, pageCount = 20, prefetch = 2, sizeOf = { 1L }) { page -> FakeThumbnail(page) }
+        loader.setVisibleRange(10)
+        advanceUntilIdle()
+        assertTrue(loader.peek(10) is ThumbnailResult.Loaded)
+        loader.deactivate()
+        assertTrue("cached results must remain available after deactivate()", loader.peek(10) is ThumbnailResult.Loaded)
+        loader.close()
+    }
+
+    @Test fun reopeningAfterDeactivateEstablishesAFreshRangeNormally() = runTest {
+        val decodedPages = mutableListOf<Int>()
+        val loader = ThumbnailLoader(scope = this, pageCount = 50, prefetch = 2, sizeOf = { 1L }) { page ->
+            decodedPages += page; FakeThumbnail(page)
+        }
+        loader.setVisibleRange(10)
+        advanceUntilIdle()
+        assertTrue(loader.peek(10) is ThumbnailResult.Loaded)
+        loader.deactivate()
+        advanceUntilIdle()
+        loader.setVisibleRange(30) // "reopening Pages" -- a genuinely new range
+        advanceUntilIdle()
+        assertTrue("expected the new range to be served normally after deactivate()", loader.peek(30) is ThumbnailResult.Loaded)
+        assertTrue(decodedPages.contains(30))
+        loader.close()
+    }
+
+    @Test fun deactivateNeverLeavesAStaleRangeResumingOnItsOwn() = runTest {
+        val loader = ThumbnailLoader(scope = this, pageCount = 50, prefetch = 2, sizeOf = { 1L }) { page -> FakeThumbnail(page) }
+        loader.setVisibleRange(10)
+        advanceUntilIdle()
+        loader.deactivate()
+        advanceUntilIdle() // nothing should still be "wanted" -- no new decodes should spontaneously start
+        val before = (0..49).count { loader.peek(it) != null }
+        advanceUntilIdle()
+        val after = (0..49).count { loader.peek(it) != null }
+        assertEquals("deactivate() must not leave work that keeps progressing on its own", before, after)
+        loader.close()
     }
 
     @Test fun byteBudgetIsRespectedAcrossManyPagesOfAFakeNonTrivialSize() = runTest {

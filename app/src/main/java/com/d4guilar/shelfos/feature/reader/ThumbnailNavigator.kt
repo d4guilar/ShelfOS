@@ -2,9 +2,11 @@
 package com.d4guilar.shelfos.feature.reader
 
 import android.graphics.Bitmap
+import android.view.KeyEvent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -16,7 +18,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -28,6 +33,9 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d4guilar.shelfos.R
+import com.d4guilar.shelfos.core.input.InputContext
+import com.d4guilar.shelfos.core.input.ShelfCommand
+import com.d4guilar.shelfos.core.input.shelfCommand
 import com.d4guilar.shelfos.core.reader.ThumbnailLoader
 import com.d4guilar.shelfos.core.reader.ThumbnailResult
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
@@ -36,8 +44,18 @@ import kotlinx.coroutines.flow.MutableStateFlow
 /**
  * Phase 3B: a bounded, lazily-decoded thumbnail strip for jumping directly to a logical page. Reuses the same
  * [androidx.compose.material3.AlertDialog] pattern every other reader overlay already uses (Appearance/Chapters/
- * Search/Bookmarks) rather than introducing a new dialog idiom -- so Back/Escape/gamepad B dismiss exactly the way
- * they already do for those, with no new key-handling code in [FixedReaderScreen].
+ * Search/Bookmarks) rather than introducing a new dialog idiom, with no new key-handling code in
+ * [FixedReaderScreen] -- but Codex R1 finding 2 found that assumption incomplete: an ordinary Android `Dialog`
+ * reliably handles system Back and Escape (both already dismiss this dialog correctly), but does **not** reliably
+ * translate `KEYCODE_BUTTON_B` into dismissal, because the dialog owns focus/window state once shown, making
+ * [FixedReaderScreen]'s own key handler an unreliable fallback while this dialog is open. The fix below is
+ * dialog-local (lives on content actually inside this dialog's window, so it genuinely receives the event) and
+ * reuses the existing [com.d4guilar.shelfos.core.input.ShelfCommand] semantic layer rather than hard-coding
+ * `KEYCODE_BUTTON_B`: [InputMapper][com.d4guilar.shelfos.core.input.InputMapper] already maps both Escape and
+ * gamepad B to [ShelfCommand.BACK] (see `ShelfCommand.kt`), so a single `onKeyEvent` check for that one semantic
+ * command covers both -- redundant with (never conflicting with) the system handling already correct for Escape.
+ * Ordinary D-pad/focus movement between cells is untouched: this listener only ever consumes `ShelfCommand.BACK`
+ * and returns `false` (unconsumed) for every other key, so normal focus navigation and activation keep working.
  *
  * Selecting a thumbnail calls [onSelect] with the plain logical page index; [FixedReaderScreen] wires that straight
  * to [FixedReaderViewModel.showPage], the same jump path a slider drag already uses -- there is no second page-
@@ -57,6 +75,14 @@ fun ThumbnailNavigator(pageCount: Int, currentPage: Int, rtl: Boolean, loader: T
     val pageDescTemplate = stringResource(R.string.content_desc_thumbnail_page)
     val currentPageDescTemplate = stringResource(R.string.content_desc_thumbnail_current_page)
     val failedLabel = stringResource(R.string.content_desc_thumbnail_unavailable)
+    val dialogFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { dialogFocus.requestFocus() }
+
+    // Codex R1 finding 3: dismissing Pages must stop the loader's *active prefetch window*, not the whole session
+    // (the reader itself stays open) -- already-cached thumbnails remain available, and a fresh setVisibleRange
+    // after reopening establishes a genuinely new window normally. Keyed on `loader` identity, not `Unit`, so this
+    // still deactivates correctly if the loader instance itself were ever swapped out from under a live navigator.
+    DisposableEffect(loader) { onDispose { loader?.deactivate() } }
 
     // Reveal the current page roughly centered rather than merely scrolled to its leading edge, each time the
     // strip is (re)opened -- this LaunchedEffect(Unit) re-runs on every fresh entry into composition, since the
@@ -72,13 +98,27 @@ fun ThumbnailNavigator(pageCount: Int, currentPage: Int, rtl: Boolean, loader: T
     }
 
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.action_thumbnails)) }, text = {
-        CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
-            LazyRow(state = listState, modifier = Modifier.fillMaxWidth().height(176.dp).testTag("thumbnail_strip"),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(pageCount, key = { it }) { page ->
-                    val entry = remember(revision, page) { loader?.peek(page) }
-                    ThumbnailCell(page, page == currentPage, entry, { onSelect(page) },
-                        pageDescTemplate, currentPageDescTemplate, failedLabel)
+        Box(Modifier
+            .testTag("thumbnail_dialog_surface")
+            .focusRequester(dialogFocus)
+            .focusable()
+            // Codex R1 finding 2: dialog-local gamepad-B dismissal, reusing ShelfCommand.BACK (see this file's
+            // class doc). Only ShelfCommand.BACK is ever consumed here -- every other key (including the D-pad/
+            // focus-navigation keys the cells below already handle via `clickable`) is left unconsumed.
+            .onKeyEvent { event ->
+                val native = event.nativeKeyEvent
+                if (native.action == KeyEvent.ACTION_UP && native.shelfCommand(InputContext.READER) == ShelfCommand.BACK) {
+                    onDismiss(); true
+                } else false
+            }) {
+            CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
+                LazyRow(state = listState, modifier = Modifier.fillMaxWidth().height(176.dp).testTag("thumbnail_strip"),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(pageCount, key = { it }) { page ->
+                        val entry = remember(revision, page) { loader?.peek(page) }
+                        ThumbnailCell(page, page == currentPage, entry, { onSelect(page) },
+                            pageDescTemplate, currentPageDescTemplate, failedLabel)
+                    }
                 }
             }
         }

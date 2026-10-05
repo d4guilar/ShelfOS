@@ -13,17 +13,29 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 /**
- * Byte-budgeted (not item-count-bounded) least-recently-used cache. Generic over the cached value type so this is
+ * Byte-budgeted *and* entry-count-bounded least-recently-used cache. Generic over the cached value type so this is
  * independently unit-testable in a plain JVM test with a trivial fake value and a controllable size -- this
  * project's local unit tests cannot construct a real `android.graphics.Bitmap` (see [PageRenderRequestTest]'s doc;
  * `BitmapFactory`/`PdfRenderer` are unavailable there), so [ThumbnailLoader] below stays generic for the same
  * reason rather than hard-coding `Bitmap` into the part of this file that most needs direct test coverage (eviction
  * correctness, replacement byte accounting).
  *
+ * Codex R1 finding 1: [budgetBytes] alone bounds *accounted bytes*, not entry count. [ThumbnailResult.Failed]
+ * deliberately contributes zero bytes (see that type's doc), an extremely small decoded thumbnail contributes
+ * almost nothing, and neither accounts for this map's own per-entry/key/object overhead -- so a pathological
+ * publication with a very large page count could otherwise accumulate cache entries roughly proportional to page
+ * count while still reporting "within budget" bytes. [maxEntries] is a second, independent bound: eviction runs
+ * whenever *either* [budgetBytes] or [maxEntries] is exceeded, so zero-byte and tiny-byte entries are still subject
+ * to eviction purely by count.
+ *
  * Backed by a `LinkedHashMap` in access-order mode, so [get] itself counts as a "use" for LRU purposes, matching
  * the standard LRU contract (`LinkedHashMap(initialCapacity, loadFactor, accessOrder = true)`).
  */
-class ByteBudgetedLruCache<K, V>(private val budgetBytes: Long, private val sizeOf: (V) -> Long) {
+class ByteBudgetedLruCache<K, V>(
+    private val budgetBytes: Long,
+    private val maxEntries: Int = DEFAULT_MAX_ENTRIES,
+    private val sizeOf: (V) -> Long,
+) {
     private val entries = LinkedHashMap<K, V>(16, 0.75f, true)
     private var usedBytes = 0L
 
@@ -40,11 +52,12 @@ class ByteBudgetedLruCache<K, V>(private val budgetBytes: Long, private val size
     }
 
     /** Evicts least-recently-used entries (eldest-first iteration order, since this map is access-order) until
-     * back within [budgetBytes]. A cache size that never grows proportionally with how many distinct keys have
-     * ever been put -- only with how many distinct values currently fit the budget -- is exactly this loop's job. */
+     * back within *both* [budgetBytes] and [maxEntries]. A cache size that never grows proportionally with how many
+     * distinct keys have ever been put -- only with how many distinct values currently fit the budget/count bounds
+     * -- is exactly this loop's job; either bound alone (see the class doc) is insufficient on its own. */
     private fun evict() {
         val iterator = entries.entries.iterator()
-        while (usedBytes > budgetBytes && iterator.hasNext()) {
+        while ((usedBytes > budgetBytes || entries.size > maxEntries) && iterator.hasNext()) {
             val removed = iterator.next()
             usedBytes -= sizeOf(removed.value)
             iterator.remove()
@@ -54,6 +67,14 @@ class ByteBudgetedLruCache<K, V>(private val budgetBytes: Long, private val size
     @Synchronized fun clear() { entries.clear(); usedBytes = 0L }
     val sizeBytes: Long @Synchronized get() = usedBytes
     val count: Int @Synchronized get() = entries.size
+
+    companion object {
+        /** Conservative default entry-count ceiling, independent of [budgetBytes]: substantially larger than
+         * [ThumbnailLoader.DEFAULT_PREFETCH]'s 13-page active window (so normal use never comes close to it), but
+         * small and explicit enough to bound a degenerate case (e.g. a publication whose every visited page fails
+         * to decode, each contributing 0 bytes and therefore never tripping the byte budget on its own). */
+        const val DEFAULT_MAX_ENTRIES = 64
+    }
 }
 
 /**
@@ -112,10 +133,11 @@ class ThumbnailLoader<T : Any>(
     private val pageCount: Int,
     private val prefetch: Int = DEFAULT_PREFETCH,
     budgetBytes: Long = DEFAULT_BUDGET_BYTES,
+    maxEntries: Int = ByteBudgetedLruCache.DEFAULT_MAX_ENTRIES,
     sizeOf: (T) -> Long,
     private val decode: suspend (page: Int) -> T,
 ) {
-    private val cache = ByteBudgetedLruCache<Int, ThumbnailResult<T>>(budgetBytes) {
+    private val cache = ByteBudgetedLruCache<Int, ThumbnailResult<T>>(budgetBytes, maxEntries) {
         (it as? ThumbnailResult.Loaded<T>)?.value?.let(sizeOf) ?: 0L
     }
     private val inFlight = mutableSetOf<Int>()
@@ -158,6 +180,24 @@ class ThumbnailLoader<T : Any>(
     }
 
     fun peek(page: Int): ThumbnailResult<T>? = cache.get(page)
+
+    /**
+     * Codex R1 finding 3: stops the *current* prefetch window without closing this loader's session. The dismissed
+     * dialog/strip is not the end of the reader session -- only the active window's decoding should stop -- so this
+     * must never call [close]: already-cached results stay cached, the worker coroutine itself keeps running (ready
+     * for a future [setVisibleRange]), and nothing here touches the underlying render mutex/session.
+     *
+     * Reuses the exact same "nothing requested" sentinel [setVisibleRange] already establishes at construction
+     * (`wanted` starts at `-1`, and the worker's `collectLatest` body is a no-op for any negative center) rather
+     * than inventing a second state machine: setting `wanted` back to that sentinel both (a) supersedes -- via
+     * `collectLatest` -- the previous range's `while (true)` decode loop, cancelling it at its next suspension
+     * point, so no further pages from the dismissed window continue queuing, and (b) leaves one already-started
+     * synchronous [decode] call (not cooperatively cancellable mid-call, see the class doc) free to finish safely;
+     * its result is simply stored at its own true page key as a harmless, possibly-unnecessary cache entry, exactly
+     * like any other superseded-range straggler. A later [setVisibleRange] call establishes a genuinely fresh range
+     * normally -- no stale range resumes on its own.
+     */
+    fun deactivate() { wanted.value = -1 }
 
     /** Cancels the worker and drops every cached reference. Safe to call more than once. Never recycles/disposes
      * an individual cached value itself (Compose may still hold its own reference to a just-displayed thumbnail

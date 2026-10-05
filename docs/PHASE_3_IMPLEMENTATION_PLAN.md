@@ -296,11 +296,20 @@ already relies on — no new input architecture, no new `ShelfCommand`). A corru
 a localized "Unavailable" placeholder in its cell only; the strip and every other cell keep
 working.
 
-**Process death/rotation/recreation**: the thumbnail cache does not persist and does not need
-to — `thumbnails` open/closed state is a plain `rememberSaveable Boolean` like every other
-reader dialog (none of them persist open/closed state across recreation either), and re-opening
-always re-derives its content from the restored `state.page`/`vm.thumbnails`. No Room schema,
-no migration, no new persisted field.
+**Process death/rotation/recreation** (corrected post-Codex-R1; the previous wording here was
+inaccurate): `thumbnails` open/closed state is a plain `rememberSaveable Boolean`, the same
+mechanism `controls` and `appearance` already use in `FixedReaderScreen` — and `rememberSaveable`
+*does* survive supported recreation/saved-state restoration by design, so if Pages was open when
+recreation happened, it genuinely can reopen automatically afterward (this is accepted, working
+behavior, not a defect; it is not being changed to force-close on recreation). What never
+survives is the thumbnail *bitmap cache* itself: `ThumbnailLoader` is session-scoped and ephemeral
+(never written to disk or Room — see its class doc), so it does not exist yet immediately after
+recreation. The restored current logical page (`state.page`, from the normal locator-restore
+path) remains authoritative regardless of whether Pages reopens; if it does reopen, its
+thumbnails are simply re-decoded lazily on demand against that restored page and viewport, exactly
+like opening Pages fresh for the first time — no thumbnail bitmap, scroll position, or decode
+state is itself part of saved/restored UI state. No Room schema, no migration, no new persisted
+field.
 
 **What this slice deliberately does NOT do** (next-slice or explicitly out of scope, consistent
 with §12/§13): no spreads, no foldable-specific thumbnail layout or pairing, no on-disk

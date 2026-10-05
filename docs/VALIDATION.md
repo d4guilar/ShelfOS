@@ -123,6 +123,94 @@ running `shelfos-api24` emulator instance was used throughout without restart.
 **Dependencies/schema**: none added/changed. **EPUB**: untouched. **CBR**: not implemented, not
 stubbed, not detected. **Spreads/foldable-specific layout**: not implemented, not stubbed.
 
+### PHASE 3B — Codex R1 remediation (2026-10-04)
+
+Status: **IMPLEMENTED, pending administrator/Codex R2 review.** Base candidate reviewed:
+`4c58fa6..180e605` ("feat: add page thumbnail navigation"). Codex returned CHANGES REQUIRED on
+four findings; the overall architecture (thumbnail render path, 320px ceiling, 16MiB byte cache
+budget, single worker, 13-page window, dialog-based UI, jump-via-`showPage`, RTL logical-index
+invariant) was judged structurally sound and is **unchanged** here. This entry covers exactly the
+four findings below, as one remediation commit on top of `180e605` (not an amend).
+
+**Finding 1 (HIGH) — cache entry count was unbounded.** `ByteBudgetedLruCache` bounded only
+accounted bitmap bytes: `ThumbnailResult.Failed` contributes 0 bytes, a tiny thumbnail contributes
+almost nothing, and neither accounts for per-entry map/object overhead, so a pathological
+publication could accumulate cache entries roughly proportional to page count. Fixed by adding an
+explicit, independent `maxEntries` bound (default **64** — see `ByteBudgetedLruCache.
+DEFAULT_MAX_ENTRIES`'s doc: substantially larger than the 13-page active window, but small and
+explicit enough to bound a degenerate all-Failed or all-tiny case) alongside the existing 16MiB
+byte budget; eviction now runs whenever *either* bound is exceeded, and LRU/replacement
+accounting is shared correctly across both. New JVM tests in `ByteBudgetedLruCacheTest`:
+`entryCountIsBoundedEvenWhenEveryValueContributesZeroBytes`,
+`entryCountIsBoundedForManyTinySuccessfulValues`,
+`entryCountEvictionStillUsesLruOrderNotInsertionOrder`,
+`byteBudgetEvictionStillWorksWhenEntryCountNeverExceedsItsOwnBound`,
+`replacingAnExistingKeyUnderBothBoundsAccountsBytesCorrectlyAndNeverDoubleCountsEntries`.
+
+**Finding 2 (HIGH) — gamepad B could not reliably dismiss the Pages dialog.** An ordinary
+`AlertDialog` reliably handles system Back and Escape, but does not reliably translate
+`KEYCODE_BUTTON_B` into dismissal once the dialog owns focus/window state, making
+`FixedReaderScreen`'s own key handler an unreliable fallback. Fixed with a dialog-local
+`Modifier.onKeyEvent` on `ThumbnailNavigator`'s content surface (`testTag
+"thumbnail_dialog_surface"`, made focusable/focus-requested on open) that checks
+`KeyEvent.shelfCommand(InputContext.READER) == ShelfCommand.BACK` — reusing the existing
+`InputMapper`, which already maps both Escape and `GAMEPAD_B` to `ShelfCommand.BACK` — rather than
+hard-coding the raw keycode or inventing a second input subsystem. Only `ShelfCommand.BACK` is
+consumed; every other key (D-pad focus movement, cell activation) is left unconsumed. New
+instrumented tests in `ThumbnailNavigationUiTest`: `escapeClosesPagesWithoutExitingTheReader`,
+`gamepadButtonBClosesPagesWithoutExitingTheReader` (both assert Pages closes, `reader_screen`
+stays present, and `page_number` is unchanged).
+
+**Finding 3 (MEDIUM) — dismissing Pages left pending prefetch running.** Closing the dialog
+stopped the UI's own `snapshotFlow` collector, but `ThumbnailLoader` kept its last-requested
+window active, so its worker kept decoding the rest of the 13-page window after dismissal,
+contending for the shared reader-render mutex. Fixed with a new `ThumbnailLoader.deactivate()`
+that sets the loader's `wanted` range back to its existing "nothing requested" sentinel (`-1`) —
+reusing infrastructure `setVisibleRange`/the worker's `collectLatest` already has, not a new state
+machine: this supersedes (cancels, via `collectLatest`) the active window's decode loop at its
+next suspension point, preserves every already-cached thumbnail, never calls `close()` (the
+session/worker stay alive), and permits at most one already-started synchronous decode to finish
+(it is not cooperatively cancellable mid-call). `ThumbnailNavigator` wires this from a
+`DisposableEffect(loader) { onDispose { loader?.deactivate() } }`. New JVM tests in
+`ThumbnailLoaderTest`: `deactivateStopsRemainingPrefetchForTheActiveWindow`,
+`deactivatePreservesAlreadyCachedThumbnails`, `reopeningAfterDeactivateEstablishesAFreshRangeNormally`,
+`deactivateNeverLeavesAStaleRangeResumingOnItsOwn`.
+
+**Finding 4 (LOW) — recreation docs contradicted the implementation.**
+`PHASE_3_IMPLEMENTATION_PLAN.md`'s "Process death/rotation/recreation" paragraph claimed no
+reader dialog (including Pages) persists its open/closed state across recreation — but
+`thumbnails`, like `controls`/`appearance`, is `rememberSaveable`, which *does* survive supported
+recreation by design. Administrator decision: **keep `rememberSaveable`** (working, intentional
+behavior) and correct the doc instead. The paragraph now states truthfully that Pages' open/closed
+state may be restored across recreation, the thumbnail bitmap cache remains ephemeral and is never
+restored, the restored current logical page stays authoritative, and thumbnails are simply
+re-decoded lazily on demand if Pages does reopen — no thumbnail state is itself persisted.
+
+**Targeted JVM tests — PASS.**
+`./gradlew.bat :app:testDebugUnitTest --tests "com.d4guilar.shelfos.core.reader.ByteBudgetedLruCacheTest" --tests "com.d4guilar.shelfos.core.reader.ThumbnailLoaderTest" --tests "com.d4guilar.shelfos.core.reader.NextThumbnailToLoadTest" -q`
+— exit 0. `ByteBudgetedLruCacheTest` **11/11**, `NextThumbnailToLoadTest` **6/6**,
+`ThumbnailLoaderTest` **10/10** (both classes' new counts include the Finding 1/3 tests above).
+
+**Targeted instrumented tests — PASS**, on the same already-running `shelfos-api24` emulator
+(`emulator-5554`), each run individually via
+`-Pandroid.testInstrumentationRunnerArguments.class=<class>` (`:app:connectedDebugAndroidTest`):
+- **`ThumbnailNavigationUiTest` — 6/6 PASS** (4 pre-existing + the 2 new Finding 2 dismissal
+  tests above).
+- **`ThumbnailLoaderInstrumentedTest` — 6/6 PASS** (pre-existing; rerun because
+  `ThumbnailLoader`'s internals changed directly — unaffected by Findings 1–3's behavior, confirms
+  no regression).
+
+**Build — PASS.** `:app:assembleDebug -q` and `:app:assembleDebugAndroidTest -q`, each exit 0.
+**Lint — PASS.** `:app:lintDebug -q`, exit 0, no new findings. `git diff --check`: clean.
+
+Per standing policy, the full JVM suite and full connected/instrumented regression matrix were
+**not** re-run here — reserved for Phase 3F, same as the original 3B entry above.
+
+**Dependencies/schema**: none added/changed. **Mutex**: unchanged (Finding 3 removes unnecessary
+post-dismissal *contention* by stopping unneeded prefetch sooner; the mutex design itself was not
+touched). **CBR compatibility**: preserved — the cache/loader contract still exposes no
+ZIP-specific types.
+
 ## PHASE 3A — RENDERING FOUNDATION (2026-10-03)
 
 Status: **IMPLEMENTED, pending administrator/Codex review.** Scope, exact contract, and

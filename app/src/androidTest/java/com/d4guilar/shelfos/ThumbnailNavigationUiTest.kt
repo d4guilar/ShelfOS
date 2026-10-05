@@ -3,6 +3,7 @@ package com.d4guilar.shelfos
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
@@ -106,6 +107,34 @@ class ThumbnailNavigationUiTest {
         // Page 0 is the current page on open (the reader's restored/initial locator).
         compose.onNodeWithContentDescription(String.format(currentPageTemplate, 1)).assertExists()
         compose.onNodeWithContentDescription(String.format(plainPageTemplate, 2)).assertExists()
+    }
+
+    // Codex R1 finding 2: an ordinary Dialog's default Back/Escape handling does not reliably extend to gamepad B
+    // once the dialog owns focus/window state -- these prove the dialog-local ShelfCommand.BACK handler added to
+    // ThumbnailNavigator's content surface (testTag "thumbnail_dialog_surface") actually dismisses Pages for BOTH
+    // keys while leaving the reader itself open and the current page unchanged.
+
+    @Test fun escapeClosesPagesWithoutExitingTheReader() {
+        seed("thumb-ui-escape", MediaCategory.COMIC, listOf(Color.RED, Color.GREEN, Color.BLUE))
+        open("thumb-ui-escape", MediaCategory.COMIC)
+        openThumbnails()
+        compose.onNodeWithTag("thumbnail_dialog_surface").performKeyInput { pressKey(Key.Escape) }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("thumbnail_strip").fetchSemanticsNodes().isEmpty() }
+        // The reader chrome is still present -- Escape dismissed only Pages, not the reader itself.
+        compose.onNodeWithTag("reader_screen").assertExists()
+        compose.onNodeWithTag("page_number").assertTextEquals("1 / 3")
+    }
+
+    @Test fun gamepadButtonBClosesPagesWithoutExitingTheReader() {
+        seed("thumb-ui-gamepad-b", MediaCategory.COMIC, listOf(Color.RED, Color.GREEN, Color.BLUE))
+        open("thumb-ui-gamepad-b", MediaCategory.COMIC)
+        openThumbnails()
+        compose.onNodeWithTag("thumbnail_dialog_surface").performKeyInput { pressKey(Key.ButtonB) }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("thumbnail_strip").fetchSemanticsNodes().isEmpty() }
+        // Gamepad B dismissed Pages only -- it must not have also been treated as "exit the reader" while Pages
+        // was open (ADR-0023's chrome-first Back semantics still apply to the reader itself, unaffected here).
+        compose.onNodeWithTag("reader_screen").assertExists()
+        compose.onNodeWithTag("page_number").assertTextEquals("1 / 3")
     }
 
     @Test fun aCorruptPageAmongGoodPagesDoesNotBreakTheThumbnailStrip() {
