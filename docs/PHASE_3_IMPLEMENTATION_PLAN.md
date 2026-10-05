@@ -684,9 +684,10 @@ No thumbnail code exists today (§3/§4). Discovery conclusions (plan, not imple
   never eagerly decode hundreds of pages at reader resolution. Use a bounded decode
   (very small target size, e.g. a small fraction of `MAX_PAGE_PIXELS`) through the same
   container abstraction used for full-page decode, not a separate file-reading path.
-- **Caching**: hybrid — an in-memory LRU bounded by byte budget (not item count, since
-  page dimensions vary wildly) for the currently-open book's visible/near-visible
-  thumbnail range, plus an optional on-disk cache keyed by a stable fingerprint (e.g.
+- **Caching**: hybrid — an in-memory LRU bounded by both byte budget and entry count
+  (the byte budget still matters because page dimensions vary wildly) for the
+  currently-open book's visible/near-visible thumbnail range, plus an optional on-disk
+  cache keyed by a stable fingerprint (e.g.
   `LibraryItem.id` + page index + a content fingerprint such as entry CRC/size, not a
   mutable path) so thumbnails survive process death without needing to be memory-resident
   across app restarts. Disk cache must be invalidated when the underlying source changes
