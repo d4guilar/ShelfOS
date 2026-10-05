@@ -156,6 +156,10 @@
     <string name="content_desc_next_hint">Próxima, %1$s</string>
     <string name="content_desc_page_of_count">Página %1$d de %2$d</string>
     <string name="content_desc_page_slider">Ir para a página</string>
+    <string name="action_thumbnails">Páginas</string>
+    <string name="content_desc_thumbnail_page">Página %1$d</string>
+    <string name="content_desc_thumbnail_current_page">Página %1$d, página atual</string>
+    <string name="content_desc_thumbnail_unavailable">Indisponível</string>
     <string name="reading_progress_visual">%1$d%% do livro</string>
     <string name="reading_progress_spoken">%1$d por cento do livro</string>
     <string name="bookmark_location">Localização %1$d</string>

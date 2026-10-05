@@ -28,6 +28,12 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
     private var session: FixedReader? = null
     private var rendering: Job? = null
     @Volatile private var closed = false
+    // Phase 3B: lazily decodes small page thumbnails for the on-demand thumbnail strip, scoped to this one session
+    // (never app-global, never persisted -- see ThumbnailLoader's doc). Null until open() knows the real page
+    // count; FixedReaderScreen treats a null loader as "thumbnails unavailable yet" the same way it already treats
+    // state.count == 0 that way for the page slider.
+    private var thumbnailLoader: ThumbnailLoader<Bitmap>? = null
+    val thumbnails: ThumbnailLoader<Bitmap>? get() = thumbnailLoader
     // Last viewport size reported by FixedReaderScreen (Phase 3A). Read only when a *new* render is already about
     // to happen (open/page-turn/retry); updating it on its own never triggers a render, so a resize/rotation/fold
     // stream of onSizeChanged calls can never itself cause a render storm -- it only changes what resolution the
@@ -66,6 +72,13 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
             val page = restorePage(item.locator, count)
             _state.update { it.copy(count = count, page = page) }
             positions.save(page)
+            // The thumbnail loader shares this ViewModel's own render mutex/session for every decode (see
+            // ThumbnailLoader's class doc for why: neither PdfRenderer nor the CBZ PageSource path documents
+            // concurrent-access safety), so it is only ever created once a session/count genuinely exists.
+            thumbnailLoader = ThumbnailLoader(scope = viewModelScope, pageCount = count, sizeOf = { it.byteCount.toLong() },
+                decode = { index -> withContext(Dispatchers.IO) { mutex.withLock {
+                    requireNotNull(session).render(index, PageRenderRequest.thumbnail())
+                } } })
             render(page)
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) {
@@ -153,6 +166,7 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
     override fun onCleared() {
         closed = true
         positions.close()
+        thumbnailLoader?.close()
         appScope.launch { mutex.withLock { session?.close(); session = null } }
     }
 }

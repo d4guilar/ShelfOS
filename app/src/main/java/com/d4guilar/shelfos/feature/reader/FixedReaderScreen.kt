@@ -63,6 +63,10 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
     val item = state.item
     var controls by rememberSaveable { mutableStateOf(true) }
     var appearance by rememberSaveable { mutableStateOf(false) }
+    // Phase 3B: the thumbnail strip is its own overlay (like Appearance), not part of the permanent chrome --
+    // reopens closed on recreation like the other reader dialogs (none of them persist their open/closed state),
+    // and re-derives its own content from vm.thumbnails/state.page rather than any separately-persisted position.
+    var thumbnails by rememberSaveable { mutableStateOf(false) }
     // Recent input modality (Phase 2A.1): only real touch gestures and real key events update this, never a
     // button click, since a click may itself have been keyboard/gamepad-activated.
     var modality by rememberSaveable { mutableStateOf(InputModality.TOUCH) }
@@ -126,6 +130,8 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
     BackHandler { backPress() }
     if (appearance && item != null) ReaderAppearance(state.preferences, capabilities(item.format), { appearance = false },
         vm::applyAppearance, vm::resetAppearance)
+    if (thumbnails && state.count > 0) ThumbnailNavigator(state.count, state.page, rtl, vm.thumbnails,
+        onSelect = { page -> vm.showPage(page); thumbnails = false }, onDismiss = { thumbnails = false })
 
     Column(Modifier.fillMaxSize().background(t.colors.canvas).testTag("reader_screen").onPreviewKeyEvent { event ->
         val native = event.nativeKeyEvent
@@ -152,6 +158,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically) {
             TextButton(onBack, Modifier.focusRequester(firstControl).testTag("reader_library")) { Text(stringResource(R.string.nav_library)) }
             TextButton({ appearance = true }, enabled = item != null) { Text(stringResource(R.string.action_appearance)) }
+            TextButton({ thumbnails = true }, Modifier.testTag("reader_thumbnails"), enabled = state.count > 0) { Text(stringResource(R.string.action_thumbnails)) }
             TextButton({ scale = if (scale == 1f) 2f else 1f; panX = 0f; panY = 0f }) { Text(stringResource(if (scale == 1f) R.string.action_zoom_in else R.string.action_reset_zoom)) }
             TextButton({ hideControls() }) { Text(stringResource(R.string.action_hide_controls)) }
             // Input-discovery hint (Phase 2A.1): decorative only, since no single existing control is exactly

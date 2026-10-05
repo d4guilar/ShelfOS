@@ -1,5 +1,269 @@
 # Validation
 
+## PHASE 3B — PAGE THUMBNAILS (2026-10-04)
+
+Status: **IMPLEMENTED, pending administrator/Codex review.** Base: `main` @ `4c58fa6`
+("feat: establish Phase 3A fixed-page rendering foundation (#24)"). Branch:
+`phase-3/3b-page-thumbnails`. Exact architecture, cache budget, lazy/cancellation model and
+scope boundaries are recorded in `docs/PHASE_3_IMPLEMENTATION_PLAN.md` §24; this entry is the
+validation evidence.
+
+**What changed**: `PageRenderRequest.THUMBNAIL_MAX_DIMENSION`/`PageRenderRequest.thumbnail()`
+(`core/reader/FixedReader.kt`); a new `core/reader/ThumbnailLoader.kt`
+(`ByteBudgetedLruCache`, `nextThumbnailToLoad`, `ThumbnailResult`, `ThumbnailLoader`); a new
+`feature/reader/ThumbnailNavigator.kt` (the "Pages" dialog/strip); `FixedReaderViewModel`
+gained a `thumbnails: ThumbnailLoader<Bitmap>?` property, created once the session's page count
+is known and closed in `onCleared()`; `FixedReaderScreen` gained a "Pages" control-row button
+and the dialog invocation. Four new localized strings (EN/ES/PT-BR). No dependency, Room
+schema, or migration change.
+
+**JVM unit tests — PASS.**
+`./gradlew.bat :app:testDebugUnitTest --tests "com.d4guilar.shelfos.core.reader.PageRenderRequestTest" --tests "com.d4guilar.shelfos.core.reader.ByteBudgetedLruCacheTest" --tests "com.d4guilar.shelfos.core.reader.NextThumbnailToLoadTest" --tests "com.d4guilar.shelfos.core.reader.ThumbnailLoaderTest" -q`
+— exit 0, **35/35 tests, 0 failures** (`PageRenderRequestTest` 17/17 including three new
+`PageRenderRequest.thumbnail()` cases; `ByteBudgetedLruCacheTest` 6/6; `NextThumbnailToLoadTest`
+6/6; `ThumbnailLoaderTest` 6/6, driving the real coroutine-based `ThumbnailLoader` under
+`kotlinx-coroutines-test` virtual time with a fake non-Bitmap payload). Two real defects were
+found and fixed during this pass, not merely "ran until green":
+1. Five `ThumbnailLoaderTest` cases initially failed with
+   `UncompletedCoroutinesError: ... there were active child jobs` — `ThumbnailLoader`'s single
+   worker coroutine (`collectLatest` over its visible-range flow) never completes on its own by
+   design, and `runTest` correctly refuses to finish with a leaked child job. Fixed by calling
+   `loader.close()` at the end of each affected test (already the correct production lifecycle
+   pattern `FixedReaderViewModel.onCleared()` follows) rather than a production or test-harness
+   change.
+2. `PageRenderRequestTest.thumbnailRequestNeverUpscalesASourceSmallerThanTheThumbnailCeiling`
+   asserted something `resolveRenderTarget` never promised on its own: the pure function may
+   compute an upscale factor for a small source (no-upscale is enforced downstream by
+   `ImagePageRenderer`'s sample-size floor at 1x during a real decode, exactly like the
+   pre-existing non-thumbnail small-source test already documents). Replaced with
+   `thumbnailRequestPreservesAspectRatioAndStaysBudgetSafeForASmallSource`, which asserts what
+   the pure function actually guarantees (aspect preservation, byte-budget safety); the real
+   no-upscale guarantee for the thumbnail factory specifically is proven by the instrumented
+   test below instead.
+
+**Build — PASS.** `./gradlew.bat :app:assembleDebug -q` and
+`./gradlew.bat :app:assembleDebugAndroidTest -q`, each exit 0.
+
+**Lint — PASS.** `./gradlew.bat :app:lintDebug -q`, exit 0, no new findings.
+
+**Instrumented evidence — PASS**, on `shelfos-api24` (`emulator-5554`, already running at session
+start, API 24/Android 7.0 — no AVD instability hit this session, unlike 3A's record). Each class
+run individually via `-Pandroid.testInstrumentationRunnerArguments.class=<class>`
+(`:app:connectedDebugAndroidTest`):
+
+- **`FixedReaderRenderRequestTest` — 20/20 PASS** (17 pre-existing + 3 new). New:
+  `cbzThumbnailRequestStaysWellBelowReadingResolution`,
+  `pdfThumbnailRequestStaysWellBelowReadingResolution` (both assert the real decoded bitmap's
+  longest edge is ≤`THUMBNAIL_MAX_DIMENSION=320` and well under 2048, through
+  `FixedReaderFactory` directly for both formats), and
+  `cbzThumbnailRequestNeverUpscalesASourceSmallerThanTheThumbnailCeiling` (a 100x150 source at
+  `PageRenderRequest.thumbnail()` decodes at exact native 100x150 — the real no-upscale proof
+  JVM finding 2 above deferred to this layer).
+- **`ThumbnailLoaderInstrumentedTest` — 6/6 PASS** (new file). Drives a real
+  `FixedReaderViewModel` directly (same no-Compose-UI pattern as
+  `FixedReaderViewModelLifecycleTest`) against real CBZ decodes:
+  - `thumbnailLoaderOnA300PageCbzDecodesOnlyABoundedWindowAroundTheRequestedPage` — a
+    synthetic **320-page** CBZ (tiny 50x75 per-page source, since this test is about page-count
+    scaling, not per-page decode cost); `setVisibleRange(200)` settles with **13 resident
+    thumbnails** (exactly `2*DEFAULT_PREFETCH(6)+1`), all within `180..220`, and **process PSS
+    went from 74,418KB to 72,017KB** (`adb logcat`: "320-page CBZ: requested center=200,
+    resident thumbnails=13, PSS before=74418KB after=72017KB") — concrete evidence a 320-page
+    publication never caused anything close to 320 resident thumbnails.
+  - `thumbnailLoaderRapidlyChangingRangesStaysBoundedRatherThanSweepingTheWholeBook` — a
+    300-page CBZ; ten rapid `setVisibleRange` calls sweeping center 0→270 in quick succession,
+    then settling: **13 resident thumbnails** after settling (`adb logcat`: "rapid-scroll
+    300-page CBZ: resident thumbnails after settling=13"), far below the ~95 a fully-exhaustive
+    (non-deprioritizing) sweep of every historical range would have produced, and the final
+    requested page was still correctly served.
+  - `thumbnailLoaderRecoversFromACorruptPageWithoutBreakingTheStrip` — a 20-page CBZ with one
+    corrupt page (index 10): that page's thumbnail settles as `ThumbnailResult.Failed`, all four
+    neighboring pages settle `Loaded`, and the reader's own `state.error` stays `null`
+    throughout (the corrupt page was never the current full-page reading target).
+  - `thumbnailLoaderClosesWhenTheViewModelIsClearedLeavingNoResidentThumbnails` — clearing the
+    owning `ViewModelStore` (`FixedReaderViewModel.onCleared()`) leaves `loader.peek(7)` `null`
+    afterward.
+  - `thumbnailRequestUsesTheDedicatedThumbnailCeilingNotReadingResolution` — end-to-end (real
+    decode through the ViewModel's actual wiring, not just `FixedReaderFactory` directly) proof
+    that a thumbnail decode stays ≤320px.
+  - `mangaRtlPublicationStillExposesThumbnailsByPlainLogicalPageIndex` — a Manga/CBZ item
+    (`readingDirection(MANGA, null) == RTL` asserted directly); requesting and then selecting
+    page index 3 via `vm.showPage(3)` lands on `state.page == 3` — the loader itself never
+    special-cases RTL, by construction.
+  One real test bug was found and fixed here too: the rapid-range test's
+  `0..290 step 30` loop actually lands on 270 as its last value (270+30=300 exceeds the declared
+  end), so the original assertion waiting on page 290 timed out waiting for a page that was
+  never actually requested — fixed to assert against the loop's own real last value (`270`)
+  rather than the originally-intended-but-wrong `290`, a test-fixture-math bug, not a product
+  defect (confirmed by the identical test passing immediately once corrected).
+- **`ThumbnailNavigationUiTest` — 4/4 PASS** (new file). Full real-app Compose UI pass
+  (`createAndroidComposeRule<MainActivity>`, real `container.library.add`, real navigation —
+  same proven-reliable pattern as `MalformedFixedReaderResilienceTest`):
+  - `selectingAThumbnailJumpsToThatLogicalPageUsingTheNormalNavigationPath` — opening the
+    "Pages" strip and selecting the thumbnail keyed to logical page 2 lands on "3 / 5" (the
+    `showPage()` path), and the dialog dismisses afterward.
+  - `mangaRtlThumbnailSelectionStillLandsOnThePlainLogicalPageIndex` — the same selection on a
+    Manga/RTL fixture lands on the identical logical page ("2 / 5"), proving the invariant
+    through the real UI, not just the ViewModel layer.
+  - `eachThumbnailExposesAPageNumberAndTheCurrentPageIsDistinguishable` — real semantics-tree
+    assertions that "Page 1, current page" and "Page 2" content descriptions exist.
+  - `aCorruptPageAmongGoodPagesDoesNotBreakTheThumbnailStrip` — a real corrupt CBZ page renders
+    the localized "Unavailable" placeholder in its own cell while the strip and neighboring
+    cells stay fully usable.
+  One real test bug was found and fixed here: all four tests initially failed waiting for their
+  seeded publication to appear, because the library defaults to the Books filter tab
+  (`LibraryViewModel`'s saved-state default) and these fixtures are Comic/Manga category items —
+  invisible under Books, exactly as `filterPublications` is supposed to behave. Fixed by
+  switching to the fixture's own category tab first (the same switch
+  `NavigationSmokeTest.keyboardHintsReflectRtlSwapInMangaCbz` already performs for its own Manga
+  fixture), which is a test-fixture-navigation bug, not a library-filtering defect.
+
+No AVD/environment instability was hit this session (contrast with 3A's record) — one already-
+running `shelfos-api24` emulator instance was used throughout without restart.
+
+**Dependencies/schema**: none added/changed. **EPUB**: untouched. **CBR**: not implemented, not
+stubbed, not detected. **Spreads/foldable-specific layout**: not implemented, not stubbed.
+
+### PHASE 3B — Codex R1 remediation (2026-10-04)
+
+Status: **IMPLEMENTED, pending administrator/Codex R2 review.** Base candidate reviewed:
+`4c58fa6..180e605` ("feat: add page thumbnail navigation"). Codex returned CHANGES REQUIRED on
+four findings; the overall architecture (thumbnail render path, 320px ceiling, 16MiB byte cache
+budget, single worker, 13-page window, dialog-based UI, jump-via-`showPage`, RTL logical-index
+invariant) was judged structurally sound and is **unchanged** here. This entry covers exactly the
+four findings below, as one remediation commit on top of `180e605` (not an amend).
+
+**Finding 1 (HIGH) — cache entry count was unbounded.** `ByteBudgetedLruCache` bounded only
+accounted bitmap bytes: `ThumbnailResult.Failed` contributes 0 bytes, a tiny thumbnail contributes
+almost nothing, and neither accounts for per-entry map/object overhead, so a pathological
+publication could accumulate cache entries roughly proportional to page count. Fixed by adding an
+explicit, independent `maxEntries` bound (default **64** — see `ByteBudgetedLruCache.
+DEFAULT_MAX_ENTRIES`'s doc: substantially larger than the 13-page active window, but small and
+explicit enough to bound a degenerate all-Failed or all-tiny case) alongside the existing 16MiB
+byte budget; eviction now runs whenever *either* bound is exceeded, and LRU/replacement
+accounting is shared correctly across both. New JVM tests in `ByteBudgetedLruCacheTest`:
+`entryCountIsBoundedEvenWhenEveryValueContributesZeroBytes`,
+`entryCountIsBoundedForManyTinySuccessfulValues`,
+`entryCountEvictionStillUsesLruOrderNotInsertionOrder`,
+`byteBudgetEvictionStillWorksWhenEntryCountNeverExceedsItsOwnBound`,
+`replacingAnExistingKeyUnderBothBoundsAccountsBytesCorrectlyAndNeverDoubleCountsEntries`.
+
+**Finding 2 (HIGH) — gamepad B could not reliably dismiss the Pages dialog.** An ordinary
+`AlertDialog` reliably handles system Back and Escape, but does not reliably translate
+`KEYCODE_BUTTON_B` into dismissal once the dialog owns focus/window state, making
+`FixedReaderScreen`'s own key handler an unreliable fallback. Fixed with a dialog-local
+`Modifier.onKeyEvent` on `ThumbnailNavigator`'s content surface (`testTag
+"thumbnail_dialog_surface"`, made focusable/focus-requested on open) that checks
+`KeyEvent.shelfCommand(InputContext.READER) == ShelfCommand.BACK` — reusing the existing
+`InputMapper`, which already maps both Escape and `GAMEPAD_B` to `ShelfCommand.BACK` — rather than
+hard-coding the raw keycode or inventing a second input subsystem. Only `ShelfCommand.BACK` is
+consumed; every other key (D-pad focus movement, cell activation) is left unconsumed. New
+instrumented tests in `ThumbnailNavigationUiTest`: `escapeClosesPagesWithoutExitingTheReader`,
+`gamepadButtonBClosesPagesWithoutExitingTheReader` (both assert Pages closes, `reader_screen`
+stays present, and `page_number` is unchanged).
+
+**Finding 3 (MEDIUM) — dismissing Pages left pending prefetch running.** Closing the dialog
+stopped the UI's own `snapshotFlow` collector, but `ThumbnailLoader` kept its last-requested
+window active, so its worker kept decoding the rest of the 13-page window after dismissal,
+contending for the shared reader-render mutex. Fixed with a new `ThumbnailLoader.deactivate()`
+that sets the loader's `wanted` range back to its existing "nothing requested" sentinel (`-1`) —
+reusing infrastructure `setVisibleRange`/the worker's `collectLatest` already has, not a new state
+machine: this supersedes (cancels, via `collectLatest`) the active window's decode loop at its
+next suspension point, preserves every already-cached thumbnail, never calls `close()` (the
+session/worker stay alive), and permits at most one already-started synchronous decode to finish
+(it is not cooperatively cancellable mid-call). `ThumbnailNavigator` wires this from a
+`DisposableEffect(loader) { onDispose { loader?.deactivate() } }`. New JVM tests in
+`ThumbnailLoaderTest`: `deactivateStopsRemainingPrefetchForTheActiveWindow`,
+`deactivatePreservesAlreadyCachedThumbnails`, `reopeningAfterDeactivateEstablishesAFreshRangeNormally`,
+`deactivateNeverLeavesAStaleRangeResumingOnItsOwn`.
+
+**Finding 4 (LOW) — recreation docs contradicted the implementation.**
+`PHASE_3_IMPLEMENTATION_PLAN.md`'s "Process death/rotation/recreation" paragraph claimed no
+reader dialog (including Pages) persists its open/closed state across recreation — but
+`thumbnails`, like `controls`/`appearance`, is `rememberSaveable`, which *does* survive supported
+recreation by design. Administrator decision: **keep `rememberSaveable`** (working, intentional
+behavior) and correct the doc instead. The paragraph now states truthfully that Pages' open/closed
+state may be restored across recreation, the thumbnail bitmap cache remains ephemeral and is never
+restored, the restored current logical page stays authoritative, and thumbnails are simply
+re-decoded lazily on demand if Pages does reopen — no thumbnail state is itself persisted.
+
+**Targeted JVM tests — PASS.**
+`./gradlew.bat :app:testDebugUnitTest --tests "com.d4guilar.shelfos.core.reader.ByteBudgetedLruCacheTest" --tests "com.d4guilar.shelfos.core.reader.ThumbnailLoaderTest" --tests "com.d4guilar.shelfos.core.reader.NextThumbnailToLoadTest" -q`
+— exit 0. `ByteBudgetedLruCacheTest` **11/11**, `NextThumbnailToLoadTest` **6/6**,
+`ThumbnailLoaderTest` **10/10** (both classes' new counts include the Finding 1/3 tests above).
+
+**Targeted instrumented tests — PASS**, on the same already-running `shelfos-api24` emulator
+(`emulator-5554`), each run individually via
+`-Pandroid.testInstrumentationRunnerArguments.class=<class>` (`:app:connectedDebugAndroidTest`):
+- **`ThumbnailNavigationUiTest` — 6/6 PASS** (4 pre-existing + the 2 new Finding 2 dismissal
+  tests above).
+- **`ThumbnailLoaderInstrumentedTest` — 6/6 PASS** (pre-existing; rerun because
+  `ThumbnailLoader`'s internals changed directly — unaffected by Findings 1–3's behavior, confirms
+  no regression).
+
+**Build — PASS.** `:app:assembleDebug -q` and `:app:assembleDebugAndroidTest -q`, each exit 0.
+**Lint — PASS.** `:app:lintDebug -q`, exit 0, no new findings. `git diff --check`: clean.
+
+### PHASE 3B — Codex R2 micro-remediation (2026-10-04)
+
+Status: **IMPLEMENTED.** Base: `addb928` ("fix: harden Phase 3B thumbnail navigation"). Codex R2
+returned CHANGES REQUIRED with two narrow items remaining; cache bounds, bitmap ownership, lazy
+loading, cancellation/deactivation, the shared render mutex, lifecycle cleanup, PDF/CBZ handling,
+RTL logical identity and future-CBR compatibility were all otherwise approved and are **unchanged**
+here.
+
+**Finding — gamepad B's dismissal handler did not cover the whole Pages dialog.** The R1
+remediation's `Modifier.onKeyEvent` lived on a `Box` inside `AlertDialog`'s `text` slot — a
+*sibling* of the `confirmButton` slot's Close button, not an ancestor of it. Compose key events
+bubble from the focused node up its focus-parent chain, so once focus moved to Close, the handler
+never received the event, and gamepad B could fail to dismiss Pages from that focus state. Fixed
+by rebuilding `ThumbnailNavigator`'s dialog on `BasicAlertDialog` (material3's own lower-level
+primitive, still backed by the same `Dialog`/`DialogProperties` `AlertDialog` uses internally, so
+`dismissOnBackPress`/`dismissOnClickOutside` are unchanged) with title, thumbnail content and the
+Close button all composed together inside one `Surface`, carrying the `onKeyEvent` handler on that
+single shared root (`testTag "thumbnail_dialog_surface"` unchanged). Gamepad B now dismisses Pages
+regardless of which dialog child owns focus; Escape/system Back are unaffected (still ordinary
+dialog behavior); D-pad focus movement and Enter/center activation are untouched (only
+`ShelfCommand.BACK` is ever consumed); the reader itself is never exited from this handler. New
+instrumented test in `ThumbnailNavigationUiTest`:
+`gamepadButtonBWithFocusOnCloseButtonClosesPagesWithoutExitingTheReader` (requests focus onto the
+Close button via `requestFocus()`, sends gamepad B, asserts Pages closes, `reader_screen` stays
+present, `page_number` unchanged, and a subsequent D-pad Right still advances the page — proving
+normal reader-level controller handling resumes once the dialog is gone).
+
+**Documentation — three stale statements in `PHASE_3_IMPLEMENTATION_PLAN.md`'s §24 (3B
+implementation record) corrected:** the cache paragraph now states both the 16MiB byte budget and
+the 64-entry cap explicitly (a prior revision read as byte-only bounding); the gamepad-B paragraph
+no longer claims gamepad B "dismisses exactly the way" Escape/system Back do through ordinary
+dialog behavior, and instead states the dialog-wide `onKeyEvent` scope this remediation
+establishes; a new "Dismissal/prefetch" paragraph documents `ThumbnailLoader.deactivate()`'s actual
+behavior (clears the active requested range, preserves cached thumbnails, permits at most one
+already-in-flight synchronous decode to finish, prevents a stale prefetch window from continuing
+after Pages closes) which this record previously did not describe at all.
+
+**Targeted instrumented tests — PASS.** `ThumbnailNavigationUiTest`, run via
+`-Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.ThumbnailNavigationUiTest`
+(`:app:connectedDebugAndroidTest`) on the already-running `shelfos-api24` emulator
+(`emulator-5554`): **7/7 PASS** (100% success rate, 0 failures, 0 errors, 10.830s) — the 6
+pre-existing tests (including `escapeClosesPagesWithoutExitingTheReader` and
+`gamepadButtonBClosesPagesWithoutExitingTheReader`, confirming the restructuring did not regress
+either) plus the 1 new Close-button-focus test above. Full JVM suite, full connected suite,
+`NavigationSmokeTest`, and cache tests were **not** re-run — out of scope for this micro-remediation
+(no cache code changed).
+
+**Build — PASS.** `:app:assembleDebug -q` and `:app:assembleDebugAndroidTest -q`, each exit 0. One
+`@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)` was required on
+`ThumbnailNavigator` for `BasicAlertDialog`, mirroring the same per-function opt-in pattern already
+used elsewhere in this codebase (e.g. `EpubActivity.kt`'s `@OptIn(ExperimentalLayoutApi::class)`).
+**Lint — PASS.** `:app:lintDebug -q`, exit 0, no new findings. `git diff --check`: clean.
+
+Per standing policy, the full JVM suite and full connected/instrumented regression matrix were
+**not** re-run here — reserved for Phase 3F, same as the original 3B entry above.
+
+**Dependencies/schema**: none added/changed. **Mutex**: unchanged (Finding 3 removes unnecessary
+post-dismissal *contention* by stopping unneeded prefetch sooner; the mutex design itself was not
+touched). **CBR compatibility**: preserved — the cache/loader contract still exposes no
+ZIP-specific types.
+
 ## PHASE 3A — RENDERING FOUNDATION (2026-10-03)
 
 Status: **IMPLEMENTED, pending administrator/Codex review.** Scope, exact contract, and

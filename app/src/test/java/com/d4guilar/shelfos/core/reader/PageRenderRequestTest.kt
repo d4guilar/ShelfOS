@@ -146,4 +146,36 @@ class PageRenderRequestTest {
         assertTrue(target.width >= 1 && target.height >= 1)
         assertTrue(target.estimatedBytes <= RenderMemoryPolicy.MAX_BITMAP_BYTES)
     }
+
+    // ---- Phase 3B: PageRenderRequest.thumbnail() ----
+
+    @Test fun thumbnailRequestStaysWellBelowTheReadingFloorRegardlessOfSourceSize() {
+        // The dedicated thumbnail factory must resolve well under DEFAULT_MAX_DIMENSION (the reading-quality
+        // floor), on both a huge source and a small one -- it opts out of the floor by tightening maxDimension,
+        // exactly the mechanism Codex R1's remediation built resolveRenderTarget around (finding 1's doc).
+        val large = resolveRenderTarget(6000, 4000, PageRenderRequest.thumbnail())
+        assertEquals(PageRenderRequest.THUMBNAIL_MAX_DIMENSION, maxOf(large.width, large.height))
+        assertTrue(maxOf(large.width, large.height) < PageRenderRequest.DEFAULT_MAX_DIMENSION)
+    }
+
+    @Test fun thumbnailRequestPreservesAspectRatioAndStaysBudgetSafeForASmallSource() {
+        // resolveRenderTarget's own math may compute an upscale factor for a source well under the thumbnail
+        // ceiling (no-upscale is enforced downstream by ImagePageRenderer's sample-size floor at 1x during a real
+        // decode, not here -- see FixedReaderRenderRequestTest's real-decode proof of that for the thumbnail
+        // factory specifically). This proves the pure function's own guarantees instead: aspect preservation and
+        // byte-budget safety, consistent with the equivalent non-thumbnail small-source coverage above.
+        val target = resolveRenderTarget(100, 150, PageRenderRequest.thumbnail())
+        assertTrue(target.width > 0 && target.height > 0)
+        assertEquals(100.0 / 150.0, target.width.toDouble() / target.height, 0.02)
+        assertTrue(target.estimatedBytes <= RenderMemoryPolicy.MAX_BITMAP_BYTES)
+    }
+
+    @Test fun thumbnailRequestByteCostStaysATinyFractionOfTheFullReadingBudget() {
+        // Worst case for the thumbnail ceiling is a perfectly square page -- proves the documented ~410KB
+        // worst-case reasoning behind ThumbnailLoader.DEFAULT_BUDGET_BYTES.
+        val target = resolveRenderTarget(10_000, 10_000, PageRenderRequest.thumbnail())
+        assertEquals(PageRenderRequest.THUMBNAIL_MAX_DIMENSION, target.width)
+        assertEquals(PageRenderRequest.THUMBNAIL_MAX_DIMENSION, target.height)
+        assertTrue(target.estimatedBytes < RenderMemoryPolicy.MAX_BITMAP_BYTES / 10)
+    }
 }
