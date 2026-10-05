@@ -1,5 +1,128 @@
 # Validation
 
+## PHASE 3B — PAGE THUMBNAILS (2026-10-04)
+
+Status: **IMPLEMENTED, pending administrator/Codex review.** Base: `main` @ `4c58fa6`
+("feat: establish Phase 3A fixed-page rendering foundation (#24)"). Branch:
+`phase-3/3b-page-thumbnails`. Exact architecture, cache budget, lazy/cancellation model and
+scope boundaries are recorded in `docs/PHASE_3_IMPLEMENTATION_PLAN.md` §24; this entry is the
+validation evidence.
+
+**What changed**: `PageRenderRequest.THUMBNAIL_MAX_DIMENSION`/`PageRenderRequest.thumbnail()`
+(`core/reader/FixedReader.kt`); a new `core/reader/ThumbnailLoader.kt`
+(`ByteBudgetedLruCache`, `nextThumbnailToLoad`, `ThumbnailResult`, `ThumbnailLoader`); a new
+`feature/reader/ThumbnailNavigator.kt` (the "Pages" dialog/strip); `FixedReaderViewModel`
+gained a `thumbnails: ThumbnailLoader<Bitmap>?` property, created once the session's page count
+is known and closed in `onCleared()`; `FixedReaderScreen` gained a "Pages" control-row button
+and the dialog invocation. Four new localized strings (EN/ES/PT-BR). No dependency, Room
+schema, or migration change.
+
+**JVM unit tests — PASS.**
+`./gradlew.bat :app:testDebugUnitTest --tests "com.d4guilar.shelfos.core.reader.PageRenderRequestTest" --tests "com.d4guilar.shelfos.core.reader.ByteBudgetedLruCacheTest" --tests "com.d4guilar.shelfos.core.reader.NextThumbnailToLoadTest" --tests "com.d4guilar.shelfos.core.reader.ThumbnailLoaderTest" -q`
+— exit 0, **35/35 tests, 0 failures** (`PageRenderRequestTest` 17/17 including three new
+`PageRenderRequest.thumbnail()` cases; `ByteBudgetedLruCacheTest` 6/6; `NextThumbnailToLoadTest`
+6/6; `ThumbnailLoaderTest` 6/6, driving the real coroutine-based `ThumbnailLoader` under
+`kotlinx-coroutines-test` virtual time with a fake non-Bitmap payload). Two real defects were
+found and fixed during this pass, not merely "ran until green":
+1. Five `ThumbnailLoaderTest` cases initially failed with
+   `UncompletedCoroutinesError: ... there were active child jobs` — `ThumbnailLoader`'s single
+   worker coroutine (`collectLatest` over its visible-range flow) never completes on its own by
+   design, and `runTest` correctly refuses to finish with a leaked child job. Fixed by calling
+   `loader.close()` at the end of each affected test (already the correct production lifecycle
+   pattern `FixedReaderViewModel.onCleared()` follows) rather than a production or test-harness
+   change.
+2. `PageRenderRequestTest.thumbnailRequestNeverUpscalesASourceSmallerThanTheThumbnailCeiling`
+   asserted something `resolveRenderTarget` never promised on its own: the pure function may
+   compute an upscale factor for a small source (no-upscale is enforced downstream by
+   `ImagePageRenderer`'s sample-size floor at 1x during a real decode, exactly like the
+   pre-existing non-thumbnail small-source test already documents). Replaced with
+   `thumbnailRequestPreservesAspectRatioAndStaysBudgetSafeForASmallSource`, which asserts what
+   the pure function actually guarantees (aspect preservation, byte-budget safety); the real
+   no-upscale guarantee for the thumbnail factory specifically is proven by the instrumented
+   test below instead.
+
+**Build — PASS.** `./gradlew.bat :app:assembleDebug -q` and
+`./gradlew.bat :app:assembleDebugAndroidTest -q`, each exit 0.
+
+**Lint — PASS.** `./gradlew.bat :app:lintDebug -q`, exit 0, no new findings.
+
+**Instrumented evidence — PASS**, on `shelfos-api24` (`emulator-5554`, already running at session
+start, API 24/Android 7.0 — no AVD instability hit this session, unlike 3A's record). Each class
+run individually via `-Pandroid.testInstrumentationRunnerArguments.class=<class>`
+(`:app:connectedDebugAndroidTest`):
+
+- **`FixedReaderRenderRequestTest` — 20/20 PASS** (17 pre-existing + 3 new). New:
+  `cbzThumbnailRequestStaysWellBelowReadingResolution`,
+  `pdfThumbnailRequestStaysWellBelowReadingResolution` (both assert the real decoded bitmap's
+  longest edge is ≤`THUMBNAIL_MAX_DIMENSION=320` and well under 2048, through
+  `FixedReaderFactory` directly for both formats), and
+  `cbzThumbnailRequestNeverUpscalesASourceSmallerThanTheThumbnailCeiling` (a 100x150 source at
+  `PageRenderRequest.thumbnail()` decodes at exact native 100x150 — the real no-upscale proof
+  JVM finding 2 above deferred to this layer).
+- **`ThumbnailLoaderInstrumentedTest` — 6/6 PASS** (new file). Drives a real
+  `FixedReaderViewModel` directly (same no-Compose-UI pattern as
+  `FixedReaderViewModelLifecycleTest`) against real CBZ decodes:
+  - `thumbnailLoaderOnA300PageCbzDecodesOnlyABoundedWindowAroundTheRequestedPage` — a
+    synthetic **320-page** CBZ (tiny 50x75 per-page source, since this test is about page-count
+    scaling, not per-page decode cost); `setVisibleRange(200)` settles with **13 resident
+    thumbnails** (exactly `2*DEFAULT_PREFETCH(6)+1`), all within `180..220`, and **process PSS
+    went from 74,418KB to 72,017KB** (`adb logcat`: "320-page CBZ: requested center=200,
+    resident thumbnails=13, PSS before=74418KB after=72017KB") — concrete evidence a 320-page
+    publication never caused anything close to 320 resident thumbnails.
+  - `thumbnailLoaderRapidlyChangingRangesStaysBoundedRatherThanSweepingTheWholeBook` — a
+    300-page CBZ; ten rapid `setVisibleRange` calls sweeping center 0→270 in quick succession,
+    then settling: **13 resident thumbnails** after settling (`adb logcat`: "rapid-scroll
+    300-page CBZ: resident thumbnails after settling=13"), far below the ~95 a fully-exhaustive
+    (non-deprioritizing) sweep of every historical range would have produced, and the final
+    requested page was still correctly served.
+  - `thumbnailLoaderRecoversFromACorruptPageWithoutBreakingTheStrip` — a 20-page CBZ with one
+    corrupt page (index 10): that page's thumbnail settles as `ThumbnailResult.Failed`, all four
+    neighboring pages settle `Loaded`, and the reader's own `state.error` stays `null`
+    throughout (the corrupt page was never the current full-page reading target).
+  - `thumbnailLoaderClosesWhenTheViewModelIsClearedLeavingNoResidentThumbnails` — clearing the
+    owning `ViewModelStore` (`FixedReaderViewModel.onCleared()`) leaves `loader.peek(7)` `null`
+    afterward.
+  - `thumbnailRequestUsesTheDedicatedThumbnailCeilingNotReadingResolution` — end-to-end (real
+    decode through the ViewModel's actual wiring, not just `FixedReaderFactory` directly) proof
+    that a thumbnail decode stays ≤320px.
+  - `mangaRtlPublicationStillExposesThumbnailsByPlainLogicalPageIndex` — a Manga/CBZ item
+    (`readingDirection(MANGA, null) == RTL` asserted directly); requesting and then selecting
+    page index 3 via `vm.showPage(3)` lands on `state.page == 3` — the loader itself never
+    special-cases RTL, by construction.
+  One real test bug was found and fixed here too: the rapid-range test's
+  `0..290 step 30` loop actually lands on 270 as its last value (270+30=300 exceeds the declared
+  end), so the original assertion waiting on page 290 timed out waiting for a page that was
+  never actually requested — fixed to assert against the loop's own real last value (`270`)
+  rather than the originally-intended-but-wrong `290`, a test-fixture-math bug, not a product
+  defect (confirmed by the identical test passing immediately once corrected).
+- **`ThumbnailNavigationUiTest` — 4/4 PASS** (new file). Full real-app Compose UI pass
+  (`createAndroidComposeRule<MainActivity>`, real `container.library.add`, real navigation —
+  same proven-reliable pattern as `MalformedFixedReaderResilienceTest`):
+  - `selectingAThumbnailJumpsToThatLogicalPageUsingTheNormalNavigationPath` — opening the
+    "Pages" strip and selecting the thumbnail keyed to logical page 2 lands on "3 / 5" (the
+    `showPage()` path), and the dialog dismisses afterward.
+  - `mangaRtlThumbnailSelectionStillLandsOnThePlainLogicalPageIndex` — the same selection on a
+    Manga/RTL fixture lands on the identical logical page ("2 / 5"), proving the invariant
+    through the real UI, not just the ViewModel layer.
+  - `eachThumbnailExposesAPageNumberAndTheCurrentPageIsDistinguishable` — real semantics-tree
+    assertions that "Page 1, current page" and "Page 2" content descriptions exist.
+  - `aCorruptPageAmongGoodPagesDoesNotBreakTheThumbnailStrip` — a real corrupt CBZ page renders
+    the localized "Unavailable" placeholder in its own cell while the strip and neighboring
+    cells stay fully usable.
+  One real test bug was found and fixed here: all four tests initially failed waiting for their
+  seeded publication to appear, because the library defaults to the Books filter tab
+  (`LibraryViewModel`'s saved-state default) and these fixtures are Comic/Manga category items —
+  invisible under Books, exactly as `filterPublications` is supposed to behave. Fixed by
+  switching to the fixture's own category tab first (the same switch
+  `NavigationSmokeTest.keyboardHintsReflectRtlSwapInMangaCbz` already performs for its own Manga
+  fixture), which is a test-fixture-navigation bug, not a library-filtering defect.
+
+No AVD/environment instability was hit this session (contrast with 3A's record) — one already-
+running `shelfos-api24` emulator instance was used throughout without restart.
+
+**Dependencies/schema**: none added/changed. **EPUB**: untouched. **CBR**: not implemented, not
+stubbed, not detected. **Spreads/foldable-specific layout**: not implemented, not stubbed.
+
 ## PHASE 3A — RENDERING FOUNDATION (2026-10-03)
 
 Status: **IMPLEMENTED, pending administrator/Codex review.** Scope, exact contract, and

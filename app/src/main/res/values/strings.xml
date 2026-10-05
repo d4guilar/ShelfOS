@@ -156,6 +156,10 @@
     <string name="content_desc_next_hint">Next, %1$s</string>
     <string name="content_desc_page_of_count">Page %1$d of %2$d</string>
     <string name="content_desc_page_slider">Jump to page</string>
+    <string name="action_thumbnails">Pages</string>
+    <string name="content_desc_thumbnail_page">Page %1$d</string>
+    <string name="content_desc_thumbnail_current_page">Page %1$d, current page</string>
+    <string name="content_desc_thumbnail_unavailable">Unavailable</string>
     <string name="reading_progress_visual">%1$d%% through book</string>
     <string name="reading_progress_spoken">%1$d percent through book</string>
     <string name="bookmark_location">Location %1$d</string>

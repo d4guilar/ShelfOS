@@ -268,6 +268,39 @@ class FixedReaderRenderRequestTest {
         }
     }
 
+    // ---- Phase 3B: PageRenderRequest.thumbnail() against real decodes, both formats ----
+
+    @Test fun cbzThumbnailRequestStaysWellBelowReadingResolution() {
+        val item = cbzFixture("render-cbz-thumbnail-factory.cbz", 6000, 4000)
+        factory.open(item).use { reader ->
+            val bitmap = reader.render(0, PageRenderRequest.thumbnail())
+            assertTrue("expected <= ${PageRenderRequest.THUMBNAIL_MAX_DIMENSION}, got ${longestEdge(bitmap)}",
+                longestEdge(bitmap) <= PageRenderRequest.THUMBNAIL_MAX_DIMENSION)
+            assertTrue(longestEdge(bitmap) < 2048)
+            bitmap.recycle()
+        }
+    }
+
+    @Test fun pdfThumbnailRequestStaysWellBelowReadingResolution() {
+        val item = pdfFixture("render-pdf-thumbnail-factory.pdf", 400, 600)
+        factory.open(item).use { reader ->
+            val bitmap = reader.render(0, PageRenderRequest.thumbnail())
+            assertTrue("expected <= ${PageRenderRequest.THUMBNAIL_MAX_DIMENSION}, got ${longestEdge(bitmap)}",
+                longestEdge(bitmap) <= PageRenderRequest.THUMBNAIL_MAX_DIMENSION)
+            bitmap.recycle()
+        }
+    }
+
+    @Test fun cbzThumbnailRequestNeverUpscalesASourceSmallerThanTheThumbnailCeiling() {
+        val item = cbzFixture("render-cbz-thumbnail-small-source.cbz", 100, 150)
+        factory.open(item).use { reader ->
+            val bitmap = reader.render(0, PageRenderRequest.thumbnail())
+            assertEquals(100, bitmap.width)
+            assertEquals(150, bitmap.height)
+            bitmap.recycle()
+        }
+    }
+
     @Test fun pdfPageOrderingIsUnaffectedByTheRequestShapeChange() {
         val file = File(context.filesDir, "publications/render-pdf-order.pdf").also { it.parentFile!!.mkdirs() }
         val pdf = PdfDocument()

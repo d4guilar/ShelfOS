@@ -1,8 +1,10 @@
 # Phase 3 Implementation Plan — Comics and Manga
 
-Status: **3A (rendering/fidelity foundation) IMPLEMENTED, committed on
-`phase-3/3a-rendering-foundation`, pending administrator/Codex review. 3B–3F remain
-PLANNING ONLY — no later slice has started.**
+Status: **3A (rendering/fidelity foundation) COMPLETE and MERGED to `main`** (`#24`,
+"feat: establish Phase 3A fixed-page rendering foundation"). **3B (page thumbnails/
+navigation) IMPLEMENTED, committed on `phase-3/3b-page-thumbnails`, pending administrator/
+Codex review.** 3C–3F remain PLANNING ONLY — no later slice has started. See §22/§23 for
+what 3A landed and §24 for what 3B actually landed.
 
 ## 1. Status / base
 
@@ -17,9 +19,10 @@ PLANNING ONLY — no later slice has started.**
   same discipline level as the Phase 2 planning docs. It supersedes ad hoc CBR framing
   scattered across `docs/ROADMAP.md`, `docs/PRODUCT.md`, `docs/features/COMICS_MANGA.md`,
   and `docs/features/READER.md` (see §5).
-- §12/§13/§21 below authorized exactly one slice at a time; this pass implements **3A
-  only**, per the administrator's instruction, and does not start 3B (thumbnails), 3C
-  (spreads), 3D (foldable), or 3E (CBR). See §22 for what 3A actually landed.
+- §12/§13/§21 below authorized exactly one slice at a time. 3A (§22/§23) is complete and
+  merged. This pass implements **3B only** (page-thumbnail navigation), per the
+  administrator's instruction, and does not start 3C (spreads), 3D (foldable), or 3E (CBR).
+  See §24 for what 3B actually landed.
 
 ## 22. 3A implementation record (landed)
 
@@ -211,6 +214,108 @@ for the exact tests run and their results. Per the owner's explicit scope instru
 full JVM suite and the full connected/instrumented regression matrix were **not** re-run here
 (the original candidate already has a full-suite PASS on record; both are reserved for
 Phase 3F's acceptance matrix) — only the tests this remediation's changes actually required.
+
+## 24. 3B implementation record (landed)
+
+**Scope delivered**: a session-scoped, lazily-decoded page-thumbnail navigator for the fixed
+reader (PDF/CBZ), built entirely on 3A's `PageRenderRequest`/`resolveRenderTarget`/
+`RenderMemoryPolicy`/`PageSource` foundation — no second archive-reading path, no Room
+schema change, no new dependency, no spreads, no CBR, no foldable-specific layout.
+
+**Thumbnail render path**: `PageRenderRequest.THUMBNAIL_MAX_DIMENSION = 320` and
+`PageRenderRequest.thumbnail()` (both in `core/reader/FixedReader.kt`) are the only new
+production surface in the render-request contract itself. `thumbnail()` is a request with no
+viewport and `maxDimension = 320`; it resolves through the exact same `resolveRenderTarget`
+every full-page read already uses, opting out of the Codex R1 reading-quality floor purely by
+tightening `maxDimension` below it — the mechanism that remediation was explicitly built to
+support for a future caller like this one (see §23 finding 1). CBZ and PDF both get this for
+free through `FixedReader.render(index, PageRenderRequest.thumbnail())`; no format-specific
+thumbnail branch exists anywhere.
+
+**Thumbnail loader/cache** (`core/reader/ThumbnailLoader.kt`, new file, Compose-free):
+- `ByteBudgetedLruCache<K, V>` — a generic, byte-budgeted (not item-count-bounded) LRU,
+  backed by an access-order `LinkedHashMap`. Generic so it is independently JVM-testable with
+  a trivial fake value (this project's local unit tests cannot construct a real
+  `android.graphics.Bitmap`, same limitation `PageRenderRequestTest` already documents).
+- `nextThumbnailToLoad(lo, hi, center, cached, inFlight)` — the pure, stateless scheduling
+  policy: nearest-to-center first, skipping already-cached or already-in-flight pages.
+- `ThumbnailResult<T>` — `Loaded<T>` or `Failed` (object, no payload — a decode failure is
+  never retained as a large object).
+- `ThumbnailLoader<T : Any>` — one single-worker coroutine (`collectLatest` over a
+  `setVisibleRange(center)`-driven `MutableStateFlow`) that decodes only a
+  `[center-prefetch, center+prefetch]` window (`DEFAULT_PREFETCH = 6`, so a 13-page working
+  set), nearest-first, strictly one decode at a time. Generic over the decoded type purely for
+  testability — the only real caller (`FixedReaderViewModel`) instantiates it with
+  `T = android.graphics.Bitmap`.
+- `ThumbnailLoader.DEFAULT_BUDGET_BYTES = 16 MiB`. Reasoning, mirroring `RenderMemoryPolicy`'s
+  own budget philosophy but proportionally much smaller: a worst-case *square* decode at the
+  320px ceiling is `320*320*4 ≈ 410KB` ARGB_8888; `16 MiB / 410KB ≈ 40` worst-case-square
+  thumbnails resident at once — comfortably more than the 13-page prefetch window even on a
+  wide foldable/tablet strip, while staying a small fraction of `RenderMemoryPolicy`'s 96 MiB
+  full-reading session budget.
+
+**Concurrency/safety decision**: neither `android.graphics.pdf.PdfRenderer` nor the CBZ
+`PageSource`/`SeekableZip` path documents safety for concurrent access from multiple threads,
+so `FixedReaderViewModel` wires the thumbnail loader's `decode` lambda through the *exact same*
+`mutex`/`session` it already uses for full-page reads, rather than building a second concurrent
+reader. A thumbnail decode at 320px is small/fast relative to a full-page decode, so this
+briefly serializes with (never indefinitely blocks) page-turn rendering. `ThumbnailLoader`
+itself never fans out to multiple concurrent decodes regardless of caller.
+
+**Cancellation**: each `setVisibleRange` call supersedes the previous one via `collectLatest`,
+so a fast scroll cancels the "keep decoding this range" loop at its next suspension point
+rather than queuing superseded ranges. The one piece that cannot be interrupted mid-call is the
+synchronous decode itself (`BitmapFactory`/`PdfRenderer` are not cooperatively cancellable once
+started) — at most one already-started decode finishes before a newer range takes over, and its
+result is still stored at its own true page key, never "the wrong slot," so a late-arriving
+result from an abandoned range is at worst a harmless extra cache entry.
+
+**UI** (`feature/reader/ThumbnailNavigator.kt`, new file): a "Pages" button
+(`action_thumbnails`, next to Appearance in the existing control row,
+`testTag="reader_thumbnails"`) opens an `AlertDialog` containing a `LazyRow` thumbnail strip
+(`testTag="thumbnail_strip"`) — the same dialog idiom every other reader overlay already uses
+(Appearance/Chapters/Search/Bookmarks), so Back/Escape/gamepad B dismiss it exactly the way
+they already do for those, with zero new key-handling code in `FixedReaderScreen`. Opening the
+strip scrolls to roughly center the current page (`scrollToItem(max(0, currentPage-2))`, an
+approximate centering, not pixel-exact). The strip is driven by the *actual* visible items
+(`snapshotFlow` over `LazyListState.layoutInfo.visibleItemsInfo`), so lazy decoding follows
+real scroll position, not a guess. Selecting a thumbnail calls `FixedReaderViewModel.showPage`
+— the exact same jump path an existing page slider drag already uses — then dismisses the
+dialog; there is no second page-numbering model, no new locator format, no separate thumbnail
+progress concept. RTL/Manga: only the strip's visual layout direction mirrors, via
+`CompositionLocalProvider(LocalLayoutDirection ...)` — the identical technique the bottom
+control row already uses for Previous/Next placement — while the underlying
+`items(pageCount) { page -> ... }` loop always iterates true logical indices in natural order
+regardless of direction, so the page-identity invariant holds by construction, not by a runtime
+check. The current thumbnail is marked by both a checkmark glyph and bold weight (not color
+alone), the same two-signal idiom `EpubActivity`'s Chapters dialog already uses for its current
+chapter. Each cell exposes a `contentDescription` ("Page N" / "Page N, current page" /
+localized), is keyboard/D-pad focusable and activatable via the plain `clickable` modifier
+(the same default Compose keyboard-activation behavior every other control in this screen
+already relies on — no new input architecture, no new `ShelfCommand`). A corrupt page renders
+a localized "Unavailable" placeholder in its cell only; the strip and every other cell keep
+working.
+
+**Process death/rotation/recreation**: the thumbnail cache does not persist and does not need
+to — `thumbnails` open/closed state is a plain `rememberSaveable Boolean` like every other
+reader dialog (none of them persist open/closed state across recreation either), and re-opening
+always re-derives its content from the restored `state.page`/`vm.thumbnails`. No Room schema,
+no migration, no new persisted field.
+
+**What this slice deliberately does NOT do** (next-slice or explicitly out of scope, consistent
+with §12/§13): no spreads, no foldable-specific thumbnail layout or pairing, no on-disk
+thumbnail cache, no CBR, no new third-party dependency. The thumbnail UI/loader contract never
+exposes `SeekableZip.Entry`, ZIP paths, or ZIP CRCs — cache identity is plain
+session-local/logical-page-index, so a future CBR `PageSource` can feed this same thumbnail
+system unchanged, per §12's refinement.
+
+**Evidence**: see `docs/VALIDATION.md`'s "PHASE 3B" entry for the exact tests run and their
+results (pure JVM coverage of `ByteBudgetedLruCache`/`nextThumbnailToLoad`/`ThumbnailLoader`
+under `kotlinx-coroutines-test` virtual time; instrumented `FixedReaderViewModel`-level
+evidence against real CBZ decodes including a 300+ page fixture; a Compose UI pass for
+jump-to-page, the Manga/RTL page-identity invariant, accessibility content descriptions, and
+corrupt-thumbnail resilience). Per standing policy, the full JVM suite and the full connected/
+instrumented regression matrix were **not** re-run here — reserved for Phase 3F.
 
 ## 2. Why Phase 3 is not green-field
 

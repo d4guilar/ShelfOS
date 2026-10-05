@@ -59,6 +59,28 @@ data class PageRenderRequest(val viewportWidth: Int = 0, val viewportHeight: Int
 
         /** The pre-layout fallback request: an unknown (zero) viewport resolves to [DEFAULT_MAX_DIMENSION] below. */
         val DEFAULT = PageRenderRequest()
+
+        /**
+         * Phase 3B: the thumbnail-sized ceiling this slice's thumbnail strip actually uses, replacing the ad hoc
+         * `maxDimension=200` example [resolveRenderTarget]'s doc and the Phase 3A/Codex R1 tests used only to prove
+         * the contract *could* support a small request. Sized for a thumbnail grid cell (not reading fidelity): a
+         * ~96dp-wide cell at up to 3x density is comfortably covered by a 320px longest edge, and even a worst-case
+         * *square* decode at this ceiling (320x320 ARGB_8888, ~410KB) is a small fraction of [RenderMemoryPolicy]'s
+         * ~32MiB-per-render reading budget -- see `docs/PHASE_3_IMPLEMENTATION_PLAN.md`'s 3B section for the full
+         * cache-budget reasoning this feeds into ([com.d4guilar.shelfos.core.reader.ThumbnailLoader]).
+         */
+        const val THUMBNAIL_MAX_DIMENSION = 320
+
+        /**
+         * A thumbnail-shaped request: no viewport (a thumbnail grid cell's size, not the reader's own page-surface
+         * viewport, is what should bound it -- the grid never asks [FixedReader.render] to know about Compose cell
+         * layout), bounded by [THUMBNAIL_MAX_DIMENSION] rather than the [DEFAULT_MAX_DIMENSION] reading-quality
+         * floor. This reuses the exact "a tightened [maxDimension] opts out of the floor" mechanism Codex R1's
+         * remediation built [resolveRenderTarget] around for exactly this future caller -- no separate thumbnail
+         * code path exists in [resolveRenderTarget] or [ImagePageRenderer]; CBZ and PDF both resolve through the
+         * same policy function PDF/CBZ full-page reads already use.
+         */
+        fun thumbnail(): PageRenderRequest = PageRenderRequest(maxDimension = THUMBNAIL_MAX_DIMENSION)
     }
 }
 
