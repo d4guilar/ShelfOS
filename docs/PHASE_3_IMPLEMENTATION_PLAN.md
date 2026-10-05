@@ -233,7 +233,7 @@ free through `FixedReader.render(index, PageRenderRequest.thumbnail())`; no form
 thumbnail branch exists anywhere.
 
 **Thumbnail loader/cache** (`core/reader/ThumbnailLoader.kt`, new file, Compose-free):
-- `ByteBudgetedLruCache<K, V>` — a generic, byte-budgeted (not item-count-bounded) LRU,
+- `ByteBudgetedLruCache<K, V>` — a generic, byte- and entry-count-bounded LRU,
   backed by an access-order `LinkedHashMap`. Generic so it is independently JVM-testable with
   a trivial fake value (this project's local unit tests cannot construct a real
   `android.graphics.Bitmap`, same limitation `PageRenderRequestTest` already documents).
