@@ -247,12 +247,19 @@ thumbnail branch exists anywhere.
   set), nearest-first, strictly one decode at a time. Generic over the decoded type purely for
   testability — the only real caller (`FixedReaderViewModel`) instantiates it with
   `T = android.graphics.Bitmap`.
-- `ThumbnailLoader.DEFAULT_BUDGET_BYTES = 16 MiB`. Reasoning, mirroring `RenderMemoryPolicy`'s
+- `ThumbnailLoader.DEFAULT_BUDGET_BYTES = 16 MiB`, **and** `ByteBudgetedLruCache.DEFAULT_MAX_ENTRIES = 64`
+  as a second, independent bound (corrected — a prior revision of this paragraph implied
+  byte-only bounding, which no longer matches `ByteBudgetedLruCache`). Eviction runs whenever
+  *either* bound is exceeded, not only the byte budget, so a run of failed (`ThumbnailResult.Failed`,
+  zero-payload) or otherwise tiny-byte entries is still bounded by the 64-entry cap even though
+  such entries barely move `usedBytes`. Byte-budget reasoning, mirroring `RenderMemoryPolicy`'s
   own budget philosophy but proportionally much smaller: a worst-case *square* decode at the
   320px ceiling is `320*320*4 ≈ 410KB` ARGB_8888; `16 MiB / 410KB ≈ 40` worst-case-square
   thumbnails resident at once — comfortably more than the 13-page prefetch window even on a
   wide foldable/tablet strip, while staying a small fraction of `RenderMemoryPolicy`'s 96 MiB
-  full-reading session budget.
+  full-reading session budget. The 64-entry cap sits above that ~40-entry worst case, so it never
+  fights the byte budget under normal decodes — it exists specifically to bound the failed/tiny-entry
+  case the byte budget alone cannot.
 
 **Concurrency/safety decision**: neither `android.graphics.pdf.PdfRenderer` nor the CBZ
 `PageSource`/`SeekableZip` path documents safety for concurrent access from multiple threads,
@@ -270,12 +277,37 @@ started) — at most one already-started decode finishes before a newer range ta
 result is still stored at its own true page key, never "the wrong slot," so a late-arriving
 result from an abandoned range is at worst a harmless extra cache entry.
 
+**Dismissal/prefetch (`ThumbnailLoader.deactivate()`)**: dismissing Pages does not close the
+loader's whole session — `ThumbnailNavigator`'s `DisposableEffect(loader) { onDispose { loader?.deactivate() } }`
+calls `deactivate()`, which resets the loader's requested center back to its "nothing requested"
+sentinel. This clears the *active requested range* only: already-cached thumbnails remain in
+`ByteBudgetedLruCache` untouched (they are not evicted just because Pages closed), and — same
+one-decode-cannot-be-interrupted-mid-call constraint as ordinary cancellation above — at most one
+already-in-flight synchronous decode may still finish and land in the cache as a harmless extra
+entry. Because the loop that keeps requesting pages for the old window is itself cancelled at
+`deactivate()`, no stale prefetch window continues decoding after Pages closes; a later reopen's
+fresh `setVisibleRange` call establishes a genuinely new window normally, not a resumed one.
+
 **UI** (`feature/reader/ThumbnailNavigator.kt`, new file): a "Pages" button
 (`action_thumbnails`, next to Appearance in the existing control row,
-`testTag="reader_thumbnails"`) opens an `AlertDialog` containing a `LazyRow` thumbnail strip
-(`testTag="thumbnail_strip"`) — the same dialog idiom every other reader overlay already uses
-(Appearance/Chapters/Search/Bookmarks), so Back/Escape/gamepad B dismiss it exactly the way
-they already do for those, with zero new key-handling code in `FixedReaderScreen`. Opening the
+`testTag="reader_thumbnails"`) opens a dialog containing a `LazyRow` thumbnail strip
+(`testTag="thumbnail_strip"`) visually matching the same `AlertDialog` look every other reader
+overlay already uses (Appearance/Chapters/Search/Bookmarks) — title, content, trailing Close
+button — with zero new key-handling code in `FixedReaderScreen`. **Gamepad B is corrected here
+post-Codex-R2** (a prior revision of this paragraph claimed it "dismisses exactly the way"
+Escape/system Back already do through ordinary dialog behavior — that was never accurate for
+gamepad B specifically): system Back and Escape dismiss Pages through ordinary
+`DialogProperties`-driven dialog behavior (`dismissOnBackPress`), same as every other reader
+dialog. Gamepad B is **not** handled by that default behavior at all — Android's default dialog
+handling does not translate `KEYCODE_BUTTON_B` into dismissal — so ShelfOS's own semantic
+`ShelfCommand.BACK` handling (`InputMapper` already maps both Escape and gamepad B to
+`ShelfCommand.BACK`) explicitly covers it, attached at **dialog-wide scope**: one `onKeyEvent` on
+a single `Surface` that is an ancestor of the thumbnail content, the title, and the Close button
+together (built on `BasicAlertDialog` precisely so such a shared ancestor exists — the public
+`AlertDialog` composable's separate `text`/`confirmButton` slots do not share one), not merely a
+sub-slot. This means gamepad B dismisses Pages regardless of which dialog child currently owns
+focus, Close button included — redundant with (never conflicting with) Escape's already-correct
+system handling. Opening the
 strip scrolls to roughly center the current page (`scrollToItem(max(0, currentPage-2))`, an
 approximate centering, not pixel-exact). The strip is driven by the *actual* visible items
 (`snapshotFlow` over `LazyListState.layoutInfo.visibleItemsInfo`), so lazy decoding follows

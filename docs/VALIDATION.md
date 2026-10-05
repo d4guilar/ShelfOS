@@ -203,6 +203,59 @@ re-decoded lazily on demand if Pages does reopen — no thumbnail state is itsel
 **Build — PASS.** `:app:assembleDebug -q` and `:app:assembleDebugAndroidTest -q`, each exit 0.
 **Lint — PASS.** `:app:lintDebug -q`, exit 0, no new findings. `git diff --check`: clean.
 
+### PHASE 3B — Codex R2 micro-remediation (2026-10-04)
+
+Status: **IMPLEMENTED.** Base: `addb928` ("fix: harden Phase 3B thumbnail navigation"). Codex R2
+returned CHANGES REQUIRED with two narrow items remaining; cache bounds, bitmap ownership, lazy
+loading, cancellation/deactivation, the shared render mutex, lifecycle cleanup, PDF/CBZ handling,
+RTL logical identity and future-CBR compatibility were all otherwise approved and are **unchanged**
+here.
+
+**Finding — gamepad B's dismissal handler did not cover the whole Pages dialog.** The R1
+remediation's `Modifier.onKeyEvent` lived on a `Box` inside `AlertDialog`'s `text` slot — a
+*sibling* of the `confirmButton` slot's Close button, not an ancestor of it. Compose key events
+bubble from the focused node up its focus-parent chain, so once focus moved to Close, the handler
+never received the event, and gamepad B could fail to dismiss Pages from that focus state. Fixed
+by rebuilding `ThumbnailNavigator`'s dialog on `BasicAlertDialog` (material3's own lower-level
+primitive, still backed by the same `Dialog`/`DialogProperties` `AlertDialog` uses internally, so
+`dismissOnBackPress`/`dismissOnClickOutside` are unchanged) with title, thumbnail content and the
+Close button all composed together inside one `Surface`, carrying the `onKeyEvent` handler on that
+single shared root (`testTag "thumbnail_dialog_surface"` unchanged). Gamepad B now dismisses Pages
+regardless of which dialog child owns focus; Escape/system Back are unaffected (still ordinary
+dialog behavior); D-pad focus movement and Enter/center activation are untouched (only
+`ShelfCommand.BACK` is ever consumed); the reader itself is never exited from this handler. New
+instrumented test in `ThumbnailNavigationUiTest`:
+`gamepadButtonBWithFocusOnCloseButtonClosesPagesWithoutExitingTheReader` (requests focus onto the
+Close button via `requestFocus()`, sends gamepad B, asserts Pages closes, `reader_screen` stays
+present, `page_number` unchanged, and a subsequent D-pad Right still advances the page — proving
+normal reader-level controller handling resumes once the dialog is gone).
+
+**Documentation — three stale statements in `PHASE_3_IMPLEMENTATION_PLAN.md`'s §24 (3B
+implementation record) corrected:** the cache paragraph now states both the 16MiB byte budget and
+the 64-entry cap explicitly (a prior revision read as byte-only bounding); the gamepad-B paragraph
+no longer claims gamepad B "dismisses exactly the way" Escape/system Back do through ordinary
+dialog behavior, and instead states the dialog-wide `onKeyEvent` scope this remediation
+establishes; a new "Dismissal/prefetch" paragraph documents `ThumbnailLoader.deactivate()`'s actual
+behavior (clears the active requested range, preserves cached thumbnails, permits at most one
+already-in-flight synchronous decode to finish, prevents a stale prefetch window from continuing
+after Pages closes) which this record previously did not describe at all.
+
+**Targeted instrumented tests — PASS.** `ThumbnailNavigationUiTest`, run via
+`-Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.ThumbnailNavigationUiTest`
+(`:app:connectedDebugAndroidTest`) on the already-running `shelfos-api24` emulator
+(`emulator-5554`): **7/7 PASS** (100% success rate, 0 failures, 0 errors, 10.830s) — the 6
+pre-existing tests (including `escapeClosesPagesWithoutExitingTheReader` and
+`gamepadButtonBClosesPagesWithoutExitingTheReader`, confirming the restructuring did not regress
+either) plus the 1 new Close-button-focus test above. Full JVM suite, full connected suite,
+`NavigationSmokeTest`, and cache tests were **not** re-run — out of scope for this micro-remediation
+(no cache code changed).
+
+**Build — PASS.** `:app:assembleDebug -q` and `:app:assembleDebugAndroidTest -q`, each exit 0. One
+`@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)` was required on
+`ThumbnailNavigator` for `BasicAlertDialog`, mirroring the same per-function opt-in pattern already
+used elsewhere in this codebase (e.g. `EpubActivity.kt`'s `@OptIn(ExperimentalLayoutApi::class)`).
+**Lint — PASS.** `:app:lintDebug -q`, exit 0, no new findings. `git diff --check`: clean.
+
 Per standing policy, the full JVM suite and full connected/instrumented regression matrix were
 **not** re-run here — reserved for Phase 3F, same as the original 3B entry above.
 

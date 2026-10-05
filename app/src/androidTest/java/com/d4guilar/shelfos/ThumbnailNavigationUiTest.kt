@@ -137,6 +137,29 @@ class ThumbnailNavigationUiTest {
         compose.onNodeWithTag("page_number").assertTextEquals("1 / 3")
     }
 
+    // Codex R2 finding: the prior remediation's onKeyEvent handler lived on a Box inside AlertDialog's `text` slot,
+    // a SIBLING of the `confirmButton` slot's Close button -- so once focus moved to Close, the key event no
+    // longer reached that handler. ThumbnailNavigator now builds the dialog on BasicAlertDialog with a single
+    // Surface wrapping title, thumbnail content AND Close together, with the handler on that shared root. This
+    // proves gamepad B dismisses Pages with focus actually ON the Close button, not merely on a thumbnail cell.
+    @Test fun gamepadButtonBWithFocusOnCloseButtonClosesPagesWithoutExitingTheReader() {
+        seed("thumb-ui-gamepad-b-close", MediaCategory.COMIC, listOf(Color.RED, Color.GREEN, Color.BLUE))
+        open("thumb-ui-gamepad-b-close", MediaCategory.COMIC)
+        openThumbnails()
+        val closeLabel = instrumentation.targetContext.getString(R.string.action_close)
+        compose.onNodeWithText(closeLabel).requestFocus()
+        compose.onNodeWithText(closeLabel).performKeyInput { pressKey(Key.ButtonB) }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("thumbnail_strip").fetchSemanticsNodes().isEmpty() }
+        // The reader chrome is still present and the page unchanged -- GAMEPAD_B dismissed only Pages, from the
+        // Close button's own focus, without also being treated as "exit the reader".
+        compose.onNodeWithTag("reader_screen").assertExists()
+        compose.onNodeWithTag("page_number").assertTextEquals("1 / 3")
+        // Normal reader-level controller handling resumes once Pages is gone: Next Page (reused as a plain
+        // ShelfCommand.NEXT_PAGE reader binding) still advances the page counter afterwards.
+        compose.onNodeWithTag("reader_screen").performKeyInput { pressKey(Key.DirectionRight) }
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("page_number") and hasText("2 / 3")).fetchSemanticsNodes().isNotEmpty() }
+    }
+
     @Test fun aCorruptPageAmongGoodPagesDoesNotBreakTheThumbnailStrip() {
         // The corrupt page (index 2) is deliberately NOT the current page (0), so the main reader page itself
         // renders normally -- this test is specifically about the thumbnail strip's own corrupt-page resilience.

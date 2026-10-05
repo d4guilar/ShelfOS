@@ -11,8 +11,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AlertDialogDefaults
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
@@ -42,20 +46,30 @@ import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
- * Phase 3B: a bounded, lazily-decoded thumbnail strip for jumping directly to a logical page. Reuses the same
- * [androidx.compose.material3.AlertDialog] pattern every other reader overlay already uses (Appearance/Chapters/
- * Search/Bookmarks) rather than introducing a new dialog idiom, with no new key-handling code in
- * [FixedReaderScreen] -- but Codex R1 finding 2 found that assumption incomplete: an ordinary Android `Dialog`
- * reliably handles system Back and Escape (both already dismiss this dialog correctly), but does **not** reliably
- * translate `KEYCODE_BUTTON_B` into dismissal, because the dialog owns focus/window state once shown, making
- * [FixedReaderScreen]'s own key handler an unreliable fallback while this dialog is open. The fix below is
- * dialog-local (lives on content actually inside this dialog's window, so it genuinely receives the event) and
- * reuses the existing [com.d4guilar.shelfos.core.input.ShelfCommand] semantic layer rather than hard-coding
- * `KEYCODE_BUTTON_B`: [InputMapper][com.d4guilar.shelfos.core.input.InputMapper] already maps both Escape and
- * gamepad B to [ShelfCommand.BACK] (see `ShelfCommand.kt`), so a single `onKeyEvent` check for that one semantic
- * command covers both -- redundant with (never conflicting with) the system handling already correct for Escape.
- * Ordinary D-pad/focus movement between cells is untouched: this listener only ever consumes `ShelfCommand.BACK`
- * and returns `false` (unconsumed) for every other key, so normal focus navigation and activation keep working.
+ * Phase 3B: a bounded, lazily-decoded thumbnail strip for jumping directly to a logical page. Visually this still
+ * follows the same [androidx.compose.material3.AlertDialog] look every other reader overlay already uses
+ * (Appearance/Chapters/Search/Bookmarks) -- title, content, trailing Close button -- with no new key-handling code
+ * in [FixedReaderScreen]. Codex R1 finding 2 found that an ordinary Android `Dialog` reliably handles system Back
+ * and Escape (both already dismiss this dialog correctly), but does **not** reliably translate `KEYCODE_BUTTON_B`
+ * into dismissal, because the dialog owns focus/window state once shown, making [FixedReaderScreen]'s own key
+ * handler an unreliable fallback while this dialog is open. Codex R2 then found the R1 fix incomplete: it placed
+ * `onKeyEvent` only on the Box inside `AlertDialog`'s `text` slot, which is a *sibling* of `confirmButton`'s Close
+ * button inside AlertDialog's own internal layout -- Compose key events bubble up the focus-parent chain from
+ * whichever node is focused, so once focus moved to Close (a sibling, not a descendant, of that Box) the handler
+ * no longer received the event. Fixing that requires a single container that is an ancestor of BOTH the content
+ * and the Close button inside the dialog's own window; the public `AlertDialog` composable doesn't expose one (it
+ * only accepts separate slot lambdas), so this now builds on [BasicAlertDialog] -- material3's own lower-level
+ * primitive, still backed by the same `Dialog`/`DialogProperties` AlertDialog uses internally (so
+ * `dismissOnBackPress`/`dismissOnClickOutside` still apply unchanged) -- and composes title, thumbnail content and
+ * Close button together inside one [Surface], with the key handler on that single root. This is the smallest
+ * restructuring that gives Back/gamepad-B dialog-wide reach without inventing a new dialog idiom or a
+ * device-specific key path: it still reuses the existing [com.d4guilar.shelfos.core.input.ShelfCommand] semantic
+ * layer rather than hard-coding `KEYCODE_BUTTON_B`: [InputMapper][com.d4guilar.shelfos.core.input.InputMapper]
+ * already maps both Escape and gamepad B to [ShelfCommand.BACK] (see `ShelfCommand.kt`), so a single `onKeyEvent`
+ * check for that one semantic command covers both -- redundant with (never conflicting with) the system handling
+ * already correct for Escape. Ordinary D-pad/focus movement between cells and to/from Close is untouched: this
+ * listener only ever consumes `ShelfCommand.BACK` and returns `false` (unconsumed) for every other key, so normal
+ * focus navigation and activation keep working everywhere in the dialog, Close button included.
  *
  * Selecting a thumbnail calls [onSelect] with the plain logical page index; [FixedReaderScreen] wires that straight
  * to [FixedReaderViewModel.showPage], the same jump path a slider drag already uses -- there is no second page-
@@ -66,6 +80,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * loop always iterates true logical indices in natural order regardless of [rtl] -- there is no reversed list to
  * get wrong, so the page-identity invariant holds by construction, not by a runtime check.
  */
+// BasicAlertDialog (needed for the dialog-wide Back/gamepad-B fix -- see this file's class doc) is still an
+// experimental material3 API; this opt-in mirrors the same per-function pattern other experimental-API call sites
+// in this codebase already use (e.g. EpubActivity.kt's @OptIn(ExperimentalLayoutApi::class)).
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ThumbnailNavigator(pageCount: Int, currentPage: Int, rtl: Boolean, loader: ThumbnailLoader<Bitmap>?,
     onSelect: (Int) -> Unit, onDismiss: () -> Unit) {
@@ -97,32 +115,54 @@ fun ThumbnailNavigator(pageCount: Int, currentPage: Int, rtl: Boolean, loader: T
         }
     }
 
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.action_thumbnails)) }, text = {
-        Box(Modifier
-            .testTag("thumbnail_dialog_surface")
-            .focusRequester(dialogFocus)
-            .focusable()
-            // Codex R1 finding 2: dialog-local gamepad-B dismissal, reusing ShelfCommand.BACK (see this file's
-            // class doc). Only ShelfCommand.BACK is ever consumed here -- every other key (including the D-pad/
-            // focus-navigation keys the cells below already handle via `clickable`) is left unconsumed.
-            .onKeyEvent { event ->
-                val native = event.nativeKeyEvent
-                if (native.action == KeyEvent.ACTION_UP && native.shelfCommand(InputContext.READER) == ShelfCommand.BACK) {
-                    onDismiss(); true
-                } else false
-            }) {
-            CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
-                LazyRow(state = listState, modifier = Modifier.fillMaxWidth().height(176.dp).testTag("thumbnail_strip"),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(pageCount, key = { it }) { page ->
-                        val entry = remember(revision, page) { loader?.peek(page) }
-                        ThumbnailCell(page, page == currentPage, entry, { onSelect(page) },
-                            pageDescTemplate, currentPageDescTemplate, failedLabel)
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        // Codex R2 finding: this Surface is the single container that is an ancestor of BOTH the thumbnail
+        // content AND the Close button below (see this file's class doc) -- unlike AlertDialog's separate `text`/
+        // `confirmButton` slots, a key event bubbling up from whichever child currently has focus always reaches
+        // this one `onKeyEvent`, so gamepad B (and Escape, redundantly with the system handling `BasicAlertDialog`
+        // already provides via the same `DialogProperties` AlertDialog uses) dismisses Pages regardless of
+        // whether focus is on a thumbnail cell or on Close. Only ShelfCommand.BACK is ever consumed here -- every
+        // other key (including D-pad/focus-navigation keys and Enter/center activation) is left unconsumed, so
+        // normal focus movement and activation across the whole dialog, Close button included, keep working.
+        Surface(
+            modifier = Modifier
+                .testTag("thumbnail_dialog_surface")
+                .focusRequester(dialogFocus)
+                .focusable()
+                .onKeyEvent { event ->
+                    val native = event.nativeKeyEvent
+                    if (native.action == KeyEvent.ACTION_UP && native.shelfCommand(InputContext.READER) == ShelfCommand.BACK) {
+                        onDismiss(); true
+                    } else false
+                },
+            shape = AlertDialogDefaults.shape,
+            color = AlertDialogDefaults.containerColor,
+            tonalElevation = AlertDialogDefaults.TonalElevation,
+        ) {
+            Column(Modifier.padding(24.dp)) {
+                Text(stringResource(R.string.action_thumbnails), style = MaterialTheme.typography.headlineSmall,
+                    color = AlertDialogDefaults.titleContentColor)
+                Spacer(Modifier.height(16.dp))
+                CompositionLocalProvider(
+                    LocalContentColor provides AlertDialogDefaults.textContentColor,
+                    LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
+                ) {
+                    LazyRow(state = listState, modifier = Modifier.fillMaxWidth().height(176.dp).testTag("thumbnail_strip"),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(pageCount, key = { it }) { page ->
+                            val entry = remember(revision, page) { loader?.peek(page) }
+                            ThumbnailCell(page, page == currentPage, entry, { onSelect(page) },
+                                pageDescTemplate, currentPageDescTemplate, failedLabel)
+                        }
                     }
+                }
+                Spacer(Modifier.height(24.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onDismiss) { Text(stringResource(R.string.action_close)) }
                 }
             }
         }
-    }, confirmButton = { TextButton(onDismiss) { Text(stringResource(R.string.action_close)) } })
+    }
 }
 
 @Composable
