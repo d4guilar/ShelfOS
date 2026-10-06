@@ -39,6 +39,7 @@ import com.d4guilar.shelfos.core.designsystem.InputKeycap
 import com.d4guilar.shelfos.core.designsystem.resolve
 import com.d4guilar.shelfos.core.input.*
 import com.d4guilar.shelfos.core.reader.FitMode
+import com.d4guilar.shelfos.core.reader.PageGroup
 import com.d4guilar.shelfos.core.reader.capabilities
 import com.d4guilar.shelfos.core.reader.fixedReaderClampPan
 import com.d4guilar.shelfos.core.reader.fixedReaderFittedContentSize
@@ -100,6 +101,9 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
     val pageOfCountTemplate = stringResource(R.string.content_desc_page_of_count)
     val openingLabel = stringResource(R.string.reader_opening)
     val pageSliderDescription = stringResource(R.string.content_desc_page_slider)
+    // Phase 3C: per-slot accessibility labels within an active spread (see the spread rendering block below).
+    val currentSpreadPageDescription = stringResource(R.string.content_desc_spread_current_page)
+    val pageUnavailableDescription = stringResource(R.string.content_desc_spread_page_unavailable)
 
     fun hideControls() { controls = false; pageFocus.requestFocus() }
     fun toggleControls(moveFocus: Boolean) {
@@ -114,10 +118,12 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
     LaunchedEffect(controlFocusRequests) { if (controlFocusRequests > 0) runCatching { firstControl.requestFocus() } }
     // Phase 2D.1: re-clamp an idle transform whenever the viewport, zoom, fit mode or bitmap changes, so a
     // resize/rotation/fold that happens outside an active gesture can never leave panX/panY out of bounds.
-    LaunchedEffect(viewportSize, scale, fitWidth, state.bitmap) {
-        val bitmap = state.bitmap
-        if (bitmap == null || viewportSize.width <= 0 || viewportSize.height <= 0) return@LaunchedEffect
-        val content = fixedReaderFittedContentSize(bitmap.width.toFloat(), bitmap.height.toFloat(),
+    val screenDensity = LocalDensity.current
+    val gutterPx = with(screenDensity) { t.spacing.small.toPx() }
+    LaunchedEffect(viewportSize, scale, fitWidth, state.slots) {
+        val (contentW, contentH) = combinedContentDimensions(state.slots, gutterPx) ?: return@LaunchedEffect
+        if (viewportSize.width <= 0 || viewportSize.height <= 0) return@LaunchedEffect
+        val content = fixedReaderFittedContentSize(contentW, contentH,
             viewportSize.width.toFloat(), viewportSize.height.toFloat(), fitWidth)
         panX = fixedReaderClampPan(panX, fixedReaderMaxPan(content.width, viewportSize.width.toFloat(), scale))
         // Phase 2D.1 remediation (Fit Width tall-content blocker): Fit Width's vertical movement belongs
@@ -128,7 +134,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
         panY = fixedReaderClampPan(panY, fixedReaderMaxPanY(content, viewportSize.height.toFloat(), scale, fitWidth))
     }
     BackHandler { backPress() }
-    if (appearance && item != null) ReaderAppearance(state.preferences, capabilities(item.format), { appearance = false },
+    if (appearance && item != null) ReaderAppearance(state.preferences, capabilities(item.format, item.category), { appearance = false },
         vm::applyAppearance, vm::resetAppearance)
     if (thumbnails && state.count > 0) ThumbnailNavigator(state.count, state.page, rtl, vm.thumbnails,
         onSelect = { page -> vm.showPage(page); thumbnails = false }, onDismiss = { thumbnails = false })
@@ -167,7 +173,8 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically) { InputKeycap(it); Text(stringResource(R.string.action_back), color = t.colors.secondary, style = t.typography.labelSmall) } }
         }
         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().focusRequester(pageFocus).focusable().testTag("reader_page")
-            .onSizeChanged { viewportSize = it; vm.updateViewport(it.width, it.height) }
+            .onSizeChanged { viewportSize = it
+                vm.updateViewport(it.width, it.height, with(screenDensity) { it.width.toDp().value.toInt() }) }
             .semantics {
                 // Tap zones (edges turn pages, center toggles chrome) and double-tap-to-zoom are unchanged;
                 // this only adds an accessibility action, exposed exclusively while chrome is hidden, so
@@ -214,13 +221,16 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                             else pointerCount > 1 || scale > 1f
                         if (isTransformGesture) {
                             transformed = true
-                            val bitmap = state.bitmap
-                            if (bitmap != null) {
+                            val combined = combinedContentDimensions(state.slots, gutterPx)
+                            if (combined != null) {
                                 // Phase 2D.1: clamp against the actual fitted-content-vs-viewport geometry (not
                                 // the viewport's own size) using the NEW scale/translation together, so the
-                                // page can never be dragged past its own real edge into empty space.
+                                // page can never be dragged past its own real edge into empty space. Phase 3C:
+                                // the same clamp now operates on the combined spread content box (see
+                                // combinedContentDimensions) when 2 slots are visible, never on either page's
+                                // bitmap independently -- there is no separate per-page zoom/pan state.
                                 val newScale = (scale * zoom).coerceIn(1f, 5f)
-                                val content = fixedReaderFittedContentSize(bitmap.width.toFloat(), bitmap.height.toFloat(),
+                                val content = fixedReaderFittedContentSize(combined.first, combined.second,
                                     size.width.toFloat(), size.height.toFloat(), fitWidth)
                                 scale = newScale
                                 panX = fixedReaderClampPan(panX + pan.x, fixedReaderMaxPan(content.width, size.width.toFloat(), newScale))
@@ -240,7 +250,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                     }
                 }
             }, contentAlignment = Alignment.Center) {
-            state.bitmap?.let { bitmap ->
+            if (state.slots.size <= 1) state.bitmap?.let { bitmap ->
                 val image = remember(bitmap) { bitmap.asImageBitmap() }
                 key(state.page) {
                     val scrollState = rememberScrollState()
@@ -295,6 +305,57 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                     stateDescription = "$scale,$panX,$panY"
                 })
             }
+            // Phase 3C: an active 2-page spread. Two independent Images, never one stitched bitmap (see
+            // `docs/PHASE_3_IMPLEMENTATION_PLAN.md`'s "do NOT stitch bitmaps" requirement) -- physical left/right
+            // order mirrors for RTL Manga via `physicalOrder`, while `state.slots`/`state.page` (the logical
+            // source identity) are never reordered themselves. Zoom/pan acts on the whole Row as one unit (a
+            // single shared `graphicsLayer`, exactly as the single-page case above uses one `graphicsLayer` on
+            // its one Image) -- there is no independent per-slot transform state.
+            if (state.slots.size >= 2) {
+                val combined = combinedContentDimensions(state.slots, gutterPx)
+                if (combined != null) key(state.slots.map { it.page }) {
+                    val scrollState = rememberScrollState()
+                    val density = LocalDensity.current
+                    val content = fixedReaderFittedContentSize(combined.first, combined.second,
+                        viewportSize.width.toFloat(), viewportSize.height.toFloat(), fitWidth)
+                    val contentWidthDp = with(density) { content.width.toDp() }
+                    val contentHeightDp = with(density) { content.height.toDp() }
+                    val verticalOverflowPx = if (fitWidth) fixedReaderVerticalScaleOverflow(content.height, scale) else 0f
+                    val verticalOverflowDp = with(density) { verticalOverflowPx.toDp() }
+                    val physicalSlots = PageGroup(state.slots.map { it.page }).physicalOrder(rtl).map { p -> state.slots.first { it.page == p } }
+                    val spreadRow: @Composable () -> Unit = {
+                        Row(Modifier.width(contentWidthDp).height(contentHeightDp)
+                                .graphicsLayer { scaleX = scale; scaleY = scale; translationX = panX; translationY = if (fitWidth) 0f else panY },
+                            verticalAlignment = Alignment.CenterVertically) {
+                            physicalSlots.forEachIndexed { i, slot ->
+                                if (i > 0) Spacer(Modifier.width(with(density) { gutterPx.toDp() }))
+                                val bmp = slot.bitmap
+                                if (bmp != null) {
+                                    val image = remember(bmp) { bmp.asImageBitmap() }
+                                    val isCurrent = slot.page == state.page
+                                    val description = if (isCurrent) String.format(currentSpreadPageDescription, slot.page + 1, state.count)
+                                        else String.format(pageOfCountTemplate, slot.page + 1, state.count)
+                                    Image(image, description, Modifier.fillMaxHeight().aspectRatio(bmp.width.toFloat() / bmp.height), contentScale = ContentScale.Fit)
+                                } else {
+                                    val siblingAspect = state.slots.firstNotNullOfOrNull { it.bitmap }?.let { it.width.toFloat() / it.height } ?: 0.7f
+                                    Box(Modifier.fillMaxHeight().aspectRatio(siblingAspect).background(t.colors.surface)
+                                        .semantics { contentDescription = String.format(pageUnavailableDescription, slot.page + 1) },
+                                        contentAlignment = Alignment.Center) { Text(stringResource(R.string.label_unavailable)) }
+                                }
+                            }
+                        }
+                    }
+                    if (fitWidth) Column(Modifier.fillMaxSize().verticalScroll(scrollState), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Spacer(Modifier.height(verticalOverflowDp)); spreadRow(); Spacer(Modifier.height(verticalOverflowDp))
+                    } else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { spreadRow() }
+                    if (fitWidth) Text("", Modifier.size(0.dp).testTag("reader_scroll_probe").clearAndSetSemantics {
+                        stateDescription = "${scrollState.value},${scrollState.maxValue},${content.height}"
+                    })
+                }
+                Text("", Modifier.size(0.dp).testTag("reader_transform_probe").clearAndSetSemantics {
+                    stateDescription = "$scale,$panX,$panY"
+                })
+            }
             if (state.loading && state.error == null) CircularProgressIndicator()
             state.error?.let { message -> Surface(color = t.colors.surface, shape = t.shapes.small) {
                 Column(Modifier.padding(16.dp).widthIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -323,4 +384,26 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
             }
         }
     }
+}
+
+/**
+ * Phase 3C: a virtual combined-content size standing in for a single bitmap's width/height wherever the existing
+ * Fit Page/Fit Width/zoom-pan transform math ([fixedReaderFittedContentSize], [fixedReaderMaxPan],
+ * [fixedReaderMaxPanY]) expects one. For 1 visible slot this is exactly that slot's own bitmap size (byte-for-byte
+ * the pre-3C single-page behavior). For 2 slots, each bitmap is notionally scaled to a shared reference height
+ * (the taller of the two, so neither bitmap is ever upscaled relative to the other) and laid side by side with
+ * [gutterPx] between them -- this lets the EXISTING pure transform functions treat "the whole spread" as one
+ * fittable/zoomable/pannable content box with no new geometry primitive, and without the two bitmaps ever being
+ * merged into one (they stay two independent `Image`s in [FixedReaderScreen]'s spread `Row`). If only one of the
+ * two slots has a bitmap (its sibling failed to decode -- see "Corrupt page within a spread"), this degrades to
+ * that one bitmap's own size, so fit/zoom geometry is still driven by real decoded content, not an error
+ * placeholder's arbitrary size. Returns `null` only when no slot has a bitmap yet (nothing to fit against).
+ */
+private fun combinedContentDimensions(slots: List<PageSlot>, gutterPx: Float): Pair<Float, Float>? {
+    val bitmaps = slots.mapNotNull { it.bitmap }
+    if (bitmaps.isEmpty()) return null
+    if (bitmaps.size == 1) return bitmaps[0].width.toFloat() to bitmaps[0].height.toFloat()
+    val refHeight = bitmaps.maxOf { it.height }.toFloat()
+    val totalWidth = bitmaps.sumOf { (refHeight * it.width / it.height).toDouble() }.toFloat() + gutterPx
+    return totalWidth to refHeight
 }

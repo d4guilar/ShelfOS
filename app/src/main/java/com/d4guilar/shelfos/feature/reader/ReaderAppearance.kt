@@ -98,6 +98,11 @@ fun ReaderAppearance(preferences: ReaderPreferences, capabilities: ReaderCapabil
             }
             if (capabilities.fit) FitMode.entries.forEach { fit -> ShelfChoiceChip(draft.fit == fit, { draft = draft.copy(fit = fit) },
                 stringResource(if (fit == FitMode.PAGE) R.string.appearance_fit_page else R.string.appearance_fit_width)) }
+            if (capabilities.spread) {
+                Text(stringResource(R.string.appearance_spread_mode))
+                SpreadMode.entries.forEach { mode -> ShelfChoiceChip(draft.spreadMode == mode, { draft = draft.copy(spreadMode = mode) },
+                    stringResource(mode.labelRes())) }
+            }
             if (capabilities.direction) {
                 Text(stringResource(R.string.appearance_reading_direction))
                 ShelfChoiceChip(draft.direction == null, { draft = draft.copy(direction = null) }, stringResource(R.string.appearance_direction_category_default))
@@ -126,6 +131,12 @@ private fun builtinFontLabelRes(familyId: String): Int? = when (familyId) {
     else -> null
 }
 
+private fun SpreadMode.labelRes(): Int = when (this) {
+    SpreadMode.AUTO -> R.string.appearance_spread_auto
+    SpreadMode.SINGLE -> R.string.appearance_spread_single
+    SpreadMode.SPREAD -> R.string.appearance_spread_spread
+}
+
 private fun PagePalette.labelRes(): Int = when (this) {
     PagePalette.THEME -> R.string.palette_theme
     PagePalette.LIGHT -> R.string.palette_light
@@ -136,12 +147,13 @@ private fun PagePalette.labelRes(): Int = when (this) {
 /** Saves a preference layer as plain values; unknown names from an older build restore as unset. */
 internal val ReaderPreferencesSaver = listSaver<ReaderPreferences, Any?>(
     save = { listOf(it.font?.name, it.fontSize, it.lineHeight, it.margins, it.justified, it.scroll, it.palette?.name,
-        it.direction?.name, it.fit?.name, it.fontFamilyId, it.presentationMode?.name) },
+        it.direction?.name, it.fit?.name, it.fontFamilyId, it.presentationMode?.name, it.spreadMode?.name) },
     restore = { saved ->
         ReaderPreferences(BookFont.entries.find { it.name == saved.getOrNull(0) }, saved.getOrNull(1) as Double?, saved.getOrNull(2) as Double?,
             saved.getOrNull(3) as Double?, saved.getOrNull(4) as Boolean?, saved.getOrNull(5) as Boolean?,
             PagePalette.entries.find { it.name == saved.getOrNull(6) }, ReadingDirection.entries.find { it.name == saved.getOrNull(7) },
             FitMode.entries.find { it.name == saved.getOrNull(8) }, saved.getOrNull(9) as String?,
-            PresentationMode.entries.find { it.name == saved.getOrNull(10) })
+            PresentationMode.entries.find { it.name == saved.getOrNull(10) },
+            SpreadMode.entries.find { it.name == saved.getOrNull(11) })
     },
 )

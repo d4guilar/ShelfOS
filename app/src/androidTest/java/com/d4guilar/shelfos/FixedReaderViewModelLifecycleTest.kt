@@ -137,7 +137,7 @@ class FixedReaderViewModelLifecycleTest {
         val beforeWidth = before.width
         val beforeHeight = before.height
 
-        vm.updateViewport(1920, 1080)
+        vm.updateViewport(1920, 1080, 960)
         vm.retry()
         awaitUntil { vm.state.value.loading || vm.state.value.bitmap !== before }
         val after = awaitStableBitmap(vm)

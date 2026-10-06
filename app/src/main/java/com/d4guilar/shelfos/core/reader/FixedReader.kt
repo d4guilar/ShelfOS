@@ -211,6 +211,19 @@ fun resolveRenderTarget(sourceWidth: Int, sourceHeight: Int, request: PageRender
 interface FixedReader : Closeable {
     val pageCount: Int
     fun render(index: Int, request: PageRenderRequest = PageRenderRequest.DEFAULT): Bitmap
+
+    /**
+     * Phase 3C: a page's own undistorted dimensions, needed for spread-pairing eligibility ([PageGeometry.isLandscape])
+     * -- deliberately NOT a reading-resolution render. CBZ ([ArchivePages]) reuses the exact bounds-only
+     * `BitmapFactory` decode pass [ImagePageRenderer] already performs before every full decode (no new decode
+     * path); PDF ([PdfPages]) reads `PdfRenderer.Page.width`/`height`, which `PdfRenderer` already exposes without
+     * rasterizing. A future CBR [PageSource] adapter satisfies this the same way CBZ does today, through the same
+     * [ImagePageRenderer]-shared bounds pass -- no CBR-specific geometry method is needed. Returns `null` for an
+     * out-of-range index or an undecodable page, rather than throwing -- callers (spread pairing) already treat
+     * unknown geometry as "not landscape" (see [resolvePageGroups]), so a geometry failure degrades gracefully
+     * instead of blocking presentation.
+     */
+    fun pageGeometry(index: Int): PageGeometry?
 }
 
 class FixedReaderFactory(private val files: PublicationFiles) {
@@ -236,6 +249,9 @@ private class PdfPages(descriptor: ParcelFileDescriptor) : FixedReader {
         try { page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY); bitmap }
         catch (error: Throwable) { bitmap.recycle(); throw error }
     }
+    override fun pageGeometry(index: Int): PageGeometry? =
+        if (index !in 0 until pageCount) null
+        else try { renderer.openPage(index).use { PageGeometry(it.width, it.height) } } catch (_: Throwable) { null }
     override fun close() = renderer.close()
 }
 
@@ -270,6 +286,18 @@ private class ZipPageSource(private val zip: SeekableZip, private val entries: L
  * reuses this unchanged, rather than duplicating the bounds-then-sample decode policy per container format.
  */
 private object ImagePageRenderer {
+    /** Bounds-only decode (no full-resolution allocation) -- the same `inJustDecodeBounds` pass [render] already
+     * performs before every full decode, exposed standalone for [FixedReader.pageGeometry] (Phase 3C). Returns
+     * `null` rather than throwing for an out-of-range index or an undecodable page. */
+    fun bounds(source: PageSource, index: Int): PageGeometry? {
+        if (index !in 0 until source.pageCount) return null
+        return try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            source.openPage(index).use { BitmapFactory.decodeStream(it, null, bounds) }
+            if (bounds.outWidth > 0 && bounds.outHeight > 0) PageGeometry(bounds.outWidth, bounds.outHeight) else null
+        } catch (_: Throwable) { null }
+    }
+
     fun render(source: PageSource, index: Int, request: PageRenderRequest): Bitmap {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         source.openPage(index).use { BitmapFactory.decodeStream(it, null, bounds) }
@@ -294,5 +322,6 @@ private class ArchivePages(private val descriptor: ParcelFileDescriptor) : Fixed
     private val source: PageSource = ZipPageSource(zip, entries)
     override val pageCount get() = entries.size
     override fun render(index: Int, request: PageRenderRequest): Bitmap = ImagePageRenderer.render(source, index, request)
+    override fun pageGeometry(index: Int): PageGeometry? = ImagePageRenderer.bounds(source, index)
     override fun close() { try { zip.close() } finally { descriptor.close() } }
 }
