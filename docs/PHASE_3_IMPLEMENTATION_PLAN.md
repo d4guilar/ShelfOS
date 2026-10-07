@@ -514,9 +514,18 @@ started.
   (conservative — forces single-step, no-skip movement) rather than the presentation layer's
   documented optimistic `false` default; once `render()` actually resolves the real geometry
   (always before it decides a group's slot count), later navigation sees the true value and
-  behaves exactly as before. Proven by `FixedReaderSpreadViewModelTest`'s
-  `rapidNextNeverSkipsAnUnresolvedLandscapePair_firstMemberLandscape`/`_secondMemberLandscape` —
-  rapid, unawaited `turn(1)` calls that race the async geometry resolution.
+  behaves exactly as before. Initial evidence used asynchronous `StateFlow` observation
+  (`FixedReaderSpreadViewModelTest`'s original
+  `rapidNextNeverSkipsAnUnresolvedLandscapePair_firstMemberLandscape`/`_secondMemberLandscape`,
+  firing three unawaited `turn(1)` calls and recording every `state.page` value via a background
+  collector) and was later superseded because conflation made it insufficient — see Codex R2
+  Finding 2 below. The final deterministic evidence is: `CountDownLatch`-gated geometry
+  resolution via `GatedGeometryFixedReaderFactory`, direct synchronous `state.value.page`
+  inspection immediately after each `turn()` call (no waiting, no collector), the companion
+  cached-unusable-`0×0`-geometry regression test
+  (`cachedUnusableGeometryForACorruptPairMemberNeverAuthorizesANavigationSkip`), and — after the
+  Codex R3 micro-remediation — a persisted locator/progress assertion proving the actual saved
+  reading position matches page 2, never page 3, across the same rapid sequence.
 - **Finding 2 (spread-aware memory budget).** `RenderMemoryPolicy` now derives
   `READING_BUDGET_BYTES = SESSION_BUDGET_BYTES (96MiB) - THUMBNAIL_RESERVATION_BYTES`
   (`ThumbnailLoader.DEFAULT_BUDGET_BYTES`, 16MiB — the thumbnail cache always shared this
@@ -552,8 +561,17 @@ started.
   geometry through `rememberUpdatedState(combinedContentDimensions(state.slots, gutterPx))`
   rather than closing over `state.slots` directly inside the long-lived gesture coroutine (still
   keyed only by page/rtl/fitWidth, so an in-progress gesture is never restarted merely because
-  AUTO/SpreadMode flipped single↔spread). Proven by `FixedReaderSpreadUiTest`'s
-  `gestureGeometryStaysCurrentAcrossASpreadToSingleFlipWithoutAPageChange`.
+  AUTO/SpreadMode flipped single↔spread). Initial evidence
+  (`FixedReaderSpreadUiTest`'s `gestureGeometryStaysCurrentAcrossASpreadToSingleFlipWithoutAPageChange`,
+  using `doubleClick`) was insufficient and was later superseded: `doubleClick` never entered the
+  real pointer-transform path, only a separate `detectTapGestures(onDoubleTap = ...)` handler — see
+  Codex R2 Finding 3 below. The final regression test,
+  `pointerTransformGestureUsesCurrentGeometryAcrossASpreadToSingleAndBackFlipWithoutAPageChange`,
+  actually zooms, performs a real one-finger drag/pan, enters `awaitEachGesture`, executes the
+  `calculatePan`/transform logic, reads `currentContentDimensions`, distinguishes the single-mode
+  vs. spread-mode pan clamps, and asserts `state.page` never changes across the flip. R1's original
+  double-tap test is kept as narrower regression coverage for that specific (still valid) path, not
+  as proof of the pointer-transform fix.
 - **Finding 5 (SpreadMode change must apply immediately).** The ViewModel's preference collector
   now tracks `lastAppliedSpreadMode` and re-renders the current page the moment the EFFECTIVE
   title SpreadMode changes for an already-open session (title override set/cleared, or a reset

@@ -68,7 +68,10 @@ through a real `.json()`/`.parse()`; an unrecognized or wrong-type `spreadMode` 
 to `null` rather than throwing; a fully malformed JSON blob falls back to the default; other
 existing fields round-trip unaffected).
 `./gradlew.bat :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderSpreadViewModelTest` —
-exit 0, 8/8 pass, against real CBZ fixtures through the real `FixedReaderViewModel`/`FixedReader`
+exit 0, 8/8 pass at this initial-implementation point in history (superseded by the R1/R2/R3
+remediation entries below, which record the real, final, current count against the current test
+file -- this "8/8" is preserved as a historical record only, not the current status), against real
+CBZ fixtures through the real `FixedReaderViewModel`/`FixedReader`
 pipeline (not just the pure model in isolation): explicit SPREAD pairs an interior pair as 2 slots
 while the cover stays solo and `state.page` matches exactly what was navigated to; explicit SINGLE
 never shows 2 slots even at a 4000px-wide viewport; AUTO resolves to single on a narrow viewport
@@ -266,6 +269,39 @@ all of these, and this remediation did not modify any of them.
 **Dependencies/schema**: none added/changed. **Room**: unchanged. **CBR**: not implemented, not
 stubbed, not detected. Physical device/true-rotation acceptance and the full accumulated
 regression suite remain Phase 3F's job, not this micro-remediation's.
+
+### PHASE 3C — Codex R3 micro-remediation (2026-10-06)
+
+Status: **IMPLEMENTED on one remediation commit on top of `d55a507`** ("fix: complete Phase 3C
+review remediation"), on `phase-3/3c-spreads-manga-pairing`. Independent review (Codex R3) found
+no remaining production correctness defect -- this is purely a test-evidence gap plus stale
+documentation. No production file was changed.
+
+**Finding (missing persisted locator/progress assertion).** The R2 deterministic gated
+rapid-navigation test (`deterministicRapidNextDoesNotSkipTheGatedPair_firstMemberLandscape`/
+`_secondMemberLandscape`) proved `state.value.page` directly never skips from 1 to 3, but never
+proved what actually got PERSISTED -- the final assertion before this remediation only checked
+`state.value.page in 0 until state.value.count`, a bound loose enough to also pass if the
+persisted value were wrong. Fixed in the TEST ONLY: `FixedReaderSpreadViewModelTest`'s
+`FakeLibraryRepository` now records every `reading(id, locator, progress)` call into a
+`ConcurrentLinkedQueue<RecordedReading>` (safe to read from the test thread while
+`PositionWriter`'s consumer coroutine writes to it from `appScope`); a new
+`viewModelWithRepository` helper exposes that fake alongside the `FixedReaderViewModel` so the
+test can inspect it (`viewModel` itself is now a thin wrapper over it, unchanged for every other
+caller). The gated test now polls (`awaitUntil`, the same async-convergence idiom already used
+throughout this file) until a recorded reading matches the REAL `pageLocator(splitPageIndex)`/
+`pageProgress(splitPageIndex, count)` -- production's own functions, never reimplemented in the
+test -- and separately asserts no recorded reading ever matches `pageLocator(3)`, the exact page
+the no-skip invariant already proved `state.value.page` never became.
+
+**Targeted instrumented tests — PASS.**
+`./gradlew.bat :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderSpreadViewModelTest`
+— **11/11 PASS** (no new test method was added; the two existing gated rapid-navigation tests were
+extended in place with the persisted locator/progress assertion, so the count is unchanged from
+the R2 final count above).
+
+**Production files changed**: none. **Dependencies/schema**: none added/changed. **Room**:
+unchanged. Build/lint were not re-run (test/docs-only change; no production file touched).
 
 ## PHASE 3B — PAGE THUMBNAILS (2026-10-04)
 

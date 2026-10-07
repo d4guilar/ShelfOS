@@ -16,6 +16,8 @@ import com.d4guilar.shelfos.core.reader.PageGeometry
 import com.d4guilar.shelfos.core.reader.ReaderPreferences
 import com.d4guilar.shelfos.core.reader.RenderMemoryPolicy
 import com.d4guilar.shelfos.core.reader.SpreadMode
+import com.d4guilar.shelfos.core.reader.pageLocator
+import com.d4guilar.shelfos.core.reader.pageProgress
 import com.d4guilar.shelfos.data.library.LibraryRepository
 import com.d4guilar.shelfos.domain.library.LibraryItem
 import com.d4guilar.shelfos.domain.library.MediaCategory
@@ -32,6 +34,7 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -61,8 +64,17 @@ class FixedReaderSpreadViewModelTest {
         scopes.forEach { it.cancel() }
     }
 
+    /** Codex R3 finding (3C micro-remediation): the minimal deterministic evidence that
+     * [LibraryRepository.reading] was actually invoked with a specific persisted locator/progress pair, so a test
+     * can inspect the REAL persisted target rather than only [FixedReaderState.page] (which proves the in-memory
+     * navigation result, not what was actually asked to be written to storage). */
+    private data class RecordedReading(val id: String, val locator: String, val progress: Int)
+
     private class FakeLibraryRepository(item: LibraryItem) : LibraryRepository {
         private val itemFlow = MutableStateFlow(item)
+        // ConcurrentLinkedQueue: reading() is invoked from PositionWriter's consumer coroutine (a different
+        // thread than the test's assertions), so a plain MutableList would not be safe to read concurrently.
+        val recordedReadings = ConcurrentLinkedQueue<RecordedReading>()
         override val publications get() = MutableStateFlow(listOf(itemFlow.value))
         override val globalPreferences: StateFlow<String?> = MutableStateFlow(null)
         override fun publication(id: String): StateFlow<LibraryItem?> = itemFlow
@@ -71,7 +83,7 @@ class FixedReaderSpreadViewModelTest {
         override suspend fun edit(id: String, title: String, creator: String, category: MediaCategory) {}
         override suspend fun remove(id: String) {}
         override suspend fun available(id: String, available: Boolean) {}
-        override suspend fun reading(id: String, locator: String, progress: Int) {}
+        override suspend fun reading(id: String, locator: String, progress: Int) { recordedReadings += RecordedReading(id, locator, progress) }
         override suspend fun preferences(id: String, json: String) {}
     }
 
@@ -96,7 +108,12 @@ class FixedReaderSpreadViewModelTest {
             preferences = ReaderPreferences(fit = FitMode.PAGE, spreadMode = spreadMode).json())
     }
 
-    private fun viewModel(item: LibraryItem, factoryOverride: FixedReaderFactory? = null): FixedReaderViewModel {
+    private fun viewModel(item: LibraryItem, factoryOverride: FixedReaderFactory? = null): FixedReaderViewModel =
+        viewModelWithRepository(item, factoryOverride).first
+
+    /** Same construction as [viewModel], but also returns the [FakeLibraryRepository] so a test can inspect
+     * [FakeLibraryRepository.recordedReadings] -- the actual persisted locator/progress, not just [FixedReaderState.page]. */
+    private fun viewModelWithRepository(item: LibraryItem, factoryOverride: FixedReaderFactory? = null): Pair<FixedReaderViewModel, FakeLibraryRepository> {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scopes += it }
         val store = ViewModelStore().also { stores += it }
         val repository = FakeLibraryRepository(item)
@@ -106,7 +123,7 @@ class FixedReaderSpreadViewModelTest {
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
                 FixedReaderViewModel(item.id, repository, usedFactory, scope) as T
         })
-        return provider[FixedReaderViewModel::class.java]
+        return provider[FixedReaderViewModel::class.java] to repository
     }
 
     /**
@@ -232,12 +249,18 @@ class FixedReaderSpreadViewModelTest {
      * page 2 entirely). The gate is then released and the reader must settle correctly: the landscape page
      * becomes solo, presentation reconciles, the logical current page stays valid, and further navigation
      * proceeds normally.
+     *
+     * Codex R3 finding (3C micro-remediation): the above only ever proved `state.value.page` -- the in-memory
+     * navigation result -- never what actually got PERSISTED. After settling, this also asserts the real
+     * [FakeLibraryRepository.recordedReadings] evidence: the saved locator/progress is exactly page
+     * [splitPageIndex]'s real value (computed with production's own `pageLocator`/`pageProgress`, never
+     * reimplemented), and no reading for page 3 (the wrongly-skipped target) was ever persisted.
      */
     private fun assertDeterministicRapidNextDoesNotSkipTheGatedPair(splitPageIndex: Int, pageSizes: List<Pair<Int, Int>>, name: String) {
         val item = cbzFixture(name, pageSizes, spreadMode = SpreadMode.SPREAD)
         val gate = CountDownLatch(1)
         val gatedFactory = GatedGeometryFixedReaderFactory(PublicationFiles(context), gatedPages = setOf(1, 2), gate = gate)
-        val vm = viewModel(item, factoryOverride = gatedFactory)
+        val (vm, repository) = viewModelWithRepository(item, factoryOverride = gatedFactory)
         vm.updateViewport(2000, 1000, 1000)
         awaitSettled(vm, targetPage = 0) // (A) page 0's group is solo -- never touches the gated pages 1/2.
 
@@ -254,8 +277,29 @@ class FixedReaderSpreadViewModelTest {
         awaitSettled(vm, targetPage = splitPageIndex, timeoutMs = 20_000)
         assertEquals("once geometry resolves, the landscape page must present solo (presentation reconciles)",
             listOf(splitPageIndex), vm.state.value.slots.map { it.page })
-        // No incorrect persisted locator/progress: the final settled page is a real, reachable one.
-        assertTrue(vm.state.value.page in 0 until vm.state.value.count)
+
+        // Codex R3 finding (3C micro-remediation): `state.value.page` above proves the in-memory navigation
+        // result, but not what was actually persisted. `showPage()` calls `positions.save(page)` synchronously
+        // on every navigation (see `FixedReaderViewModel.showPage`), but the write itself runs asynchronously
+        // through `PositionWriter`'s CONFLATED channel on `appScope` -- so, exactly like every other async
+        // convergence in this file, poll with `awaitUntil` rather than asserting immediately. The expected
+        // locator/progress use the SAME real production functions (`pageLocator`/`pageProgress`) the ViewModel
+        // itself calls, never a hand-rolled reimplementation, so this proves the EXACT persisted value, not just
+        // "in range".
+        val count = vm.state.value.count
+        val expectedLocator = pageLocator(splitPageIndex)
+        val expectedProgress = pageProgress(splitPageIndex, count)
+        val wronglySkippedLocator = pageLocator(3) // the page the no-skip invariant says must never be reached
+        awaitUntil(timeoutMs = 20_000) {
+            repository.recordedReadings.any { it.id == item.id && it.locator == expectedLocator && it.progress == expectedProgress }
+        }
+        assertTrue("persisted reading position must be exactly page $splitPageIndex's real locator/progress " +
+            "(id=${item.id}, locator=$expectedLocator, progress=$expectedProgress), not merely \"in range\" -- " +
+            "recorded=${repository.recordedReadings}",
+            repository.recordedReadings.any { it.id == item.id && it.locator == expectedLocator && it.progress == expectedProgress })
+        assertTrue("rapid navigation must never persist a reading position for page 3 -- the exact page the " +
+            "no-skip invariant above already proved `state.value.page` never became -- recorded=${repository.recordedReadings}",
+            repository.recordedReadings.none { it.locator == wronglySkippedLocator })
 
         // Further navigation proceeds correctly afterward.
         vm.turn(1)
