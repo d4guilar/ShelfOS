@@ -8,6 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.lifecycle.ViewModel
@@ -136,12 +138,19 @@ class FixedReaderFoldableUiTest {
             readerBounds.left + readerBounds.width / 2 + halfWidth, readerBounds.bottom),
             FoldOrientation.VERTICAL, isSeparating = true, occludesFully = false)
 
+    /** The missing horizontal-fold counterpart: centers a HORIZONTAL, separating hinge on the current reader
+     * surface's measured window bounds, [halfHeight] px tall on either side. */
+    private fun centeredHorizontalFold(readerBounds: androidx.compose.ui.geometry.Rect, halfHeight: Float = 10f) =
+        ReaderFoldDescriptor(FoldRect(readerBounds.left, readerBounds.top + readerBounds.height / 2 - halfHeight,
+            readerBounds.right, readerBounds.top + readerBounds.height / 2 + halfHeight),
+            FoldOrientation.HORIZONTAL, isSeparating = true, occludesFully = false)
+
     // ---- (A) vertical LTR spread: logical pair [1,2], page 1 entirely left of hinge, page 2 entirely right ----
 
     @Test fun verticalLtrSpreadPlacesPagesInTheirOwnPanesWithNoHingeIntersection() {
         val vm = viewModel(cbzFixture("fold-ltr", listOf(portrait, portrait, portrait)))
         var fold by mutableStateOf<ReaderFoldDescriptor?>(null)
-        compose.setContent { FixedReaderScreen(vm, fold = fold) { } }
+        compose.setContent { FixedReaderScreen(vm, folds = listOfNotNull(fold)) { } }
         awaitSettled(vm, 0)
         compose.waitForIdle()
         val readerBounds = node("reader_page").boundsInWindow
@@ -165,7 +174,7 @@ class FixedReaderFoldableUiTest {
     @Test fun verticalRtlMangaMirrorsPhysicalPlacementWithoutReversingLogicalIdentity() {
         val vm = viewModel(cbzFixture("fold-rtl", listOf(portrait, portrait, portrait), category = MediaCategory.MANGA))
         var fold by mutableStateOf<ReaderFoldDescriptor?>(null)
-        compose.setContent { FixedReaderScreen(vm, fold = fold) { } }
+        compose.setContent { FixedReaderScreen(vm, folds = listOfNotNull(fold)) { } }
         awaitSettled(vm, 0)
         compose.waitForIdle()
         val readerBounds = node("reader_page").boundsInWindow
@@ -190,7 +199,7 @@ class FixedReaderFoldableUiTest {
     @Test fun soloCoverPageRendersWhollyInsideOneSafePane() {
         val vm = viewModel(cbzFixture("fold-cover", listOf(portrait, portrait, portrait)))
         var fold by mutableStateOf<ReaderFoldDescriptor?>(null)
-        compose.setContent { FixedReaderScreen(vm, fold = fold) { } }
+        compose.setContent { FixedReaderScreen(vm, folds = listOfNotNull(fold)) { } }
         awaitSettled(vm, 0)
         compose.waitForIdle()
         val readerBounds = node("reader_page").boundsInWindow
@@ -211,7 +220,7 @@ class FixedReaderFoldableUiTest {
     @Test fun corruptSpreadMemberPlaceholderStaysInItsOwnHingeSafePane() {
         val vm = viewModel(cbzFixture("fold-corrupt", listOf(portrait, portrait, portrait), corruptPages = setOf(2)))
         var fold by mutableStateOf<ReaderFoldDescriptor?>(null)
-        compose.setContent { FixedReaderScreen(vm, fold = fold) { } }
+        compose.setContent { FixedReaderScreen(vm, folds = listOfNotNull(fold)) { } }
         awaitSettled(vm, 0)
         compose.waitForIdle()
         val readerBounds = node("reader_page").boundsInWindow
@@ -233,7 +242,7 @@ class FixedReaderFoldableUiTest {
     @Test fun zoomAndPanGestureNeverMovesArtworkUnderTheHinge() {
         val vm = viewModel(cbzFixture("fold-zoom", listOf(portrait, portrait, portrait)))
         var fold by mutableStateOf<ReaderFoldDescriptor?>(null)
-        compose.setContent { FixedReaderScreen(vm, fold = fold) { } }
+        compose.setContent { FixedReaderScreen(vm, folds = listOfNotNull(fold)) { } }
         awaitSettled(vm, 0)
         compose.waitForIdle()
         val readerBounds = node("reader_page").boundsInWindow
@@ -266,7 +275,7 @@ class FixedReaderFoldableUiTest {
     @Test fun foldFlatFoldPreservesTheSameLogicalPageThroughout() {
         val vm = viewModel(cbzFixture("fold-continuity", listOf(portrait, portrait, portrait)))
         var fold by mutableStateOf<ReaderFoldDescriptor?>(null)
-        compose.setContent { FixedReaderScreen(vm, fold = fold) { } }
+        compose.setContent { FixedReaderScreen(vm, folds = listOfNotNull(fold)) { } }
         awaitSettled(vm, 0)
         compose.waitForIdle()
         val readerBounds = node("reader_page").boundsInWindow
@@ -283,5 +292,121 @@ class FixedReaderFoldableUiTest {
         compose.waitForIdle()
         assertEquals("re-folding must never change the authoritative logical page", 1, vm.state.value.page)
         awaitTag("spread_slot_1"); awaitTag("spread_slot_2") // presentation correctly cycles back to a fold-aware spread
+    }
+
+    // ---- (G) horizontal fold: missing test Codex found -- one safe pane, no fake vertical spread -------------
+
+    @Test fun horizontalFoldChoosesCorrectSafePaneWithNoFakeVerticalSpread() {
+        // Explicit SINGLE keeps this case simple and unambiguous: a horizontal fold never produces a real
+        // two-pane side-by-side-across-the-hinge spread (HORIZONTAL_SPLIT always resolves to exactly ONE safe
+        // pane -- see resolveReaderFoldLayout's doc) -- this test's whole point is proving that stays true.
+        val vm = viewModel(cbzFixture("fold-horizontal", listOf(portrait, portrait), spreadMode = SpreadMode.SINGLE))
+        var fold by mutableStateOf<ReaderFoldDescriptor?>(null)
+        compose.setContent { FixedReaderScreen(vm, folds = listOfNotNull(fold)) { } }
+        awaitSettled(vm, 0)
+        compose.waitForIdle()
+        val readerBounds = node("reader_page").boundsInWindow
+        fold = centeredHorizontalFold(readerBounds)
+        compose.waitForIdle()
+        awaitTag("reader_pane_content")
+        val hinge = FoldRect(readerBounds.left, readerBounds.top + readerBounds.height / 2 - 10f,
+            readerBounds.right, readerBounds.top + readerBounds.height / 2 + 10f)
+        val pane = node("reader_pane_content").boundsInWindow
+        assertTrue("the chosen safe pane must sit entirely above or entirely below the horizontal hinge",
+            pane.bottom <= hinge.top + 1f || pane.top >= hinge.bottom - 1f)
+        assertTrue("the safe pane must never intersect the hinge band itself",
+            !(pane.bottom > hinge.top && pane.top < hinge.bottom))
+        // No fake vertical (side-by-side) spread: neither spread_slot_* tag exists under a horizontal fold.
+        assertTrue("a horizontal fold must never produce a fake vertical spread",
+            compose.onAllNodesWithTag("spread_slot_0").fetchSemanticsNodes().isEmpty())
+        assertEquals(0, vm.state.value.page)
+    }
+
+    // ---- (H) corrupt SECOND pair member under a vertical fold (untested combination Codex flagged) -----------
+
+    @Test fun corruptSecondSpreadMemberStaysInItsOwnPaneWithNoSubstitutionOrHingeIntersection() {
+        // 5 pages so pair [3, 4] (0-based) is a genuine, non-final... actually [3,4] IS the final pair here (5
+        // pages, 0-based indices 0..4) -- deliberately chosen to also prove no substitution with a nonexistent
+        // "page 5". Page index 4 (the SECOND member of this pair, 1-based fixture index 5) is corrupted.
+        val vm = viewModel(cbzFixture("fold-corrupt-second", listOf(portrait, portrait, portrait, portrait, portrait),
+            corruptPages = setOf(5)))
+        var fold by mutableStateOf<ReaderFoldDescriptor?>(null)
+        compose.setContent { FixedReaderScreen(vm, folds = listOfNotNull(fold)) { } }
+        awaitSettled(vm, 0)
+        compose.waitForIdle()
+        val readerBounds = node("reader_page").boundsInWindow
+        fold = centeredVerticalFold(readerBounds)
+        compose.waitForIdle()
+        vm.showPage(3) // -> logical pair [3, 4], page 4 (0-based) corrupt
+        awaitSettled(vm, 3)
+        awaitTag("spread_slot_3"); awaitTag("spread_slot_4")
+        val hinge = FoldRect(readerBounds.left + readerBounds.width / 2 - 10f, readerBounds.top,
+            readerBounds.left + readerBounds.width / 2 + 10f, readerBounds.bottom)
+        val healthy = node("spread_slot_3").boundsInWindow // first/healthy member
+        val corrupt = node("spread_slot_4").boundsInWindow // SECOND member, corrupted
+        assertTrue("the healthy first member must stay in its own left pane", healthy.right <= hinge.left + 1f)
+        assertTrue("the corrupt SECOND member's placeholder must stay in its own right pane", corrupt.left >= hinge.right - 1f)
+        assertFalse("the healthy member must never intersect the hinge", healthy.right > hinge.left && healthy.left < hinge.right)
+        assertFalse("the corrupt member's placeholder must never intersect the hinge", corrupt.right > hinge.left && corrupt.left < hinge.right)
+        // No substitution with a (nonexistent) page 5: the authoritative logical page stays exactly 3, and no
+        // spread_slot_5 tag is ever created.
+        assertEquals(3, vm.state.value.page)
+        assertTrue(compose.onAllNodesWithTag("spread_slot_5").fetchSemanticsNodes().isEmpty())
+        // RTL/LTR physical identity remains correct: in LTR, the lower logical index (3, healthy) is physically
+        // LEFT and the higher logical index (4, corrupt) is physically RIGHT -- unchanged by the corruption.
+        assertTrue(healthy.left < corrupt.left)
+    }
+
+    // ---- (I) Finding 1 integration: a real one-finger drag under Fit Width moves the shared reading position --
+
+    private fun probeStateDescription(): String {
+        val node = node("reader_transform_probe")
+        return node.config.getOrNull(SemanticsProperties.StateDescription) ?: "1.0,0.0,0.0,0.0"
+    }
+
+    @Test fun oneFingerVerticalDragAtBaseFitWidthScaleMovesTheSharedReadingPositionForMismatchedHeightPages() {
+        // Two deliberately very differently-shaped pages once fitted to their own pane width: a short-ish
+        // portrait page and a much taller page -- mirrors the Finding 1 regression's own "substantially
+        // different fitted heights" requirement through the REAL production gesture handler, not just the pure
+        // math (see FixedReaderTransformTest for that).
+        val shortPage = 300 to 450
+        val tallPage = 300 to 1800
+        val item = cbzFixture("fold-fitwidth-drag", listOf(portrait, shortPage, tallPage))
+        val withFitWidth = com.d4guilar.shelfos.domain.library.LibraryItem(item.id, item.title, item.creator, item.category,
+            item.sourceUri, item.format, item.fileName, item.byteSize, managedPath = item.managedPath,
+            preferences = ReaderPreferences(fit = FitMode.WIDTH, spreadMode = SpreadMode.SPREAD).json())
+        val vm = viewModel(withFitWidth)
+        var fold by mutableStateOf<ReaderFoldDescriptor?>(null)
+        compose.setContent { FixedReaderScreen(vm, folds = listOfNotNull(fold)) { } }
+        awaitSettled(vm, 0)
+        compose.waitForIdle()
+        val readerBounds = node("reader_page").boundsInWindow
+        fold = centeredVerticalFold(readerBounds)
+        compose.waitForIdle()
+        vm.turn(1) // -> logical pair [1, 2]
+        awaitSettled(vm, 1)
+        awaitTag("spread_slot_1"); awaitTag("spread_slot_2")
+
+        val before = probeStateDescription().split(",")[3].toFloat()
+        assertEquals("folded Fit Width must begin at reading start (top), never centered", 0f, before, 0.01f)
+
+        // A one-finger, vertical-dominant drag at BASE scale (no pinch, scale == 1f) -- the exact gesture the
+        // pre-remediation isTransformGesture gate left completely unconsumed for a fold spread.
+        compose.onNodeWithTag("reader_page").performTouchInput {
+            swipe(start = Offset(centerX, centerY + 300f), end = Offset(centerX, centerY - 3000f), durationMillis = 200)
+        }
+        compose.waitForIdle()
+        val after = probeStateDescription().split(",")[3].toFloat()
+        assertTrue("a one-finger vertical drag at base Fit Width scale must move the shared reading position " +
+            "(got before=$before, after=$after)", after > before)
+
+        // Drag back toward the start returns the shared position back down, with no unreachable region/overscroll.
+        compose.onNodeWithTag("reader_page").performTouchInput {
+            swipe(start = Offset(centerX, centerY - 300f), end = Offset(centerX, centerY + 3000f), durationMillis = 200)
+        }
+        compose.waitForIdle()
+        val returned = probeStateDescription().split(",")[3].toFloat()
+        assertEquals("dragging all the way back must return to reading start with no stuck/unreachable region",
+            0f, returned, 0.01f)
     }
 }

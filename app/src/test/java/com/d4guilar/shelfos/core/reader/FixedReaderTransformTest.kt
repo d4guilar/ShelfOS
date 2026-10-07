@@ -350,4 +350,117 @@ class FixedReaderTransformTest {
         assertTrue(result.isFinite())
         assertTrue(result >= 0f)
     }
+
+    // ---- Phase 3D Codex R1 remediation, finding 1: fold-spread shared reading-position model -----------------
+    // REQUIRED regression (per the remediation contract): mixed-height panes, both substantially different from
+    // each other and from the pane itself. Proves the NEW per-pane-overflow model does NOT reproduce
+    // `3550484`'s own `min(leftMaxY, rightMaxY)` defect, which these exact numbers are chosen to demonstrate.
+
+    @Test fun foldPaneVerticalOverflowMixedHeightsEachPaneGetsItsOwnFullRangeNeverTheOthersMinimum() {
+        // Pane height 1000; left page fitted to 1600 (overflow 600); right page fitted to 2600 (overflow 1600).
+        val paneHeight = 1000f
+        val leftOverflow = foldPaneVerticalOverflow(fittedHeight = 1600f, paneHeight = paneHeight, scale = 1f)
+        val rightOverflow = foldPaneVerticalOverflow(fittedHeight = 2600f, paneHeight = paneHeight, scale = 1f)
+        assertEquals(600f, leftOverflow, 0.01f)
+        assertEquals(1600f, rightOverflow, 0.01f)
+        // The exact `3550484` defect this replaces: `min(600, 1600) == 600` would have clamped the TALLER right
+        // page to the SHORTER left page's own range, permanently hiding 1000px of the right page. The new model
+        // never computes any such shared minimum at all -- each pane's own overflow is used directly.
+        val oldBrokenSharedOverflow = minOf(leftOverflow, rightOverflow)
+        assertEquals(600f, oldBrokenSharedOverflow, 0.01f) // what the OLD model would have wrongly shared
+        assertNotEquals("the new model must not silently reproduce the old shared-minimum value for the taller pane",
+            oldBrokenSharedOverflow, rightOverflow)
+    }
+
+    @Test fun foldPaneReadingTranslationYBothPagesStartAtTheirOwnTopAtProgressZero() {
+        // progress == 0 (reading start): translationY == +ownOverflow/2 for BOTH panes -- shifting each page's
+        // own top down to its own pane's top, never centered, regardless of how different the two overflows are.
+        val leftTop = foldPaneReadingTranslationY(progress = 0f, ownOverflow = 600f)
+        val rightTop = foldPaneReadingTranslationY(progress = 0f, ownOverflow = 1600f)
+        assertEquals(300f, leftTop, 0.01f)
+        assertEquals(800f, rightTop, 0.01f)
+    }
+
+    @Test fun foldPaneReadingTranslationYBothPagesReachTheirOwnBottomAtProgressOne() {
+        // progress == 1 (reading end): translationY == -ownOverflow/2 -- each page's own bottom reaches its own
+        // pane's bottom, independent of the sibling pane's overflow. The taller right page's full 1600px
+        // overflow is fully reachable; it is never clamped to the shorter left page's 600px range.
+        val leftBottom = foldPaneReadingTranslationY(progress = 1f, ownOverflow = 600f)
+        val rightBottom = foldPaneReadingTranslationY(progress = 1f, ownOverflow = 1600f)
+        assertEquals(-300f, leftBottom, 0.01f)
+        assertEquals(-800f, rightBottom, 0.01f)
+        // Reachable travel distance for each pane across the full [0,1] progress range equals its OWN overflow,
+        // not the other pane's (the direct refutation of the old `min()` clamp).
+        val leftTravel = foldPaneReadingTranslationY(0f, 600f) - foldPaneReadingTranslationY(1f, 600f)
+        val rightTravel = foldPaneReadingTranslationY(0f, 1600f) - foldPaneReadingTranslationY(1f, 1600f)
+        assertEquals(600f, leftTravel, 0.01f)
+        assertEquals(1600f, rightTravel, 0.01f)
+        assertTrue("the taller page's own reachable travel must exceed the shorter page's, never be clamped to it",
+            rightTravel > leftTravel)
+    }
+
+    @Test fun foldPaneReadingTranslationYIsZeroWhenThisPaneHasNoOverflowRegardlessOfSiblingOrProgress() {
+        // A page that already fits its own pane can never be shifted into its own letterboxed margin, even while
+        // its sibling pane (not modeled here -- each pane's own overflow is independent) has plenty of overflow.
+        assertEquals(0f, foldPaneReadingTranslationY(progress = 0f, ownOverflow = 0f), 0f)
+        assertEquals(0f, foldPaneReadingTranslationY(progress = 1f, ownOverflow = 0f), 0f)
+        assertEquals(0f, foldPaneReadingTranslationY(progress = 0.5f, ownOverflow = 0f), 0f)
+    }
+
+    @Test fun foldPaneReadingTranslationYCoercesOutOfRangeOrNonFiniteProgressIntoZeroToOne() {
+        val overflow = 400f
+        assertEquals(foldPaneReadingTranslationY(0f, overflow), foldPaneReadingTranslationY(-5f, overflow), 0f)
+        assertEquals(foldPaneReadingTranslationY(1f, overflow), foldPaneReadingTranslationY(5f, overflow), 0f)
+        assertEquals(foldPaneReadingTranslationY(0f, overflow), foldPaneReadingTranslationY(Float.NaN, overflow), 0f)
+    }
+
+    @Test fun foldSpreadDragToProgressOneFingerDragAtBaseScaleMovesTheSharedPositionTowardTheEnd() {
+        // The exact Finding 1 blocker: "ordinary one-finger vertical drag at base Fit Width scale (scale == 1f)
+        // must move the shared reading position" -- `referenceOverflow` here is exactly what a real base-scale
+        // Fit Width fold spread with a tall page provides (foldPaneVerticalOverflow at scale 1), never requiring
+        // a pinch or a pre-existing zoom.
+        val referenceOverflow = foldPaneVerticalOverflow(fittedHeight = 2600f, paneHeight = 1000f, scale = 1f)
+        assertTrue("fixture must actually produce overflow to drag against", referenceOverflow > 0f)
+        // Dragging UP (finger moves up, negative deltaPy by Compose's own pan convention for an upward drag)
+        // moves progress TOWARD the end (closer to 1).
+        val afterDragUp = foldSpreadDragToProgress(progress = 0f, deltaPy = -referenceOverflow / 2f, referenceOverflow = referenceOverflow)
+        assertEquals(0.5f, afterDragUp, 0.01f)
+        // Dragging back DOWN returns toward the start.
+        val afterDragDown = foldSpreadDragToProgress(progress = afterDragUp, deltaPy = referenceOverflow / 2f, referenceOverflow = referenceOverflow)
+        assertEquals(0f, afterDragDown, 0.01f)
+    }
+
+    @Test fun foldSpreadDragToProgressClampsToZeroAndOneWithNoOverscroll() {
+        val referenceOverflow = 1000f
+        assertEquals(1f, foldSpreadDragToProgress(0.9f, deltaPy = -referenceOverflow * 10f, referenceOverflow), 0f)
+        assertEquals(0f, foldSpreadDragToProgress(0.1f, deltaPy = referenceOverflow * 10f, referenceOverflow), 0f)
+    }
+
+    @Test fun foldSpreadDragToProgressStaysAtZeroWhenNothingToScroll() {
+        // Both panes already fit (overflow 0) -- dragging must never move progress away from 0 (there is nothing
+        // to reveal), confirming the model never invents motion for content that already fits.
+        assertEquals(0f, foldSpreadDragToProgress(0f, deltaPy = -500f, referenceOverflow = 0f), 0f)
+    }
+
+    @Test fun foldSpreadDragToProgressTreatsNonFiniteInputsSafely() {
+        assertEquals(0f, foldSpreadDragToProgress(Float.NaN, 10f, 500f), 0f)
+        val unchanged = foldSpreadDragToProgress(0.4f, Float.NaN, 500f)
+        assertEquals(0.4f, unchanged, 0f)
+    }
+
+    @Test fun foldPaneVerticalOverflowIsZeroWhenContentAlreadyFitsThePaneAtTheCurrentScale() {
+        assertEquals(0f, foldPaneVerticalOverflow(fittedHeight = 600f, paneHeight = 1000f, scale = 1f), 0f)
+        // Scaled down below the pane's own height still yields no overflow (never negative).
+        assertEquals(0f, foldPaneVerticalOverflow(fittedHeight = 1600f, paneHeight = 1000f, scale = 0.5f), 0f)
+    }
+
+    @Test fun foldPaneVerticalOverflowGrowsWithScaleExactlyLikeFixedReaderMaxPanDoubled() {
+        // overflow(scale) == 2 * fixedReaderMaxPan(fittedHeight, paneHeight, scale) by construction (overflow is
+        // the FULL excess; fixedReaderMaxPan is the symmetric HALF-excess bound) -- confirms the two models agree
+        // on the underlying "how much does scaled content exceed the viewport" quantity.
+        val fittedHeight = 1200f; val paneHeight = 500f; val scale = 3f
+        val overflow = foldPaneVerticalOverflow(fittedHeight, paneHeight, scale)
+        val halfExcess = fixedReaderMaxPan(fittedHeight, paneHeight, scale)
+        assertEquals(overflow, halfExcess * 2f, 0.01f)
+    }
 }

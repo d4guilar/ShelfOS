@@ -13,6 +13,7 @@ import com.d4guilar.shelfos.core.reader.FitMode
 import com.d4guilar.shelfos.core.reader.FixedReaderFactory
 import com.d4guilar.shelfos.core.reader.RenderMemoryPolicy
 import com.d4guilar.shelfos.core.reader.ReaderPreferences
+import com.d4guilar.shelfos.core.reader.ReaderRenderGeometry
 import com.d4guilar.shelfos.data.library.LibraryRepository
 import com.d4guilar.shelfos.domain.library.LibraryItem
 import com.d4guilar.shelfos.domain.library.MediaCategory
@@ -137,7 +138,7 @@ class FixedReaderViewModelLifecycleTest {
         val beforeWidth = before.width
         val beforeHeight = before.height
 
-        vm.updateViewport(1920, 1080, 960)
+        vm.updateViewport(ReaderRenderGeometry.Single(1920, 1080, 960))
         vm.retry()
         awaitUntil { vm.state.value.loading || vm.state.value.bitmap !== before }
         val after = awaitStableBitmap(vm)

@@ -103,9 +103,57 @@ data class ReaderFoldLayout(val presentation: FoldPresentation, val flatPane: Fo
  * is widened, symmetrically around the hinge's own center line, to at least [minGutterPx] -- "a hard page
  * boundary" always exists even when the platform reports a literal zero-width separating crease.
  */
-fun resolveReaderFoldLayout(readerBoundsWindow: FoldRect, fold: ReaderFoldDescriptor?, minGutterPx: Float): ReaderFoldLayout {
+/**
+ * Phase 3D Codex R1 remediation, finding 3: selects the ONE relevant [ReaderFoldDescriptor] that actually
+ * constrains THIS reader surface, from potentially several platform-reported features. `3550484`'s production
+ * code picked a feature with `filter { relevant } .firstOrNull()` BEFORE reader bounds were known at all --
+ * meaning a feature that is globally relevant but sits entirely outside the reader could be chosen (by platform
+ * list order) over a DIFFERENT feature that genuinely intersects the reader and should have constrained its
+ * layout, which would then never be considered. This function is therefore only ever meaningful once
+ * [readerBoundsWindow] is already known (callers never invoke this before the reader has been measured).
+ *
+ * Selection, in order:
+ * 1. Discard every descriptor that is not [ReaderFoldDescriptor.isRelevant] (a merely-visible, non-separating,
+ *    non-occluding crease must never constrain the reader -- unchanged from the single-descriptor contract).
+ * 2. Discard every descriptor whose [ReaderFoldDescriptor.bounds] does not intersect [readerBoundsWindow] at all
+ *    (see [FoldRect.intersect] -- a crease elsewhere in the window, e.g. behind a navigation rail, must never
+ *    split the reader).
+ * 3. Among what remains, prefer the descriptor whose intersection with [readerBoundsWindow] has the LARGEST area
+ *    -- the feature most actually "in the way" of this specific reader surface, which is the one genuine signal
+ *    of "how much this feature constrains this reader" available from pure geometry alone.
+ * 4. On an exact area tie, break deterministically by the intersection's own top-left position (smallest `top`,
+ *    then smallest `left`) -- a fixed, reproducible geometric rule, never the platform's own (unspecified, not a
+ *    contract) `displayFeatures` list order.
+ *
+ * This resolves AT MOST ONE constraining feature -- genuine multi-fold/tri-fold multi-pane reading remains
+ * explicitly out of scope (AGENTS.md's 3D contract); this only prevents a WRONG single selection when more than
+ * one platform `FoldingFeature` happens to be reported for the same window.
+ */
+fun selectRelevantFoldDescriptor(readerBoundsWindow: FoldRect, descriptors: List<ReaderFoldDescriptor>): ReaderFoldDescriptor? {
+    if (readerBoundsWindow.isEmpty) return null
+    return descriptors.asSequence().filter { it.isRelevant }
+        .mapNotNull { d -> d.bounds.intersect(readerBoundsWindow)?.let { d to it } }
+        .sortedWith(compareByDescending<Pair<ReaderFoldDescriptor, FoldRect>> { (_, i) -> i.width.toDouble() * i.height }
+            .thenBy { (_, i) -> i.top }.thenBy { (_, i) -> i.left })
+        .firstOrNull()?.first
+}
+
+fun resolveReaderFoldLayout(readerBoundsWindow: FoldRect, fold: ReaderFoldDescriptor?, minGutterPx: Float): ReaderFoldLayout =
+    resolveReaderFoldLayout(readerBoundsWindow, listOfNotNull(fold), minGutterPx)
+
+/**
+ * Phase 3D Codex R1 remediation, finding 3: the multiple-`FoldingFeature`-aware entry point. [descriptors] is
+ * EVERY relevant-or-not platform feature `MainActivity` mapped this frame (never pre-filtered to one before
+ * reader bounds were known -- see [selectRelevantFoldDescriptor]'s doc for why selecting before intersection is
+ * the defect this fixes: a feature that is relevant but sits entirely outside this specific reader surface must
+ * never be chosen over a different feature that actually intersects it). Delegates to the exact same
+ * single-descriptor resolution logic as before once [selectRelevantFoldDescriptor] has picked (at most) one
+ * genuinely constraining descriptor -- no other part of this function's geometry math changes.
+ */
+fun resolveReaderFoldLayout(readerBoundsWindow: FoldRect, descriptors: List<ReaderFoldDescriptor>, minGutterPx: Float): ReaderFoldLayout {
     val local = FoldRect.ofSize(readerBoundsWindow.width, readerBoundsWindow.height)
-    if (readerBoundsWindow.isEmpty || fold == null || !fold.isRelevant) return ReaderFoldLayout.flat(local)
+    if (readerBoundsWindow.isEmpty) return ReaderFoldLayout.flat(local)
+    val fold = selectRelevantFoldDescriptor(readerBoundsWindow, descriptors) ?: return ReaderFoldLayout.flat(local)
     val intersection = fold.bounds.intersect(readerBoundsWindow) ?: return ReaderFoldLayout.flat(local)
     val hingeLocal = intersection.translated(readerBoundsWindow.left, readerBoundsWindow.top)
     val safeGutter = minGutterPx.coerceAtLeast(0f)

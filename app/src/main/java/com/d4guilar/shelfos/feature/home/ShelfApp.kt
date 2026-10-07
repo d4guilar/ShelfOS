@@ -56,8 +56,13 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import com.d4guilar.shelfos.core.designsystem.resolve
+import com.d4guilar.shelfos.core.reader.FoldOrientation
+import com.d4guilar.shelfos.core.reader.FoldRect
+import com.d4guilar.shelfos.core.reader.ReaderFoldDescriptor
+import com.d4guilar.shelfos.core.reader.legacySafePaneInset
 import com.d4guilar.shelfos.core.theme.reducedMotionEnabled
 
 /** Canonical global destinations. Shelves replaced the earlier Collections placeholder (ADR-0020). */
@@ -72,7 +77,14 @@ private const val RESTORE_FOCUS = "restoreFocus"
 
 @Composable
 fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: AppContainer, onSystemBack: () -> Unit,
-    readerFold: com.d4guilar.shelfos.core.reader.ReaderFoldDescriptor? = null, onReadingChanged: (Boolean) -> Unit = {}) {
+    // Phase 3D Codex R1 remediation, finding 3 + "route-entry race" (finding 2's sub-section): `folds` is EVERY
+    // relevant-or-not platform fold descriptor MainActivity mapped this frame (never pre-filtered to one --
+    // `core.reader`'s own selectRelevantFoldDescriptor does that, once the reader's own bounds are known).
+    // `legacyWindowBounds` is MainActivity's own measured window-space bounds, used ONLY for the non-reader
+    // legacy fold-padding calculation below -- computed HERE, synchronously, in the SAME composition pass as
+    // `reading` (see `reading`'s own doc just below for why this replaced an async `onReadingChanged` callback).
+    folds: List<ReaderFoldDescriptor> = emptyList(),
+    legacyWindowBounds: Rect = Rect.Zero) {
     val t = LocalShelfTokens.current
     val context = LocalContext.current
     val nav = rememberNavController()
@@ -89,10 +101,28 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
     val importState by importing.state.collectAsStateWithLifecycle()
     val libraryError by library.error.collectAsStateWithLifecycle()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { importing.choose(it.toString()) } }
+    // Phase 3D Codex R1 remediation, "route-entry race": `reading` was ALWAYS known synchronously right here
+    // (this `route.startsWith` check never depended on anything async) -- the defect was that MainActivity used
+    // to learn this value one frame LATE, through an `onReadingChanged` callback fired from a `LaunchedEffect`,
+    // and applied its own non-reader legacy fold padding using that stale value. The fix moves the legacy
+    // padding CALCULATION itself down here, to this exact point in composition where `reading` is already
+    // correct -- no callback, no `LaunchedEffect`, no cross-composable round trip, so a fixed reader's first
+    // real measurement is never preceded by a frame of wrong (legacy-padded) geometry.
     val reading = route.startsWith("reader")
-    // MainActivity's Phase-0 legacy fold padding only applies to non-reader screens (see its own doc); it learns
-    // whether the reader route is active purely through this callback, never by inspecting navigation itself.
-    LaunchedEffect(reading) { onReadingChanged(reading) }
+    val density = LocalDensity.current
+    val legacyPadding = with(density) {
+        if (reading || legacyWindowBounds == Rect.Zero) PaddingValues(0.dp)
+        else {
+            val legacyFold = folds.firstOrNull { it.isRelevant } // byte-for-byte the pre-3D `firstOrNull` choice
+            if (legacyFold == null) PaddingValues(0.dp) else {
+                val vertical = legacyFold.orientation == FoldOrientation.VERTICAL
+                val windowBounds = FoldRect(legacyWindowBounds.left, legacyWindowBounds.top,
+                    legacyWindowBounds.right, legacyWindowBounds.bottom)
+                val inset = legacySafePaneInset(windowBounds, legacyFold.bounds, vertical)
+                PaddingValues.Absolute(inset.left.toDp(), inset.top.toDp(), inset.right.toDp(), inset.bottom.toDp())
+            }
+        }
+    }
     ImportDialogs(importState, importing::dismiss, importing::copySource, importing::confirm)
     LaunchedEffect(importState.imported) { importState.imported?.let { item ->
         library.showImported(item, item.id); importing.consumed()
@@ -138,7 +168,7 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
             pendingTransition = PendingCoverTransition(item, coverBounds, proceed)
         else proceed()
     }
-    BoxWithConstraints(Modifier.fillMaxSize().background(t.colors.canvas)
+    BoxWithConstraints(Modifier.fillMaxSize().background(t.colors.canvas).padding(legacyPadding)
         .onGloballyPositioned { rootOrigin = it.boundsInWindow().topLeft }.onPreviewKeyEvent { event ->
         if (reading) return@onPreviewKeyEvent false
         val command = event.nativeKeyEvent.shelfCommand(InputContext.LIBRARY)
@@ -207,7 +237,7 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                         val reader: FixedReaderViewModel = viewModel(factory = viewModelFactory { initializer {
                             FixedReaderViewModel(id, container.library, container.fixedReaders, container.backgroundScope)
                         } })
-                        FixedReaderScreen(reader, fold = readerFold) { nav.popBackStack() }
+                        FixedReaderScreen(reader, folds = folds) { nav.popBackStack() }
                     }
                     composable(Destination.SEARCH.route) {
                         Column(Modifier.fillMaxSize().padding(t.spacing.medium), verticalArrangement = Arrangement.spacedBy(t.spacing.medium)) {

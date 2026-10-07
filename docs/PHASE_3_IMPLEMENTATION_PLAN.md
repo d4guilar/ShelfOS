@@ -683,15 +683,16 @@ padding (`PaddingValues(0.dp)`) and hands the fixed reader the full safe-drawing
 raw fold descriptor, so the reader is never pre-collapsed into one pane before it can do its own
 fold-aware layout.
 
-**Fold descriptor / feature filtering**: `ReaderFoldDescriptor.isRelevant` is `isSeparating ||
-occludesFully` — a merely-visible, non-separating, non-occluding crease is filtered out before it
-ever reaches `resolveReaderFoldLayout`. A feature whose bounds don't intersect the reader's own
-measured bounds at all degrades to `FoldPresentation.FLAT` (see `resolveReaderFoldLayout`'s doc).
-Never persisted (no Room, no SavedState, no device-specific info) — re-derived fresh from the
-platform on every composition/recreation. Only one `FoldingFeature` is realistically expected
-(the existing `MainActivity` selection already picks the first relevant one); the pure resolver's
-own intersection-with-reader-bounds step is what actually makes "irrelevant feature ignored"
-deterministic regardless of how many features the platform reports.
+**Fold descriptor / feature filtering (the single-feature assumption SUPERSEDED by §26a's finding
+3 — kept here only as the historical starting point)**: `ReaderFoldDescriptor.isRelevant` is
+`isSeparating || occludesFully` — a merely-visible, non-separating, non-occluding crease is
+filtered out before it ever reaches `resolveReaderFoldLayout`. A feature whose bounds don't
+intersect the reader's own measured bounds at all degrades to `FoldPresentation.FLAT` (see
+`resolveReaderFoldLayout`'s doc). Never persisted (no Room, no SavedState, no device-specific
+info) — re-derived fresh from the platform on every composition/recreation. As originally landed,
+only one `FoldingFeature` was realistically expected and `MainActivity` picked the first relevant
+one BEFORE reader bounds were known; §26a's finding 3 replaced that with bounds-aware selection
+across every reported feature.
 
 **Coordinate mapping (the slice's flagged highest-risk area)**: `resolveReaderFoldLayout` takes
 the reader surface's own bounds AND the fold's bounds both in WINDOW coordinates (exactly what
@@ -743,7 +744,8 @@ left — both via the UNCHANGED `PageGroup.physicalOrder(rtl)`. `state.page`/loc
 never reordered; only physical placement (and, for render-request sizing, which pane's pixel
 width a logical page is decoded at) depends on direction.
 
-**Fit Page / Fit Width / zoom-pan**: FLAT/HORIZONTAL_SPLIT reuse ALL existing 3C transform code
+**Fit Page / Fit Width / zoom-pan (Fit-Width-under-fold-spread portion SUPERSEDED by §26a's
+finding 1 — kept here only as the historical starting point)**: FLAT/HORIZONTAL_SPLIT reuse ALL existing 3C transform code
 unchanged, confined to the active pane's own size. VERTICAL_SPLIT's SOLO page also reuses the
 existing single-page code, confined to the chosen pane. VERTICAL_SPLIT's SPREAD uses a new, small,
 pure fold-aware renderer: each physical slot independently fits its OWN pane
@@ -776,15 +778,16 @@ bitmap cache was added anywhere. Sequential (never parallel) decode inside the s
 is unchanged. `FixedReaderFoldRenderRequestTest` directly asserts both fold-spread slots' decoded
 bitmaps stay within `MAX_SPREAD_BITMAP_BYTES` despite the new asymmetric width hint.
 
-**Render-storm safety**: the effective layout/decode-triggering key is unchanged from 3C —
-`spreadActive()`'s boolean result (now itself fold-aware). `updateViewport` stores every new
-`foldPaneWidths` value unconditionally (so the NEXT natural render always uses current geometry)
-but only actually triggers a new render on the rare call where `spreadActive()`'s boolean result
-changes — a continuous stream of fold-layout recomputation (Compose placement/clipping, which
-happens every frame for UI purposes) never forces a new decode. Proven by
-`FixedReaderFoldRenderRequestTest.continuousFoldPaneWidthChangesThatNeverFlipSpreadActiveNeverTriggerANewDecode`
-(five drifting-but-decision-stable pane-width updates: zero new decodes; the one decision-flipping
-update: exactly the required re-render, never silently suppressed).
+**Render-storm safety (SUPERSEDED by §26a's finding 2 — kept here only as the historical starting
+point)**: as originally landed in `3550484`, the effective layout/decode-triggering key was
+`spreadActive()`'s boolean result alone (now itself fold-aware). `updateViewport` stored every new
+`foldPaneWidths` value unconditionally but only actually triggered a new render on the rare call
+where that one boolean changed. Codex R1 found this too coarse (see §26a, finding 2) — it is now
+the richer `EffectiveRenderKey` (presentation shape + bucketed per-slot width/height +
+`spreadSlot`), not a bare boolean. The render-storm coalescing GOAL (continuous fold-layout
+recomputation never forces a new decode; only a materially different decision/geometry does) is
+unchanged and re-proven against the new key by
+`FixedReaderFoldRenderRequestTest.continuousFoldPaneWidthChangesThatNeverFlipSpreadActiveNeverTriggerANewDecode`.
 
 **Fold/unfold continuity**: `state.page`, the locator, progress, `SpreadMode`, and reading
 direction are untouched by any fold-layout change — `FixedReaderViewModel` never writes a fold-
@@ -796,7 +799,8 @@ re-clamp effect. Proven by `FixedReaderFoldableUiTest.foldFlatFoldPreservesTheSa
 extra position advancement from posture change alone, presentation correctly cycling single/
 fold-spread/flat-spread as appropriate).
 
-**Reader chrome / dialogs**: under a `VERTICAL_SPLIT`, the top controls row and the bottom
+**Reader chrome / dialogs (dialogs portion SUPERSEDED by §26a's finding 4 — kept here only as the
+historical starting point)**: under a `VERTICAL_SPLIT`, the top controls row and the bottom
 Previous/Next/slider row are both confined to ONE safe pane (`chromePane`, the same
 `selectSoloPane` choice a solo page would use) via offset+width, computed OUTSIDE the existing
 RTL `CompositionLocalProvider` so the pane's real physical position is never itself mirrored —
@@ -831,19 +835,21 @@ pre-3D) was reused as-is — no version change, no Accompanist, no device-vendor
 **Room schema**: unchanged. **ReaderPreferences**: unchanged (no new fold/gutter field; `SpreadMode`
 remains the only user-facing control, exactly as the 3D contract requires).
 
-**Tests**: `core/reader/FoldLayoutTest.kt` (new, pure JVM, 22 tests — the full required matrix:
-no-feature/flat parity, non-separating/non-occluding crease ignored, feature outside reader
-bounds ignored, vertical center/asymmetric/full-occlusion/zero-width hinges, horizontal fold safe-
-pane selection + exact tie-break, malformed/empty-bounds safe fallback, solo-pane selection
-including the LTR/RTL tie-break, AUTO's fold-aware policy (rejects a tiny-sliver pane despite
-ample total width; rejects below-threshold combined width; accepts two individually-useful
-panes), explicit SPREAD's two-usable-panes policy, and the extracted `legacySafePaneInset`
-non-reader-regression-guard cases). `app/src/androidTest/.../FixedReaderFoldableUiTest.kt` (new,
-6 tests, cases A–F from the required instrumented matrix). `FixedReaderFoldRenderRequestTest.kt`
+**Tests (as landed in `3550484`)**: `core/reader/FoldLayoutTest.kt` (new, pure JVM, 22 tests — the
+full required matrix: no-feature/flat parity, non-separating/non-occluding crease ignored,
+feature outside reader bounds ignored, vertical center/asymmetric/full-occlusion/zero-width
+hinges, horizontal fold safe-pane selection + exact tie-break, malformed/empty-bounds safe
+fallback, solo-pane selection including the LTR/RTL tie-break, AUTO's fold-aware policy (rejects a
+tiny-sliver pane despite ample total width; rejects below-threshold combined width; accepts two
+individually-useful panes), explicit SPREAD's two-usable-panes policy, and the extracted
+`legacySafePaneInset` non-reader-regression-guard cases). `app/src/androidTest/.../FixedReaderFoldableUiTest.kt`
+(new, 6 tests, cases A–F from the required instrumented matrix). `FixedReaderFoldRenderRequestTest.kt`
 (new, 2 tests — render-request pane-aware sizing + the render-storm coalescing guard). Regression:
 `FixedReaderSpreadUiTest`, `FixedReaderSpreadViewModelTest`, `ReaderPreferencesSpreadInstrumentedTest`,
-`FixedReaderViewModelLifecycleTest` all re-run and PASS unchanged. See `docs/VALIDATION.md`'s
-"PHASE 3D" entry for exact commands/results.
+`FixedReaderViewModelLifecycleTest` all re-run and PASS unchanged. **This test list grew
+substantially in the Codex R1 remediation commit (§26a) — see `docs/VALIDATION.md`'s "PHASE 3D
+CODEX R1 REMEDIATION" entry for the current exact counts/commands/results; the numbers above are
+historical, as originally landed, not the current total.**
 
 **What this slice deliberately does NOT do** (explicitly 3E/3F/future scope): no
 `PublicationFormat.CBR`/RAR support; no tabletop controls pane/notes-below-fold/TTS deck/
@@ -852,6 +858,137 @@ foldable posture-transition check (honest gap, flagged for 3F — the determinis
 descriptor tests above are the primary gate per §15); no redesign of Appearance/Pages dialogs
 beyond the verification noted above; no Fit-Width verticalScroll equivalent for the vertical-
 split spread case (documented narrowing, not a regression).
+
+### 26a. 3D Codex R1 remediation (this commit, on top of 3550484)
+
+Codex R1 reviewed the §26 candidate and returned CHANGES REQUIRED on 5 findings, while explicitly
+accepting the core architecture (coordinate mapping, AUTO/SPREAD pane policy, hinge clipping,
+memory model, continuity, non-reader legacy behavior — none of that was touched). This records the
+actual final behavior and corrects several §26 claims Codex found overstated or wrong. This is a
+single remediation commit; it does not start 3E.
+
+**Finding 1 (Fit Width fold-spread reachability — §26's claim corrected).** §26 claimed Fit Width's
+vertical-fold-spread reachability model ("vertical overflow... reached through the same shared
+pan, exactly like Fit Page's reachability model") was fully reachable; it was not. The actual
+model was one shared literal `panY` pixel value, clamped to `min(leftPane's own max pan,
+rightPane's own max pan)` — wrong whenever the two panes' fitted heights differ materially (a
+pane height 1000 with fitted heights 1600/2600 clamped the shared value to the SHORTER page's
+±300 range, permanently hiding ~500px at both ends of the taller page), and additionally never
+consumed an ordinary one-finger vertical drag at base (`scale == 1f`) Fit Width scale at all (no
+`verticalScroll` container exists for a fold-spread pane, and the old `isTransformGesture` gate
+required a pinch or an existing zoom). **Final model**: one shared, normalized vertical reading
+`progress` (`0f` = top/reading-start, `1f` = bottom/reading-end), mapped INDEPENDENTLY into each
+pane's own overflow range via `foldPaneVerticalOverflow`/`foldPaneReadingTranslationY`
+(`FixedReaderTransform.kt`) — never a shared pixel bound. Folded Fit Width now begins at reading
+start (top), never centered. An ordinary one-finger vertical-dominant drag moves `progress`
+directly at any scale (including base scale); a pinch or a zoomed horizontal-dominant drag
+continues to drive shared `panX`/`scale` exactly as before, combined with the same `progress`
+drag via `foldSpreadDragToProgress`. Applies uniformly to Fit Page's own zoomed fold-spread case
+too (the underlying `min()` defect was fit-mode-agnostic). Proven by
+`FixedReaderTransformTest`'s mixed-height-pane cases (pane 1000 / fitted 1600 / fitted 2600,
+matching this exact example) and `FixedReaderFoldableUiTest
+.oneFingerVerticalDragAtBaseFitWidthScaleMovesTheSharedReadingPositionForMismatchedHeightPages`
+(real production gesture, real mismatched-height pages, asserts `foldSpreadProgress` via the
+extended `reader_transform_probe`). `clipToBounds` pane safety is unchanged.
+
+**Finding 2 (effective render key — §26's claim corrected).** §26 claimed the render-storm guard
+was "the effective layout/decode-triggering key... `spreadActive()`'s boolean result" — too
+coarse: that boolean cannot distinguish flat↔asymmetric-vertical-fold, vertical↔horizontal, a
+safe-pane-selection change, or a material same-spread pane resize from each other when none of
+them happens to flip it, risking a stale wrong-resolution bitmap. **Final model**: a stable
+`EffectiveRenderKey` (`core/reader/RenderKey.kt`) built from the presentation SHAPE
+(`ReaderRenderGeometry.Single` vs `.Spread`, so a shape change always differs by list length
+alone) plus each relevant slot's own BUCKETED width/height and `spreadSlot` classification.
+Quantization policy: round (not floor) to the nearest `RENDER_KEY_BUCKET_PX` (32px) bucket — a
+small, named, decode-size-irrelevant coalescing policy (never `RenderMemoryPolicy`'s own
+byte-budget constants, which are untouched). `FixedReaderViewModel.updateViewport` now takes a
+`ReaderRenderGeometry` (the ACTUAL per-presentation decode-target box(es): the active pane's own
+size for FLAT/HORIZONTAL_SPLIT-safe-pane/VERTICAL_SPLIT-solo, each physical pane's own independent
+size for an active vertical-fold spread) instead of the whole reader surface's raw
+`width/height/widthDp` — §26's claim that flat/solo-pane sizing was "completely unchanged from
+3C" undersold a real gap Codex found: a solo page confined to a fold-safe pane (horizontal fold,
+or a vertical-fold solo page) was previously still requested at the WHOLE reader surface's
+dimensions, never the pane's own. Proven by `RenderKeyTest` (pure JVM bucket/key policy: harmless
+same-bucket drift vs. a material bucket change, `Single`/`Spread` never colliding) and the
+extended `FixedReaderFoldRenderRequestTest` (flat→fold/fold→flat/vertical→horizontal-shaped
+transitions via the key; a real asymmetric-pane render-request assertion matching the production
+two-pass Single-then-Spread layout sequence; the render-storm coalescing guard re-proven against
+the new key).
+
+**Route-entry race (part of finding 2).** §26's "`ShelfApp` reports whether the current nav-graph
+route is the reader (`onReadingChanged`) purely as a boolean callback" was itself the defect: that
+callback fired from an async `LaunchedEffect`, so `MainActivity`'s own non-reader legacy fold
+padding could still reflect a stale `reading` value for one frame around a reader-route
+transition. **Fix**: `MainActivity` no longer computes that padding at all — it only measures its
+own window bounds and hands RAW inputs (`folds: List<ReaderFoldDescriptor>`, `legacyWindowBounds`)
+down to `ShelfApp`, which computes `reading` AND the legacy padding SYNCHRONOUSLY, in the same
+composition pass, at the exact point `reading` is already known (`ShelfApp.kt`). No callback, no
+`LaunchedEffect`, no cross-composable round trip remains in this path.
+
+**Finding 3 (multiple `FoldingFeature`s — §26's claim corrected).** §26 claimed "Only one
+`FoldingFeature` is realistically expected (the existing `MainActivity` selection already picks
+the first relevant one)" and relied on that `firstOrNull`, chosen BEFORE any reader bounds were
+known — if a second, reader-intersecting feature existed, it could never be considered. **Fix**:
+`MainActivity` maps EVERY relevant-or-not platform feature into `ReaderFoldDescriptor`s (its
+`toReaderFoldDescriptor()` mapper is now `internal`, not `private`, specifically so it has a real
+test) and passes the full `List<ReaderFoldDescriptor>` down; `resolveReaderFoldLayout` gained a
+list-taking overload that calls the new `selectRelevantFoldDescriptor(readerBoundsWindow,
+descriptors)` — filters to relevant AND actually-intersecting-the-reader descriptors, then picks
+the LARGEST intersection area, tie-broken deterministically by intersection top then left (never
+platform list order). The single-descriptor overload is unchanged/still used for `MainActivity`'s
+own non-reader legacy padding (byte-for-byte `firstOrNull { isRelevant }`, as before — that path
+was never bounds-aware and isn't being made so here). No tri-fold multi-pane reading was added;
+still resolves AT MOST one constraining feature. Proven by `FoldLayoutTest`'s new selection cases
+(outside-reader vs. intersecting-reader; irrelevant-crease vs. relevant; two intersecting features
+resolved deterministically; an exact-area tie; three relevant features still resolving to exactly
+one). The previously-untested REAL production mapper now has dedicated coverage:
+`FoldDescriptorMapperTest` (instrumented — `androidx.window:window-testing` is not a project
+dependency, so this test implements the plain public `FoldingFeature` interface directly rather
+than adding one) covers bounds mapping, `VERTICAL`/`HORIZONTAL` orientation, `isSeparating`, FULL
+occlusion, irrelevant-crease preservation, and multiple-feature list mapping.
+
+**Finding 4 (Appearance/Pages hinge safety — §26's claim corrected).** §26 said "no evidence of a
+hinge-specific problem was found, and no redesign was attempted" for the ordinary
+`AlertDialog`/`BasicAlertDialog`-based dialogs — true that no redesign happened, but also no
+EVIDENCE that the platform's own window-centering is fold-aware, because it is not: a real
+`Dialog` window centers on the WHOLE window regardless of any hinge. **Fix**: both dialogs gained
+an optional `safePane: FoldRect?` parameter; when non-null (a relevant vertical fold constrains
+the reader), the SAME content renders through a new `HingeSafeDialogOverlay`
+(`feature/reader/HingeSafeDialog.kt`) — an in-composition-tree overlay (not a platform `Dialog`)
+confined by plain `Modifier.offset`/`width` to the given pane, reusing the EXACT SAME pane
+`FixedReaderScreen`'s own chrome (`chromePane`) already uses, for policy coherence. `safePane ==
+null` (the ordinary unfolded case) keeps the exact pre-existing `AlertDialog`/`BasicAlertDialog`
+path, completely untouched. Proven by `ReaderDialogFoldSafetyTest` (instrumented): both dialogs'
+surfaces stay entirely inside the given pane and never intersect the simulated hinge, their
+primary action stays reachable, an RTL-selected (opposite-side) pane is also honored, and the
+unfolded case still uses the ordinary platform dialog.
+
+**Transformed-artwork clipping claim corrected (finding 5).** Earlier phrasing implied the
+existing zoom/pan UI test (`FixedReaderFoldableUiTest.zoomAndPanGestureNeverMovesArtworkUnderTheHinge`)
+proves transformed artwork is clipped at the hinge. It does not, by itself: that test only asserts
+the FIXED PANE BOX's own bounds, which stay safe regardless of where a transformed child
+graphicsLayer attempts to draw past them — it is production's `Modifier.clipToBounds()` at the
+correct pane ancestor (verified by direct modifier-chain inspection, not a pixel screenshot) that
+actually clips. Both remain true and are kept: the pane-bounds test (proves panes themselves never
+straddle the hinge) and the unconditional `clipToBounds()` safety net (proves transformed content
+is clipped at each pane's own edge), documented as two separate, narrower claims rather than one
+overclaiming test.
+
+**Missing horizontal-fold UI / corrupt-second-member coverage.** §26's test list had no dedicated
+horizontal-fold UI case and no corrupt-SECOND-pair-member case. Added:
+`FixedReaderFoldableUiTest.horizontalFoldChoosesCorrectSafePaneWithNoFakeVerticalSpread` (a
+horizontal separating fold resolves to exactly one safe pane, content stays inside it, no
+`spread_slot_*` tag is ever created) and
+`.corruptSecondSpreadMemberStaysInItsOwnPaneWithNoSubstitutionOrHingeIntersection` (pair `[3, 4]`,
+page 4 corrupt: page 3 stays visible in its own pane, page 4's placeholder stays in its own pane,
+neither intersects the hinge, no substitution with a nonexistent page 5, LTR physical identity
+unchanged).
+
+**Dependencies/Room/ReaderPreferences**: still unchanged by this remediation — no new dependency
+(confirmed `androidx.window:window-testing` was deliberately NOT added; the production-mapper test
+uses a minimal in-test `FoldingFeature` implementation instead), no schema change, no new
+persisted field. See `docs/VALIDATION.md`'s "PHASE 3D CODEX R1 REMEDIATION" entry for exact
+commands/results.
 
 ## 2. Why Phase 3 is not green-field
 

@@ -14,6 +14,7 @@ import com.d4guilar.shelfos.core.reader.FixedReaderFactory
 import com.d4guilar.shelfos.core.reader.FoldPaneWidths
 import com.d4guilar.shelfos.core.reader.PageRenderRequest
 import com.d4guilar.shelfos.core.reader.ReaderPreferences
+import com.d4guilar.shelfos.core.reader.ReaderRenderGeometry
 import com.d4guilar.shelfos.core.reader.RenderMemoryPolicy
 import com.d4guilar.shelfos.core.reader.SpreadMode
 import com.d4guilar.shelfos.data.library.LibraryRepository
@@ -127,9 +128,20 @@ class FixedReaderFoldRenderRequestTest {
         })
         val vm = provider[FixedReaderViewModel::class.java]
         awaitSettled(vm, 0)
-        // A deliberately asymmetric vertical fold split: the left pane is far narrower than the right.
-        vm.updateViewport(2000, 3000, 1000, FoldPaneWidths(leftPx = 150, rightPx = 1700, leftDp = 75f, rightDp = 850f))
+        // A deliberately asymmetric vertical fold split: the left pane is far narrower than the right. Mirrors
+        // the real FixedReaderScreen.onGloballyPositioned sequence: only ONE slot exists before turn(1), so the
+        // FIRST layout pass is Single-shaped (the eligibility input, FoldPaneWidths, is still recorded so the
+        // upcoming render's spreadActive() decision already sees it).
+        val foldPaneWidths = FoldPaneWidths(leftPx = 150, rightPx = 1700, leftDp = 75f, rightDp = 850f)
+        vm.updateViewport(ReaderRenderGeometry.Single(2000, 3000, 1000), foldPaneWidths)
         vm.turn(1) // -> logical pair [1, 2]
+        awaitSettled(vm, 1)
+        // Second layout pass: now that 2 slots are actually visible, the real screen would recompute a
+        // Spread-shaped geometry from the SAME two panes -- mirrored here, which triggers the corrective
+        // re-render using each pane's own real width/height (see EffectiveRenderKey's own "route-entry
+        // correction" doc for why a stale first-pass geometry is always corrected by the next effective-key
+        // change, never left stale).
+        vm.updateViewport(ReaderRenderGeometry.Spread(150, 3000, 1700, 3000, 75f, 850f), foldPaneWidths)
         awaitSettled(vm, 1)
 
         val requestForPage1 = recorded[1] // physical LEFT in LTR (narrow pane)
@@ -191,21 +203,31 @@ class FixedReaderFoldRenderRequestTest {
         val vm = provider[FixedReaderViewModel::class.java]
         awaitSettled(vm, 0)
         // Establish an AUTO-eligible vertical split (each pane comfortably >= half of AUTO_SPREAD_MIN_WIDTH_DP,
-        // combined width comfortably over it) and land on the pair [1, 2].
-        vm.updateViewport(2000, 3000, 1000, FoldPaneWidths(leftPx = 800, rightPx = 1100, leftDp = 400f, rightDp = 550f))
+        // combined width comfortably over it) and land on the pair [1, 2] -- mirroring the real two-pass
+        // Single-then-Spread sequence (see the sibling test's own comment for why).
+        // Pane PX widths are chosen at exact RENDER_KEY_BUCKET_PX (32) centers (25*32=800, 34*32=1088) so the
+        // drift below has a full +-16px margin before crossing into a neighboring bucket on either side -- dp
+        // values stay fixed at comfortably-AUTO-eligible 400/550 throughout (this test is about the render-key
+        // bucket guard, not about re-deriving dp from px at some assumed density).
+        val initialFold = FoldPaneWidths(leftPx = 800, rightPx = 1088, leftDp = 400f, rightDp = 550f)
+        vm.updateViewport(ReaderRenderGeometry.Single(2000, 3000, 1000), initialFold)
         vm.turn(1)
+        awaitSettled(vm, 1)
+        vm.updateViewport(ReaderRenderGeometry.Spread(800, 3000, 1088, 3000, 400f, 550f), initialFold)
         awaitSettled(vm, 1)
         val initialCount1 = counts[1] ?: 0
         val initialCount2 = counts[2] ?: 0
         assertTrue("page 1 must have been decoded at least once", initialCount1 >= 1)
         assertTrue("page 2 must have been decoded at least once", initialCount2 >= 1)
 
-        // A stream of layout events, as a real fold animation would produce -- pane widths drift, but BOTH stay
-        // comfortably AUTO-eligible throughout (never below verticalFoldSpreadEligibleForAuto's floor), so the
-        // single/spread decision itself never changes.
-        val driftingPanes = listOf(410f to 540f, 420f to 530f, 405f to 545f, 415f to 535f, 400f to 550f)
-        driftingPanes.forEach { (leftDp, rightDp) ->
-            vm.updateViewport(2000, 3000, 1000, FoldPaneWidths(leftPx = (leftDp * 2).toInt(), rightPx = (rightDp * 2).toInt(), leftDp = leftDp, rightDp = rightDp))
+        // A stream of layout events, as a real fold animation would produce -- pane PX widths drift by a few px
+        // (well within the +-16px bucket margin established above, so renderKeyBucket never flips), while BOTH
+        // panes stay comfortably AUTO-eligible throughout (never below verticalFoldSpreadEligibleForAuto's
+        // floor), so the single/spread decision itself never changes either.
+        val driftingPanes = listOf(806 to 1082, 794 to 1094, 804 to 1084, 796 to 1092, 800 to 1088)
+        driftingPanes.forEach { (leftPx, rightPx) ->
+            vm.updateViewport(ReaderRenderGeometry.Spread(leftPx, 3000, rightPx, 3000, 400f, 550f),
+                FoldPaneWidths(leftPx = leftPx, rightPx = rightPx, leftDp = 400f, rightDp = 550f))
         }
         Thread.sleep(300) // give any (wrongly) triggered render a chance to actually run before asserting it didn't.
         assertEquals("a non-decision-changing pane-width drift must never trigger a new decode for page 1",
@@ -215,8 +237,13 @@ class FixedReaderFoldRenderRequestTest {
 
         // The ONE call that actually flips the decision (both panes now far below the AUTO floor) must trigger
         // exactly one new render -- proving the guard coalesces continuous noise WITHOUT silently suppressing a
-        // genuine, required re-render.
-        vm.updateViewport(2000, 3000, 1000, FoldPaneWidths(leftPx = 100, rightPx = 100, leftDp = 50f, rightDp = 50f))
+        // genuine, required re-render. Mirrors production's own stale-geometry self-correction: the VM sees a
+        // still-Spread-shaped geometry (the layout pass that would reclassify it to Single hasn't happened yet)
+        // but a freshly-false spreadActive() from the updated FoldPaneWidths -- resolveCurrentGroup still
+        // collapses the group to 1 page, proving the flip is driven by the real AUTO decision, not merely by a
+        // geometry-shape change.
+        vm.updateViewport(ReaderRenderGeometry.Spread(100, 3000, 100, 3000, 50f, 50f),
+            FoldPaneWidths(leftPx = 100, rightPx = 100, leftDp = 50f, rightDp = 50f))
         val deadline = System.currentTimeMillis() + 10_000
         while (System.currentTimeMillis() < deadline && vm.state.value.slots.size != 1) Thread.sleep(25)
         assertEquals("the genuine AUTO flip to SINGLE must actually re-render (never silently suppressed)",

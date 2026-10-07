@@ -184,4 +184,84 @@ class FoldLayoutTest {
         val none = legacySafePaneInset(bounds, null, vertical = true)
         assertEquals(FoldInset(0f, 0f, 0f, 0f), none)
     }
+
+    // --- Phase 3D Codex R1 remediation, finding 3: selecting among MULTIPLE platform features ----------------
+
+    @Test fun selectRelevantFoldDescriptorBothOutsideReaderDegradesToFlat() {
+        val a = ReaderFoldDescriptor(FoldRect(1100f, 0f, 1120f, 800f), FoldOrientation.VERTICAL, isSeparating = true, occludesFully = false)
+        val b = ReaderFoldDescriptor(FoldRect(-200f, 0f, -180f, 800f), FoldOrientation.VERTICAL, isSeparating = true, occludesFully = false)
+        assertNull(selectRelevantFoldDescriptor(reader, listOf(a, b)))
+        val layout = resolveReaderFoldLayout(reader, listOf(a, b), gutter)
+        assertEquals(FoldPresentation.FLAT, layout.presentation)
+    }
+
+    @Test fun selectRelevantFoldDescriptorOneIrrelevantCreasePlusOneRelevantPicksTheRelevantOne() {
+        // A visible-but-non-separating-non-occluding crease sitting squarely inside the reader must never win
+        // over a genuinely relevant feature elsewhere, even though the irrelevant one's bounds intersect too.
+        val irrelevantCrease = ReaderFoldDescriptor(FoldRect(495f, 0f, 505f, 800f), FoldOrientation.VERTICAL,
+            isSeparating = false, occludesFully = false)
+        val relevant = ReaderFoldDescriptor(FoldRect(200f, 0f, 220f, 800f), FoldOrientation.VERTICAL,
+            isSeparating = true, occludesFully = false)
+        val selected = selectRelevantFoldDescriptor(reader, listOf(irrelevantCrease, relevant))
+        assertEquals(relevant, selected)
+    }
+
+    @Test fun selectRelevantFoldDescriptorFeatureOutsideReaderVersusFeatureIntersectingReaderPicksTheIntersectingOne() {
+        // The finding's own core example: feature A is relevant but sits entirely outside the reader; feature B
+        // is relevant AND intersects the reader. B must be chosen even though A might sort first in whatever
+        // order the platform reports features (list order must never matter -- B is passed SECOND here on
+        // purpose, to prove this isn't accidentally just "pick the first relevant one").
+        val outsideReaderA = ReaderFoldDescriptor(FoldRect(1300f, 0f, 1320f, 800f), FoldOrientation.VERTICAL,
+            isSeparating = true, occludesFully = false)
+        val intersectingB = ReaderFoldDescriptor(FoldRect(400f, 0f, 420f, 800f), FoldOrientation.VERTICAL,
+            isSeparating = true, occludesFully = false)
+        val selected = selectRelevantFoldDescriptor(reader, listOf(outsideReaderA, intersectingB))
+        assertEquals(intersectingB, selected)
+        val layout = resolveReaderFoldLayout(reader, listOf(outsideReaderA, intersectingB), gutter)
+        assertEquals(FoldPresentation.VERTICAL_SPLIT, layout.presentation)
+        // Confirms B's own geometry (centered at local x=410), not A's, actually drove the resolved panes.
+        val left = requireNotNull(layout.leftPane)
+        assertEquals(400f, left.right, 0.01f)
+    }
+
+    @Test fun selectRelevantFoldDescriptorTwoIntersectingRelevantFeaturesPicksTheLargerIntersectionDeterministically() {
+        // Both intersect the reader and are relevant; the one with the LARGER intersection area with the reader
+        // wins -- here, A's vertical hinge intersects the full 800px reader height (area 20*800=16000), while B
+        // (deliberately given a HORIZONTAL orientation with a narrow intersected band) has a far smaller
+        // intersection area (1000*40=40000)... chosen instead so B actually wins, proving the rule is area-based
+        // and not merely "prefer VERTICAL" or "prefer the first argument."
+        val a = ReaderFoldDescriptor(FoldRect(300f, 0f, 320f, 800f), FoldOrientation.VERTICAL, isSeparating = true, occludesFully = false) // area 16,000
+        val b = ReaderFoldDescriptor(FoldRect(0f, 380f, 1000f, 420f), FoldOrientation.HORIZONTAL, isSeparating = true, occludesFully = false) // area 40,000
+        val selected = selectRelevantFoldDescriptor(reader, listOf(a, b))
+        assertEquals(b, selected)
+        // Order-independence: swapping argument order must not change the result.
+        assertEquals(b, selectRelevantFoldDescriptor(reader, listOf(b, a)))
+    }
+
+    @Test fun selectRelevantFoldDescriptorExactAreaTieBreaksByTopThenLeft() {
+        val higher = ReaderFoldDescriptor(FoldRect(100f, 0f, 120f, 800f), FoldOrientation.VERTICAL, isSeparating = true, occludesFully = false)
+        val lower = ReaderFoldDescriptor(FoldRect(500f, 0f, 520f, 800f), FoldOrientation.VERTICAL, isSeparating = true, occludesFully = false)
+        // Identical intersection area (both 20x800 = 16,000) -- deterministic tie-break picks the smaller `top`
+        // first (both 0 here), then the smaller `left` (100 < 500) -- never platform list order.
+        assertEquals(higher, selectRelevantFoldDescriptor(reader, listOf(lower, higher)))
+        assertEquals(higher, selectRelevantFoldDescriptor(reader, listOf(higher, lower)))
+    }
+
+    @Test fun selectRelevantFoldDescriptorNeverLeaksIntoTriFoldMultiPaneReading() {
+        // Three relevant, intersecting features: still resolves to exactly ONE descriptor, never attempting to
+        // combine or sequence multiple hinges into a multi-pane layout (explicitly out of scope).
+        val one = ReaderFoldDescriptor(FoldRect(100f, 0f, 120f, 800f), FoldOrientation.VERTICAL, isSeparating = true, occludesFully = false)
+        val two = ReaderFoldDescriptor(FoldRect(400f, 0f, 420f, 800f), FoldOrientation.VERTICAL, isSeparating = true, occludesFully = false)
+        val three = ReaderFoldDescriptor(FoldRect(700f, 0f, 720f, 800f), FoldOrientation.VERTICAL, isSeparating = true, occludesFully = false)
+        val layout = resolveReaderFoldLayout(reader, listOf(one, two, three), gutter)
+        assertEquals(FoldPresentation.VERTICAL_SPLIT, layout.presentation)
+        assertNotNull(layout.leftPane); assertNotNull(layout.rightPane)
+        // Still exactly a two-pane result (left/right), never a third pane field of any kind.
+    }
+
+    @Test fun singleDescriptorOverloadDelegatesIdenticallyToTheListOverload() {
+        val fold = ReaderFoldDescriptor(FoldRect(490f, 0f, 510f, 800f), FoldOrientation.VERTICAL, true, false)
+        assertEquals(resolveReaderFoldLayout(reader, listOf(fold), gutter), resolveReaderFoldLayout(reader, fold, gutter))
+        assertEquals(resolveReaderFoldLayout(reader, emptyList(), gutter), resolveReaderFoldLayout(reader, null, gutter))
+    }
 }
