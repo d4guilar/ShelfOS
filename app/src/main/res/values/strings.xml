@@ -160,6 +160,12 @@
     <string name="content_desc_thumbnail_page">Page %1$d</string>
     <string name="content_desc_thumbnail_current_page">Page %1$d, current page</string>
     <string name="content_desc_thumbnail_unavailable">Unavailable</string>
+    <string name="content_desc_spread_current_page">Page %1$d of %2$d, current page</string>
+    <string name="content_desc_spread_page_unavailable">Page %1$d, unavailable</string>
+    <string name="appearance_spread_mode">Two-page spread</string>
+    <string name="appearance_spread_auto">Automatic</string>
+    <string name="appearance_spread_single">Single page</string>
+    <string name="appearance_spread_spread">Two-page spread</string>
     <string name="reading_progress_visual">%1$d%% through book</string>
     <string name="reading_progress_spoken">%1$d percent through book</string>
     <string name="bookmark_location">Location %1$d</string>

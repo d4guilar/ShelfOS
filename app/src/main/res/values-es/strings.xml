@@ -160,6 +160,12 @@
     <string name="content_desc_thumbnail_page">Página %1$d</string>
     <string name="content_desc_thumbnail_current_page">Página %1$d, página actual</string>
     <string name="content_desc_thumbnail_unavailable">No disponible</string>
+    <string name="content_desc_spread_current_page">Página %1$d de %2$d, página actual</string>
+    <string name="content_desc_spread_page_unavailable">Página %1$d, no disponible</string>
+    <string name="appearance_spread_mode">Doble página</string>
+    <string name="appearance_spread_auto">Automático</string>
+    <string name="appearance_spread_single">Una página</string>
+    <string name="appearance_spread_spread">Doble página</string>
     <string name="reading_progress_visual">%1$d%% del libro</string>
     <string name="reading_progress_spoken">%1$d por ciento del libro</string>
     <string name="bookmark_location">Ubicación %1$d</string>

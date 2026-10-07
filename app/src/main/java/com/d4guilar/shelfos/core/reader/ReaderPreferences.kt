@@ -16,11 +16,15 @@ data class ReaderPreferences(
     val palette: PagePalette? = null, val direction: ReadingDirection? = null, val fit: FitMode? = null,
     val fontFamilyId: String? = null,
     val presentationMode: PresentationMode? = null,
+    // Phase 3C: comic/manga spread presentation. Additive JSON field only -- no Room schema/migration (see
+    // json()/parse() below). Title-specific like [direction]; see appearanceUpdate()'s "never global" handling.
+    val spreadMode: SpreadMode? = null,
 ) {
     fun over(defaults: ReaderPreferences) = ReaderPreferences(font ?: defaults.font, fontSize ?: defaults.fontSize,
         lineHeight ?: defaults.lineHeight, margins ?: defaults.margins, justified ?: defaults.justified,
         scroll ?: defaults.scroll, palette ?: defaults.palette, direction ?: defaults.direction, fit ?: defaults.fit,
-        fontFamilyId ?: defaults.fontFamilyId, presentationMode ?: defaults.presentationMode)
+        fontFamilyId ?: defaults.fontFamilyId, presentationMode ?: defaults.presentationMode,
+        spreadMode ?: defaults.spreadMode)
 
     /** Copies only the fields that differ between [before] and [after] into this layer. */
     fun withChanges(before: ReaderPreferences, after: ReaderPreferences) = ReaderPreferences(
@@ -29,7 +33,8 @@ data class ReaderPreferences(
         pick(before.justified, after.justified, justified), pick(before.scroll, after.scroll, scroll),
         pick(before.palette, after.palette, palette), pick(before.direction, after.direction, direction),
         pick(before.fit, after.fit, fit), pick(before.fontFamilyId, after.fontFamilyId, fontFamilyId),
-        pick(before.presentationMode, after.presentationMode, presentationMode))
+        pick(before.presentationMode, after.presentationMode, presentationMode),
+        pick(before.spreadMode, after.spreadMode, spreadMode))
 
     /** Clears this layer's values for fields that differ between [before] and [after]. [font] and [fontFamilyId]
      * are treated as one semantic unit here: a global `fontFamilyId` change must also clear this layer's own
@@ -43,18 +48,19 @@ data class ReaderPreferences(
         justified.unless(before.justified != after.justified), scroll.unless(before.scroll != after.scroll),
         palette.unless(before.palette != after.palette), direction.unless(before.direction != after.direction),
         fit.unless(before.fit != after.fit), fontFamilyId.unless(before.fontFamilyId != after.fontFamilyId),
-        presentationMode.unless(before.presentationMode != after.presentationMode))
+        presentationMode.unless(before.presentationMode != after.presentationMode),
+        spreadMode.unless(before.spreadMode != after.spreadMode))
 
     fun json(): String = JSONObject().apply {
         put("version", 2); put("font", font?.name); put("fontSize", fontSize); put("lineHeight", lineHeight)
         put("margins", margins); put("justified", justified); put("scroll", scroll); put("palette", palette?.name)
         put("direction", direction?.name); put("fit", fit?.name); put("fontFamilyId", fontFamilyId)
-        put("presentationMode", presentationMode?.name)
+        put("presentationMode", presentationMode?.name); put("spreadMode", spreadMode?.name)
     }.toString()
 
     companion object {
         val DEFAULT = ReaderPreferences(BookFont.SERIF, 1.0, 1.5, 1.0, false, false, PagePalette.THEME, null,
-            FitMode.PAGE, presentationMode = PresentationMode.SHELFOS)
+            FitMode.PAGE, presentationMode = PresentationMode.SHELFOS, spreadMode = SpreadMode.AUTO)
         fun parse(json: String?): ReaderPreferences = try {
             val obj = JSONObject(json ?: "{}")
             val font = BookFont.entries.find { it.name == obj.optString("font") }
@@ -67,7 +73,11 @@ data class ReaderPreferences(
                 ReadingDirection.entries.find { it.name == obj.optString("direction") },
                 FitMode.entries.find { it.name == obj.optString("fit") },
                 fontFamilyId,
-                PresentationMode.entries.find { it.name == obj.optString("presentationMode") })
+                PresentationMode.entries.find { it.name == obj.optString("presentationMode") },
+                // Additive field (Phase 3C): absent/unrecognized/malformed value from an old JSON blob or a
+                // damaged string simply parses as null here, which resolveReaderPreferences()/DEFAULT then
+                // resolve to SpreadMode.AUTO -- no Room schema/migration, old JSON keeps parsing safely.
+                SpreadMode.entries.find { it.name == obj.optString("spreadMode") })
         } catch (_: Exception) { ReaderPreferences() }
         private fun JSONObject.number(key: String) = if (has(key)) optDouble(key).takeIf { it.isFinite() } else null
         private fun JSONObject.boolean(key: String) = if (has(key) && !isNull(key)) optBoolean(key) else null
@@ -79,10 +89,12 @@ private fun <T> T?.unless(changed: Boolean) = if (changed) null else this
 
 /**
  * Field-by-field precedence: explicit per-title value, explicit global value, then presentation defaults.
- * Reading direction is title-specific; without a title override the category default applies.
+ * Reading direction and spread mode are both title-specific; without a title override, direction falls back to
+ * the category default and spread mode falls back to [SpreadMode.AUTO] (via [ReaderPreferences.DEFAULT]) --
+ * neither is ever taken from the global layer, even defensively, in case a global JSON blob somehow carried one.
  */
 fun resolveReaderPreferences(title: ReaderPreferences, global: ReaderPreferences) =
-    title.over(global.copy(direction = null)).over(ReaderPreferences.DEFAULT)
+    title.over(global.copy(direction = null, spreadMode = null)).over(ReaderPreferences.DEFAULT)
 
 /** New explicit layers after an Appearance change; unchanged fields keep inheriting. */
 data class AppearanceUpdate(val title: ReaderPreferences, val global: ReaderPreferences?)
@@ -95,10 +107,14 @@ data class AppearanceUpdate(val title: ReaderPreferences, val global: ReaderPref
 fun appearanceUpdate(title: ReaderPreferences, global: ReaderPreferences, before: ReaderPreferences,
     after: ReaderPreferences, globally: Boolean): AppearanceUpdate {
     if (!globally) return AppearanceUpdate(title.withChanges(before, after), null)
-    val shared = after.copy(direction = before.direction)
+    // Spread mode is treated exactly like direction: a title-owned presentation choice that "Use as default for
+    // all titles" must never globalize (see AGENTS.md rule 9/16, and the plan's "spread mode never globalizes"
+    // persistence requirement), even though every other appearance field legitimately can.
+    val shared = after.copy(direction = before.direction, spreadMode = before.spreadMode)
     val titleDirection = if (after.direction != before.direction) after.direction else title.direction
-    return AppearanceUpdate(title.withoutChanges(before, shared).copy(direction = titleDirection),
-        global.withChanges(before, shared).copy(direction = null))
+    val titleSpreadMode = if (after.spreadMode != before.spreadMode) after.spreadMode else title.spreadMode
+    return AppearanceUpdate(title.withoutChanges(before, shared).copy(direction = titleDirection, spreadMode = titleSpreadMode),
+        global.withChanges(before, shared).copy(direction = null, spreadMode = null))
 }
 
 /** Reset clears the chosen layer; the title's direction override is part of the title layer. */
@@ -106,11 +122,26 @@ fun appearanceReset(title: ReaderPreferences, globally: Boolean) =
     if (globally) AppearanceUpdate(title, ReaderPreferences()) else AppearanceUpdate(ReaderPreferences(), null)
 
 /** Controls offered for a publication's actual rendering capabilities; unsupported controls are omitted. */
-data class ReaderCapabilities(val typography: Boolean, val fit: Boolean, val zoom: Boolean, val direction: Boolean = true)
+data class ReaderCapabilities(val typography: Boolean, val fit: Boolean, val zoom: Boolean, val direction: Boolean = true,
+    val spread: Boolean = false)
+
+/** Overload kept for EPUB (no fixed-layout/spread concept at all). */
 fun capabilities(format: PublicationFormat) = when (format) {
     PublicationFormat.EPUB -> ReaderCapabilities(typography = true, fit = false, zoom = false)
     PublicationFormat.PDF, PublicationFormat.CBZ -> ReaderCapabilities(typography = false, fit = true, zoom = true)
 }
+
+/**
+ * Phase 3C: the spread control is offered only for a fixed-layout format capable of spreads (PDF/CBZ), AND only
+ * for [MediaCategory.COMIC]/[MediaCategory.MANGA] -- an ordinary Book/Document that merely happens to be a PDF
+ * must never show spread controls merely because of its file format (per the owner's explicit product brief).
+ */
+fun capabilities(format: PublicationFormat, category: MediaCategory): ReaderCapabilities =
+    capabilities(format).copy(spread = spreadCapable(format, category))
+
+fun spreadCapable(format: PublicationFormat, category: MediaCategory): Boolean =
+    (format == PublicationFormat.PDF || format == PublicationFormat.CBZ) &&
+        (category == MediaCategory.COMIC || category == MediaCategory.MANGA)
 
 /** Versioned fixed-layout locator: a stable index into the stored page sequence. */
 fun pageLocator(index: Int): String = JSONObject().put("version", 1).put("page", index).toString()

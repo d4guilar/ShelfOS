@@ -2,9 +2,14 @@
 
 Status: **3A (rendering/fidelity foundation) COMPLETE and MERGED to `main`** (`#24`,
 "feat: establish Phase 3A fixed-page rendering foundation"). **3B (page thumbnails/
-navigation) IMPLEMENTED, committed on `phase-3/3b-page-thumbnails`, pending administrator/
-Codex review.** 3C–3F remain PLANNING ONLY — no later slice has started. See §22/§23 for
-what 3A landed and §24 for what 3B actually landed.
+navigation) COMPLETE and MERGED to `main`** (`#25`, "feat: add Phase 3B page thumbnail
+navigation"). **3C (spreads + Manga pairing) IMPLEMENTED on
+`phase-3/3c-spreads-manga-pairing`, Codex R1 AND Codex R2 review findings REMEDIATED on
+the same branch (two remediation commits on top of the original 3C commit), pending
+final administrator/Codex review. 3C is NOT merged.** 3D–3F remain PLANNING ONLY — no later
+slice has started. Phase 3 overall is **NOT complete**. See §22/§23 for what 3A landed,
+§24 for what 3B actually landed, and §25 for what 3C actually landed (including the R1
+and R2 remediation records).
 
 ## 1. Status / base
 
@@ -19,10 +24,15 @@ what 3A landed and §24 for what 3B actually landed.
   same discipline level as the Phase 2 planning docs. It supersedes ad hoc CBR framing
   scattered across `docs/ROADMAP.md`, `docs/PRODUCT.md`, `docs/features/COMICS_MANGA.md`,
   and `docs/features/READER.md` (see §5).
-- §12/§13/§21 below authorized exactly one slice at a time. 3A (§22/§23) is complete and
-  merged. This pass implements **3B only** (page-thumbnail navigation), per the
-  administrator's instruction, and does not start 3C (spreads), 3D (foldable), or 3E (CBR).
-  See §24 for what 3B actually landed.
+- §12/§13/§21 below authorized exactly one slice at a time. 3A (§22/§23) and 3B (§24) are
+  complete and merged to `main`. 3C (spreads + Manga pairing) is implemented on
+  `phase-3/3c-spreads-manga-pairing`; Codex R1 reviewed the full 3C candidate and returned
+  CHANGES REQUIRED, this same branch carried the remediation of every R1 finding (one
+  remediation commit on top of the original 3C commit), Codex R2 then reviewed that
+  remediation and returned CHANGES REQUIRED again with four further findings, now also
+  remediated on this same branch (one more remediation commit) — see §25's "Codex R1
+  remediation record" and "Codex R2 micro-remediation record" subsections for the actual
+  landed fixes/evidence. 3C has not merged. 3D (foldable) and 3E (CBR) have not started.
 
 ## 22. 3A implementation record (landed)
 
@@ -358,6 +368,296 @@ jump-to-page, the Manga/RTL page-identity invariant, accessibility content descr
 corrupt-thumbnail resilience). Per standing policy, the full JVM suite and the full connected/
 instrumented regression matrix were **not** re-run here — reserved for Phase 3F.
 
+## 25. 3C implementation record (landed)
+
+**Scope delivered**: AUTO/SINGLE/SPREAD comic/manga spread presentation (§9/§13's 3C contract)
+for CBZ and PDF titles categorized `MediaCategory.COMIC`/`MANGA`, built entirely on 3A's
+render-request contract and 3B's render/mutex discipline — no new reader architecture, no
+bitmap stitching, no Room schema change, no new dependency, no foldable/CBR code.
+
+**SpreadMode and canonical pairing** (new `core/reader/SpreadModel.kt`, pure/Compose-free):
+`enum class SpreadMode { AUTO, SINGLE, SPREAD }`. `canonicalPageGroups(pageCount)` is the
+zero-based rule — page 0 (cover) always solo; interior pages pair `[1,2]`, `[3,4]`...; an
+unmatched final page solo — independent of mode/geometry/window. `resolvePageGroups`/
+`resolveGroups` apply a landscape split on top: a canonical pair containing a page whose
+`PageGeometry.isLandscape` (width/height ratio above the named `LANDSCAPE_ASPECT_THRESHOLD =
+1.05`, chosen conservatively above square so near-square scan-cropped pages are never
+misclassified) is true splits into two solo groups, never skipping, duplicating, or reordering
+either page, and never affecting any other canonical pair. `PageGroup.physicalOrder(rtl)` is
+the only place LTR/RTL placement is decided — it reorders which side a pair's members are drawn
+on, never the underlying `pages` list or any stored value.
+
+**Persistence**: `ReaderPreferences.spreadMode: SpreadMode?`, a purely additive JSON field
+(`ReaderPreferences.json()`/`.parse()`) — old JSON without the key parses with `spreadMode =
+null`, which `ReaderPreferences.DEFAULT.spreadMode = SpreadMode.AUTO` then resolves to AUTO; no
+Room schema/migration exists or is needed. `resolveReaderPreferences`/`appearanceUpdate` treat
+`spreadMode` exactly like the pre-existing `direction` override: title-specific, never
+globalized by "Use as default for all titles" even when other fields in the same edit
+legitimately globalize, and `appearanceReset`'s title-scope reset clears it back to AUTO while a
+global-scope reset leaves an existing title override untouched. The Appearance control itself
+(`ReaderAppearance.kt`) is gated by `capabilities(format, category).spread`
+(`spreadCapable(format, category)` in `ReaderPreferences.kt`) — PDF/CBZ **and**
+`COMIC`/`MANGA` only, so an ordinary Book/Document PDF never shows the control.
+
+**AUTO window policy**: `resolveSpreadActive(mode, viewportWidthDp)` — SINGLE/SPREAD are
+unconditional overrides; AUTO compares the reader page surface's measured width, converted to
+dp by `FixedReaderScreen` (the Compose-measured `onSizeChanged` width via `LocalDensity`, kept
+separate from the existing px `viewportWidth`/`Height` that still drive decode resolution),
+against the named `AUTO_SPREAD_MIN_WIDTH_DP = 600` threshold. No window-size-class primitive
+existed anywhere in ShelfOS prior to this (verified by inspection), so this is a new, narrowly-
+scoped, independently-tested constant rather than a new dependency — and deliberately *not*
+foldable/posture-aware (ordinary window width only; `FoldingFeature`/hinge intelligence is
+explicit 3D scope per §11/§12's refinement).
+
+**Logical page invariant**: `FixedReaderState.page` remains the single authoritative logical
+position throughout — `FixedReaderViewModel.showPage`/`turn` never replace it with a group's
+lower index, `canonicalGroups`/`resolveCurrentGroup`/`nextPage`/`previousPage` only ever *derive*
+presentation from it, and nothing new is persisted beyond the existing `pageLocator`/progress
+(no spread index, no left/right-half flag). Proven by `SpreadModelTest`'s
+`selectingTheSecondPairMemberDoesNotNormalizeToTheLowerIndex` (pure) and
+`FixedReaderSpreadViewModelTest#jumpingDirectlyToTheSecondPairMemberKeepsItCurrentRatherThanNormalizingToTheFirst`
+(real `FixedReaderViewModel`/CBZ).
+
+**Navigation**: no new `ShelfCommand` — `FixedReaderViewModel.turn(±1)` now routes through
+`nextPage`/`previousPage` (a bounded-cost specialization of the pure whole-list
+`nextLogicalPage`/`previousLogicalPage`: it only ever needs the single canonical pair containing
+the current page to decide where "next"/"previous" lands, never the whole book's geometry, which
+is what keeps a large publication's semantic navigation cheap). In SINGLE (or AUTO-resolved-
+single), this reduces to ordinary `page ± 1` by construction. `showPage(index)` (the thumbnail
+jump path, unchanged) still sets `state.page` directly; spread presentation is derived afterward,
+never the other way around.
+
+**Page metadata**: `FixedReader.pageGeometry(index): PageGeometry?` — `PdfPages` reads
+`PdfRenderer.Page.width`/`height` (no rasterization); `ArchivePages` reuses
+`ImagePageRenderer`'s existing bounds-only `inJustDecodeBounds` pass via a new `bounds()`
+helper (no new decode path, no full bitmap allocation). `FixedReaderViewModel.geometryCache`
+memoizes per-page results for the session (a failed/unknown lookup caches as `PageGeometry(0,
+0)`, inert for `isLandscape`, so a corrupt page's geometry is never re-attempted every
+navigation). The contract never exposes `SeekableZip.Entry`/ZIP-specific types; a future CBR
+`PageSource` satisfies it the same way CBZ does today.
+
+**Render/state model**: `FixedReaderState.slots: List<PageSlot>` (`PageSlot(page, bitmap?,
+error?)`) replaces the single `bitmap` field (a `bitmap` compat getter remains for existing
+single-page call sites/tests). `FixedReaderViewModel.render(page)` resolves the active group
+(1 or 2 pages) and decodes every slot **sequentially inside the same single render mutex** 3A/3B
+already use — never in parallel — with the full cancellation/publish-or-recycle discipline
+Codex R1 established now covering the *whole* group's fate before the lock releases, so a newer
+render still can never begin decoding until every slot of the previous one has resolved. A
+decode failure for one slot never blanks its sibling: `PageSlot.error` carries that page's own
+error, the top-level `FixedReaderState.error` (Retry/Back-to-library) only activates when every
+slot in the group failed.
+
+**Rendering (Compose)**: `FixedReaderScreen.kt` renders 1 slot exactly as before (unchanged code
+path/testTags) or, for 2 slots, a `Row` of two independent `Image`s (never a stitched bitmap)
+with a small gutter (`t.spacing.small`, an existing design token — no new gutter preference),
+physically reordered for RTL via `PageGroup.physicalOrder`. Fit Page/Fit Width/zoom/pan reuse
+the *existing* `fixedReaderFittedContentSize`/`fixedReaderMaxPan`/`fixedReaderMaxPanY`/
+`fixedReaderVerticalScaleOverflow` functions unchanged, fed a synthesized "combined content
+size" (`combinedContentDimensions`: each bitmap notionally scaled to a shared reference height
+and summed with the gutter) standing in for a single bitmap's width/height — no new geometry
+primitive, one shared `graphicsLayer`/transform state for the whole visible unit (never
+independent per-slot zoom/pan). A failed slot renders a neutral placeholder box (reusing
+`label_unavailable`) sized to **its own source `PageGeometry`'s aspect ratio — never its healthy
+sibling's** (original 3C claim here was "sized to its healthy sibling's aspect ratio"; that was
+corrected by Codex R1 finding 3 — see the remediation record below for the real fix and its
+evidence), with its own localized content description.
+
+**Accessibility**: each slot's `Image` carries a distinct content description
+(`content_desc_spread_current_page` for the slot matching `state.page`,
+`content_desc_page_of_count` — the existing single-page string — for its sibling), and a failed
+slot's placeholder carries `content_desc_spread_page_unavailable`; page-turn controls/semantics
+are otherwise unchanged from the single-page case.
+
+**Memory (original 3C claim, corrected by Codex R1 — see the remediation record below)**: the
+original landed claim ("accounted for fully by `RenderMemoryPolicy` unchanged") was **incorrect**
+and has been corrected. Sequential-never-parallel decode prevents concurrent *decoders*, but a
+spread REPLACEMENT (old pair A+B still held by `_state`/Compose while new pair C+D decodes) can
+reach four live reading-resolution bitmaps at once, not two. §25's remediation record documents
+the real derived budget and the deterministic tests that now enforce it in code.
+
+**Tests**: `core/reader/SpreadModelTest.kt` (pure JVM — pairing, landscape, RTL
+placement, current-page invariant, AUTO threshold, navigation boundaries, bounded-cost
+equivalence; the RTL navigation test was corrected by the R1 remediation to compare real LTR/RTL
+group lists instead of a tautological self-comparison), `core/reader/ReaderPreferencesSpreadTest.kt`
+(pure JVM — persistence logic, deliberately JSON-free), `core/reader/PageRenderRequestTest.kt`
+(R1 remediation added a spread-memory-budget group — thumbnail reservation, all four transition
+classes' worst-case arithmetic, a near-ceiling spread-slot request, 3A single-page preservation),
+`ReaderPreferencesSpreadInstrumentedTest.kt` (instrumented — the real JSON round trip/
+malformed-value handling), `FixedReaderSpreadViewModelTest.kt` (instrumented — real-CBZ pairing/
+landscape/AUTO-resize/corrupt-pair/thumbnail-jump/category-gate/memory evidence against the real
+`FixedReaderViewModel`; R1 remediation added the rapid-Next unresolved-geometry adversarial tests
+for both split-page variants), `FixedReaderSpreadUiTest.kt` (new, R1 remediation — real Compose/
+bounds-based coverage: corrupt-first/corrupt-second spread layout, LTR/RTL physical placement,
+mixed-aspect Fit Page, final-complete-spread Next-enablement, immediate SpreadMode apply in both
+directions, stale-gesture-geometry regression, Fit Width + zoom spread geometry). See
+`docs/VALIDATION.md`'s "PHASE 3C" entry for exact commands/results, including the honest
+regression spot-check and the one documented environment flake (unrelated to this slice).
+
+**What this slice deliberately does NOT do** (explicitly 3D/3E/future scope, consistent with
+§12/§13/§19): no `FoldingFeature`/hinge/posture detection or hinge gutter (3D); no
+`PublicationFormat.CBR`/RAR support (3E); no panel detection, guided view, or source-page
+splitting; no persistent/on-disk spread state of any kind; no live high-resolution
+zoom-triggered re-render beyond what 3A already established.
+
+**Codex R1 remediation record (this branch, one commit on top of the original 3C commit).**
+Codex R1 reviewed the full 3C candidate above and returned CHANGES REQUIRED while accepting the
+underlying architecture (pure `SpreadModel`, cover-offset canonical pairing, title-specific JSON
+persistence, logical/physical RTL separation, format-neutral `PageGeometry`, no Room migration,
+future-CBR compatibility unchanged). Every finding below was remediated on this same branch; no
+dependency, Room schema, or migration was touched; 3D/3E/CBR/foldable/hinge scope was not
+started.
+
+- **Finding 1 (unresolved geometry could enable a skip).** `FixedReaderViewModel.geometryCache`
+  is now a `ConcurrentHashMap` (previously a plain `MutableMap` read on the UI thread while
+  written from `Dispatchers.IO`). Semantic navigation (`turn`/`hasNext`/`hasPrevious`) now reads
+  it through `isLandscapeAtForNavigation`, which treats UNRESOLVED geometry as `true`
+  (conservative — forces single-step, no-skip movement) rather than the presentation layer's
+  documented optimistic `false` default; once `render()` actually resolves the real geometry
+  (always before it decides a group's slot count), later navigation sees the true value and
+  behaves exactly as before. Initial evidence used asynchronous `StateFlow` observation
+  (`FixedReaderSpreadViewModelTest`'s original
+  `rapidNextNeverSkipsAnUnresolvedLandscapePair_firstMemberLandscape`/`_secondMemberLandscape`,
+  firing three unawaited `turn(1)` calls and recording every `state.page` value via a background
+  collector) and was later superseded because conflation made it insufficient — see Codex R2
+  Finding 2 below. The final deterministic evidence is: `CountDownLatch`-gated geometry
+  resolution via `GatedGeometryFixedReaderFactory`, direct synchronous `state.value.page`
+  inspection immediately after each `turn()` call (no waiting, no collector), the companion
+  cached-unusable-`0×0`-geometry regression test
+  (`cachedUnusableGeometryForACorruptPairMemberNeverAuthorizesANavigationSkip`), and — after the
+  Codex R3 micro-remediation — a persisted locator/progress assertion proving the actual saved
+  reading position matches page 2, never page 3, across the same rapid sequence.
+- **Finding 2 (spread-aware memory budget).** `RenderMemoryPolicy` now derives
+  `READING_BUDGET_BYTES = SESSION_BUDGET_BYTES (96MiB) - THUMBNAIL_RESERVATION_BYTES`
+  (`ThumbnailLoader.DEFAULT_BUDGET_BYTES`, 16MiB — the thumbnail cache always shared this
+  envelope; the constant now actually reflects that). Single-page: `MAX_BITMAP_BYTES =
+  READING_BUDGET_BYTES / 3` (unchanged shape, tighter real number). Spread slot:
+  `MAX_SPREAD_BITMAP_BYTES = READING_BUDGET_BYTES / 4` (the real worst case — two old spread
+  slots still held by `_state`/Compose plus two newly-decoding replacement slots). Every
+  transition class stays within `READING_BUDGET_BYTES`: spread→spread is `4 *
+  MAX_SPREAD_BITMAP_BYTES` exactly at the limit; single↔spread is
+  `MAX_BITMAP_BYTES + 2*MAX_SPREAD_BITMAP_BYTES`, comfortably under it; single→single remains
+  `3 * MAX_BITMAP_BYTES` exactly at the limit (the original 3A invariant, preserved). Enforced via
+  a new `PageRenderRequest.spreadSlot` flag that `resolveRenderTarget` and
+  `FixedReaderViewModel.render()` route through the stricter ceiling. Deterministic coverage:
+  `PageRenderRequestTest`'s spread-budget test group (budget derivation, all four transition
+  classes' worst-case arithmetic, a near-ceiling spread-slot request, 3A single-page preservation)
+  — this deterministic JVM suite, not the instrumented test, is the actual proof of the spread-
+  slot ceiling/transition arithmetic. `FixedReaderSpreadViewModelTest`'s existing memory test
+  still asserts each settled slot bitmap against `RenderMemoryPolicy.MAX_BITMAP_BYTES` (the
+  looser, ordinary single-page ceiling), not the tighter `MAX_SPREAD_BITMAP_BYTES` spread ceiling
+  — a real test fixtures could pass under without ever approaching the stricter bound, so this is
+  supplemental PSS/runtime evidence only ("no observed runaway growth"), never independent proof
+  the spread-slot ceiling itself held (corrected here by the Codex R2 remediation record, which
+  found the previous wording here overstated what that instrumented test actually asserts).
+- **Finding 3 (corrupt slot corrupted the whole spread layout).** `PageSlot` now carries its own
+  `geometry: PageGeometry?`, always resolved by `render()` regardless of decode outcome.
+  `FixedReaderScreen.combinedContentDimensions()` and the failed-slot placeholder
+  (`placeholderAspect()`) now use each slot's OWN geometry — never a healthy sibling's — so a
+  corrupt page occupies its own correct geometric footprint. Proven by
+  `FixedReaderSpreadUiTest`'s `corruptFirstSlotLeavesHealthySiblingVisibleAndCorrectlyPositioned`/
+  `corruptSecondSlotLeavesHealthySiblingVisibleAndCorrectlyPositioned` (real bounds assertions via
+  new `spread_slot_<page>` test tags).
+- **Finding 4 (stale pointerInput/slot capture).** The zoom/pan gesture now reads spread content
+  geometry through `rememberUpdatedState(combinedContentDimensions(state.slots, gutterPx))`
+  rather than closing over `state.slots` directly inside the long-lived gesture coroutine (still
+  keyed only by page/rtl/fitWidth, so an in-progress gesture is never restarted merely because
+  AUTO/SpreadMode flipped single↔spread). Initial evidence
+  (`FixedReaderSpreadUiTest`'s `gestureGeometryStaysCurrentAcrossASpreadToSingleFlipWithoutAPageChange`,
+  using `doubleClick`) was insufficient and was later superseded: `doubleClick` never entered the
+  real pointer-transform path, only a separate `detectTapGestures(onDoubleTap = ...)` handler — see
+  Codex R2 Finding 3 below. The final regression test,
+  `pointerTransformGestureUsesCurrentGeometryAcrossASpreadToSingleAndBackFlipWithoutAPageChange`,
+  actually zooms, performs a real one-finger drag/pan, enters `awaitEachGesture`, executes the
+  `calculatePan`/transform logic, reads `currentContentDimensions`, distinguishes the single-mode
+  vs. spread-mode pan clamps, and asserts `state.page` never changes across the flip. R1's original
+  double-tap test is kept as narrower regression coverage for that specific (still valid) path, not
+  as proof of the pointer-transform fix.
+- **Finding 5 (SpreadMode change must apply immediately).** The ViewModel's preference collector
+  now tracks `lastAppliedSpreadMode` and re-renders the current page the moment the EFFECTIVE
+  title SpreadMode changes for an already-open session (title override set/cleared, or a reset
+  restoring AUTO) — narrowly scoped to that one field; `state.page`/locator/progress are never
+  touched and no extra persistence write occurs. Proven by `FixedReaderSpreadUiTest`'s
+  `switchingFromSpreadToSingleAppliesImmediatelyWithoutChangingTheLogicalPage`/
+  `switchingFromSingleToSpreadAppliesImmediatelyAndDerivesTheEligiblePair`.
+- **Finding 6 (final-complete-spread Next-enablement).** `FixedReaderScreen`'s Next/Previous
+  `enabled` now calls the ViewModel's `hasNext()`/`hasPrevious()`, which reuse the exact same
+  `nextPage`/`previousPage` resolver `turn()` itself uses, instead of raw `page+1 < count`/
+  `page > 0` arithmetic. Proven by `FixedReaderSpreadUiTest`'s
+  `nextIsDisabledOnTheFirstPageOfTheFinalCompleteSpread`.
+- **RTL tautology.** `SpreadModelTest.rtlNavigationUsesTheSameLogicalGroupsAsLtr` no longer
+  compares one call to itself; it compares independently-built LTR/RTL group lists across every
+  page and separately proves `physicalOrder` is the only thing direction changes.
+- **RTL/Fit Page/Fit Width UI-evidence gap (flagged honestly above, now closed).**
+  `FixedReaderSpreadUiTest` adds real bounds-based Compose coverage: LTR/RTL physical placement
+  (`ltrPlacesTheLowerLogicalPageOnThePhysicalLeft`/
+  `rtlMirrorsPhysicalPlacementWithoutReversingLogicalIdentity`), a mixed-aspect healthy Fit Page
+  pair (`fitPageMixedAspectPairStaysWithinViewportWithGutterAndNoOverlap`), and a Fit Width +
+  zoom spread case reusing the existing `reader_scroll_probe`/`reader_transform_probe` seams
+  (`fitWidthSpreadZoomStaysClampedAndStatePageNeverChanges`). AUTO-driven single↔spread
+  reconciliation itself remains proven at the ViewModel level
+  (`FixedReaderSpreadViewModelTest.autoResolvesToSingleOnANarrowViewportAndToSpreadOnAWideOne`);
+  the new Compose-level stale-gesture/SpreadMode-apply tests above exercise the equivalent
+  explicit-SpreadMode-change path instead of a real device-rotation-driven AUTO flip, which this
+  remediation pass did not attempt given emulator window-size reliability — an honest, flagged
+  scope note, not a silent gap.
+
+**Codex R2 micro-remediation record (this branch, one commit on top of the R1 remediation
+commit `bc96099`).** Codex R2 reviewed the R1 remediation above and returned CHANGES REQUIRED with
+four findings; every R1 finding was explicitly accepted and left unmodified (memory policy,
+corrupt-slot layout, `SpreadMode` reconciliation, final-nav resolver, RTL physical ordering, and
+AUTO's width-driven behavior with physical device rotation still deferred to 3F).
+
+- **Finding 1 (cached unusable geometry was still navigation-pair-eligible).** R1's navigation
+  conservative-default (`geometryCache[page]?.isLandscape ?: true`) only engaged when a page had
+  NO cache entry; once the `PageGeometry(0, 0)` failure sentinel WAS cached (a corrupt/undecodable
+  page), reading `.isLandscape` directly on it evaluated `false`, bypassing the `?:` fallback and
+  letting navigation treat it as "confirmed pair-eligible" — able to reintroduce the exact skip R1
+  closed. Fixed with one centralized `PageGeometry.isUsable` (`width > 0 && height > 0`);
+  `isLandscapeAtForNavigation` now checks it before ever trusting `isLandscape`, and
+  `FixedReaderScreen`'s separate `isUnknown()` helper (presentation-side, intentionally left
+  optimistic) now delegates to the same property instead of its own duplicated
+  `width <= 0 || height <= 0` check. Proven by `SpreadModelTest`'s new `isUsable`/`isLandscape`
+  sentinel coverage and a direct buggy-vs-fixed `nextPage`/`previousPage` contract test, plus
+  `FixedReaderSpreadViewModelTest`'s new `cachedUnusableGeometryForACorruptPairMemberNeverAuthorizesANavigationSkip`.
+  One accepted, mechanical downstream consequence: a final-complete-spread whose FIRST member is
+  corrupt can no longer have its true aspect confirmed, so `FixedReaderSpreadUiTest`'s
+  `corruptFirstSlotLeavesHealthySiblingVisibleAndCorrectlyPositioned` now correctly asserts Next
+  stays enabled (navigating single-steps within the same visible pair, no skip, no crash) rather
+  than the pre-fix assertion that it was disabled — Finding 6's resolver logic itself is
+  unchanged; only this one input (an unusable geometry read) now flows through it correctly.
+- **Finding 2 (rapid-navigation race test was non-deterministic).** R1's test fired three
+  `vm.turn(1)` calls and recorded every `state.page` value via a background `StateFlow` collector,
+  then asserted the split page appeared somewhere in that list — Codex R2 found collecting in the
+  background can conflate/miss intermediate values (`visited=[1, 1, 3, 3]` observed on one run).
+  Replaced with a deterministic adversarial test: a `GatedGeometryFixedReaderFactory` test seam
+  (`FixedReaderFactory`/`FixedReaderFactory.open` made `open` for exactly this purpose) wraps the
+  real `FixedReader` so `pageGeometry` for the candidate pair blocks on a `CountDownLatch` the test
+  controls explicitly; since `showPage()` updates `state.value.page` synchronously before the
+  async render is even launched, the authoritative navigation result is asserted immediately after
+  each `turn()` call with no waiting and no collector.
+- **Finding 3 (gesture regression test never reached the real transform loop).** R1's
+  `gestureGeometryStaysCurrentAcrossASpreadToSingleFlipWithoutAPageChange` used `doubleClick`,
+  which only flips `scale` through a separate `detectTapGestures(onDoubleTap = ...)` handler —
+  never the `awaitEachGesture`/`calculateZoom`/`calculatePan` loop that actually reads
+  `currentContentDimensions` (R1 finding 4's fix). A new test,
+  `pointerTransformGestureUsesCurrentGeometryAcrossASpreadToSingleAndBackFlipWithoutAPageChange`,
+  uses the existing "Zoom in" control plus a one-finger drag (`scale > 1f` alone routes a single-
+  pointer drag through the real transform branch), against a fixture built so the single-mode and
+  spread-mode pan clamps are measurably different — an assertion capable of failing if stale
+  geometry were ever captured again across the flip. R1's original double-tap test is kept as
+  regression coverage for that specific (still valid, just narrower) path.
+- **Finding 4 (stale/inaccurate documentation).** This document's "healthy sibling's aspect
+  ratio" placeholder description (superseded by R1 finding 3, never corrected in prose) and its
+  claim that the instrumented memory test "asserts against the new per-slot budgets" (it actually
+  still asserts the looser `MAX_BITMAP_BYTES`, not `MAX_SPREAD_BITMAP_BYTES`) are corrected in
+  place above. `docs/VALIDATION.md`'s PHASE 3C entry's stale `8/8` test-count claim, "~32MiB"
+  memory wording (predates the `THUMBNAIL_RESERVATION_BYTES` carve-out), and "RTL/UI evidence
+  remains outstanding" claim (closed by R1's `FixedReaderSpreadUiTest`) are corrected there, with
+  new R1/R2 remediation entries recording the real final counts/values.
+
+See `docs/VALIDATION.md`'s "PHASE 3C — Codex R2 micro-remediation" entry for exact commands/
+results.
+
 ## 2. Why Phase 3 is not green-field
 
 CBZ import/opening, image-sequence (fixed-layout) reading, LTR/RTL defaults with
@@ -493,7 +793,7 @@ through `FixedReaderTransformBoundsTest`/manual RP5 validation per
 | Manga RTL default from `ComicInfo.xml` | Implemented |
 | High-res re-decode on zoom | **Not implemented** — zoom is bitmap scaling only |
 | Thumbnails (any kind) | **Not implemented** — no code exists |
-| Spreads (AUTO/SINGLE/SPREAD) | **Not implemented** — spec-only (`COMICS_MANGA.md`); interim policy is "AUTO resolves to single page" (ADR-0017) |
+| Spreads (AUTO/SINGLE/SPREAD) | **Implemented in 3C** (pending review) — see §25. This row described the pre-3C baseline (spec-only, "AUTO resolves to single page" per ADR-0017); superseded. |
 | Foldable-aware two-page layout | **Not implemented** — `FOLDABLES.md` specifies intent, no comic-specific code |
 | CBR/RAR format support | **Not implemented** — no enum value, no magic-byte detection, no container adapter, no dependency |
 | `PublicationFormat` extensibility | Currently a 3-value enum with exhaustive `when`s in `FixedReaderFactory`, `ReaderCapabilities`, `ImportPolicy` — extending it is mechanical but touches multiple files |
@@ -810,7 +1110,8 @@ regardless of its position (§5).
   directory convention; to be scoped precisely at implementation time, not here).
   Non-goals: spreads, CBR, foldable-specific thumbnail layout.
 
-- **3C — Spreads + Manga pairing.** Goal: AUTO/SINGLE/SPREAD (§9) for CBZ/PDF comics and
+- **3C — Spreads + Manga pairing. IMPLEMENTED (pending review) — see §25 for what actually
+  landed; this bullet is kept as the original planning record.** Goal: AUTO/SINGLE/SPREAD (§9) for CBZ/PDF comics and
   manga on existing (non-foldable) window sizes. Key areas: `FixedReaderScreen.kt`,
   `ReaderPreferences.kt` (new per-title spread preference), `FixedReaderTransform.kt`
   (pair-aware fitting, to be confirmed not require new primitives). Schema impact: one
@@ -877,7 +1178,8 @@ scroll test. Emulator + physical validation both recommended. Codex review: reco
 Non-goals: spreads, CBR. Done when: a 300+ page CBZ's thumbnail strip scrolls smoothly
 with bounded memory and no crash on a corrupt page.
 
-**3C** — Schema: one new persisted spread-preference field. Dependencies: none.
+**3C** — IMPLEMENTED (pending review); see §25 for the actual landed record. Original contract
+kept below as the planning record. Schema: one new persisted spread-preference field. Dependencies: none.
 Migration: additive preference field, default AUTO. Source-file ownership: unaffected.
 State/persistence: spread preference persists like other `ReaderPreferences`. Accessibility:
 spread mode must not hide page-turn semantics from screen readers. Keyboard/controller:

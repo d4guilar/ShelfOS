@@ -1,5 +1,308 @@
 # Validation
 
+## PHASE 3C — SPREADS + MANGA PAIRING (2026-10-05)
+
+Status: **IMPLEMENTED, pending administrator/Codex review.** Base: `main` @ `673ff49`
+("feat: add Phase 3B page thumbnail navigation (#25)"). Branch: `phase-3/3c-spreads-manga-pairing`.
+Exact model/architecture is recorded in `docs/PHASE_3_IMPLEMENTATION_PLAN.md` §25 (new); this
+entry is the validation evidence.
+
+**What changed**: new `core/reader/SpreadModel.kt` (`SpreadMode`, `PageGeometry`, `PageGroup`,
+`canonicalPageGroups`, `resolvePageGroups`/`resolveGroups`, `resolveSpreadActive`,
+`AUTO_SPREAD_MIN_WIDTH_DP`, `nextPage`/`previousPage`/`resolveCurrentGroup` bounded-cost
+navigation, plus the whole-list `nextLogicalPage`/`previousLogicalPage` reference form) — pure,
+Compose/Android-free. `core/reader/FixedReader.kt`: `FixedReader.pageGeometry(index)` added to
+the interface (`PdfPages` via `PdfRenderer.Page.width/height`; `ArchivePages` via a new
+`ImagePageRenderer.bounds()` bounds-only decode, reusing the existing `inJustDecodeBounds` pass).
+`core/reader/ReaderPreferences.kt`: additive `spreadMode: SpreadMode?` field (JSON only, no Room
+schema/migration), `ReaderPreferences.DEFAULT.spreadMode = SpreadMode.AUTO`,
+`resolveReaderPreferences`/`appearanceUpdate` treat it exactly like `direction` (title-specific,
+never globalized), `capabilities(format, category)` overload + `spreadCapable()` gating the
+control to PDF/CBZ **and** `MediaCategory.COMIC`/`MANGA`. `feature/reader/FixedReaderViewModel.kt`:
+`FixedReaderState.slots: List<PageSlot>` (1 or 2 visible logical pages, each with an independent
+bitmap/error), `turn()` now does semantic group-to-group navigation via `nextPage`/`previousPage`,
+`updateViewport(width, height, widthDp)` tracks dp and re-renders only when AUTO's spread/single
+decision actually flips, `render()` decodes every slot in the active group **sequentially** inside
+the existing render mutex (never parallel decodes), a defense-in-depth `spreadActive()` gate also
+re-checks `spreadCapable()` against the item's real category so a stray `SPREAD` preference can
+never show a Book/Document as a spread even if the UI gate were somehow bypassed.
+`feature/reader/FixedReaderScreen.kt`: a new 2-slot `Row` rendering path (two independent `Image`s,
+never a stitched bitmap) reusing the existing `fixedReaderFittedContentSize`/`fixedReaderMaxPan`/
+`fixedReaderMaxPanY`/`fixedReaderVerticalScaleOverflow` transform math against a synthesized
+"combined content size" (`combinedContentDimensions`), RTL physical mirroring via
+`PageGroup.physicalOrder`, a corrupt-slot placeholder, and per-slot accessibility descriptions;
+`ReaderAppearance.kt` gained the spread-mode control (gated by `capabilities.spread`) and the
+`ReaderPreferencesSaver` now carries `spreadMode`. Six new localized strings (EN/ES/PT-BR). No
+new dependency, no Room schema change, no migration.
+
+**Pure JVM unit tests — PASS.**
+`./gradlew.bat :app:testDebugUnitTest --tests "com.d4guilar.shelfos.core.reader.SpreadModelTest" --tests "com.d4guilar.shelfos.core.reader.ReaderPreferencesSpreadTest" --tests "com.d4guilar.shelfos.core.reader.FixedReaderTransformTest" --tests "com.d4guilar.shelfos.core.reader.ThumbnailLoaderTest" --tests "com.d4guilar.shelfos.ReadingPolicyTest" -q`
+— exit 0, all tests pass. `SpreadModelTest` (34 tests): canonical pairing (cover solo, interior
+pairs, odd final page, 0/1/2-page edge cases), `resolvePageGroups`/`resolveGroups` (SINGLE every
+page solo, SPREAD matching canonical when nothing is landscape, a landscape member splitting its
+pair without skipping/duplicating any page, later pairs unaffected by an earlier split, unknown
+geometry treated as not-landscape), `PageGeometry.isLandscape` threshold (portrait/near-square
+not landscape, clearly-wide landscape, non-positive dimensions not landscape),
+`PageGroup.physicalOrder` (LTR unchanged, RTL mirrored placement with identical underlying
+pair-membership/values, solo groups unaffected by direction), `groupContaining`/current-page
+invariant (selecting a pair's second member never normalizes to the lower index),
+`resolveSpreadActive` (SINGLE never active, SPREAD always active, AUTO's exact threshold
+boundary), `nextLogicalPage`/`previousLogicalPage` (cover→first spread, group-to-group movement,
+odd-final-page navigation, boundary clamping, SINGLE-mode reduction to ±1), and the
+bounded-cost `nextPage`/`previousPage`/`resolveCurrentGroup` equivalents (proven equal to the
+whole-list form when nothing is landscape, plus a dedicated landscape-split case using only that
+one pair's geometry). `ReaderPreferencesSpreadTest` (13 tests, deliberately JSON-free — see its
+class doc for why `org.json.JSONObject` cannot be exercised in a plain JVM test here):
+`resolveReaderPreferences` AUTO default and title-override precedence, the global layer never
+leaking a stray `spreadMode`, `appearanceUpdate` never globalizing `spreadMode` even when another
+field legitimately globalizes in the same edit, an existing title override surviving an unrelated
+global save, `appearanceReset` returning a title to AUTO while a global-scope reset leaves the
+title's override untouched, and `direction`'s pre-existing never-global behavior staying
+structurally unaffected by the new field.
+
+**Targeted instrumented tests — PASS** (real device: see "Environment" below).
+`./gradlew.bat :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.ReaderPreferencesSpreadInstrumentedTest` —
+exit 0, 7/7 pass: the real `org.json.JSONObject`-backed half of the persistence contract (old
+JSON without `spreadMode` parses safely and resolves to AUTO; each `SpreadMode` round-trips
+through a real `.json()`/`.parse()`; an unrecognized or wrong-type `spreadMode` value falls back
+to `null` rather than throwing; a fully malformed JSON blob falls back to the default; other
+existing fields round-trip unaffected).
+`./gradlew.bat :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderSpreadViewModelTest` —
+exit 0, 8/8 pass at this initial-implementation point in history (superseded by the R1/R2/R3
+remediation entries below, which record the real, final, current count against the current test
+file -- this "8/8" is preserved as a historical record only, not the current status), against real
+CBZ fixtures through the real `FixedReaderViewModel`/`FixedReader`
+pipeline (not just the pure model in isolation): explicit SPREAD pairs an interior pair as 2 slots
+while the cover stays solo and `state.page` matches exactly what was navigated to; explicit SINGLE
+never shows 2 slots even at a 4000px-wide viewport; AUTO resolves to single on a narrow viewport
+and to a spread on a wide one, and resizing back and forth between them never changes `state.page`;
+a landscape page stays solo in explicit SPREAD mode and its canonical partner becomes its own solo
+group too, without skipping, duplicating, or disturbing the next unrelated pair; a corrupt page
+within a pair leaves its healthy sibling visible with its own bitmap while the corrupt slot carries
+its own error (top-level `state.error` stays `null` since the pair is not fully failed), and
+navigation continues to work afterward; selecting a thumbnail-style direct jump to a pair's second
+member (`vm.showPage(2)`) keeps `state.page == 2` rather than normalizing to `1`; and a stray
+`SpreadMode.SPREAD` preference on a `MediaCategory.BOOK` item never produces 2 slots, proving the
+`spreadActive()` category defense-in-depth gate (not just the Appearance UI gate) actually holds in
+the real render pipeline.
+
+**Memory evidence — PASS.** `repeatedSpreadTurnsStayWithinThePerBitmapBudgetAndDoNotGrowProcessMemoryUnboundedly`
+(in the same `FixedReaderSpreadViewModelTest` run above) drives a 9-page, 3000x4500 CBZ through 11
+rapid forward/backward spread turns (each turn sequentially decoding up to 2 full-resolution
+slots). Observed: every settled slot bitmap ≈3,375,000 bytes (≈3.2MiB, well inside
+`RenderMemoryPolicy.MAX_BITMAP_BYTES`'s per-render budget -- see the Codex R1/R2 remediation
+entries below for the real, final policy numbers; this initial pass predates the
+`THUMBNAIL_RESERVATION_BYTES` carve-out those entries record); process PSS went from 72,308KB
+before the sequence to 82,565KB after settling+GC (≈10MB growth across 11 two-slots-per-turn
+turns, well under the test's environment-tolerant 3-max-cost-bitmaps-worth threshold, and
+consistent with ordinary transient decode/GC churn rather than unbounded stale-bitmap
+accumulation). This PSS observation is supplemental runtime evidence only ("no observed runaway
+growth"), not proof of the exact byte-budget arithmetic -- see the R1/R2 entries' deterministic
+`PageRenderRequestTest` evidence for that.
+
+**Regression spot-check — PASS (individually), environment flake when run back-to-back.**
+Re-ran, each filtered individually: `FixedReaderViewModelLifecycleTest` (viewport plumbing +
+single-page memory evidence), `FixedReaderTransformBoundsTest` (Fit Page/Fit Width pan-clamp,
+unaffected by the spread addition — single-slot code path is byte-for-byte the pre-3C branch),
+`FixedReaderRecreationTest`, `MalformedFixedReaderResilienceTest`, `ReaderStateTest`,
+`ThumbnailNavigationUiTest`, and `LibraryPersistenceTest#pdfAndArchiveRenderAndArchiveUsesNaturalPageOrder`/
+`#nonSeekableProviderCopiesCommitsReopensAndCleansWithoutTouchingTheSource` — all PASS individually.
+Running the full `LibraryPersistenceTest` class back-to-back on this `shelfos-api24` AVD produced a
+native `SIGSEGV` inside `libart.so` on the emulator (not a JVM/Kotlin assertion failure, no
+stack trace through any ShelfOS or test code) partway through the class, consistent with this
+project's previously-documented AVD instability (`docs/PHASE_3_IMPLEMENTATION_PLAN.md` §22's "API
+37 AVD Espresso/InputManager incompatibility... repeated external Gradle-daemon interruptions");
+every test in that class passes when run alone. Recorded honestly as an environment limitation,
+not a 3C regression — none of `LibraryPersistenceTest`'s SAF/content-provider-focused cases touch
+the spread code paths this slice added.
+
+**Build/lint — PASS.** `:app:assembleDebug`, `:app:assembleDebugAndroidTest`, `:app:lintDebug` all
+exit 0 (lint required adding the six new strings' ES/PT-BR translations before passing clean — no
+other new errors/warnings). `git diff --check` — PASS (no whitespace errors). Working tree clean
+after commit.
+
+**Environment**: `shelfos-api24` AVD (`emulator-5554`, API 24, `Android SDK built for x86_64`),
+already running and confirmed stable at session start (`adb devices -l`, one tiny smoke test run
+before the full targeted suites, per standing environment discipline). No physical device used
+this pass (not blocking for 3C per the administrator brief — RP5/tablet/foldable physical
+acceptance stays 3D/3F's job). Full JVM suite and full connected suite were **not** run (standing
+policy; reserved for Phase 3F).
+
+**What this initial pass deliberately did NOT prove** (honest gaps at the time, not silent
+omissions — see the 3C handoff for the full list): RTL Manga's mirrored PHYSICAL on-screen
+placement and the combined Fit Page/Fit Width/zoom-pan geometry are Compose-UI-level concerns
+`FixedReaderSpreadViewModelTest` (ViewModel-only, no Espresso) cannot observe directly —
+`state.slots` is always logical ascending order regardless of reading direction; only
+`FixedReaderScreen`'s `PageGroup.physicalOrder` call (itself unit-proven correct by
+`SpreadModelTest`) determines which physical side each slot draws on. **This gap is closed** by
+the Codex R1 remediation's real Espresso/Compose `FixedReaderSpreadUiTest` pass (RTL physical
+placement, Fit Page mixed-aspect, corrupt-first/corrupt-second slot layout) and the Codex R2
+remediation's real pointer-transform-loop regression test added to that same class — see both
+entries immediately below.
+
+### PHASE 3C — Codex R1 remediation (2026-10-05)
+
+Status: **IMPLEMENTED on one remediation commit on top of `385edf4`**, on
+`phase-3/3c-spreads-manga-pairing`. Independent review (Codex) returned CHANGES REQUIRED with six
+findings: (1) unresolved/missing geometry must never authorize a navigation skip (the
+`isLandscapeAtForNavigation` conservative-default contract); (2) a spread-transition's real
+four-live-bitmap peak needed its own stricter per-slot byte budget
+(`RenderMemoryPolicy.MAX_SPREAD_BITMAP_BYTES`/`PageRenderRequest.spreadSlot`), with
+`ThumbnailLoader`'s 16MiB cache explicitly carved out of the same 96MiB session envelope
+(`THUMBNAIL_RESERVATION_BYTES`) rather than sitting outside it; (3) a corrupt slot within a pair
+must keep its OWN source `PageGeometry` for its placeholder, never borrow its healthy sibling's;
+(4) the zoom/pan gesture's content-geometry read must survive a spread<->single flip mid-gesture
+without restarting the `pointerInput` coroutine (`rememberUpdatedState`); (5) an active session's
+effective `SpreadMode` change must reconcile the currently-visible page immediately; (6) Next/
+Previous enablement must use the same canonical navigation resolver `turn()` itself uses, not raw
+`page +/- 1` arithmetic (wrong at the final-complete-spread boundary). `geometryCache` also moved
+from a plain `MutableMap` to a `ConcurrentHashMap` (UI-thread reads racing the IO-dispatched
+writer). See `docs/PHASE_3_IMPLEMENTATION_PLAN.md`'s 3C section for the full per-finding record.
+
+**Pure JVM unit tests — PASS.** `SpreadModelTest` and `PageRenderRequestTest` both extended for
+findings 1/2/6 (navigation conservative-default cases, the spread-slot byte-budget constants and
+every transition-class arithmetic proof, `resolveCurrentGroup`/`hasNext`/`hasPrevious` canonical
+equivalence) — all green.
+
+**Targeted instrumented tests — PASS.** `FixedReaderSpreadViewModelTest` extended with the
+rapid-navigation race test (finding 1, later found by Codex R2 to be non-deterministic — see the
+R2 entry below) and the memory test now asserting the spread-slot ceiling specifically. A new
+`FixedReaderSpreadUiTest` (real Compose/Espresso, `createAndroidComposeRule<MainActivity>`) closed
+the honest RTL/Fit-Page-geometry gap the initial pass above flagged as outstanding: physical LTR/
+RTL placement, Fit Page mixed-aspect pairing, corrupt-first/corrupt-second slot layout, final-
+complete-spread Next disablement, immediate `SpreadMode` reconciliation in both directions, and a
+double-tap-based "no stale geometry across a spread<->single flip" regression test for finding 4
+(Codex R2 later found this last test did not actually reach the real pointer-transform loop — see
+below).
+
+### PHASE 3C — Codex R2 micro-remediation (2026-10-06)
+
+Status: **IMPLEMENTED on one remediation commit on top of `bc96099`** ("fix: harden Phase 3C
+spread reading"), on `phase-3/3c-spreads-manga-pairing`. Independent review (Codex R2) returned
+CHANGES REQUIRED with four findings; every R1 finding above was explicitly accepted/closed and
+intentionally left unmodified (memory policy, corrupt-slot layout, `SpreadMode` reconciliation,
+final-nav resolver, RTL physical ordering, AUTO's deterministic width-driven evidence with
+physical-rotation deferred to 3F).
+
+**Finding 1 — unusable cached geometry was still navigation-pair-eligible.** A failed/unknown
+geometry lookup is cached as the `PageGeometry(0, 0)` sentinel (unchanged from R1); R1's
+navigation conservative-default (`geometryCache[page]?.isLandscape ?: true`) only engaged when a
+page had NO cache entry at all. Once the sentinel WAS cached (a corrupt/undecodable page), reading
+`.isLandscape` directly on it evaluated `false` ("not landscape"), bypassing the `?:` fallback and
+letting `nextPage`/`previousPage` treat it as "confirmed pair-eligible" -- able to reintroduce the
+exact skip R1 closed. Fixed by adding a single centralized `PageGeometry.isUsable`
+(`width > 0 && height > 0`) and rewriting `isLandscapeAtForNavigation` to check it before ever
+trusting `isLandscape`; `FixedReaderScreen`'s separate `isUnknown()` helper (presentation-side,
+intentionally left optimistic per R1) now delegates to the same centralized property instead of
+its own duplicated `width <= 0 || height <= 0` check. One accepted, mechanical downstream
+consequence: `FixedReaderSpreadUiTest#corruptFirstSlotLeavesHealthySiblingVisibleAndCorrectlyPositioned`'s
+final-complete-spread-with-a-corrupt-first-member case previously asserted Next was disabled --
+that assertion depended on the exact bug being fixed (a cached `(0, 0)` sentinel being misread as
+"confirmed not landscape"); it now correctly asserts Next stays enabled (navigation can no longer
+confirm the pair is complete when one member's true aspect is unknown) and that pressing it
+single-steps within the same visible pair without a crash or skip.
+
+**Finding 2 — the rapid-navigation race test was non-deterministic.** The R1 test fired three
+`vm.turn(1)` calls back-to-back and used a background `StateFlow` collector to record every
+`state.page` value observed, then asserted the split page appeared somewhere in that list.
+Collecting in the background can conflate or miss intermediate values (Codex R2 observed
+`visited=[1, 1, 3, 3]` on one run). Replaced with a deterministic adversarial test: a
+`GatedGeometryFixedReaderFactory` test seam (`FixedReaderFactory`/`FixedReaderFactory.open` made
+`open` for exactly this purpose) wraps the real `FixedReader` so `pageGeometry` for the candidate
+pair blocks on a `CountDownLatch` the test controls explicitly. `showPage()` updates
+`state.value.page` synchronously (a plain `MutableStateFlow.update`, before the async render is
+even launched), so the authoritative navigation result is asserted immediately after each `turn()`
+call with no waiting and no collector. A direct, non-race companion test
+(`cachedUnusableGeometryForACorruptPairMemberNeverAuthorizesANavigationSkip`) also proves finding
+1 end-to-end through a genuinely corrupt page, independent of any timing window.
+
+**Finding 3 — the gesture regression test never reached the real transform loop.** The R1 test
+used `doubleClick`, which only flips `scale` directly in Compose state through a separate
+`detectTapGestures(onDoubleTap = ...)` pointer handler -- never the `awaitEachGesture`/
+`calculateZoom`/`calculatePan` loop that actually reads `currentContentDimensions` for its pan
+clamp (the behavior Codex R1 finding 4 fixed). A new test,
+`pointerTransformGestureUsesCurrentGeometryAcrossASpreadToSingleAndBackFlipWithoutAPageChange`,
+uses the existing "Zoom in" control (sets `scale = 2f`) plus a one-finger drag -- `scale > 1f`
+alone routes a single-pointer drag through the real transform branch. The fixture (a tall/narrow
+single-mode page paired with a wide second member) makes the spread's combined content clearly
+width-constrained under Fit Page (large pan headroom once zoomed) while the single-slot content
+stays clearly height-constrained (near-zero pan headroom) -- a measurable difference the assertion
+is capable of failing against if stale geometry were ever captured again across the flip.
+
+**Targeted JVM tests — PASS.** `PageRenderRequestTest` 27/27, `SpreadModelTest` 42/42 (includes
+four new tests: `PageGeometry.isUsable`/`isLandscape` sentinel/non-positive/positive cases, and a
+test reproducing the exact buggy-vs-fixed `isLandscapeAtForNavigation` contract against the real
+`nextPage`/`previousPage` functions).
+`./gradlew.bat :app:testDebugUnitTest --tests "com.d4guilar.shelfos.core.reader.PageRenderRequestTest" --tests "com.d4guilar.shelfos.core.reader.SpreadModelTest"`
+— exit 0.
+
+**Targeted instrumented tests — PASS, final counts.**
+`./gradlew.bat :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderSpreadViewModelTest`
+— **11/11 PASS** (the real, final count after R1 + R2 remediation -- supersedes this phase's
+initial-implementation "8/8" and R1's intermediate counts above, neither of which reflect the
+current test file). Includes the two deterministic gated-geometry rapid-navigation tests (first-
+and second-candidate-member-landscape) and the direct cached-unusable-geometry test, replacing the
+non-deterministic race test R1 had added.
+`./gradlew.bat :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderSpreadUiTest`
+— **11/11 PASS** (10 from R1 plus the new real pointer-transform regression test; one existing
+test's assertion corrected per Finding 1's accepted downstream consequence above).
+
+**Memory policy — unchanged from R1, verified against the actual current constants (not
+re-derived here).** `RenderMemoryPolicy.SESSION_BUDGET_BYTES` = 96MiB;
+`THUMBNAIL_RESERVATION_BYTES` = `ThumbnailLoader.DEFAULT_BUDGET_BYTES` = 16MiB;
+`READING_BUDGET_BYTES` = 80MiB; ordinary single-page ceiling `MAX_BITMAP_BYTES` =
+`READING_BUDGET_BYTES / 3` ≈ **26.7MiB**; active-spread per-slot ceiling
+`MAX_SPREAD_BITMAP_BYTES` = `READING_BUDGET_BYTES / 4` = **20MiB**. (The initial-implementation
+entry above's "≈32MiB-per-render" wording predates the `THUMBNAIL_RESERVATION_BYTES` carve-out and
+is corrected there rather than restated as current.) This is the deterministic, JVM-proven policy
+(`PageRenderRequestTest`); the separate PSS/`Debug.getPss()` observations recorded in this phase's
+instrumented memory tests are supplemental runtime evidence only ("no observed runaway growth"),
+not independent proof of the exact byte-budget arithmetic.
+
+**Build/lint — PASS.** `:app:assembleDebug`, `:app:assembleDebugAndroidTest`, `:app:lintDebug` all
+exit 0. `git diff --check` — PASS. Working tree clean after commit.
+
+**Corrupt-slot layout, `SpreadMode` reconciliation, final-nav resolver, RTL physical ordering,
+AUTO/width-driven behavior**: unchanged from the R1 entry above -- Codex R2 explicitly accepted
+all of these, and this remediation did not modify any of them.
+
+**Dependencies/schema**: none added/changed. **Room**: unchanged. **CBR**: not implemented, not
+stubbed, not detected. Physical device/true-rotation acceptance and the full accumulated
+regression suite remain Phase 3F's job, not this micro-remediation's.
+
+### PHASE 3C — Codex R3 micro-remediation (2026-10-06)
+
+Status: **IMPLEMENTED on one remediation commit on top of `d55a507`** ("fix: complete Phase 3C
+review remediation"), on `phase-3/3c-spreads-manga-pairing`. Independent review (Codex R3) found
+no remaining production correctness defect -- this is purely a test-evidence gap plus stale
+documentation. No production file was changed.
+
+**Finding (missing persisted locator/progress assertion).** The R2 deterministic gated
+rapid-navigation test (`deterministicRapidNextDoesNotSkipTheGatedPair_firstMemberLandscape`/
+`_secondMemberLandscape`) proved `state.value.page` directly never skips from 1 to 3, but never
+proved what actually got PERSISTED -- the final assertion before this remediation only checked
+`state.value.page in 0 until state.value.count`, a bound loose enough to also pass if the
+persisted value were wrong. Fixed in the TEST ONLY: `FixedReaderSpreadViewModelTest`'s
+`FakeLibraryRepository` now records every `reading(id, locator, progress)` call into a
+`ConcurrentLinkedQueue<RecordedReading>` (safe to read from the test thread while
+`PositionWriter`'s consumer coroutine writes to it from `appScope`); a new
+`viewModelWithRepository` helper exposes that fake alongside the `FixedReaderViewModel` so the
+test can inspect it (`viewModel` itself is now a thin wrapper over it, unchanged for every other
+caller). The gated test now polls (`awaitUntil`, the same async-convergence idiom already used
+throughout this file) until a recorded reading matches the REAL `pageLocator(splitPageIndex)`/
+`pageProgress(splitPageIndex, count)` -- production's own functions, never reimplemented in the
+test -- and separately asserts no recorded reading ever matches `pageLocator(3)`, the exact page
+the no-skip invariant already proved `state.value.page` never became.
+
+**Targeted instrumented tests — PASS.**
+`./gradlew.bat :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderSpreadViewModelTest`
+— **11/11 PASS** (no new test method was added; the two existing gated rapid-navigation tests were
+extended in place with the persisted locator/progress assertion, so the count is unchanged from
+the R2 final count above).
+
+**Production files changed**: none. **Dependencies/schema**: none added/changed. **Room**:
+unchanged. Build/lint were not re-run (test/docs-only change; no production file touched).
+
 ## PHASE 3B — PAGE THUMBNAILS (2026-10-04)
 
 Status: **IMPLEMENTED, pending administrator/Codex review.** Base: `main` @ `4c58fa6`
