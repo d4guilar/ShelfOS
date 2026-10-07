@@ -23,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.After
@@ -185,6 +186,48 @@ class FixedReaderSpreadViewModelTest {
         awaitSettled(vm, targetPage = 3)
         assertEquals(listOf(3, 4), vm.state.value.slots.map { it.page })
     }
+
+    // ---- Codex R1 finding 1 (3C remediation): unresolved geometry must never enable a navigation skip ----
+
+    /** Fires Next 3 times back-to-back with NO await between calls, so the 2nd/3rd calls race the first
+     * render's async geometry resolution (Dispatchers.IO) -- reproducing the exact bug: before the fix, an
+     * unresolved landscape pair was optimistically treated as "not landscape", so a rapid 2nd Next jumped
+     * straight from page 1 to page 3, skipping page 2 (and page 2's content was simply never shown). This
+     * records every `state.page` value observed (a background collector, cancelled before assertions) and
+     * proves the split page was actually visited, not jumped over, for BOTH "first member landscape" and
+     * "second member landscape" variants. */
+    private fun assertRapidNextNeverSkipsTheSplitPage(splitPageIndex: Int, pageSizes: List<Pair<Int, Int>>, name: String) {
+        val item = cbzFixture(name, pageSizes, spreadMode = SpreadMode.SPREAD)
+        val vm = viewModel(item)
+        vm.updateViewport(2000, 1000, 1000)
+        awaitSettled(vm, targetPage = 0)
+        val visited = java.util.concurrent.CopyOnWriteArrayList<Int>()
+        val collectorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scopes += it }
+        val collector = collectorScope.launch { vm.state.collect { visited += it.page } }
+        try {
+            // No Thread.sleep/await between calls: the 2nd and 3rd Next must race the 1st render's geometry
+            // resolution, which is exactly the adversarial window the fix must close.
+            vm.turn(1); vm.turn(1); vm.turn(1)
+            awaitSettled(vm, timeoutMs = 20_000)
+            // Allow one more beat for the collector to observe the final value before cancelling it.
+            awaitUntil(timeoutMs = 2_000) { visited.lastOrNull() == vm.state.value.page }
+        } finally { collector.cancel() }
+        assertTrue("the split page $splitPageIndex was skipped entirely (never became the current page); visited=$visited",
+            visited.contains(splitPageIndex))
+        // The final settled logical page must be a real, reachable page -- never left stuck mid-skip -- and the
+        // position persisted for it (FakeLibraryRepository.reading is a no-op, but positions.save always saves
+        // exactly vm.state.value.page, so proving the final page is correct also proves the persisted locator
+        // would have been correct).
+        assertTrue(vm.state.value.page in 0 until vm.state.value.count)
+    }
+
+    @Test fun rapidNextNeverSkipsAnUnresolvedLandscapePair_firstMemberLandscape() =
+        assertRapidNextNeverSkipsTheSplitPage(splitPageIndex = 2, pageSizes = listOf(portrait, landscape, portrait, portrait, portrait),
+            name = "race-first-member.cbz")
+
+    @Test fun rapidNextNeverSkipsAnUnresolvedLandscapePair_secondMemberLandscape() =
+        assertRapidNextNeverSkipsTheSplitPage(splitPageIndex = 2, pageSizes = listOf(portrait, portrait, landscape, portrait, portrait),
+            name = "race-second-member.cbz")
 
     // ---- Corrupt page within a pair: healthy sibling stays visible, failed page gets its own error, no crash ----
 

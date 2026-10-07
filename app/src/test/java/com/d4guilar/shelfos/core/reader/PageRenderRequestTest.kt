@@ -178,4 +178,87 @@ class PageRenderRequestTest {
         assertEquals(PageRenderRequest.THUMBNAIL_MAX_DIMENSION, target.height)
         assertTrue(target.estimatedBytes < RenderMemoryPolicy.MAX_BITMAP_BYTES / 10)
     }
+
+    // ---- Codex R1 finding 2 (3C spread remediation): deterministic spread-transition memory policy ----
+
+    @Test fun thumbnailReservationIsCarvedOutOfTheSessionBudgetBeforeDividingAmongReadingBitmaps() {
+        assertEquals(16L * 1024 * 1024, RenderMemoryPolicy.THUMBNAIL_RESERVATION_BYTES)
+        assertEquals(RenderMemoryPolicy.SESSION_BUDGET_BYTES - RenderMemoryPolicy.THUMBNAIL_RESERVATION_BYTES,
+            RenderMemoryPolicy.READING_BUDGET_BYTES)
+    }
+
+    @Test fun singlePageBudgetIsDerivedFromTheReadingBudgetNotTheFullSessionBudget() {
+        // Preserves the 3A single-page guarantee's SHAPE (budget / 3 concurrent bitmaps), but against the
+        // post-thumbnail-reservation reading budget, not the raw session budget -- the thumbnail cache always
+        // coexisted in the same process; this constant now actually reflects that.
+        assertEquals(RenderMemoryPolicy.READING_BUDGET_BYTES / 3, RenderMemoryPolicy.MAX_BITMAP_BYTES)
+    }
+
+    @Test fun spreadSlotBudgetIsStricterThanSinglePageBudget() {
+        assertEquals(RenderMemoryPolicy.READING_BUDGET_BYTES / 4, RenderMemoryPolicy.MAX_SPREAD_BITMAP_BYTES)
+        assertTrue(RenderMemoryPolicy.MAX_SPREAD_BITMAP_BYTES < RenderMemoryPolicy.MAX_BITMAP_BYTES)
+    }
+
+    @Test fun spreadToSpreadWorstCaseOfFourLiveBitmapsExactlyFillsTheReadingBudgetAndNeverExceedsIt() {
+        // Two old spread slots (already rendered under the spread-slot budget) + two newly-decoding spread
+        // slots: the real worst-case ownership graph Codex R1 finding 2 identified. This must land AT or BELOW
+        // READING_BUDGET_BYTES, never above it.
+        val worstCase = 4 * RenderMemoryPolicy.MAX_SPREAD_BITMAP_BYTES
+        assertTrue("4 spread slots of ${RenderMemoryPolicy.MAX_SPREAD_BITMAP_BYTES}B each = ${worstCase}B " +
+            "exceeds the reading budget ${RenderMemoryPolicy.READING_BUDGET_BYTES}B", worstCase <= RenderMemoryPolicy.READING_BUDGET_BYTES)
+    }
+
+    @Test fun singleToSpreadTransitionWorstCaseStaysWithinTheReadingBudget() {
+        // One old single-page slot + two new spread slots.
+        val worstCase = RenderMemoryPolicy.MAX_BITMAP_BYTES + 2 * RenderMemoryPolicy.MAX_SPREAD_BITMAP_BYTES
+        assertTrue("single->spread worst case ${worstCase}B exceeds ${RenderMemoryPolicy.READING_BUDGET_BYTES}B",
+            worstCase <= RenderMemoryPolicy.READING_BUDGET_BYTES)
+    }
+
+    @Test fun spreadToSingleTransitionWorstCaseStaysWithinTheReadingBudget() {
+        // Two old spread slots + one new single-page slot.
+        val worstCase = 2 * RenderMemoryPolicy.MAX_SPREAD_BITMAP_BYTES + RenderMemoryPolicy.MAX_BITMAP_BYTES
+        assertTrue("spread->single worst case ${worstCase}B exceeds ${RenderMemoryPolicy.READING_BUDGET_BYTES}B",
+            worstCase <= RenderMemoryPolicy.READING_BUDGET_BYTES)
+    }
+
+    @Test fun singleToSingleTransitionWorstCaseOfThreeBitmapsExactlyFillsTheReadingBudget() {
+        // Preserves the exact 3A invariant (3 concurrent single-page bitmaps), now against the reading budget --
+        // integer division means MAX_BITMAP_BYTES * 3 can be up to 2 bytes under READING_BUDGET_BYTES (never
+        // over), so this asserts "at the limit, never exceeding it" rather than bit-for-bit equality.
+        val worstCase = RenderMemoryPolicy.MAX_CONCURRENT_BITMAPS * RenderMemoryPolicy.MAX_BITMAP_BYTES
+        assertTrue(worstCase <= RenderMemoryPolicy.READING_BUDGET_BYTES)
+        assertTrue(RenderMemoryPolicy.READING_BUDGET_BYTES - worstCase < RenderMemoryPolicy.MAX_CONCURRENT_BITMAPS)
+    }
+
+    @Test fun aNearCeilingSpreadSlotRequestIsBoundedBySpreadBudgetNotTheLooserSingleBudget() {
+        // A large, square-ish source at a generous viewport, requested AS a spread slot, must resolve under the
+        // stricter spread ceiling even though the same source/viewport combination requested as an ordinary
+        // single-page request would be allowed to use the looser single-page ceiling.
+        val source = 6000 to 6000
+        val viewport = PageRenderRequest(3000, 3000, fit = FitMode.PAGE, spreadSlot = true)
+        val spreadTarget = resolveRenderTarget(source.first, source.second, viewport)
+        assertTrue("spread slot estimated ${spreadTarget.estimatedBytes}B exceeds ${RenderMemoryPolicy.MAX_SPREAD_BITMAP_BYTES}B",
+            spreadTarget.estimatedBytes <= RenderMemoryPolicy.MAX_SPREAD_BITMAP_BYTES)
+        val singleTarget = resolveRenderTarget(source.first, source.second, viewport.copy(spreadSlot = false))
+        assertTrue("single-page target should be allowed at least as large as the spread-slot target here",
+            singleTarget.estimatedBytes >= spreadTarget.estimatedBytes)
+        assertTrue(singleTarget.estimatedBytes <= RenderMemoryPolicy.MAX_BITMAP_BYTES)
+    }
+
+    @Test fun everyOrdinaryRequestDefaultsToTheNonSpreadBudget() {
+        // spreadSlot defaults to false -- every pre-existing call site (PDF/CBZ full-page reads, thumbnails,
+        // DEFAULT) is unaffected by the new stricter ceiling unless it explicitly opts in.
+        assertFalse(PageRenderRequest.DEFAULT.spreadSlot)
+        assertFalse(PageRenderRequest.thumbnail().spreadSlot)
+        assertFalse(PageRenderRequest().spreadSlot)
+    }
+
+    @Test fun resolveRenderTargetStillPreservesThe3ASinglePageByteBudgetGuaranteeForOrdinaryRequests() {
+        // Sanity re-proof (not a new behavior) that an ordinary (non-spread) oversized square request is still
+        // bounded by MAX_BITMAP_BYTES exactly as before -- the spread remediation must not have loosened or
+        // broken the original single-page guarantee.
+        val target = resolveRenderTarget(8000, 8000, PageRenderRequest(4000, 4000, fit = FitMode.PAGE))
+        assertTrue(target.estimatedBytes <= RenderMemoryPolicy.MAX_BITMAP_BYTES)
+    }
 }

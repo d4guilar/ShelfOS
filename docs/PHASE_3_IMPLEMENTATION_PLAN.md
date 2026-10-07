@@ -3,10 +3,12 @@
 Status: **3A (rendering/fidelity foundation) COMPLETE and MERGED to `main`** (`#24`,
 "feat: establish Phase 3A fixed-page rendering foundation"). **3B (page thumbnails/
 navigation) COMPLETE and MERGED to `main`** (`#25`, "feat: add Phase 3B page thumbnail
-navigation"). **3C (spreads + Manga pairing) IMPLEMENTED, committed on
-`phase-3/3c-spreads-manga-pairing`, pending administrator/Codex review.** 3D–3F remain
-PLANNING ONLY — no later slice has started. Phase 3 overall is **NOT complete**. See §22/§23
-for what 3A landed, §24 for what 3B actually landed, and §25 for what 3C actually landed.
+navigation"). **3C (spreads + Manga pairing) IMPLEMENTED on
+`phase-3/3c-spreads-manga-pairing`, Codex R1 review findings REMEDIATED on the same
+branch, pending administrator/Codex R2 review.** 3D–3F remain PLANNING ONLY — no later
+slice has started. Phase 3 overall is **NOT complete**. See §22/§23 for what 3A landed,
+§24 for what 3B actually landed, and §25 for what 3C actually landed (including the R1
+remediation record).
 
 ## 1. Status / base
 
@@ -21,10 +23,13 @@ for what 3A landed, §24 for what 3B actually landed, and §25 for what 3C actua
   same discipline level as the Phase 2 planning docs. It supersedes ad hoc CBR framing
   scattered across `docs/ROADMAP.md`, `docs/PRODUCT.md`, `docs/features/COMICS_MANGA.md`,
   and `docs/features/READER.md` (see §5).
-- §12/§13/§21 below authorized exactly one slice at a time. 3A (§22/§23) is complete and
-  merged. This pass implements **3B only** (page-thumbnail navigation), per the
-  administrator's instruction, and does not start 3C (spreads), 3D (foldable), or 3E (CBR).
-  See §24 for what 3B actually landed.
+- §12/§13/§21 below authorized exactly one slice at a time. 3A (§22/§23) and 3B (§24) are
+  complete and merged to `main`. 3C (spreads + Manga pairing) is implemented on
+  `phase-3/3c-spreads-manga-pairing`; Codex R1 reviewed the full 3C candidate and returned
+  CHANGES REQUIRED, and this same branch now carries the remediation of every R1 finding
+  (one remediation commit on top of the original 3C commit) — see §25's "Codex R1
+  remediation record" subsection for the actual landed fixes/evidence. 3D (foldable) and 3E
+  (CBR) have not started.
 
 ## 22. 3A implementation record (landed)
 
@@ -458,19 +463,28 @@ content description.
 slot's placeholder carries `content_desc_spread_page_unavailable`; page-turn controls/semantics
 are otherwise unchanged from the single-page case.
 
-**Memory**: accounted for fully by `RenderMemoryPolicy` unchanged (no new memory-policy
-constant was needed) — the sequential-never-parallel decode discipline above means a spread's
-two slots are two sequential renders under the existing per-render byte budget, never a doubled
-concurrent allocation. See `docs/VALIDATION.md`'s PSS/per-bitmap evidence (≈3.2MiB per slot,
-well inside the ≈32MiB-per-render budget; ≈10MB process PSS growth across 11 rapid spread turns).
+**Memory (original 3C claim, corrected by Codex R1 — see the remediation record below)**: the
+original landed claim ("accounted for fully by `RenderMemoryPolicy` unchanged") was **incorrect**
+and has been corrected. Sequential-never-parallel decode prevents concurrent *decoders*, but a
+spread REPLACEMENT (old pair A+B still held by `_state`/Compose while new pair C+D decodes) can
+reach four live reading-resolution bitmaps at once, not two. §25's remediation record documents
+the real derived budget and the deterministic tests that now enforce it in code.
 
-**Tests**: `core/reader/SpreadModelTest.kt` (34 pure JVM tests — pairing, landscape, RTL
+**Tests**: `core/reader/SpreadModelTest.kt` (pure JVM — pairing, landscape, RTL
 placement, current-page invariant, AUTO threshold, navigation boundaries, bounded-cost
-equivalence), `core/reader/ReaderPreferencesSpreadTest.kt` (13 pure JVM tests — persistence
-logic, deliberately JSON-free), `ReaderPreferencesSpreadInstrumentedTest.kt` (7 instrumented
-tests — the real JSON round trip/malformed-value handling), `FixedReaderSpreadViewModelTest.kt`
-(8 instrumented tests — real-CBZ pairing/landscape/AUTO-resize/corrupt-pair/thumbnail-jump/
-category-gate/memory evidence, against the real `FixedReaderViewModel`). See
+equivalence; the RTL navigation test was corrected by the R1 remediation to compare real LTR/RTL
+group lists instead of a tautological self-comparison), `core/reader/ReaderPreferencesSpreadTest.kt`
+(pure JVM — persistence logic, deliberately JSON-free), `core/reader/PageRenderRequestTest.kt`
+(R1 remediation added a spread-memory-budget group — thumbnail reservation, all four transition
+classes' worst-case arithmetic, a near-ceiling spread-slot request, 3A single-page preservation),
+`ReaderPreferencesSpreadInstrumentedTest.kt` (instrumented — the real JSON round trip/
+malformed-value handling), `FixedReaderSpreadViewModelTest.kt` (instrumented — real-CBZ pairing/
+landscape/AUTO-resize/corrupt-pair/thumbnail-jump/category-gate/memory evidence against the real
+`FixedReaderViewModel`; R1 remediation added the rapid-Next unresolved-geometry adversarial tests
+for both split-page variants), `FixedReaderSpreadUiTest.kt` (new, R1 remediation — real Compose/
+bounds-based coverage: corrupt-first/corrupt-second spread layout, LTR/RTL physical placement,
+mixed-aspect Fit Page, final-complete-spread Next-enablement, immediate SpreadMode apply in both
+directions, stale-gesture-geometry regression, Fit Width + zoom spread geometry). See
 `docs/VALIDATION.md`'s "PHASE 3C" entry for exact commands/results, including the honest
 regression spot-check and the one documented environment flake (unrelated to this slice).
 
@@ -478,10 +492,86 @@ regression spot-check and the one documented environment flake (unrelated to thi
 §12/§13/§19): no `FoldingFeature`/hinge/posture detection or hinge gutter (3D); no
 `PublicationFormat.CBR`/RAR support (3E); no panel detection, guided view, or source-page
 splitting; no persistent/on-disk spread state of any kind; no live high-resolution
-zoom-triggered re-render beyond what 3A already established. A real Espresso/Compose UI pass
-proving RTL's mirrored *physical* on-screen placement and the combined Fit Page/Fit Width/
-zoom-pan geometry end-to-end (as opposed to the ViewModel-level + pure-model proofs this slice
-has) remains outstanding — flagged honestly in `docs/VALIDATION.md` rather than claimed.
+zoom-triggered re-render beyond what 3A already established.
+
+**Codex R1 remediation record (this branch, one commit on top of the original 3C commit).**
+Codex R1 reviewed the full 3C candidate above and returned CHANGES REQUIRED while accepting the
+underlying architecture (pure `SpreadModel`, cover-offset canonical pairing, title-specific JSON
+persistence, logical/physical RTL separation, format-neutral `PageGeometry`, no Room migration,
+future-CBR compatibility unchanged). Every finding below was remediated on this same branch; no
+dependency, Room schema, or migration was touched; 3D/3E/CBR/foldable/hinge scope was not
+started.
+
+- **Finding 1 (unresolved geometry could enable a skip).** `FixedReaderViewModel.geometryCache`
+  is now a `ConcurrentHashMap` (previously a plain `MutableMap` read on the UI thread while
+  written from `Dispatchers.IO`). Semantic navigation (`turn`/`hasNext`/`hasPrevious`) now reads
+  it through `isLandscapeAtForNavigation`, which treats UNRESOLVED geometry as `true`
+  (conservative — forces single-step, no-skip movement) rather than the presentation layer's
+  documented optimistic `false` default; once `render()` actually resolves the real geometry
+  (always before it decides a group's slot count), later navigation sees the true value and
+  behaves exactly as before. Proven by `FixedReaderSpreadViewModelTest`'s
+  `rapidNextNeverSkipsAnUnresolvedLandscapePair_firstMemberLandscape`/`_secondMemberLandscape` —
+  rapid, unawaited `turn(1)` calls that race the async geometry resolution.
+- **Finding 2 (spread-aware memory budget).** `RenderMemoryPolicy` now derives
+  `READING_BUDGET_BYTES = SESSION_BUDGET_BYTES (96MiB) - THUMBNAIL_RESERVATION_BYTES`
+  (`ThumbnailLoader.DEFAULT_BUDGET_BYTES`, 16MiB — the thumbnail cache always shared this
+  envelope; the constant now actually reflects that). Single-page: `MAX_BITMAP_BYTES =
+  READING_BUDGET_BYTES / 3` (unchanged shape, tighter real number). Spread slot:
+  `MAX_SPREAD_BITMAP_BYTES = READING_BUDGET_BYTES / 4` (the real worst case — two old spread
+  slots still held by `_state`/Compose plus two newly-decoding replacement slots). Every
+  transition class stays within `READING_BUDGET_BYTES`: spread→spread is `4 *
+  MAX_SPREAD_BITMAP_BYTES` exactly at the limit; single↔spread is
+  `MAX_BITMAP_BYTES + 2*MAX_SPREAD_BITMAP_BYTES`, comfortably under it; single→single remains
+  `3 * MAX_BITMAP_BYTES` exactly at the limit (the original 3A invariant, preserved). Enforced via
+  a new `PageRenderRequest.spreadSlot` flag that `resolveRenderTarget` and
+  `FixedReaderViewModel.render()` route through the stricter ceiling. Deterministic coverage:
+  `PageRenderRequestTest`'s spread-budget test group (budget derivation, all four transition
+  classes' worst-case arithmetic, a near-ceiling spread-slot request, 3A single-page preservation)
+  — no reliance on PSS/GC timing for correctness (a supplemental PSS observation remains in
+  `FixedReaderSpreadViewModelTest`'s existing memory test, now updated to assert against the new
+  per-slot budgets).
+- **Finding 3 (corrupt slot corrupted the whole spread layout).** `PageSlot` now carries its own
+  `geometry: PageGeometry?`, always resolved by `render()` regardless of decode outcome.
+  `FixedReaderScreen.combinedContentDimensions()` and the failed-slot placeholder
+  (`placeholderAspect()`) now use each slot's OWN geometry — never a healthy sibling's — so a
+  corrupt page occupies its own correct geometric footprint. Proven by
+  `FixedReaderSpreadUiTest`'s `corruptFirstSlotLeavesHealthySiblingVisibleAndCorrectlyPositioned`/
+  `corruptSecondSlotLeavesHealthySiblingVisibleAndCorrectlyPositioned` (real bounds assertions via
+  new `spread_slot_<page>` test tags).
+- **Finding 4 (stale pointerInput/slot capture).** The zoom/pan gesture now reads spread content
+  geometry through `rememberUpdatedState(combinedContentDimensions(state.slots, gutterPx))`
+  rather than closing over `state.slots` directly inside the long-lived gesture coroutine (still
+  keyed only by page/rtl/fitWidth, so an in-progress gesture is never restarted merely because
+  AUTO/SpreadMode flipped single↔spread). Proven by `FixedReaderSpreadUiTest`'s
+  `gestureGeometryStaysCurrentAcrossASpreadToSingleFlipWithoutAPageChange`.
+- **Finding 5 (SpreadMode change must apply immediately).** The ViewModel's preference collector
+  now tracks `lastAppliedSpreadMode` and re-renders the current page the moment the EFFECTIVE
+  title SpreadMode changes for an already-open session (title override set/cleared, or a reset
+  restoring AUTO) — narrowly scoped to that one field; `state.page`/locator/progress are never
+  touched and no extra persistence write occurs. Proven by `FixedReaderSpreadUiTest`'s
+  `switchingFromSpreadToSingleAppliesImmediatelyWithoutChangingTheLogicalPage`/
+  `switchingFromSingleToSpreadAppliesImmediatelyAndDerivesTheEligiblePair`.
+- **Finding 6 (final-complete-spread Next-enablement).** `FixedReaderScreen`'s Next/Previous
+  `enabled` now calls the ViewModel's `hasNext()`/`hasPrevious()`, which reuse the exact same
+  `nextPage`/`previousPage` resolver `turn()` itself uses, instead of raw `page+1 < count`/
+  `page > 0` arithmetic. Proven by `FixedReaderSpreadUiTest`'s
+  `nextIsDisabledOnTheFirstPageOfTheFinalCompleteSpread`.
+- **RTL tautology.** `SpreadModelTest.rtlNavigationUsesTheSameLogicalGroupsAsLtr` no longer
+  compares one call to itself; it compares independently-built LTR/RTL group lists across every
+  page and separately proves `physicalOrder` is the only thing direction changes.
+- **RTL/Fit Page/Fit Width UI-evidence gap (flagged honestly above, now closed).**
+  `FixedReaderSpreadUiTest` adds real bounds-based Compose coverage: LTR/RTL physical placement
+  (`ltrPlacesTheLowerLogicalPageOnThePhysicalLeft`/
+  `rtlMirrorsPhysicalPlacementWithoutReversingLogicalIdentity`), a mixed-aspect healthy Fit Page
+  pair (`fitPageMixedAspectPairStaysWithinViewportWithGutterAndNoOverlap`), and a Fit Width +
+  zoom spread case reusing the existing `reader_scroll_probe`/`reader_transform_probe` seams
+  (`fitWidthSpreadZoomStaysClampedAndStatePageNeverChanges`). AUTO-driven single↔spread
+  reconciliation itself remains proven at the ViewModel level
+  (`FixedReaderSpreadViewModelTest.autoResolvesToSingleOnANarrowViewportAndToSpreadOnAWideOne`);
+  the new Compose-level stale-gesture/SpreadMode-apply tests above exercise the equivalent
+  explicit-SpreadMode-change path instead of a real device-rotation-driven AUTO flip, which this
+  remediation pass did not attempt given emulator window-size reliability — an honest, flagged
+  scope note, not a silent gap.
 
 ## 2. Why Phase 3 is not green-field
 

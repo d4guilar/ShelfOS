@@ -179,6 +179,36 @@ object OriginalFixtures {
         } }
         return item(file, "test-epub-strict-xhtml", PublicationFormat.EPUB)
     }
+    /**
+     * Phase 3C Codex R1 remediation: a CBZ fixture for the spread UI-evidence instrumented tests
+     * ([FixedReaderSpreadUiTest]), categorized `COMIC` so [com.d4guilar.shelfos.core.reader.spreadCapable]
+     * allows spread presentation, with `preferences` pre-set to the requested [spreadMode] so a test doesn't
+     * need to drive the Appearance dialog first just to reach a spread (mirroring
+     * `FixedReaderSpreadViewModelTest`'s own `cbzFixture` helper, which proved this approach at the ViewModel
+     * level). [pageSizes] is 0-based page order; [corruptPages] (1-based, matching the PNG entry name) writes an
+     * undecodable entry so a slot's decode genuinely fails, for Codex R1 finding 3's corrupt-slot layout tests.
+     */
+    fun spreadCbz(context: Context, id: String, pageSizes: List<Pair<Int, Int>>, corruptPages: Set<Int> = emptySet(),
+        category: MediaCategory = MediaCategory.COMIC,
+        spreadMode: com.d4guilar.shelfos.core.reader.SpreadMode? = com.d4guilar.shelfos.core.reader.SpreadMode.SPREAD,
+        fit: com.d4guilar.shelfos.core.reader.FitMode = com.d4guilar.shelfos.core.reader.FitMode.PAGE): LibraryItem {
+        val file = File(context.filesDir, "publications/$id.cbz").also { it.parentFile!!.mkdirs() }
+        ZipOutputStream(file.outputStream()).use { zip ->
+            pageSizes.forEachIndexed { index, (w, h) ->
+                zip.putNextEntry(ZipEntry("page${index + 1}.png"))
+                if ((index + 1) in corruptPages) zip.write(byteArrayOf(1, 2, 3, 4))
+                else {
+                    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                    bitmap.eraseColor(if (index % 2 == 0) Color.RED else Color.BLUE)
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, zip); bitmap.recycle()
+                }
+                zip.closeEntry()
+            }
+        }
+        return LibraryItem(id, "Spread fixture $id", "ShelfOS test", category, "test:$id", PublicationFormat.CBZ,
+            file.name, file.length(), managedPath = file.path,
+            preferences = com.d4guilar.shelfos.core.reader.ReaderPreferences(fit = fit, spreadMode = spreadMode).json())
+    }
     private fun item(file: File, id: String, format: PublicationFormat) = LibraryItem(id, "Original ${format.name} fixture", "ShelfOS test",
         MediaCategory.BOOK, "test:$id", format, file.name, file.length(), managedPath = file.path)
 }

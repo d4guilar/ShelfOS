@@ -33,7 +33,14 @@ import kotlin.math.sqrt
  * later slices.
  */
 data class PageRenderRequest(val viewportWidth: Int = 0, val viewportHeight: Int = 0, val fit: FitMode = FitMode.PAGE,
-    val maxDimension: Int = SAFE_MAX_DIMENSION) {
+    val maxDimension: Int = SAFE_MAX_DIMENSION,
+    // Codex R1 finding 2 (3C spread remediation): declares this request as one slot of an ACTIVE multi-slot
+    // spread, so resolveRenderTarget() applies RenderMemoryPolicy's stricter spread-transition per-slot byte
+    // budget instead of the single-page one -- see RenderMemoryPolicy's doc for why a spread needs a tighter
+    // ceiling (worst-case 4 live reading-resolution bitmaps during a spread-to-spread transition, not 2-3).
+    // Deliberately a boolean flag rather than a raw byte number: every call site declares *what kind of request
+    // this is*, and the actual budget number lives in exactly one place (RenderMemoryPolicy), never duplicated.
+    val spreadSlot: Boolean = false) {
     companion object {
         /**
          * Two distinct roles, deliberately given one value (Codex R1 finding 1):
@@ -115,15 +122,56 @@ object RenderMemoryPolicy {
     /** Conservative total peak-memory budget for same-session fixed-reader bitmaps, sized for modest hardware. */
     const val SESSION_BUDGET_BYTES: Long = 96L * 1024 * 1024
 
-    /** Worst case same-session concurrently-live decoded bitmaps; see the class doc. */
+    /**
+     * Codex R1 finding 2 (3C spread remediation): [ThumbnailLoader]'s own session-local thumbnail cache
+     * ([ThumbnailLoader.DEFAULT_BUDGET_BYTES], ~16MiB) shares this same [SESSION_BUDGET_BYTES] envelope rather
+     * than sitting entirely outside it -- both are created for, and live only as long as, the one fixed-reader
+     * session. Referencing the constant directly (rather than re-declaring "16MiB" here) is deliberate: one
+     * number, one owner, no duplicated magic constant between the two policies.
+     */
+    const val THUMBNAIL_RESERVATION_BYTES: Long = ThumbnailLoader.DEFAULT_BUDGET_BYTES
+
+    /** What actually remains for reading-resolution page bitmaps once [THUMBNAIL_RESERVATION_BYTES] is set aside
+     * from [SESSION_BUDGET_BYTES] -- the real envelope [MAX_BITMAP_BYTES]/[MAX_SPREAD_BITMAP_BYTES] below divide. */
+    const val READING_BUDGET_BYTES: Long = SESSION_BUDGET_BYTES - THUMBNAIL_RESERVATION_BYTES
+
+    /** Worst case same-session concurrently-live decoded bitmaps for ordinary single-page reading; see the class
+     * doc (the currently-displayed bitmap, a newly-decoding one, and a narrow-window just-superseded one). */
     const val MAX_CONCURRENT_BITMAPS: Long = 3
 
-    /** Per-bitmap `ARGB_8888` byte budget derived from the two constants above. */
-    const val MAX_BITMAP_BYTES: Long = SESSION_BUDGET_BYTES / MAX_CONCURRENT_BITMAPS
+    /** Per-bitmap `ARGB_8888` byte budget for a single-page render, derived from [READING_BUDGET_BYTES] (not the
+     * full [SESSION_BUDGET_BYTES] -- see [THUMBNAIL_RESERVATION_BYTES]) divided across [MAX_CONCURRENT_BITMAPS]. */
+    const val MAX_BITMAP_BYTES: Long = READING_BUDGET_BYTES / MAX_CONCURRENT_BITMAPS
 
     /** [MAX_BITMAP_BYTES] expressed in pixels (`ARGB_8888`: 4 bytes/pixel) -- what [resolveRenderTarget] bounds
-     * width*height against. */
+     * width*height against for an ordinary (non-spread-slot) request. */
     const val MAX_BITMAP_PIXELS: Double = MAX_BITMAP_BYTES / 4.0
+
+    /**
+     * Codex R1 finding 2: during a spread-to-spread replacement (old pair A+B still strongly referenced by
+     * StateFlow/Compose while new pair C+D is decoded sequentially and accumulated before publication), the real
+     * worst-case ownership graph is FOUR live reading-resolution bitmaps at once, not two -- see
+     * [com.d4guilar.shelfos.feature.reader.FixedReaderViewModel.render]'s doc for the full ownership argument
+     * (the shared render mutex means only one render's decode section is ever actually running, so there is no
+     * fifth concurrently-decoding bitmap beyond "2 old (published/Compose-held) + 2 new (locally accumulated)").
+     */
+    const val MAX_CONCURRENT_SPREAD_BITMAPS: Long = 4
+
+    /** Per-slot `ARGB_8888` byte budget for an ACTIVE spread's slots ([PageRenderRequest.spreadSlot]), stricter
+     * than [MAX_BITMAP_BYTES] because [MAX_CONCURRENT_SPREAD_BITMAPS] (4) is worse than
+     * [MAX_CONCURRENT_BITMAPS] (3). Every transition class derived from this and [MAX_BITMAP_BYTES] together stays
+     * within [READING_BUDGET_BYTES]: spread->spread is `4 * MAX_SPREAD_BITMAP_BYTES == READING_BUDGET_BYTES`
+     * exactly (both old slots were themselves rendered under this same stricter budget); single->spread and
+     * spread->single are each `MAX_BITMAP_BYTES + 2 * MAX_SPREAD_BITMAP_BYTES`, comfortably under
+     * [READING_BUDGET_BYTES]; single->single remains `MAX_CONCURRENT_BITMAPS * MAX_BITMAP_BYTES ==
+     * READING_BUDGET_BYTES` exactly, preserving the original 3A single-page guarantee (tightened only by the new
+     * [THUMBNAIL_RESERVATION_BYTES] carve-out, which was always implicitly true -- the thumbnail cache always
+     * coexisted in the same process -- just not previously reflected in this constant). */
+    const val MAX_SPREAD_BITMAP_BYTES: Long = READING_BUDGET_BYTES / MAX_CONCURRENT_SPREAD_BITMAPS
+
+    /** [MAX_SPREAD_BITMAP_BYTES] expressed in pixels -- what [resolveRenderTarget] bounds width*height against
+     * for an active spread's slot ([PageRenderRequest.spreadSlot] `== true`). */
+    const val MAX_SPREAD_BITMAP_PIXELS: Double = MAX_SPREAD_BITMAP_BYTES / 4.0
 }
 
 /**
@@ -192,10 +240,13 @@ fun resolveRenderTarget(sourceWidth: Int, sourceHeight: Int, request: PageRender
     val longestAtScale = longestSource * scale
     if (longestAtScale > ceilingDimension && longestAtScale > 0.0) scale *= ceilingDimension / longestAtScale
 
-    // Explicit byte/pixel memory budget, aspect-preserving (Codex R1 finding 3).
+    // Explicit byte/pixel memory budget, aspect-preserving (Codex R1 finding 3 / 3C remediation finding 2).
+    // An active spread's slot uses the stricter spread-transition ceiling; an ordinary single-page request
+    // (including the pre-layout fallback and thumbnails) uses the original per-render ceiling.
+    val pixelCeiling = if (request.spreadSlot) RenderMemoryPolicy.MAX_SPREAD_BITMAP_PIXELS else RenderMemoryPolicy.MAX_BITMAP_PIXELS
     val pixelsAtScale = (srcW * scale) * (srcH * scale)
-    if (pixelsAtScale > RenderMemoryPolicy.MAX_BITMAP_PIXELS && pixelsAtScale > 0.0)
-        scale *= sqrt(RenderMemoryPolicy.MAX_BITMAP_PIXELS / pixelsAtScale)
+    if (pixelsAtScale > pixelCeiling && pixelsAtScale > 0.0)
+        scale *= sqrt(pixelCeiling / pixelsAtScale)
 
     if (!scale.isFinite() || scale <= 0.0) scale = 1.0 / longestSource
     val width = floor(srcW * scale).toInt().coerceIn(1, PageRenderRequest.SAFE_MAX_DIMENSION)

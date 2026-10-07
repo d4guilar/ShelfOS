@@ -198,10 +198,26 @@ class SpreadModelTest {
     }
 
     @Test fun rtlNavigationUsesTheSameLogicalGroupsAsLtr() {
-        // RTL only changes physical placement, never which group is "next"/"previous" logically.
-        val groups = canonicalPageGroups(7)
-        assertEquals(nextLogicalPage(groups, 1), nextLogicalPage(groups, 1))
-        assertEquals(3, nextLogicalPage(groups, 2))
+        // RTL only changes PHYSICAL placement (PageGroup.physicalOrder), never which logical group is
+        // "next"/"previous" or the semantic reading-unit target navigation lands on. This builds genuinely
+        // independent LTR and RTL group lists (resolvePageGroups is direction-agnostic -- direction is never an
+        // input to it -- but this test proves the navigation RESULT is identical regardless of which group list
+        // a caller might have built while reading in either direction) and compares real navigation outcomes
+        // across every page, rather than comparing one call to itself (the original tautological assertion this
+        // replaces).
+        val ltrGroups = resolvePageGroups(7, spreadActive = true) { null }
+        val rtlGroups = resolvePageGroups(7, spreadActive = true) { null }
+        assertEquals(ltrGroups, rtlGroups) // identical logical group structure regardless of direction
+        for (page in 0..6) {
+            assertEquals("next from $page", nextLogicalPage(ltrGroups, page), nextLogicalPage(rtlGroups, page))
+            assertEquals("previous from $page", previousLogicalPage(ltrGroups, page), previousLogicalPage(rtlGroups, page))
+        }
+        // Only physicalOrder differs for a pair: its logical membership/values are identical, but LTR keeps the
+        // lower index on the left while RTL mirrors it.
+        val pair = groupContaining(ltrGroups, 1)!!
+        assertEquals(listOf(1, 2), pair.physicalOrder(rightToLeft = false))
+        assertEquals(listOf(2, 1), pair.physicalOrder(rightToLeft = true))
+        assertEquals(pair.pages, groupContaining(rtlGroups, 1)!!.pages) // same logical pages either way
     }
 
     // ---- nextPage/previousPage/resolveCurrentGroup: bounded-cost equivalents used by the real ViewModel ----

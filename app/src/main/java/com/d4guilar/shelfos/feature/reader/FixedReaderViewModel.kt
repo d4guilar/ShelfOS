@@ -21,7 +21,11 @@ import kotlinx.coroutines.sync.withLock
  * slot so a corrupt page within a pair ("Corrupt page within a spread" in `docs/PHASE_3_IMPLEMENTATION_PLAN.md`)
  * leaves its healthy sibling visible rather than blanking the whole pair.
  */
-data class PageSlot(val page: Int, val bitmap: Bitmap? = null, val error: UiMessage? = null)
+/** Codex R1 finding 3 (3C remediation): [geometry] is the page's own undistorted [PageGeometry] -- always
+ * populated from [FixedReader.pageGeometry] regardless of whether [bitmap] decoded successfully, so a corrupt
+ * slot's placeholder can still be laid out at the SOURCE page's own aspect ratio rather than borrowing its
+ * sibling's (see [com.d4guilar.shelfos.feature.reader.combinedContentDimensions]). */
+data class PageSlot(val page: Int, val bitmap: Bitmap? = null, val error: UiMessage? = null, val geometry: PageGeometry? = null)
 
 data class FixedReaderState(val item: LibraryItem? = null, val page: Int = 0, val count: Int = 0,
     // Phase 3C: 1 slot for ordinary single-page reading (including SINGLE mode and any AUTO-resolved-single
@@ -69,12 +73,23 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
     // page index -- a page's own undistorted dimensions don't change within one open session. A failed/unknown
     // lookup is cached as PageGeometry(0, 0), which PageGeometry.isLandscape treats as "not landscape" (see its
     // doc), so a corrupt/undecodable page's geometry is never re-attempted every navigation.
-    private val geometryCache = mutableMapOf<Int, PageGeometry>()
+    //
+    // Codex R1 finding 1 (3C remediation): this cache is WRITTEN from render()'s Dispatchers.IO critical section
+    // (mutex-serialized against other writers, but not against concurrent UI-thread readers) and READ
+    // synchronously from the UI thread by turn()/isLandscapeAtForNavigation -- a plain MutableMap offers no
+    // visibility/safety guarantee across that reader/writer split. ConcurrentHashMap makes every get/getOrPut
+    // safe to call from either thread without introducing a second lock or blocking either side on the other.
+    private val geometryCache = java.util.concurrent.ConcurrentHashMap<Int, PageGeometry>()
     // The spreadActive decision actually used by the most recently started render -- compared against a freshly
     // computed decision on every updateViewport call so a continuous resize/rotation stream only triggers a new
     // render on the rare call that actually flips single<->spread, never on every pixel of movement (see
     // updateViewport's doc).
     @Volatile private var lastSpreadActiveRendered: Boolean? = null
+    // Codex R1 finding 5 (3C remediation): the effective title SpreadMode this ViewModel last actually rendered
+    // against, so the init{} collector below can detect a genuine mode change (title override set/cleared, or a
+    // reset restoring AUTO) and reconcile the currently-visible page immediately -- see the collector's doc.
+    // Null only before the very first preference emission is processed.
+    @Volatile private var lastAppliedSpreadMode: SpreadMode? = null
     private val positions = PositionWriter<Int>(appScope, write = { page ->
         repository.reading(id, pageLocator(page), pageProgress(page, _state.value.count))
     }, onFailure = { _state.update { it.copy(error = UiMessage.Resource(R.string.reader_position_save_failed)) } })
@@ -87,9 +102,26 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
                     _state.update { it.copy(loading = false, error = UiMessage.Resource(R.string.reader_no_longer_in_library)) }
                     return@collect
                 }
-                _state.update { it.copy(item = item, globalPreferences = global,
-                    preferences = resolveReaderPreferences(ReaderPreferences.parse(item.preferences), ReaderPreferences.parse(global))) }
-                if (!opening) { opening = true; launch { open(item) } }
+                val resolved = resolveReaderPreferences(ReaderPreferences.parse(item.preferences), ReaderPreferences.parse(global))
+                _state.update { it.copy(item = item, globalPreferences = global, preferences = resolved) }
+                val effectiveSpreadMode = resolved.spreadMode ?: SpreadMode.AUTO
+                if (!opening) {
+                    opening = true
+                    lastAppliedSpreadMode = effectiveSpreadMode
+                    launch { open(item) }
+                } else if (effectiveSpreadMode != lastAppliedSpreadMode && _state.value.count > 0) {
+                    // Codex R1 finding 5: the EFFECTIVE title SpreadMode (title override set/cleared, or a reset
+                    // restoring AUTO) just changed for an already-open session -- reconcile the currently visible
+                    // logical page's presentation immediately (narrowly scoped to this one field: an unrelated
+                    // preference change, or a global-only change that never affects the per-title spreadMode
+                    // resolution, never re-triggers this). render() never changes state.page, the locator, or
+                    // progress, and never writes a new position -- it only re-derives the visible slot group for
+                    // the page that was already current.
+                    lastAppliedSpreadMode = effectiveSpreadMode
+                    render(_state.value.page)
+                } else {
+                    lastAppliedSpreadMode = effectiveSpreadMode
+                }
             }
         }
     }
@@ -139,11 +171,22 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
         return resolveSpreadActive(spreadMode(), viewportWidthDp)
     }
 
-    /** Cached/bounded landscape lookup -- see [geometryCache]'s field doc. Never performs IO itself; a page whose
-     * geometry has not yet been looked up (not cached) is conservatively treated as "not landscape" here, same as
-     * [resolvePageGroups]'s documented default, rather than blocking the calling thread on a decode. The first
-     * [render] of a group containing that page populates the cache for next time. */
-    private fun isLandscapeAtCached(page: Int) = geometryCache[page]?.isLandscape == true
+    /**
+     * Codex R1 finding 1 (3C remediation): cached/bounded landscape lookup used ONLY by semantic navigation
+     * ([turn], [hasNext], [hasPrevious]). Never performs IO itself -- it must stay safe to call synchronously
+     * from the UI thread. Unlike [resolvePageGroups]'s documented *presentation* default ("unknown geometry is
+     * treated as not landscape, optimistic pairing reconciles naturally once geometry resolves"), navigation
+     * must NEVER let unresolved geometry enable a skip: a page whose geometry has not yet resolved in
+     * [geometryCache] is treated as landscape=true here -- conservative, not optimistic -- so [nextPage]/
+     * [previousPage] fall back to single-step (no-skip) movement into the unresolved pair's first member rather
+     * than assuming it is safe to jump straight past the whole pair. Once [render] actually resolves that page's
+     * real geometry (which it always does before deciding how many slots to show it, inside the IO-dispatched
+     * critical section -- see [render]'s doc), subsequent navigation naturally sees the true cached value and
+     * behaves exactly like the always-resolved case. This asymmetry (conservative for navigation, optimistic for
+     * presentation) is intentional: a wrong presentation guess self-corrects the moment it renders, but a wrong
+     * navigation guess silently skips an unshown page and can persist the wrong progress.
+     */
+    private fun isLandscapeAtForNavigation(page: Int): Boolean = geometryCache[page]?.isLandscape ?: true
 
     /**
      * Phase 3C: semantic forward/backward navigation between visible reading units, reusing the existing
@@ -158,11 +201,31 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
     fun turn(delta: Int) {
         val page = _state.value.page
         val target = when (delta) {
-            1 -> nextPage(canonicalGroups, page, spreadActive(), ::isLandscapeAtCached)
-            -1 -> previousPage(canonicalGroups, page, spreadActive(), ::isLandscapeAtCached)
+            1 -> nextPage(canonicalGroups, page, spreadActive(), ::isLandscapeAtForNavigation)
+            -1 -> previousPage(canonicalGroups, page, spreadActive(), ::isLandscapeAtForNavigation)
             else -> page + delta
         }
         showPage(target)
+    }
+
+    /**
+     * Codex R1 finding 6 (3C remediation): whether Next/Previous actually has a different semantic reading-unit
+     * target to move to, reusing the EXACT SAME canonical navigation resolver [turn] itself uses -- never
+     * duplicated arithmetic in Compose. This is deliberately not `state.page + 1 < state.count`/`state.page > 0`:
+     * that raw arithmetic is wrong exactly when [state]'s current page is the first member of the FINAL complete
+     * spread (e.g. count=5, final group [3,4], page=3 -- a page 4 exists, but there is no next READING UNIT to
+     * advance to), and symmetrically wrong at the opposite boundary for Previous. A control is enabled only when
+     * its real navigation target actually differs from the current page.
+     */
+    fun hasNext(): Boolean {
+        val page = _state.value.page
+        return nextPage(canonicalGroups, page, spreadActive(), ::isLandscapeAtForNavigation) != page
+    }
+
+    /** See [hasNext]; symmetric backward semantic enablement. */
+    fun hasPrevious(): Boolean {
+        val page = _state.value.page
+        return previousPage(canonicalGroups, page, spreadActive(), ::isLandscapeAtForNavigation) != page
     }
 
     fun showPage(index: Int) {
@@ -212,6 +275,17 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
      * job) can never begin decoding until this one has resolved every slot's fate -- preserving the exact
      * invariant Codex R1 remediation established for the single-page case.
      *
+     * Codex R1 finding 2 (3C remediation) -- peak ownership during a spread transition: this method never
+     * manually recycles the OLD slots still published in [_state] (Compose/the StateFlow collector may still
+     * hold them), and decodes every NEW slot sequentially into the local [decoded] list before publishing, so a
+     * spread-to-spread replacement's real worst case is FOUR concurrently-live reading-resolution bitmaps (two
+     * old, strongly referenced by whatever last observed [_state]; two new, strongly referenced by [decoded]) --
+     * never more, because the shared [mutex] guarantees only one render's decode section is ever actually
+     * running. [PageRenderRequest.spreadSlot] is set whenever [group] has more than one page, which routes each
+     * such decode through [RenderMemoryPolicy.MAX_SPREAD_BITMAP_BYTES] instead of [RenderMemoryPolicy.MAX_BITMAP_BYTES],
+     * so that real four-bitmap worst case is mechanically bounded at exactly [RenderMemoryPolicy.READING_BUDGET_BYTES]
+     * rather than merely reasoned about in documentation.
+     *
      * Per-slot sizing: each slot's [PageRenderRequest.viewportWidth] is the measured viewport width divided by
      * the number of slots in the group (full [viewportHeight] either way) -- an approximation that ignores the
      * few-dp inter-page gutter (a pure design-token/layout concern, not a decode-resolution one); harmless, since
@@ -240,12 +314,21 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
                             geometryCache.getOrPut(idx) { reader.pageGeometry(idx) ?: PageGeometry(0, 0) }.isLandscape
                         }
                         val slotWidth = if (viewportWidth > 0 && group.pages.isNotEmpty()) (viewportWidth / group.pages.size) else viewportWidth
+                        // Codex R1 finding 2 (3C remediation): an ACTIVE spread's slots (group.pages.size > 1)
+                        // decode under RenderMemoryPolicy's stricter spread-transition per-slot budget -- see
+                        // PageRenderRequest.spreadSlot / RenderMemoryPolicy.MAX_SPREAD_BITMAP_BYTES.
+                        val spreadSlot = group.pages.size > 1
                         for (idx in group.pages) {
                             ensureActive() // Re-checked before each sequential decode, not just once for the whole group.
-                            val request = PageRenderRequest(slotWidth, viewportHeight, fit = fit)
-                            decoded += try { PageSlot(idx, bitmap = reader.render(idx, request)) }
+                            // Codex R1 finding 3 (3C remediation): always resolve this page's own geometry BEFORE
+                            // deciding its fate, regardless of whether the decode below succeeds -- a failed
+                            // decode must still carry its own source geometry so combinedContentDimensions()/the
+                            // Compose placeholder never have to borrow a sibling's aspect ratio for it.
+                            val geometry = geometryCache.getOrPut(idx) { reader.pageGeometry(idx) ?: PageGeometry(0, 0) }
+                            val request = PageRenderRequest(slotWidth, viewportHeight, fit = fit, spreadSlot = spreadSlot)
+                            decoded += try { PageSlot(idx, bitmap = reader.render(idx, request), geometry = geometry) }
                             catch (e: CancellationException) { throw e }
-                            catch (e: Exception) { PageSlot(idx, error = e.readerMessage()) }
+                            catch (e: Exception) { PageSlot(idx, error = e.readerMessage(), geometry = geometry) }
                         }
                         ensureActive() // Checked once more, still holding the lock, before publishing -- see the method doc above.
                         val allFailed = decoded.all { it.bitmap == null }

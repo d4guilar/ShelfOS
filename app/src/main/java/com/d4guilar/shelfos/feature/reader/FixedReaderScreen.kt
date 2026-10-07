@@ -39,6 +39,7 @@ import com.d4guilar.shelfos.core.designsystem.InputKeycap
 import com.d4guilar.shelfos.core.designsystem.resolve
 import com.d4guilar.shelfos.core.input.*
 import com.d4guilar.shelfos.core.reader.FitMode
+import com.d4guilar.shelfos.core.reader.PageGeometry
 import com.d4guilar.shelfos.core.reader.PageGroup
 import com.d4guilar.shelfos.core.reader.capabilities
 import com.d4guilar.shelfos.core.reader.fixedReaderClampPan
@@ -133,6 +134,13 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
         // stale nonzero Fit Width panY across a resize/rotation/fold.
         panY = fixedReaderClampPan(panY, fixedReaderMaxPanY(content, viewportSize.height.toFloat(), scale, fitWidth))
     }
+    // Codex R1 finding 4 (3C remediation): the zoom/pan pointerInput coroutine below is deliberately keyed only
+    // by (state.page, rtl, fitWidth) -- restarting a gesture mid-touch merely because AUTO flipped single<->spread
+    // (or a retry replaced a slot's bitmap) without state.page itself changing would be a worse defect than the
+    // one being fixed. rememberUpdatedState keeps the content geometry the gesture reads always current WITHOUT
+    // restarting that coroutine and WITHOUT the coroutine ever closing over the raw state.slots/Bitmap list
+    // itself -- only the minimal immutable dims it actually needs.
+    val currentContentDimensions = rememberUpdatedState(combinedContentDimensions(state.slots, gutterPx))
     BackHandler { backPress() }
     if (appearance && item != null) ReaderAppearance(state.preferences, capabilities(item.format, item.category), { appearance = false },
         vm::applyAppearance, vm::resetAppearance)
@@ -221,7 +229,9 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                             else pointerCount > 1 || scale > 1f
                         if (isTransformGesture) {
                             transformed = true
-                            val combined = combinedContentDimensions(state.slots, gutterPx)
+                            // Codex R1 finding 4: read through rememberUpdatedState, never state.slots directly,
+                            // so a resize-driven single<->spread flip or a retry mid-gesture is always reflected.
+                            val combined = currentContentDimensions.value
                             if (combined != null) {
                                 // Phase 2D.1: clamp against the actual fitted-content-vs-viewport geometry (not
                                 // the viewport's own size) using the NEW scale/translation together, so the
@@ -335,10 +345,15 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                                     val isCurrent = slot.page == state.page
                                     val description = if (isCurrent) String.format(currentSpreadPageDescription, slot.page + 1, state.count)
                                         else String.format(pageOfCountTemplate, slot.page + 1, state.count)
-                                    Image(image, description, Modifier.fillMaxHeight().aspectRatio(bmp.width.toFloat() / bmp.height), contentScale = ContentScale.Fit)
+                                    Image(image, description, Modifier.fillMaxHeight().aspectRatio(bmp.width.toFloat() / bmp.height)
+                                        .testTag("spread_slot_${slot.page}"), contentScale = ContentScale.Fit)
                                 } else {
-                                    val siblingAspect = state.slots.firstNotNullOfOrNull { it.bitmap }?.let { it.width.toFloat() / it.height } ?: 0.7f
-                                    Box(Modifier.fillMaxHeight().aspectRatio(siblingAspect).background(t.colors.surface)
+                                    // Codex R1 finding 3 (3C remediation): a failed slot's placeholder occupies
+                                    // ITS OWN page geometry/aspect ratio -- never the healthy sibling's -- so a
+                                    // corrupt first (or second) physical slot can never consume/constrain the
+                                    // available width and push the healthy sibling outside its own correct box.
+                                    Box(Modifier.fillMaxHeight().aspectRatio(placeholderAspect(slot.geometry)).background(t.colors.surface)
+                                        .testTag("spread_slot_${slot.page}")
                                         .semantics { contentDescription = String.format(pageUnavailableDescription, slot.page + 1) },
                                         contentAlignment = Alignment.Center) { Text(stringResource(R.string.label_unavailable)) }
                                 }
@@ -369,13 +384,16 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
             Column(Modifier.padding(horizontal = 8.dp).onFocusChanged { bottomFocused = it.hasFocus }) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton({ vm.turn(-1) }, Modifier.let { m -> previousHint?.let { m.semantics { contentDescription = previousHintDescription(it) } } ?: m },
-                        enabled = state.page > 0) { previousHint?.let { InputKeycap(it, Modifier.padding(end = 4.dp)) }; Text(stringResource(R.string.action_previous)) }
+                        // Codex R1 finding 6: semantic enablement via the SAME canonical navigation resolver
+                        // turn() itself uses -- never raw `state.page > 0` arithmetic, which is wrong exactly at
+                        // the final-complete-spread boundary (see FixedReaderViewModel.hasPrevious's doc).
+                        enabled = vm.hasPrevious()) { previousHint?.let { InputKeycap(it, Modifier.padding(end = 4.dp)) }; Text(stringResource(R.string.action_previous)) }
                     // Numbers keep left-to-right order inside the mirrored row ("3 / 193", never "193 / 3").
                     if (state.count > 0) Text("${(sliderTarget?.roundToInt() ?: state.page) + 1} / ${state.count}", Modifier.testTag("page_number"),
                         style = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr))
                     else if (state.loading && state.error == null) Text(openingLabel, color = t.colors.secondary)
                     TextButton({ vm.turn(1) }, Modifier.let { m -> nextHint?.let { m.semantics { contentDescription = nextHintDescription(it) } } ?: m },
-                        enabled = state.page + 1 < state.count) { Text(stringResource(R.string.action_next)); nextHint?.let { InputKeycap(it, Modifier.padding(start = 4.dp)) } }
+                        enabled = vm.hasNext()) { Text(stringResource(R.string.action_next)); nextHint?.let { InputKeycap(it, Modifier.padding(start = 4.dp)) } }
                 }
                 if (state.count > 1) Slider(sliderTarget ?: state.page.toFloat(), { sliderTarget = it },
                     Modifier.semantics { contentDescription = pageSliderDescription },
@@ -400,10 +418,35 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
  * placeholder's arbitrary size. Returns `null` only when no slot has a bitmap yet (nothing to fit against).
  */
 private fun combinedContentDimensions(slots: List<PageSlot>, gutterPx: Float): Pair<Float, Float>? {
-    val bitmaps = slots.mapNotNull { it.bitmap }
-    if (bitmaps.isEmpty()) return null
-    if (bitmaps.size == 1) return bitmaps[0].width.toFloat() to bitmaps[0].height.toFloat()
-    val refHeight = bitmaps.maxOf { it.height }.toFloat()
-    val totalWidth = bitmaps.sumOf { (refHeight * it.width / it.height).toDouble() }.toFloat() + gutterPx
+    // Codex R1 finding 3 (3C remediation): every VISIBLE logical slot must participate in this combined geometry
+    // even when its own bitmap failed to decode -- using that slot's OWN PageGeometry (already resolved by
+    // FixedReaderViewModel.render regardless of decode outcome), never a healthy sibling's dimensions. The old
+    // behavior (mapNotNull { it.bitmap }) silently dropped a failed slot from the combined box entirely, letting
+    // a corrupt first/second slot consume or constrain width that rightfully belonged to both slots.
+    if (slots.isEmpty() || slots.all { it.bitmap == null && it.geometry.isUnknown() }) return null
+    fun dims(slot: PageSlot): Pair<Float, Float> = slot.bitmap?.let { it.width.toFloat() to it.height.toFloat() }
+        ?: slot.geometry?.takeIf { !it.isUnknown() }?.let { it.width.toFloat() to it.height.toFloat() }
+        ?: (DEFAULT_PLACEHOLDER_ASPECT_WIDTH to DEFAULT_PLACEHOLDER_ASPECT_HEIGHT)
+    val pairs = slots.map(::dims)
+    if (pairs.size == 1) return pairs[0]
+    val refHeight = pairs.maxOf { it.second }
+    val totalWidth = pairs.sumOf { (refHeight * it.first / it.second).toDouble() }.toFloat() + gutterPx
     return totalWidth to refHeight
 }
+
+/** `true` when a [PageGeometry] carries no usable dimensions (the `PageGeometry(0, 0)` sentinel
+ * [FixedReaderViewModel][com.d4guilar.shelfos.feature.reader.FixedReaderViewModel]'s `geometryCache` stores for a
+ * page whose geometry lookup itself failed, or a genuinely absent value). */
+private fun PageGeometry?.isUnknown(): Boolean = this == null || width <= 0 || height <= 0
+
+/** Codex R1 finding 3: a failed slot's own placeholder aspect ratio, from its OWN [PageGeometry] when known --
+ * never a sibling's. Only when this specific slot's geometry is also unknown does it fall back to the
+ * conservative default placeholder aspect (never derived from any other slot). */
+private fun placeholderAspect(geometry: PageGeometry?): Float =
+    if (geometry.isUnknown()) DEFAULT_PLACEHOLDER_ASPECT_WIDTH / DEFAULT_PLACEHOLDER_ASPECT_HEIGHT
+    else geometry!!.width.toFloat() / geometry.height
+
+/** Conservative portrait-ish default used only when NEITHER a bitmap NOR a resolved [PageGeometry] exists for a
+ * slot -- never derived from any sibling slot's own geometry (Codex R1 finding 3). */
+private const val DEFAULT_PLACEHOLDER_ASPECT_WIDTH = 2f
+private const val DEFAULT_PLACEHOLDER_ASPECT_HEIGHT = 3f
