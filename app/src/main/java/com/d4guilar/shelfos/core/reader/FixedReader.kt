@@ -277,8 +277,13 @@ interface FixedReader : Closeable {
     fun pageGeometry(index: Int): PageGeometry?
 }
 
-class FixedReaderFactory(private val files: PublicationFiles) {
-    fun open(item: LibraryItem): FixedReader {
+/** `open` only for Codex R2's 3C remediation test seam (see `FixedReaderSpreadViewModelTest`'s
+ * `GatedGeometryFixedReaderFactory`): a deterministic rapid-navigation test needs to wrap the real, factory-opened
+ * [FixedReader] with a decorator that can deliberately hold a specific page's [FixedReader.pageGeometry] lookup
+ * open, rather than relying on an async `StateFlow` collector's racy timing (Codex R2 found that approach
+ * nondeterministic). Behavior is otherwise byte-for-byte unchanged -- no new production code path exists. */
+open class FixedReaderFactory(private val files: PublicationFiles) {
+    open fun open(item: LibraryItem): FixedReader {
         val descriptor = files.open(item)
         try {
             return when (item.format) {

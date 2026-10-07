@@ -10,7 +10,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.d4guilar.shelfos.core.files.PublicationFiles
 import android.os.Debug
 import com.d4guilar.shelfos.core.reader.FitMode
+import com.d4guilar.shelfos.core.reader.FixedReader
 import com.d4guilar.shelfos.core.reader.FixedReaderFactory
+import com.d4guilar.shelfos.core.reader.PageGeometry
 import com.d4guilar.shelfos.core.reader.ReaderPreferences
 import com.d4guilar.shelfos.core.reader.RenderMemoryPolicy
 import com.d4guilar.shelfos.core.reader.SpreadMode
@@ -30,6 +32,7 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
+import java.util.concurrent.CountDownLatch
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -93,16 +96,39 @@ class FixedReaderSpreadViewModelTest {
             preferences = ReaderPreferences(fit = FitMode.PAGE, spreadMode = spreadMode).json())
     }
 
-    private fun viewModel(item: LibraryItem): FixedReaderViewModel {
+    private fun viewModel(item: LibraryItem, factoryOverride: FixedReaderFactory? = null): FixedReaderViewModel {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scopes += it }
         val store = ViewModelStore().also { stores += it }
         val repository = FakeLibraryRepository(item)
+        val usedFactory = factoryOverride ?: factory
         val provider = ViewModelProvider(store, object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                FixedReaderViewModel(item.id, repository, factory, scope) as T
+                FixedReaderViewModel(item.id, repository, usedFactory, scope) as T
         })
         return provider[FixedReaderViewModel::class.java]
+    }
+
+    /**
+     * Codex R2 finding 2 (3C remediation): the real [FixedReaderFactory.open] result, wrapped so
+     * [FixedReader.pageGeometry] for a chosen set of logical pages blocks on [gate] until the test explicitly
+     * releases it (`gate.countDown()`) -- a deterministic replacement for the R1 remediation test's reliance on
+     * an async `StateFlow` collector, which Codex R2 found nondeterministic (collecting emissions in the
+     * background can conflate/miss intermediate `state.page` values; `visited=[1, 1, 3, 3]` was observed).
+     * Everything else (page count, rendering, geometry for ungated pages) delegates straight through to the real
+     * session -- no behavior is faked beyond the one deliberately-held-open lookup.
+     */
+    private class GatedGeometryFixedReaderFactory(files: PublicationFiles, private val gatedPages: Set<Int>,
+        private val gate: CountDownLatch) : FixedReaderFactory(files) {
+        override fun open(item: LibraryItem): FixedReader {
+            val real = super.open(item)
+            return object : FixedReader by real {
+                override fun pageGeometry(index: Int): PageGeometry? {
+                    if (index in gatedPages) gate.await()
+                    return real.pageGeometry(index)
+                }
+            }
+        }
     }
 
     private fun awaitUntil(timeoutMs: Long = 15_000, condition: () -> Boolean) {
@@ -187,47 +213,88 @@ class FixedReaderSpreadViewModelTest {
         assertEquals(listOf(3, 4), vm.state.value.slots.map { it.page })
     }
 
-    // ---- Codex R1 finding 1 (3C remediation): unresolved geometry must never enable a navigation skip ----
+    // ---- Codex R2 finding 2 (3C remediation): deterministic rapid-navigation evidence ----
 
-    /** Fires Next 3 times back-to-back with NO await between calls, so the 2nd/3rd calls race the first
-     * render's async geometry resolution (Dispatchers.IO) -- reproducing the exact bug: before the fix, an
-     * unresolved landscape pair was optimistically treated as "not landscape", so a rapid 2nd Next jumped
-     * straight from page 1 to page 3, skipping page 2 (and page 2's content was simply never shown). This
-     * records every `state.page` value observed (a background collector, cancelled before assertions) and
-     * proves the split page was actually visited, not jumped over, for BOTH "first member landscape" and
-     * "second member landscape" variants. */
-    private fun assertRapidNextNeverSkipsTheSplitPage(splitPageIndex: Int, pageSizes: List<Pair<Int, Int>>, name: String) {
+    /**
+     * Codex R2 finding 2: replaces the R1 remediation test's async-`StateFlow`-collector evidence (Codex R2
+     * observed `visited=[1, 1, 3, 3]` and flagged that collecting in the background can conflate/miss
+     * intermediate `state.page` values -- not proof of the exact sequence). This version instead GATES the
+     * candidate pair's geometry resolution open with a [CountDownLatch] the test controls explicitly, then reads
+     * the AUTHORITATIVE `state.value.page` synchronously right after each [FixedReaderViewModel.turn] call --
+     * `showPage()` updates `_state` via a plain (non-suspending) `MutableStateFlow.update` before it ever
+     * launches the async render, so this is exact and immediate, never a race against a collector.
+     *
+     * Sequence: (A) start at page 0; (B) first Next -> `state.page` becomes 1 (asserted synchronously); (C)
+     * before the candidate pair [1,2]'s geometry resolves (the gate is still closed, so [render]'s IO coroutine
+     * is blocked inside the gated `pageGeometry` lookup and has written NOTHING to `geometryCache` yet), a second
+     * Next; (D) `state.value.page` is asserted synchronously, immediately -- must be 2 (the split page), never 3
+     * (which would mean the still-unresolved pair was wrongly treated as "confirmed not landscape," skipping
+     * page 2 entirely). The gate is then released and the reader must settle correctly: the landscape page
+     * becomes solo, presentation reconciles, the logical current page stays valid, and further navigation
+     * proceeds normally.
+     */
+    private fun assertDeterministicRapidNextDoesNotSkipTheGatedPair(splitPageIndex: Int, pageSizes: List<Pair<Int, Int>>, name: String) {
         val item = cbzFixture(name, pageSizes, spreadMode = SpreadMode.SPREAD)
+        val gate = CountDownLatch(1)
+        val gatedFactory = GatedGeometryFixedReaderFactory(PublicationFiles(context), gatedPages = setOf(1, 2), gate = gate)
+        val vm = viewModel(item, factoryOverride = gatedFactory)
+        vm.updateViewport(2000, 1000, 1000)
+        awaitSettled(vm, targetPage = 0) // (A) page 0's group is solo -- never touches the gated pages 1/2.
+
+        vm.turn(1) // (B) first Next: canonicalGroups[0]=[0] -> next group's first page, no geometry lookup needed.
+        assertEquals(1, vm.state.value.page)
+
+        vm.turn(1) // (C) second Next, strictly before the candidate pair's geometry resolves (gate still closed).
+        // (D) Inspect the authoritative navigation result synchronously, immediately -- no waiting, no collector.
+        assertEquals("rapid Next must not jump from page 1 straight to page 3 while the candidate pair's " +
+            "geometry is still unresolved -- page $splitPageIndex must remain the next reachable target, never skipped",
+            splitPageIndex, vm.state.value.page)
+
+        gate.countDown() // Release geometry resolution.
+        awaitSettled(vm, targetPage = splitPageIndex, timeoutMs = 20_000)
+        assertEquals("once geometry resolves, the landscape page must present solo (presentation reconciles)",
+            listOf(splitPageIndex), vm.state.value.slots.map { it.page })
+        // No incorrect persisted locator/progress: the final settled page is a real, reachable one.
+        assertTrue(vm.state.value.page in 0 until vm.state.value.count)
+
+        // Further navigation proceeds correctly afterward.
+        vm.turn(1)
+        awaitSettled(vm, timeoutMs = 20_000)
+        assertTrue("navigation must proceed normally past the split page", vm.state.value.page > splitPageIndex)
+    }
+
+    @Test fun deterministicRapidNextDoesNotSkipTheGatedPair_firstMemberLandscape() =
+        assertDeterministicRapidNextDoesNotSkipTheGatedPair(splitPageIndex = 2,
+            pageSizes = listOf(portrait, landscape, portrait, portrait, portrait), name = "det-race-first.cbz")
+
+    @Test fun deterministicRapidNextDoesNotSkipTheGatedPair_secondMemberLandscape() =
+        assertDeterministicRapidNextDoesNotSkipTheGatedPair(splitPageIndex = 2,
+            pageSizes = listOf(portrait, portrait, landscape, portrait, portrait), name = "det-race-second.cbz")
+
+    // ---- Codex R2 finding 1 (3C remediation): a cached UNUSABLE geometry must never authorize a skip either ----
+
+    /**
+     * Distinct from the race above: here geometry resolution is NOT in flight at all -- the pair has already
+     * fully settled, and page 2's geometry lookup genuinely FAILED (a corrupt page) and was cached as the
+     * `PageGeometry(0, 0)` failure sentinel. This test fails against `bc96099` (whose navigation lookup read
+     * `cache[page]?.isLandscape ?: true`, so the PRESENT-but-unusable cached sentinel bypassed the conservative
+     * `?:` fallback and was misread as "confirmed not landscape") and passes once navigation checks
+     * [PageGeometry.isUsable] before ever trusting [PageGeometry.isLandscape].
+     */
+    @Test fun cachedUnusableGeometryForACorruptPairMemberNeverAuthorizesANavigationSkip() {
+        val item = cbzFixture("unusable-geometry.cbz", listOf(portrait, portrait, portrait, portrait, portrait),
+            corruptPages = setOf(3), spreadMode = SpreadMode.SPREAD) // page index 2 (0-based) corrupt
         val vm = viewModel(item)
         vm.updateViewport(2000, 1000, 1000)
         awaitSettled(vm, targetPage = 0)
-        val visited = java.util.concurrent.CopyOnWriteArrayList<Int>()
-        val collectorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scopes += it }
-        val collector = collectorScope.launch { vm.state.collect { visited += it.page } }
-        try {
-            // No Thread.sleep/await between calls: the 2nd and 3rd Next must race the 1st render's geometry
-            // resolution, which is exactly the adversarial window the fix must close.
-            vm.turn(1); vm.turn(1); vm.turn(1)
-            awaitSettled(vm, timeoutMs = 20_000)
-            // Allow one more beat for the collector to observe the final value before cancelling it.
-            awaitUntil(timeoutMs = 2_000) { visited.lastOrNull() == vm.state.value.page }
-        } finally { collector.cancel() }
-        assertTrue("the split page $splitPageIndex was skipped entirely (never became the current page); visited=$visited",
-            visited.contains(splitPageIndex))
-        // The final settled logical page must be a real, reachable page -- never left stuck mid-skip -- and the
-        // position persisted for it (FakeLibraryRepository.reading is a no-op, but positions.save always saves
-        // exactly vm.state.value.page, so proving the final page is correct also proves the persisted locator
-        // would have been correct).
-        assertTrue(vm.state.value.page in 0 until vm.state.value.count)
+        vm.turn(1) // -> page 1, pair [1,2]; page 2's geometry lookup fails and gets cached as PageGeometry(0, 0).
+        awaitSettled(vm, targetPage = 1)
+        assertEquals(listOf(1, 2), vm.state.value.slots.map { it.page }) // confirms the pair actually settled.
+
+        vm.turn(1) // Navigation decision only -- showPage() updates state.page synchronously; read it immediately.
+        assertEquals("a corrupt page's cached PageGeometry(0, 0) sentinel must never authorize jumping straight " +
+            "to page 3, skipping page 2 as a reachable navigation target", 2, vm.state.value.page)
     }
-
-    @Test fun rapidNextNeverSkipsAnUnresolvedLandscapePair_firstMemberLandscape() =
-        assertRapidNextNeverSkipsTheSplitPage(splitPageIndex = 2, pageSizes = listOf(portrait, landscape, portrait, portrait, portrait),
-            name = "race-first-member.cbz")
-
-    @Test fun rapidNextNeverSkipsAnUnresolvedLandscapePair_secondMemberLandscape() =
-        assertRapidNextNeverSkipsTheSplitPage(splitPageIndex = 2, pageSizes = listOf(portrait, portrait, landscape, portrait, portrait),
-            name = "race-second-member.cbz")
 
     // ---- Corrupt page within a pair: healthy sibling stays visible, failed page gets its own error, no crash ----
 

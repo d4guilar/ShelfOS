@@ -22,12 +22,29 @@ enum class SpreadMode { AUTO, SINGLE, SPREAD }
  */
 data class PageGeometry(val width: Int, val height: Int) {
     /**
+     * Codex R2 finding 1 (3C remediation): the single centralized definition of "this geometry is actually safe
+     * to make a pairing/navigation decision from." `false` for the [FixedReaderViewModel.geometryCache]
+     * [com.d4guilar.shelfos.feature.reader.FixedReaderViewModel.geometryCache] failure sentinel
+     * (`PageGeometry(0, 0)`, written whenever [FixedReader.pageGeometry][com.d4guilar.shelfos.core.reader.FixedReader.pageGeometry]
+     * itself returns `null`) and for any other non-positive dimension, never just for the exact `(0, 0)` pair.
+     * Deliberately a named property rather than a `width <= 0 || height <= 0` check repeated at each call site
+     * (there were previously two independent copies of that check: [isLandscape] below and
+     * [FixedReaderScreen][com.d4guilar.shelfos.feature.reader.FixedReaderScreen]'s private `isUnknown()`) -- one
+     * semantic source of truth that both now derive from.
+     */
+    val isUsable: Boolean get() = width > 0 && height > 0
+
+    /**
      * A page clearly wider than it is tall is treated as solo-only for spread presentation, even in explicit
      * [SpreadMode.SPREAD] -- SPREAD means "pair eligible adjacent pages," not "force a wide page beside
      * another." This is a deterministic aspect-ratio rule, not panel/content detection: it never hides, skips,
      * duplicates or reorders either page in the pair it would otherwise have joined -- see [resolvePageGroups].
+     * Always `false` for unusable geometry ([isUsable]) -- this is the PRESENTATION answer only; navigation
+     * callers must never treat that `false` as "confirmed not landscape" (see
+     * [FixedReaderViewModel.isLandscapeAtForNavigation][com.d4guilar.shelfos.feature.reader.FixedReaderViewModel]'s
+     * doc for why presentation and navigation deliberately read unusable geometry differently).
      */
-    val isLandscape: Boolean get() = width > 0 && height > 0 &&
+    val isLandscape: Boolean get() = isUsable &&
         width.toDouble() / height.toDouble() > LANDSCAPE_ASPECT_THRESHOLD
 
     companion object {

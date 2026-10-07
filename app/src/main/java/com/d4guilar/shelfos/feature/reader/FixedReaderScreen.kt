@@ -436,8 +436,12 @@ private fun combinedContentDimensions(slots: List<PageSlot>, gutterPx: Float): P
 
 /** `true` when a [PageGeometry] carries no usable dimensions (the `PageGeometry(0, 0)` sentinel
  * [FixedReaderViewModel][com.d4guilar.shelfos.feature.reader.FixedReaderViewModel]'s `geometryCache` stores for a
- * page whose geometry lookup itself failed, or a genuinely absent value). */
-private fun PageGeometry?.isUnknown(): Boolean = this == null || width <= 0 || height <= 0
+ * page whose geometry lookup itself failed, or a genuinely absent value). Codex R2 finding 1 (3C remediation):
+ * delegates to [PageGeometry.isUsable], the single centralized definition of "usable," rather than repeating its
+ * own `width <= 0 || height <= 0` check -- this is the PRESENTATION side, which intentionally keeps treating
+ * unusable/unknown geometry as a conservative-default PLACEHOLDER aspect here, never the navigation-only
+ * "could still be landscape" reading [FixedReaderViewModel.isLandscapeAtForNavigation] applies. */
+private fun PageGeometry?.isUnknown(): Boolean = this?.isUsable != true
 
 /** Codex R1 finding 3: a failed slot's own placeholder aspect ratio, from its OWN [PageGeometry] when known --
  * never a sibling's. Only when this specific slot's geometry is also unknown does it fall back to the

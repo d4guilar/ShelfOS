@@ -71,8 +71,12 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
     private var canonicalGroups: List<PageGroup> = emptyList()
     // Session-scoped, in-memory only (never persisted/disk-cached) landscape-geometry cache, keyed by logical
     // page index -- a page's own undistorted dimensions don't change within one open session. A failed/unknown
-    // lookup is cached as PageGeometry(0, 0), which PageGeometry.isLandscape treats as "not landscape" (see its
-    // doc), so a corrupt/undecodable page's geometry is never re-attempted every navigation.
+    // lookup is cached as PageGeometry(0, 0) (PageGeometry.isUsable == false for that sentinel), so a
+    // corrupt/undecodable page's geometry is never re-attempted every navigation. Codex R2 finding 1 (3C
+    // remediation): this cached sentinel is read very differently by the two consumers below -- resolveCurrentGroup's
+    // PRESENTATION lambda (inside render()) keeps the original optimistic "unusable == not landscape" reading
+    // (pairs it, reconciles once/if real geometry ever becomes known), while isLandscapeAtForNavigation below
+    // must NEVER make that same optimistic read -- see its doc.
     //
     // Codex R1 finding 1 (3C remediation): this cache is WRITTEN from render()'s Dispatchers.IO critical section
     // (mutex-serialized against other writers, but not against concurrent UI-thread readers) and READ
@@ -185,8 +189,21 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
      * behaves exactly like the always-resolved case. This asymmetry (conservative for navigation, optimistic for
      * presentation) is intentional: a wrong presentation guess self-corrects the moment it renders, but a wrong
      * navigation guess silently skips an unshown page and can persist the wrong progress.
+     *
+     * Codex R2 finding 1 (3C remediation): a cached entry is not automatically "known good" just because it's
+     * present -- [PageGeometry.isUsable] must be checked FIRST. The previous `geometryCache[page]?.isLandscape
+     * ?: true` only ever fell back to the conservative `true` when the page had no cache entry at all; once
+     * [render] cached the `PageGeometry(0, 0)` failure sentinel for a page whose geometry lookup itself failed
+     * (e.g. a corrupt/undecodable page), that sentinel IS present in the cache, so the `?:` fallback never ran --
+     * `PageGeometry(0, 0).isLandscape` evaluates to `false` (not landscape), which [nextPage]/[previousPage] then
+     * read as "confirmed pair-eligible," authorizing exactly the multi-page skip this function exists to prevent.
+     * An unusable cached value must behave exactly like a missing one here: both mean "unknown, might be
+     * landscape, do not skip."
      */
-    private fun isLandscapeAtForNavigation(page: Int): Boolean = geometryCache[page]?.isLandscape ?: true
+    private fun isLandscapeAtForNavigation(page: Int): Boolean {
+        val geometry = geometryCache[page] ?: return true
+        return !geometry.isUsable || geometry.isLandscape
+    }
 
     /**
      * Phase 3C: semantic forward/backward navigation between visible reading units, reusing the existing

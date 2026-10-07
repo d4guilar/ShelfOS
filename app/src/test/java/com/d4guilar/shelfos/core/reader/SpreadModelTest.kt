@@ -266,4 +266,63 @@ class SpreadModelTest {
         val canonical = canonicalPageGroups(5)
         assertEquals(PageGroup(listOf(1)), resolveCurrentGroup(canonical, 1, spreadActive = false) { true })
     }
+
+    // ---- Codex R2 finding 1 (3C remediation): PageGeometry.isUsable, and the navigation-conservative contract
+    // every caller of nextPage/previousPage/resolveCurrentGroup's isLandscapeAt parameter must honor. ----
+
+    @Test fun zeroByZeroGeometryIsUnusableAndNeverLandscape() {
+        val sentinel = PageGeometry(0, 0)
+        assertFalse(sentinel.isUsable)
+        assertFalse(sentinel.isLandscape)
+    }
+
+    @Test fun nonPositiveDimensionsAreUnusableRegardlessOfWhichAxis() {
+        assertFalse(PageGeometry(0, 900).isUsable)
+        assertFalse(PageGeometry(900, 0).isUsable)
+        assertFalse(PageGeometry(-5, 900).isUsable)
+        assertFalse(PageGeometry(900, -5).isUsable)
+    }
+
+    @Test fun positiveDimensionsAreUsable() {
+        assertTrue(PageGeometry(900, 600).isUsable)
+        assertTrue(PageGeometry(600, 900).isUsable)
+    }
+
+    /**
+     * Codex R2 finding 1: reproduces the exact [com.d4guilar.shelfos.feature.reader.FixedReaderViewModel
+     * .isLandscapeAtForNavigation] bug pattern at this pure-function level, independent of any ViewModel/Android
+     * dependency. [buggyIsLandscapeAt] is byte-for-byte what `bc96099`'s navigation lookup did --
+     * `cache[page]?.isLandscape ?: true` -- which only falls back to the conservative `true` when the page has
+     * NO cache entry at all; once a cache entry exists (even the [PageGeometry] `(0, 0)` failure sentinel a
+     * corrupt/undecodable page's geometry lookup gets cached as), `.isLandscape` is read directly and evaluates
+     * `false`, incorrectly telling [nextPage] the pair is confirmed NOT landscape -- authorizing exactly the
+     * multi-page skip the conservative fallback exists to prevent. [fixedIsLandscapeAt] is the corrected
+     * contract (checking [PageGeometry.isUsable] before ever trusting [PageGeometry.isLandscape]): the SAME
+     * cached sentinel now correctly behaves exactly like a missing entry.
+     */
+    @Test fun cachedUnusableGeometryMustNotAuthorizeANavigationSkip_reproducesTheBuggyVsFixedContract() {
+        val canonical = canonicalPageGroups(5) // [0],[1,2],[3,4]
+        // Page 1 genuinely resolved as ordinary portrait (usable, correctly not landscape); page 2's lookup
+        // failed and was cached as the (0, 0) sentinel -- unusable, so its TRUE landscape-ness is unknown.
+        val cache = mapOf(1 to PageGeometry(600, 900), 2 to PageGeometry(0, 0))
+        val buggyIsLandscapeAt: (Int) -> Boolean = { page -> cache[page]?.isLandscape ?: true }
+        val fixedIsLandscapeAt: (Int) -> Boolean = { page ->
+            val geometry = cache[page]
+            if (geometry == null) true else !geometry.isUsable || geometry.isLandscape
+        }
+
+        // The bug, reproduced: nextPage from page 1 jumps straight to page 3, skipping page 2 as a reachable
+        // navigation target -- this assertion FAILS if buggyIsLandscapeAt's behavior is ever "fixed" out from
+        // under it, which is exactly the point: it documents what bc96099 actually did.
+        assertEquals("sanity: this documents the pre-fix bug pattern itself", 3, nextPage(canonical, 1, spreadActive = true, buggyIsLandscapeAt))
+
+        // The fix: the exact same cached sentinel for page 2 must now be read as "unknown, could be landscape,"
+        // so nextPage falls back to the single-step (no-skip) move into page 2 -- never jumping over it.
+        assertEquals("an unusable cached geometry must never authorize jumping over the adjacent logical page",
+            2, nextPage(canonical, 1, spreadActive = true, fixedIsLandscapeAt))
+
+        // Symmetric backward check from the pair's second member.
+        assertEquals(0, previousPage(canonical, 2, spreadActive = true, buggyIsLandscapeAt)) // bug: skips page 1 entirely
+        assertEquals(1, previousPage(canonical, 2, spreadActive = true, fixedIsLandscapeAt)) // fixed: single-step back to page 1
+    }
 }

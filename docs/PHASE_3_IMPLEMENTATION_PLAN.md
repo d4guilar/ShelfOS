@@ -4,11 +4,12 @@ Status: **3A (rendering/fidelity foundation) COMPLETE and MERGED to `main`** (`#
 "feat: establish Phase 3A fixed-page rendering foundation"). **3B (page thumbnails/
 navigation) COMPLETE and MERGED to `main`** (`#25`, "feat: add Phase 3B page thumbnail
 navigation"). **3C (spreads + Manga pairing) IMPLEMENTED on
-`phase-3/3c-spreads-manga-pairing`, Codex R1 review findings REMEDIATED on the same
-branch, pending administrator/Codex R2 review.** 3D–3F remain PLANNING ONLY — no later
+`phase-3/3c-spreads-manga-pairing`, Codex R1 AND Codex R2 review findings REMEDIATED on
+the same branch (two remediation commits on top of the original 3C commit), pending
+final administrator/Codex review. 3C is NOT merged.** 3D–3F remain PLANNING ONLY — no later
 slice has started. Phase 3 overall is **NOT complete**. See §22/§23 for what 3A landed,
 §24 for what 3B actually landed, and §25 for what 3C actually landed (including the R1
-remediation record).
+and R2 remediation records).
 
 ## 1. Status / base
 
@@ -26,10 +27,12 @@ remediation record).
 - §12/§13/§21 below authorized exactly one slice at a time. 3A (§22/§23) and 3B (§24) are
   complete and merged to `main`. 3C (spreads + Manga pairing) is implemented on
   `phase-3/3c-spreads-manga-pairing`; Codex R1 reviewed the full 3C candidate and returned
-  CHANGES REQUIRED, and this same branch now carries the remediation of every R1 finding
-  (one remediation commit on top of the original 3C commit) — see §25's "Codex R1
-  remediation record" subsection for the actual landed fixes/evidence. 3D (foldable) and 3E
-  (CBR) have not started.
+  CHANGES REQUIRED, this same branch carried the remediation of every R1 finding (one
+  remediation commit on top of the original 3C commit), Codex R2 then reviewed that
+  remediation and returned CHANGES REQUIRED again with four further findings, now also
+  remediated on this same branch (one more remediation commit) — see §25's "Codex R1
+  remediation record" and "Codex R2 micro-remediation record" subsections for the actual
+  landed fixes/evidence. 3C has not merged. 3D (foldable) and 3E (CBR) have not started.
 
 ## 22. 3A implementation record (landed)
 
@@ -454,8 +457,10 @@ size" (`combinedContentDimensions`: each bitmap notionally scaled to a shared re
 and summed with the gutter) standing in for a single bitmap's width/height — no new geometry
 primitive, one shared `graphicsLayer`/transform state for the whole visible unit (never
 independent per-slot zoom/pan). A failed slot renders a neutral placeholder box (reusing
-`label_unavailable`) sized to its healthy sibling's aspect ratio, with its own localized
-content description.
+`label_unavailable`) sized to **its own source `PageGeometry`'s aspect ratio — never its healthy
+sibling's** (original 3C claim here was "sized to its healthy sibling's aspect ratio"; that was
+corrected by Codex R1 finding 3 — see the remediation record below for the real fix and its
+evidence), with its own localized content description.
 
 **Accessibility**: each slot's `Image` carries a distinct content description
 (`content_desc_spread_current_page` for the slot matching `state.page`,
@@ -527,9 +532,14 @@ started.
   `FixedReaderViewModel.render()` route through the stricter ceiling. Deterministic coverage:
   `PageRenderRequestTest`'s spread-budget test group (budget derivation, all four transition
   classes' worst-case arithmetic, a near-ceiling spread-slot request, 3A single-page preservation)
-  — no reliance on PSS/GC timing for correctness (a supplemental PSS observation remains in
-  `FixedReaderSpreadViewModelTest`'s existing memory test, now updated to assert against the new
-  per-slot budgets).
+  — this deterministic JVM suite, not the instrumented test, is the actual proof of the spread-
+  slot ceiling/transition arithmetic. `FixedReaderSpreadViewModelTest`'s existing memory test
+  still asserts each settled slot bitmap against `RenderMemoryPolicy.MAX_BITMAP_BYTES` (the
+  looser, ordinary single-page ceiling), not the tighter `MAX_SPREAD_BITMAP_BYTES` spread ceiling
+  — a real test fixtures could pass under without ever approaching the stricter bound, so this is
+  supplemental PSS/runtime evidence only ("no observed runaway growth"), never independent proof
+  the spread-slot ceiling itself held (corrected here by the Codex R2 remediation record, which
+  found the previous wording here overstated what that instrumented test actually asserts).
 - **Finding 3 (corrupt slot corrupted the whole spread layout).** `PageSlot` now carries its own
   `geometry: PageGeometry?`, always resolved by `render()` regardless of decode outcome.
   `FixedReaderScreen.combinedContentDimensions()` and the failed-slot placeholder
@@ -572,6 +582,63 @@ started.
   explicit-SpreadMode-change path instead of a real device-rotation-driven AUTO flip, which this
   remediation pass did not attempt given emulator window-size reliability — an honest, flagged
   scope note, not a silent gap.
+
+**Codex R2 micro-remediation record (this branch, one commit on top of the R1 remediation
+commit `bc96099`).** Codex R2 reviewed the R1 remediation above and returned CHANGES REQUIRED with
+four findings; every R1 finding was explicitly accepted and left unmodified (memory policy,
+corrupt-slot layout, `SpreadMode` reconciliation, final-nav resolver, RTL physical ordering, and
+AUTO's width-driven behavior with physical device rotation still deferred to 3F).
+
+- **Finding 1 (cached unusable geometry was still navigation-pair-eligible).** R1's navigation
+  conservative-default (`geometryCache[page]?.isLandscape ?: true`) only engaged when a page had
+  NO cache entry; once the `PageGeometry(0, 0)` failure sentinel WAS cached (a corrupt/undecodable
+  page), reading `.isLandscape` directly on it evaluated `false`, bypassing the `?:` fallback and
+  letting navigation treat it as "confirmed pair-eligible" — able to reintroduce the exact skip R1
+  closed. Fixed with one centralized `PageGeometry.isUsable` (`width > 0 && height > 0`);
+  `isLandscapeAtForNavigation` now checks it before ever trusting `isLandscape`, and
+  `FixedReaderScreen`'s separate `isUnknown()` helper (presentation-side, intentionally left
+  optimistic) now delegates to the same property instead of its own duplicated
+  `width <= 0 || height <= 0` check. Proven by `SpreadModelTest`'s new `isUsable`/`isLandscape`
+  sentinel coverage and a direct buggy-vs-fixed `nextPage`/`previousPage` contract test, plus
+  `FixedReaderSpreadViewModelTest`'s new `cachedUnusableGeometryForACorruptPairMemberNeverAuthorizesANavigationSkip`.
+  One accepted, mechanical downstream consequence: a final-complete-spread whose FIRST member is
+  corrupt can no longer have its true aspect confirmed, so `FixedReaderSpreadUiTest`'s
+  `corruptFirstSlotLeavesHealthySiblingVisibleAndCorrectlyPositioned` now correctly asserts Next
+  stays enabled (navigating single-steps within the same visible pair, no skip, no crash) rather
+  than the pre-fix assertion that it was disabled — Finding 6's resolver logic itself is
+  unchanged; only this one input (an unusable geometry read) now flows through it correctly.
+- **Finding 2 (rapid-navigation race test was non-deterministic).** R1's test fired three
+  `vm.turn(1)` calls and recorded every `state.page` value via a background `StateFlow` collector,
+  then asserted the split page appeared somewhere in that list — Codex R2 found collecting in the
+  background can conflate/miss intermediate values (`visited=[1, 1, 3, 3]` observed on one run).
+  Replaced with a deterministic adversarial test: a `GatedGeometryFixedReaderFactory` test seam
+  (`FixedReaderFactory`/`FixedReaderFactory.open` made `open` for exactly this purpose) wraps the
+  real `FixedReader` so `pageGeometry` for the candidate pair blocks on a `CountDownLatch` the test
+  controls explicitly; since `showPage()` updates `state.value.page` synchronously before the
+  async render is even launched, the authoritative navigation result is asserted immediately after
+  each `turn()` call with no waiting and no collector.
+- **Finding 3 (gesture regression test never reached the real transform loop).** R1's
+  `gestureGeometryStaysCurrentAcrossASpreadToSingleFlipWithoutAPageChange` used `doubleClick`,
+  which only flips `scale` through a separate `detectTapGestures(onDoubleTap = ...)` handler —
+  never the `awaitEachGesture`/`calculateZoom`/`calculatePan` loop that actually reads
+  `currentContentDimensions` (R1 finding 4's fix). A new test,
+  `pointerTransformGestureUsesCurrentGeometryAcrossASpreadToSingleAndBackFlipWithoutAPageChange`,
+  uses the existing "Zoom in" control plus a one-finger drag (`scale > 1f` alone routes a single-
+  pointer drag through the real transform branch), against a fixture built so the single-mode and
+  spread-mode pan clamps are measurably different — an assertion capable of failing if stale
+  geometry were ever captured again across the flip. R1's original double-tap test is kept as
+  regression coverage for that specific (still valid, just narrower) path.
+- **Finding 4 (stale/inaccurate documentation).** This document's "healthy sibling's aspect
+  ratio" placeholder description (superseded by R1 finding 3, never corrected in prose) and its
+  claim that the instrumented memory test "asserts against the new per-slot budgets" (it actually
+  still asserts the looser `MAX_BITMAP_BYTES`, not `MAX_SPREAD_BITMAP_BYTES`) are corrected in
+  place above. `docs/VALIDATION.md`'s PHASE 3C entry's stale `8/8` test-count claim, "~32MiB"
+  memory wording (predates the `THUMBNAIL_RESERVATION_BYTES` carve-out), and "RTL/UI evidence
+  remains outstanding" claim (closed by R1's `FixedReaderSpreadUiTest`) are corrected there, with
+  new R1/R2 remediation entries recording the real final counts/values.
+
+See `docs/VALIDATION.md`'s "PHASE 3C — Codex R2 micro-remediation" entry for exact commands/
+results.
 
 ## 2. Why Phase 3 is not green-field
 

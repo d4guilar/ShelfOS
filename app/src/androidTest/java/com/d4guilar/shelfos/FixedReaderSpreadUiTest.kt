@@ -84,12 +84,20 @@ class FixedReaderSpreadUiTest {
         // Logical page tags/semantics/pair membership are unaffected by which slot failed.
         compose.onNodeWithTag("spread_slot_1").assertExists()
         compose.onNodeWithTag("spread_slot_2").assertExists()
-        // Navigation still works after a corrupt-first pair: with only 3 pages, [1,2] is the FINAL group, so
-        // Next is correctly disabled here (Codex R1 finding 6) rather than skipping anywhere -- no crash, no
-        // stuck/incorrect state.
-        compose.onNodeWithText("Next").assertIsNotEnabled()
+        // Codex R2 finding 1 (3C remediation): page 1's corrupt/unusable geometry means NAVIGATION can no
+        // longer confirm this is definitely the final complete spread (its true aspect is unknown -- it might
+        // actually be landscape) -- so Next must stay conservatively ENABLED here, unlike the pre-R2 behavior
+        // this test used to assert (a cached `PageGeometry(0, 0)` failure sentinel was misread as "confirmed not
+        // landscape," exactly Finding 1's bug, which happened to also make Next look correctly disabled for the
+        // wrong reason). Pressing it must not skip or crash: presentation's own optimistic reading is unaffected
+        // by the navigation fix, so the SAME pair stays visible -- only the authoritative state.page target
+        // advances within it.
+        compose.onNodeWithText("Next").assertIsEnabled().performClick()
+        awaitPage("3 / 3") // single-step to logical page 2 (0-based) -- displayed as "3 / 3"
+        compose.onNodeWithTag("spread_slot_1").assertExists() // still the same pair, no skip, no crash
+        compose.onNodeWithTag("spread_slot_2").assertExists()
         compose.onNodeWithText("Previous").performClick()
-        awaitPage("1 / 3")
+        awaitPage("2 / 3")
     }
 
     @Test fun corruptSecondSlotLeavesHealthySiblingVisibleAndCorrectlyPositioned() {
@@ -231,6 +239,14 @@ class FixedReaderSpreadUiTest {
 
     // ---- Codex R1 finding 4: a spread<->single flip mid-session (without a page change) must not leave a
     // gesture reading stale slot/bitmap geometry ----
+    //
+    // Codex R2 test-quality note: this specific test only exercises the DOUBLE-TAP zoom path
+    // (`detectTapGestures(onDoubleTap = ...)`), a separate `pointerInput` block from the pinch/pan transform
+    // loop (`awaitEachGesture`/`calculateZoom`/`calculatePan`) that actually reads `currentContentDimensions` --
+    // double-tap only flips `scale` directly in Compose state and never enters that loop. It stays here as
+    // regression coverage for the double-tap path specifically; see
+    // [pointerTransformGestureUsesCurrentGeometryAcrossASpreadToSingleAndBackFlipWithoutAPageChange] below for
+    // the real `awaitEachGesture` transform-path regression Codex R2 asked for.
 
     @Test fun gestureGeometryStaysCurrentAcrossASpreadToSingleFlipWithoutAPageChange() {
         val item = OriginalFixtures.spreadCbz(instrumentation.targetContext, "ui-gesture-stale",
@@ -255,6 +271,92 @@ class FixedReaderSpreadUiTest {
         compose.onNodeWithText("Reset zoom").assertExists() // zoomed successfully against the current content
         compose.onNodeWithTag("reader_page").performTouchInput { doubleClick(center) }
         compose.waitForIdle()
+    }
+
+    // ---- Codex R2 finding 3 (3C remediation): the REAL pointer-transform loop (awaitEachGesture /
+    // calculateZoom / calculatePan / currentContentDimensions), not double-tap, across a spread<->single flip ----
+
+    /**
+     * Codex R2 finding 3: the R1 remediation test above only proved the production `rememberUpdatedState`
+     * approach doesn't crash on double-tap; it never actually drove the `awaitEachGesture` transform branch
+     * that reads `currentContentDimensions` for its pan clamp. This test does, using the same proven
+     * "Zoom in" button (sets `scale = 2f` directly) + a one-finger drag pattern already exercised by
+     * [fitWidthSpreadZoomStaysClampedAndStatePageNeverChanges] below -- once `scale > 1f`, `isTransformGesture`
+     * is `true` even for a single pointer, so a plain drag enters the real transform loop and reads
+     * `currentContentDimensions.value` for its clamp, exactly the code path double-tap never reached.
+     *
+     * The fixture is built so the assertion is CAPABLE of failing if stale geometry were ever captured again:
+     * page 1 alone (the SINGLE-mode content) is tall and narrow (aspect ~0.3), while the pair [1,2]'s COMBINED
+     * content (page 1 + page 2, normalized to a shared height and placed side by side) is clearly wider than
+     * tall (aspect > 1.3) -- regardless of the actual device/emulator viewport shape, Fit Page's single-slot
+     * content ends up height-constrained (little to no horizontal pan headroom even zoomed) while the spread's
+     * combined content ends up width-constrained (its fitted width equals the viewport width, giving substantial
+     * pan headroom once zoomed). A stale capture -- reading the OTHER mode's geometry after the flip -- would
+     * therefore swap which measurement is small and which is large, which the assertions below directly check.
+     */
+    @Test fun pointerTransformGestureUsesCurrentGeometryAcrossASpreadToSingleAndBackFlipWithoutAPageChange() {
+        val narrow = 300 to 1000 // page 1: tall/narrow, representative of SINGLE-mode content.
+        val wide = 1000 to 980 // page 2: paired with page 1, makes the SPREAD's combined content clearly wide.
+        val item = OriginalFixtures.spreadCbz(instrumentation.targetContext, "ui-gesture-transform-regression",
+            listOf(portrait, narrow, wide), spreadMode = SpreadMode.SPREAD)
+        seed(item)
+        awaitLibrary()
+        read(item.id)
+        awaitPage("1 / 3")
+        compose.onNodeWithText("Next").performClick()
+        awaitPage("2 / 3")
+        awaitTag("spread_slot_1"); awaitTag("spread_slot_2") // (1)/(2): same logical page, two-slot presentation.
+
+        fun zoomInDragThenReadPanXAndResetZoom(): Float {
+            compose.onNodeWithText("Zoom in").performClick() // scale -> 2f, panX/Y -> 0.
+            compose.onNodeWithTag("reader_page").performTouchInput {
+                // A deliberately oversized one-finger drag. scale > 1f already routes this through the real
+                // isTransformGesture branch (pointerCount > 1 || scale > 1f) -- the awaitEachGesture loop this
+                // test targets -- never the double-tap path.
+                swipe(start = Offset(centerX, centerY), end = Offset(centerX + 100_000f, centerY), durationMillis = 120)
+            }
+            compose.waitForIdle()
+            val panX = transformProbe().second
+            compose.onNodeWithText("Reset zoom").performClick() // scale -> 1f, panX/Y -> 0 for the next measurement.
+            compose.waitForIdle()
+            return panX
+        }
+
+        // (4) a real transform gesture, while still in two-slot presentation.
+        val panXSpread = zoomInDragThenReadPanXAndResetZoom()
+        // (5)/spread-slot clamp evidence: the wide combined content must yield a large, clamped pan -- proof
+        // awaitEachGesture/calculatePan/currentContentDimensions actually ran against real spread geometry.
+        assertTrue("the spread's wide combined content should allow substantial horizontal pan once zoomed, got $panXSpread",
+            panXSpread > 50f)
+
+        // (3) Switch to one-slot presentation WITHOUT changing state.page.
+        compose.onNodeWithText("Appearance").performClick()
+        compose.onNodeWithText("Single page").performClick().assertIsSelected()
+        compose.onNodeWithText("Apply").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Reading appearance").fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("spread_slot_2").fetchSemanticsNodes().isEmpty() }
+        compose.onNode(hasTestTag("page_number") and hasText("2 / 3")).assertExists() // state.page unchanged.
+
+        // (4)/(5) the SAME gesture, now against the CURRENT single-slot (narrow) geometry -- this is the
+        // assertion that is CAPABLE of failing if pointerInput had captured stale (spread) geometry again.
+        val panXSingle = zoomInDragThenReadPanXAndResetZoom()
+        assertTrue("single-slot narrow content must clamp pan close to zero under Fit Page -- a value anywhere " +
+            "near panXSpread ($panXSpread) would mean stale spread geometry was still being read after the " +
+            "flip to single, got $panXSingle", panXSingle < panXSpread / 4f)
+
+        // (6) Back to two-slot presentation, still without changing state.page.
+        compose.onNodeWithText("Appearance").performClick()
+        compose.onNode(hasText("Two-page spread") and hasClickAction()).performClick().assertIsSelected()
+        compose.onNodeWithText("Apply").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Reading appearance").fetchSemanticsNodes().isEmpty() }
+        awaitTag("spread_slot_1"); awaitTag("spread_slot_2")
+        compose.onNode(hasTestTag("page_number") and hasText("2 / 3")).assertExists()
+
+        // (7)/(8) the gesture again, now back on the spread's wide combined geometry -- confirms the single-mode
+        // measurement above didn't somehow poison a stale capture forward.
+        val panXSpreadAgain = zoomInDragThenReadPanXAndResetZoom()
+        assertTrue("spread geometry must be exercised again correctly after returning from single mode, got $panXSpreadAgain",
+            panXSpreadAgain > 50f)
     }
 
     // ---- Fit Width + zoom: spread geometry evidence, closing the remaining uncertainty flagged in the brief ----
