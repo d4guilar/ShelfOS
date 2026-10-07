@@ -71,7 +71,8 @@ enum class Destination(val route: String, @StringRes val labelRes: Int, val icon
 private const val RESTORE_FOCUS = "restoreFocus"
 
 @Composable
-fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: AppContainer, onSystemBack: () -> Unit) {
+fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: AppContainer, onSystemBack: () -> Unit,
+    readerFold: com.d4guilar.shelfos.core.reader.ReaderFoldDescriptor? = null, onReadingChanged: (Boolean) -> Unit = {}) {
     val t = LocalShelfTokens.current
     val context = LocalContext.current
     val nav = rememberNavController()
@@ -89,6 +90,9 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
     val libraryError by library.error.collectAsStateWithLifecycle()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { importing.choose(it.toString()) } }
     val reading = route.startsWith("reader")
+    // MainActivity's Phase-0 legacy fold padding only applies to non-reader screens (see its own doc); it learns
+    // whether the reader route is active purely through this callback, never by inspecting navigation itself.
+    LaunchedEffect(reading) { onReadingChanged(reading) }
     ImportDialogs(importState, importing::dismiss, importing::copySource, importing::confirm)
     LaunchedEffect(importState.imported) { importState.imported?.let { item ->
         library.showImported(item, item.id); importing.consumed()
@@ -203,7 +207,7 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                         val reader: FixedReaderViewModel = viewModel(factory = viewModelFactory { initializer {
                             FixedReaderViewModel(id, container.library, container.fixedReaders, container.backgroundScope)
                         } })
-                        FixedReaderScreen(reader) { nav.popBackStack() }
+                        FixedReaderScreen(reader, fold = readerFold) { nav.popBackStack() }
                     }
                     composable(Destination.SEARCH.route) {
                         Column(Modifier.fillMaxSize().padding(t.spacing.medium), verticalArrangement = Arrangement.spacedBy(t.spacing.medium)) {

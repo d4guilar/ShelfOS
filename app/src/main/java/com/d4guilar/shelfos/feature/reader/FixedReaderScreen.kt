@@ -20,7 +20,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -39,16 +40,26 @@ import com.d4guilar.shelfos.core.designsystem.InputKeycap
 import com.d4guilar.shelfos.core.designsystem.resolve
 import com.d4guilar.shelfos.core.input.*
 import com.d4guilar.shelfos.core.reader.FitMode
+import com.d4guilar.shelfos.core.reader.FoldPaneWidths
+import com.d4guilar.shelfos.core.reader.FoldPresentation
+import com.d4guilar.shelfos.core.reader.FoldRect
 import com.d4guilar.shelfos.core.reader.PageGeometry
 import com.d4guilar.shelfos.core.reader.PageGroup
+import com.d4guilar.shelfos.core.reader.ReaderFoldDescriptor
+import com.d4guilar.shelfos.core.reader.ReaderFoldLayout
 import com.d4guilar.shelfos.core.reader.capabilities
 import com.d4guilar.shelfos.core.reader.fixedReaderClampPan
 import com.d4guilar.shelfos.core.reader.fixedReaderFittedContentSize
 import com.d4guilar.shelfos.core.reader.fixedReaderMaxPan
 import com.d4guilar.shelfos.core.reader.fixedReaderMaxPanY
 import com.d4guilar.shelfos.core.reader.fixedReaderVerticalScaleOverflow
+import com.d4guilar.shelfos.core.reader.resolveReaderFoldLayout
+import com.d4guilar.shelfos.core.reader.selectSoloPane
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
 import com.d4guilar.shelfos.domain.library.*
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -59,7 +70,7 @@ import kotlin.math.roundToInt
  * the stored page order or the artwork.
  */
 @Composable
-fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
+fun FixedReaderScreen(vm: FixedReaderViewModel, fold: ReaderFoldDescriptor? = null, onBack: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val t = LocalShelfTokens.current
     val item = state.item
@@ -121,26 +132,72 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
     // resize/rotation/fold that happens outside an active gesture can never leave panX/panY out of bounds.
     val screenDensity = LocalDensity.current
     val gutterPx = with(screenDensity) { t.spacing.small.toPx() }
-    LaunchedEffect(viewportSize, scale, fitWidth, state.slots) {
-        val (contentW, contentH) = combinedContentDimensions(state.slots, gutterPx) ?: return@LaunchedEffect
-        if (viewportSize.width <= 0 || viewportSize.height <= 0) return@LaunchedEffect
-        val content = fixedReaderFittedContentSize(contentW, contentH,
-            viewportSize.width.toFloat(), viewportSize.height.toFloat(), fitWidth)
-        panX = fixedReaderClampPan(panX, fixedReaderMaxPan(content.width, viewportSize.width.toFloat(), scale))
-        // Phase 2D.1 remediation (Fit Width tall-content blocker): Fit Width's vertical movement belongs
-        // entirely to `verticalScroll`, never to this graphicsLayer pan (see fixedReaderMaxPanY's doc and the
-        // gesture handler below for why the previous shared Y formula allowed the page to be dragged into gray
-        // when the fitted content was taller than the viewport). This re-clamp can therefore never resurrect a
-        // stale nonzero Fit Width panY across a resize/rotation/fold.
-        panY = fixedReaderClampPan(panY, fixedReaderMaxPanY(content, viewportSize.height.toFloat(), scale, fitWidth))
+    // Phase 3D: the reader surface's own bounds in WINDOW coordinates (captured below, on the "reader_page" Box
+    // itself) and the fold-aware layout resolved from them + the fold descriptor handed down from MainActivity.
+    // See FoldLayout.kt's class docs for why this translation happens exactly once, here, rather than comparing
+    // window-space fold bounds against local Compose coordinates anywhere else.
+    var foldLayoutState by remember { mutableStateOf(ReaderFoldLayout.flat(FoldRect(0f, 0f, 0f, 0f))) }
+    // Reader chrome (Appearance/Pages/Zoom/Back, Previous/Next/slider) must not sit under an occluding/
+    // separating hinge. For a VERTICAL_SPLIT, chrome is confined to ONE safe pane (the same one a solo page
+    // would use) rather than spanning the full width across the hinge; FLAT/HORIZONTAL_SPLIT are unaffected
+    // (chrome already sits at the screen's true top/bottom edges, clear of a horizontal fold in the ordinary
+    // case, and there is no vertical hinge to avoid horizontally).
+    val chromePane = if (foldLayoutState.presentation == FoldPresentation.VERTICAL_SPLIT) selectSoloPane(foldLayoutState, rtl) else null
+    // The ONE pane active content renders into for every case EXCEPT a vertical-split spread (which needs two
+    // independently-positioned panes -- see foldSpreadPanes below): FLAT's whole bounds, HORIZONTAL_SPLIT's
+    // chosen safe pane (reusing the existing flat 3C single/spread rendering unchanged, just confined to that
+    // pane instead of the whole window -- "run the EXISTING width-based behavior inside that safe pane"), or a
+    // VERTICAL_SPLIT's chosen solo pane for a single visible page (cover, landscape split, explicit SINGLE,
+    // AUTO-resolved-single, unmatched final page -- never stretched across or hidden behind the hinge).
+    val activePane: FoldRect? = when (foldLayoutState.presentation) {
+        FoldPresentation.FLAT -> foldLayoutState.flatPane
+        FoldPresentation.HORIZONTAL_SPLIT -> foldLayoutState.safePane
+        FoldPresentation.VERTICAL_SPLIT -> if (state.slots.size <= 1) selectSoloPane(foldLayoutState, rtl) else null
+    }
+    // Non-null only for an active two-page spread under a vertical fold split -- the one case needing a
+    // genuinely new fold-aware renderer (see the "Phase 3D vertical fold spread" block below) rather than the
+    // existing combinedContentDimensions Row, because a Row's internal gutter Spacer is not pinned to the
+    // REAL physical hinge position once the whole Row can be panned -- it would let artwork drift under the
+    // hinge exactly as the 3D contract's "never rely only on a Spacer" warning describes.
+    val foldSpreadPanes: Pair<FoldRect, FoldRect>? = if (foldLayoutState.presentation == FoldPresentation.VERTICAL_SPLIT &&
+        state.slots.size >= 2) foldLayoutState.leftPane?.let { l -> foldLayoutState.rightPane?.let { r -> l to r } } else null
+    val effectiveViewport: IntSize = activePane?.let { IntSize(it.width.roundToInt().coerceAtLeast(0), it.height.roundToInt().coerceAtLeast(0)) }
+        ?: viewportSize
+    LaunchedEffect(viewportSize, foldLayoutState, scale, fitWidth, state.slots) {
+        val spreadPanes = foldSpreadPanes
+        if (spreadPanes != null) {
+            val physical = PageGroup(state.slots.map { it.page }).physicalOrder(rtl).map { p -> state.slots.first { it.page == p } }
+            val (maxX, maxY) = foldSpreadSharedMaxPan(slotDims(physical[0]), spreadPanes.first,
+                slotDims(physical[1]), spreadPanes.second, scale, fitWidth)
+            panX = fixedReaderClampPan(panX, maxX); panY = fixedReaderClampPan(panY, maxY)
+        } else {
+            val (contentW, contentH) = combinedContentDimensions(state.slots, gutterPx) ?: return@LaunchedEffect
+            if (effectiveViewport.width <= 0 || effectiveViewport.height <= 0) return@LaunchedEffect
+            val content = fixedReaderFittedContentSize(contentW, contentH,
+                effectiveViewport.width.toFloat(), effectiveViewport.height.toFloat(), fitWidth)
+            panX = fixedReaderClampPan(panX, fixedReaderMaxPan(content.width, effectiveViewport.width.toFloat(), scale))
+            // Phase 2D.1 remediation (Fit Width tall-content blocker): Fit Width's vertical movement belongs
+            // entirely to `verticalScroll`, never to this graphicsLayer pan (see fixedReaderMaxPanY's doc and the
+            // gesture handler below for why the previous shared Y formula allowed the page to be dragged into gray
+            // when the fitted content was taller than the viewport). This re-clamp can therefore never resurrect a
+            // stale nonzero Fit Width panY across a resize/rotation/fold.
+            panY = fixedReaderClampPan(panY, fixedReaderMaxPanY(content, effectiveViewport.height.toFloat(), scale, fitWidth))
+        }
     }
     // Codex R1 finding 4 (3C remediation): the zoom/pan pointerInput coroutine below is deliberately keyed only
     // by (state.page, rtl, fitWidth) -- restarting a gesture mid-touch merely because AUTO flipped single<->spread
     // (or a retry replaced a slot's bitmap) without state.page itself changing would be a worse defect than the
     // one being fixed. rememberUpdatedState keeps the content geometry the gesture reads always current WITHOUT
     // restarting that coroutine and WITHOUT the coroutine ever closing over the raw state.slots/Bitmap list
-    // itself -- only the minimal immutable dims it actually needs.
+    // itself -- only the minimal immutable dims it actually needs. Phase 3D adds the same discipline for fold
+    // geometry: currentFoldSpreadGeometry/currentEffectiveViewport so a fold/unfold mid-gesture is always
+    // reflected without restarting the coroutine or closing over the raw foldLayoutState.
     val currentContentDimensions = rememberUpdatedState(combinedContentDimensions(state.slots, gutterPx))
+    val currentEffectiveViewport = rememberUpdatedState(effectiveViewport)
+    val currentFoldSpreadGeometry = rememberUpdatedState(foldSpreadPanes?.let { (left, right) ->
+        val physical = PageGroup(state.slots.map { it.page }).physicalOrder(rtl).map { p -> state.slots.first { it.page == p } }
+        FoldSpreadGeometry(left, slotDims(physical[0]), right, slotDims(physical[1]))
+    })
     BackHandler { backPress() }
     if (appearance && item != null) ReaderAppearance(state.preferences, capabilities(item.format, item.category), { appearance = false },
         vm::applyAppearance, vm::resetAppearance)
@@ -168,7 +225,11 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
             else -> false
         }
     }) {
-        if (controls) Row(Modifier.fillMaxWidth().onFocusChanged { topFocused = it.hasFocus }.horizontalScroll(rememberScrollState()),
+        // Phase 3D: confined to chromePane's width/offset under a vertical fold split (see chromePane's doc
+        // above); an ordinary Modifier.fillMaxWidth() otherwise -- byte-for-byte the pre-3D behavior.
+        val topChromeModifier = chromePane?.let { pane -> with(screenDensity) { Modifier.offset(x = pane.left.toDp()).width(pane.width.toDp()) } }
+            ?: Modifier.fillMaxWidth()
+        if (controls) Row(topChromeModifier.onFocusChanged { topFocused = it.hasFocus }.horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically) {
             TextButton(onBack, Modifier.focusRequester(firstControl).testTag("reader_library")) { Text(stringResource(R.string.nav_library)) }
             TextButton({ appearance = true }, enabled = item != null) { Text(stringResource(R.string.action_appearance)) }
@@ -181,8 +242,27 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically) { InputKeycap(it); Text(stringResource(R.string.action_back), color = t.colors.secondary, style = t.typography.labelSmall) } }
         }
         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().focusRequester(pageFocus).focusable().testTag("reader_page")
-            .onSizeChanged { viewportSize = it
-                vm.updateViewport(it.width, it.height, with(screenDensity) { it.width.toDp().value.toInt() }) }
+            // Phase 3D: onGloballyPositioned (superseding plain onSizeChanged) captures this surface's own
+            // WINDOW-coordinate bounds -- not just its size -- so resolveReaderFoldLayout can intersect them
+            // against the fold descriptor's own window-coordinate bounds and translate the result into this
+            // surface's LOCAL coordinates (see resolveReaderFoldLayout's doc for why this exact translation is
+            // the highest-risk part of this slice). foldPaneWidths is handed to the ViewModel ONLY when a real
+            // vertical split with two usable panes exists; storing it (like viewportWidth/Height/Dp before it)
+            // never itself forces a re-render -- see updateViewport's doc for the one narrow exception.
+            .onGloballyPositioned { coordinates ->
+                val size = coordinates.size
+                viewportSize = size
+                val windowBounds = coordinates.boundsInWindow()
+                val readerBoundsWindow = FoldRect(windowBounds.left, windowBounds.top, windowBounds.right, windowBounds.bottom)
+                val layout = resolveReaderFoldLayout(readerBoundsWindow, fold, gutterPx)
+                foldLayoutState = layout
+                val foldPaneWidths = if (layout.hasTwoPanes) with(screenDensity) {
+                    val left = requireNotNull(layout.leftPane); val right = requireNotNull(layout.rightPane)
+                    FoldPaneWidths(leftPx = left.width.roundToInt(), rightPx = right.width.roundToInt(),
+                        leftDp = left.width.toDp().value, rightDp = right.width.toDp().value)
+                } else null
+                vm.updateViewport(size.width, size.height, with(screenDensity) { size.width.toDp().value.toInt() }, foldPaneWidths)
+            }
             .semantics {
                 // Tap zones (edges turn pages, center toggles chrome) and double-tap-to-zoom are unchanged;
                 // this only adds an accessibility action, exposed exclusively while chrome is hidden, so
@@ -229,22 +309,43 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                             else pointerCount > 1 || scale > 1f
                         if (isTransformGesture) {
                             transformed = true
-                            // Codex R1 finding 4: read through rememberUpdatedState, never state.slots directly,
-                            // so a resize-driven single<->spread flip or a retry mid-gesture is always reflected.
-                            val combined = currentContentDimensions.value
-                            if (combined != null) {
-                                // Phase 2D.1: clamp against the actual fitted-content-vs-viewport geometry (not
-                                // the viewport's own size) using the NEW scale/translation together, so the
-                                // page can never be dragged past its own real edge into empty space. Phase 3C:
-                                // the same clamp now operates on the combined spread content box (see
-                                // combinedContentDimensions) when 2 slots are visible, never on either page's
-                                // bitmap independently -- there is no separate per-page zoom/pan state.
-                                val newScale = (scale * zoom).coerceIn(1f, 5f)
-                                val content = fixedReaderFittedContentSize(combined.first, combined.second,
-                                    size.width.toFloat(), size.height.toFloat(), fitWidth)
+                            val newScale = (scale * zoom).coerceIn(1f, 5f)
+                            // Phase 3D: a vertical-split spread clamps against BOTH panes' own fitted geometry
+                            // (see foldSpreadSharedMaxPan's doc -- never the full box/viewport), read through
+                            // rememberUpdatedState so a fold/unfold mid-gesture is always reflected without
+                            // restarting this long-lived coroutine. Every other case (FLAT, HORIZONTAL_SPLIT, a
+                            // VERTICAL_SPLIT solo page) keeps the exact pre-3D combinedContentDimensions clamp,
+                            // just against the active PANE's size (currentEffectiveViewport) rather than always
+                            // the raw gesture-reported `size` -- so a horizontal-fold-confined or solo-pane page
+                            // can never be dragged past its own pane's real edge.
+                            val foldGeometry = currentFoldSpreadGeometry.value
+                            if (foldGeometry != null) {
+                                val (maxX, maxY) = foldSpreadSharedMaxPan(foldGeometry.leftDims, foldGeometry.leftPane,
+                                    foldGeometry.rightDims, foldGeometry.rightPane, newScale, fitWidth)
                                 scale = newScale
-                                panX = fixedReaderClampPan(panX + pan.x, fixedReaderMaxPan(content.width, size.width.toFloat(), newScale))
-                                panY = fixedReaderClampPan(panY + pan.y, fixedReaderMaxPanY(content, size.height.toFloat(), newScale, fitWidth))
+                                panX = fixedReaderClampPan(panX + pan.x, maxX)
+                                panY = fixedReaderClampPan(panY + pan.y, maxY)
+                            } else {
+                                // Codex R1 finding 4: read through rememberUpdatedState, never state.slots directly,
+                                // so a resize-driven single<->spread flip or a retry mid-gesture is always reflected.
+                                val combined = currentContentDimensions.value
+                                val vp = currentEffectiveViewport.value
+                                if (combined != null && vp.width > 0 && vp.height > 0) {
+                                    // Phase 2D.1: clamp against the actual fitted-content-vs-viewport geometry (not
+                                    // the viewport's own size) using the NEW scale/translation together, so the
+                                    // page can never be dragged past its own real edge into empty space. Phase 3C:
+                                    // the same clamp now operates on the combined spread content box (see
+                                    // combinedContentDimensions) when 2 slots are visible, never on either page's
+                                    // bitmap independently -- there is no separate per-page zoom/pan state. Phase
+                                    // 3D: `vp` is the active PANE's size (FLAT/HORIZONTAL_SPLIT/VERTICAL_SPLIT-solo),
+                                    // never the raw full-box `size`, so a fold-confined page's clamp matches the
+                                    // pane it actually renders into.
+                                    val content = fixedReaderFittedContentSize(combined.first, combined.second,
+                                        vp.width.toFloat(), vp.height.toFloat(), fitWidth)
+                                    scale = newScale
+                                    panX = fixedReaderClampPan(panX + pan.x, fixedReaderMaxPan(content.width, vp.width.toFloat(), newScale))
+                                    panY = fixedReaderClampPan(panY + pan.y, fixedReaderMaxPanY(content, vp.height.toFloat(), newScale, fitWidth))
+                                }
                             }
                             event.changes.forEach { it.consume() }
                         } else {
@@ -260,6 +361,18 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                     }
                 }
             }, contentAlignment = Alignment.Center) {
+            // Phase 3D: every case EXCEPT an active vertical-fold spread (activePane == null exactly then --
+            // see foldSpreadPanes/activePane's docs above) renders into ONE pane, confined by offset+size+
+            // clipToBounds -- for FLAT this pane is the whole reader surface (offset 0,0, full size), so this
+            // wrapper is a visual no-op for the pre-3D flat case; for HORIZONTAL_SPLIT/VERTICAL_SPLIT-solo it
+            // confines the EXISTING, unchanged single-page/legacy-spread rendering below to the chosen safe
+            // pane instead of the whole window. clipToBounds() here is defense-in-depth (the outer "reader_page"
+            // Box already clips to its own bounds) specifically for the case where the pane is narrower than
+            // the full surface.
+            if (activePane != null) Box(Modifier.align(Alignment.TopStart)
+                    .offset(x = with(screenDensity) { activePane.left.toDp() }, y = with(screenDensity) { activePane.top.toDp() })
+                    .size(width = with(screenDensity) { effectiveViewport.width.toDp() }, height = with(screenDensity) { effectiveViewport.height.toDp() })
+                    .clipToBounds().testTag("reader_pane_content"), contentAlignment = Alignment.Center) {
             if (state.slots.size <= 1) state.bitmap?.let { bitmap ->
                 val image = remember(bitmap) { bitmap.asImageBitmap() }
                 key(state.page) {
@@ -276,7 +389,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                     // the correct range for free. See fixedReaderVerticalScaleOverflow's doc for the full math. Fit
                     // Page needs none of this: it has no scroll container.
                     val fitWidthContentHeight = if (fitWidth) fixedReaderFittedContentSize(bitmap.width.toFloat(),
-                        bitmap.height.toFloat(), viewportSize.width.toFloat(), viewportSize.height.toFloat(), true).height else 0f
+                        bitmap.height.toFloat(), effectiveViewport.width.toFloat(), effectiveViewport.height.toFloat(), true).height else 0f
                     val verticalOverflowPx = if (fitWidth) fixedReaderVerticalScaleOverflow(fitWidthContentHeight, scale) else 0f
                     val verticalOverflowDp = with(density) { verticalOverflowPx.toDp() }
                     if (fitWidth) {
@@ -321,13 +434,13 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
             // source identity) are never reordered themselves. Zoom/pan acts on the whole Row as one unit (a
             // single shared `graphicsLayer`, exactly as the single-page case above uses one `graphicsLayer` on
             // its one Image) -- there is no independent per-slot transform state.
-            if (state.slots.size >= 2) {
+            if (state.slots.size >= 2 && foldSpreadPanes == null) {
                 val combined = combinedContentDimensions(state.slots, gutterPx)
                 if (combined != null) key(state.slots.map { it.page }) {
                     val scrollState = rememberScrollState()
                     val density = LocalDensity.current
                     val content = fixedReaderFittedContentSize(combined.first, combined.second,
-                        viewportSize.width.toFloat(), viewportSize.height.toFloat(), fitWidth)
+                        effectiveViewport.width.toFloat(), effectiveViewport.height.toFloat(), fitWidth)
                     val contentWidthDp = with(density) { content.width.toDp() }
                     val contentHeightDp = with(density) { content.height.toDp() }
                     val verticalOverflowPx = if (fitWidth) fixedReaderVerticalScaleOverflow(content.height, scale) else 0f
@@ -371,6 +484,58 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                     stateDescription = "$scale,$panX,$panY"
                 })
             }
+            } // closes the activePane-confined Box opened above
+            // Phase 3D vertical-fold spread: the one case needing a dedicated renderer (see foldSpreadPanes'
+            // doc). Each physical slot lives in its OWN fixed, clipped pane Box (never moving -- the hinge gap
+            // between them is the real, unscaled distance between the two panes, not a Row Spacer that could
+            // drift with pan/zoom) and fits WITHIN that pane independently ("each page fits inside its assigned
+            // unobstructed pane," per the 3D Fit Page/Fit Width contract). Scale and pan stay ONE shared value
+            // (no independent per-pane transform state) -- foldSpreadSharedMaxPan clamps that single pan value
+            // against the MORE restrictive of the two panes' own bounds so neither pane's content can ever
+            // overflow its own edge, and each pane's clipToBounds() is a hard safety net even if that clamp were
+            // ever imprecise: artwork can never render past its own pane's boundary into the hinge, at any scale
+            // or pan value, by construction. Unlike flat Fit Width, there is no verticalScroll container here
+            // (a shared scroll across two independently-clipped panes has no single well-defined scroll position
+            // with a hinge-interrupted layout); vertical overflow beyond a pane's own height is instead reached
+            // via the same shared pan this block already clamps, exactly like Fit Page's reachability model --
+            // an intentional, documented narrowing from flat Fit Width's auto-scroll convenience, never a
+            // regression into unreachable/hidden content (flagged here as a 3F-follow-up refinement candidate,
+            // not a silent gap).
+            if (foldSpreadPanes != null) key(state.slots.map { it.page }) {
+                val (leftPane, rightPane) = foldSpreadPanes
+                val physicalSlots = PageGroup(state.slots.map { it.page }).physicalOrder(rtl).map { p -> state.slots.first { it.page == p } }
+                val panes = listOf(physicalSlots[0] to leftPane, physicalSlots[1] to rightPane)
+                panes.forEach { (slot, pane) ->
+                    Box(Modifier.align(Alignment.TopStart)
+                            .offset(x = with(screenDensity) { pane.left.toDp() }, y = with(screenDensity) { pane.top.toDp() })
+                            .size(width = with(screenDensity) { pane.width.toDp() }, height = with(screenDensity) { pane.height.toDp() })
+                            .clipToBounds().testTag("spread_slot_${slot.page}"), contentAlignment = Alignment.Center) {
+                        val bmp = slot.bitmap
+                        if (bmp != null) {
+                            val image = remember(bmp) { bmp.asImageBitmap() }
+                            val isCurrent = slot.page == state.page
+                            val description = if (isCurrent) String.format(currentSpreadPageDescription, slot.page + 1, state.count)
+                                else String.format(pageOfCountTemplate, slot.page + 1, state.count)
+                            val fitted = fixedReaderFittedContentSize(bmp.width.toFloat(), bmp.height.toFloat(), pane.width, pane.height, fitWidth)
+                            Image(image, description, Modifier.size(width = with(screenDensity) { fitted.width.toDp() },
+                                    height = with(screenDensity) { fitted.height.toDp() })
+                                .graphicsLayer { scaleX = scale; scaleY = scale; translationX = panX; translationY = panY },
+                                contentScale = ContentScale.Fit)
+                        } else {
+                            // Codex R1 finding 3 (3C): a failed slot's placeholder occupies its OWN page geometry,
+                            // never a sibling's -- here that is simply "fill this slot's own fixed pane," since
+                            // each pane is already sized/positioned independently (no shared combined box to
+                            // mis-size around a corrupt sibling the way the flat Row model had to guard against).
+                            Box(Modifier.fillMaxSize().background(t.colors.surface)
+                                .semantics { contentDescription = String.format(pageUnavailableDescription, slot.page + 1) },
+                                contentAlignment = Alignment.Center) { Text(stringResource(R.string.label_unavailable)) }
+                        }
+                    }
+                }
+                Text("", Modifier.size(0.dp).testTag("reader_transform_probe").clearAndSetSemantics {
+                    stateDescription = "$scale,$panX,$panY"
+                })
+            }
             if (state.loading && state.error == null) CircularProgressIndicator()
             state.error?.let { message -> Surface(color = t.colors.surface, shape = t.shapes.small) {
                 Column(Modifier.padding(16.dp).widthIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -379,9 +544,14 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                 }
             } }
         }
-        // Page controls follow the reading direction: in right-to-left reading, Next sits on the left.
-        if (controls) CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
-            Column(Modifier.padding(horizontal = 8.dp).onFocusChanged { bottomFocused = it.hasFocus }) {
+        // Page controls follow the reading direction: in right-to-left reading, Next sits on the left. Phase
+        // 3D: confined to chromePane's width/offset under a vertical fold split, computed OUTSIDE the RTL
+        // CompositionLocalProvider below so the pane's real physical (window-space) position is never itself
+        // mirrored -- only the Row's internal Previous/Next arrangement mirrors for RTL, exactly as before.
+        val bottomChromeModifier = chromePane?.let { pane -> with(screenDensity) { Modifier.offset(x = pane.left.toDp()).width(pane.width.toDp()) } }
+            ?: Modifier.fillMaxWidth()
+        if (controls) Box(bottomChromeModifier) { CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp).onFocusChanged { bottomFocused = it.hasFocus }) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton({ vm.turn(-1) }, Modifier.let { m -> previousHint?.let { m.semantics { contentDescription = previousHintDescription(it) } } ?: m },
                         // Codex R1 finding 6: semantic enablement via the SAME canonical navigation resolver
@@ -400,7 +570,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, onBack: () -> Unit) {
                     valueRange = 0f..(state.count - 1).toFloat(),
                     onValueChangeFinished = { sliderTarget?.let { vm.showPage(it.roundToInt()) }; sliderTarget = null })
             }
-        }
+        } }
     }
 }
 
@@ -424,14 +594,54 @@ private fun combinedContentDimensions(slots: List<PageSlot>, gutterPx: Float): P
     // behavior (mapNotNull { it.bitmap }) silently dropped a failed slot from the combined box entirely, letting
     // a corrupt first/second slot consume or constrain width that rightfully belonged to both slots.
     if (slots.isEmpty() || slots.all { it.bitmap == null && it.geometry.isUnknown() }) return null
-    fun dims(slot: PageSlot): Pair<Float, Float> = slot.bitmap?.let { it.width.toFloat() to it.height.toFloat() }
-        ?: slot.geometry?.takeIf { !it.isUnknown() }?.let { it.width.toFloat() to it.height.toFloat() }
-        ?: (DEFAULT_PLACEHOLDER_ASPECT_WIDTH to DEFAULT_PLACEHOLDER_ASPECT_HEIGHT)
-    val pairs = slots.map(::dims)
+    val pairs = slots.map(::slotDims)
     if (pairs.size == 1) return pairs[0]
     val refHeight = pairs.maxOf { it.second }
     val totalWidth = pairs.sumOf { (refHeight * it.first / it.second).toDouble() }.toFloat() + gutterPx
     return totalWidth to refHeight
+}
+
+/** One [PageSlot]'s own dimensions for fit/zoom geometry -- its decoded bitmap when present, else its own
+ * resolved [PageGeometry] when usable, else a conservative placeholder aspect. Shared by
+ * [combinedContentDimensions] (the flat/horizontal-fold combined-box model) and Phase 3D's per-pane fold-spread
+ * geometry ([foldPaneMaxPan]/[FoldSpreadGeometry]) so both ultimately agree on "this slot's own size" from one
+ * place, never two independent copies of the same fallback chain. */
+private fun slotDims(slot: PageSlot): Pair<Float, Float> = slot.bitmap?.let { it.width.toFloat() to it.height.toFloat() }
+    ?: slot.geometry?.takeIf { !it.isUnknown() }?.let { it.width.toFloat() to it.height.toFloat() }
+    ?: (DEFAULT_PLACEHOLDER_ASPECT_WIDTH to DEFAULT_PLACEHOLDER_ASPECT_HEIGHT)
+
+/** Phase 3D: the two physical slots' own panes + own dimensions for a vertical-fold spread's shared transform
+ * clamp (see [foldSpreadSharedMaxPan]) -- captured as one immutable snapshot so the long-lived zoom/pan gesture
+ * coroutine can read it via `rememberUpdatedState` without ever closing over `state.slots`/[FoldRect] mutable
+ * state directly (the same discipline Codex R1 finding 4 established for [combinedContentDimensions]). */
+private data class FoldSpreadGeometry(val leftPane: FoldRect, val leftDims: Pair<Float, Float>,
+    val rightPane: FoldRect, val rightDims: Pair<Float, Float>)
+
+/** One pane's own max-pan bound (x, y) for [dims]-sized content fitted inside [pane] at [scale] -- the per-pane
+ * building block [foldSpreadSharedMaxPan] takes the stricter of two of. Deliberately does NOT force Y to `0` for
+ * [fitWidth] the way [fixedReaderMaxPanY] does for the flat case: a vertical-fold spread pane has no
+ * `verticalScroll` container of its own (see the fold-spread rendering block's doc in [FixedReaderScreen] for
+ * why), so vertical overflow beyond the pane's own height is reached through this same pan value, exactly like
+ * Fit Page's reachability model -- using [fixedReaderMaxPanY]'s always-`0` Fit Width behavior here would make
+ * that overflow permanently unreachable (clipped by the pane's own `clipToBounds()`) rather than merely
+ * differently-reached. */
+private fun foldPaneMaxPan(dims: Pair<Float, Float>, pane: FoldRect, scale: Float, fitWidth: Boolean): Pair<Float, Float> {
+    val (width, height) = dims
+    if (width <= 0f || height <= 0f || pane.width <= 0f || pane.height <= 0f) return 0f to 0f
+    val content = fixedReaderFittedContentSize(width, height, pane.width, pane.height, fitWidth)
+    return fixedReaderMaxPan(content.width, pane.width, scale) to fixedReaderMaxPan(content.height, pane.height, scale)
+}
+
+/** The ONE shared pan value's max bound across BOTH panes of a vertical-fold spread: the minimum (most
+ * restrictive) of each pane's own [foldPaneMaxPan] bound on each axis, so a single shared `panX`/`panY` can never
+ * push EITHER pane's content past that pane's own edge -- satisfying "never artwork under hinge" by construction,
+ * with each pane's `clipToBounds()` in [FixedReaderScreen] as an unconditional second line of defense regardless
+ * of this clamp's own correctness. */
+private fun foldSpreadSharedMaxPan(leftDims: Pair<Float, Float>, leftPane: FoldRect, rightDims: Pair<Float, Float>,
+    rightPane: FoldRect, scale: Float, fitWidth: Boolean): Pair<Float, Float> {
+    val (leftMaxX, leftMaxY) = foldPaneMaxPan(leftDims, leftPane, scale, fitWidth)
+    val (rightMaxX, rightMaxY) = foldPaneMaxPan(rightDims, rightPane, scale, fitWidth)
+    return minOf(leftMaxX, rightMaxX) to minOf(leftMaxY, rightMaxY)
 }
 
 /** `true` when a [PageGeometry] carries no usable dimensions (the `PageGeometry(0, 0)` sentinel
