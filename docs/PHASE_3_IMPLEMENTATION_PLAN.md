@@ -10,15 +10,17 @@ comic spreads"). **3E-A (native CBR dependency foundation — NDK/CMake plumbing
 vendored libarchive, JNI smoke test; ZERO archive-reading logic) is COMPLETE and
 ACCEPTED on `phase-3/3e-native-cbr`.** **3E-B (generic internal native RAR4/RAR5 engine —
 real open/enumerate/extract session on top of 3E-A, no product/reader integration) is
-IMPLEMENTED on the same branch; remediation is complete, pending final confirmation.** 3E-C, 3E-D, and
+COMPLETE and ACCEPTED on the same branch.** **3E-C (CBR container adapter —
+`RarPageSource` + a bounded on-disk extraction cache on top of 3E-B, no product/reader
+integration) is IMPLEMENTED on the same branch, pending review.** 3E-D and
 3E-E are **NOT STARTED**. 3F
 remains PLANNING ONLY. Phase 3 overall is **NOT complete**. See §22/§23 for what 3A
 landed, §24 for what 3B actually landed, §25 for what 3C actually landed (including the
 R1 and R2 remediation records), §26/§26a for what 3D and its R1 remediation landed,
 §26b for the R2 remediation (render-geometry state-independence + hysteresis,
 hinge-safe modal focus/accessibility) recorded below, §27 for what 3E-B actually landed,
-and `docs/adr/0024-native-cbr-libarchive.md` plus `docs/VALIDATION.md` for what 3E-A and
-3E-B actually landed.
+§28 for what 3E-C actually landed, and `docs/adr/0024-native-cbr-libarchive.md` plus
+`docs/VALIDATION.md` for what 3E-A/3E-B/3E-C actually landed.
 
 ## 1. Status / base
 
@@ -36,9 +38,11 @@ and `docs/adr/0024-native-cbr-libarchive.md` plus `docs/VALIDATION.md` for what 
 - §12/§13/§21 below authorized exactly one slice at a time. 3A (§22/§23), 3B (§24), 3C
   (§25, including its Codex R1/R2 remediation records), and 3D (§26/§26a/§26b) are
   complete and merged to `main` (`#24`, `#25`, `#26`, `#27`). 3E-A (native CBR
-  dependency foundation) is complete and accepted on `phase-3/3e-native-cbr`. 3E-B is
-  implemented on that branch; remediation is complete, pending final confirmation. 3E-C, 3E-D, and 3E-E
-  have not started. 3F remains planning only, and Phase 3 overall is not complete.
+  dependency foundation) is complete and accepted on `phase-3/3e-native-cbr`. 3E-B
+  (generic native RAR engine) is complete and accepted on the same branch. 3E-C (CBR
+  container adapter + bounded cache) is implemented on that branch, pending review.
+  3E-D and 3E-E have not started. 3F remains planning only, and Phase 3 overall is not
+  complete.
 
 ## 22. 3A implementation record (landed)
 
@@ -1313,6 +1317,166 @@ no `RarPageSource`, no page/image filtering, `isPageImage`, `naturalCompare`, or
 parsing, no Manga/RTL handling at this layer, no cache/LRU/cacheDir/page-cache/stale-session-cleanup
 logic of any kind, no reader UI or `LibraryItem`/import-routing/persistence change, no extension/
 magic-byte format classification, no passphrase/password support, no partial-archive recovery.
+
+## 28. 3E-C implementation record (CBR container adapter / bounded extraction cache)
+
+**Scope delivered**: the `RarPageSource` container adapter and a bounded on-disk extraction
+cache (`RarExtractionCache`) on top of 3E-B's accepted `NativeRarSession`, completing exactly
+the architecture goal stated for this checkpoint: **RAR native engine -> `RarPageSource` ->
+the existing `PageSource` contract -> the existing `ImagePageRenderer`** — the identical shape
+`ZipPageSource` already has for CBZ. This checkpoint still does NOT add
+`PublicationFormat.CBR`, any import routing, magic-byte classification, `FixedReaderFactory`
+routing, library category integration, Room/`LibraryEntity` changes, reader UI/Compose
+changes, localized user-facing error strings, or encrypted-archive password UI. No native
+C++ was touched or needed — 3E-B's JNI surface (`shelfos_rar_session_jni.cpp`,
+`NativeRarSession`) is consumed exactly as accepted.
+
+**Files added**: `core/files/RarArchiveSession.kt` (the `RarArchiveSession` interface +
+production `NativeRarArchiveSession` adapter + `RarExtractionException`),
+`core/files/RarExtractionCache.kt` (the bounded on-disk cache), `core/reader/RarPageSource.kt`
+(the container adapter + `NativeRarError.toPublicationProblem()` mapping). Two small,
+visibility-only edits to `core/reader/FixedReader.kt`: `PageSource` and `ImagePageRenderer`
+widened from file-private to `internal` so `RarPageSource` (a different file in the same
+package) can implement/use them — no behavior change to either.
+
+**`RarArchiveSession` seam (testability boundary)**: a narrow interface
+(`entryCount`/`entryAt`/`extractEntry(index, destination: File)`/`close`) expressed over a
+destination `File` rather than a raw fd, specifically so `RarPageSource`/`RarExtractionCache`'s
+own ordering/caching/safety-policy logic can be unit-tested in a plain JVM test
+(`FakeRarArchiveSession`, `app/src/test`) without a real multi-image RAR fixture — upstream's
+vendored `.uu` fixtures contain no comic-image sequence, and ShelfOS has (deliberately) no
+RAR-writing capability to construct one (AGENTS.md: no RAR-writer, no external unrar/rar CLI
+dependency). Production code satisfies the same interface via `NativeRarArchiveSession`, a
+thin adapter that opens a `ParcelFileDescriptor` over the destination file and delegates to
+the real `NativeRarSession.extractEntry(index, fd)` — adding zero new JNI operations. Honesty
+boundary, stated explicitly in both the interface's doc and every fake-based test: a test
+built on `FakeRarArchiveSession` proves this checkpoint's own logic, never real libarchive/RAR
+parsing correctness — that remains proven only by 3E-B's real instrumented tests
+(`LibarchiveRarNativeTest`/`LibarchiveRarNativeLifecycleTest`) plus this checkpoint's own
+`RarPageSourceRealSessionInstrumentedTest`, which drives the real native session end to end
+(open/enumerate/extract/close) against a real vendored fixture.
+
+**Entry model / physical ordinal vs. logical page**: `RarPageEntry(physicalIndex, name)` is
+the unit `RarPageSource.pages` holds; a logical page's cache/extraction identity is always its
+`physicalIndex`, never its display name. Filenames are decoded exactly as 3E-B's
+`NativeRarSession.entryAt` already does (UTF-8 primary via libarchive's
+`archive_entry_pathname_utf8()`, ISO-8859-1 best-effort fallback otherwise) — no new decoding
+logic was added. Image filtering reuses `isPageImage` unchanged; natural ordering reuses
+`naturalCompare` unchanged, tie-broken deterministically by physical ordinal when two names
+compare equal (duplicate filenames, or the same basename in different folders, therefore sort
+deterministically and extract to distinct, non-colliding cache entries). The safe-name check
+(`ArchivePolicy.safeName`) is applied to every entry (not just regular files, mirroring
+`ArchivePolicy.entries` for CBZ) before any entry can become a logical page or a `ComicInfo.xml`
+candidate — even though native extraction only ever writes to a caller-supplied destination
+file and cannot itself path-traverse.
+
+**Shared archive policy**: nothing needed to change in `ArchivePolicy.kt`. `ArchivePolicy.
+safeName`, `naturalCompare` (both already plain, format-independent string functions) and
+`isPageImage` (format-independent already) were reusable as-is; `RarPageSource` applies them
+to `RarArchiveSession`'s physical-entry model directly, and also reuses
+`ArchivePolicy.MAX_ENTRIES` (archive-entry-count ceiling) and `ArchivePolicy.MAX_IMAGE_BYTES`
+(per-page-image size ceiling) rather than inventing new policy numbers. `ZipPageSource`/
+`SeekableZip`/`ArchivePolicy` are therefore completely unmodified; CBZ's extraction mechanics
+(true random access) and RAR's (cache-backed, non-seekable) remain fully separate — no generic
+"ArchivePageSource" was introduced.
+
+**ComicInfo.xml**: identified and parsed by reusing `EmbeddedMetadataReader.parse`/
+`EmbeddedMetadataReader.comicInfo(document)` completely unchanged — no second XML parser.
+Multiple-`ComicInfo.xml` policy mirrors CBZ's own (previously undefined, now made explicit):
+the first physical entry whose name equals `"ComicInfo.xml"` case-insensitively, exactly as
+`EmbeddedMetadataReader.comicInfo(zip)` already selects for a ZIP container — never a
+subdirectory match, never a merge of several. `RarPageSource.comicInfo()` is exposed at the
+container level only; it is never counted as a logical page (page filtering already excludes
+it, since `isPageImage(".xml")` is false) and is not wired to `LibraryEntity`/import in any way.
+
+**Cache (`RarExtractionCache`)**: root is caller-supplied (`RarPageSource.open`'s `cacheRoot`
+parameter); the actual cache directory is `cacheRoot/cbr/<UUID.nameUUIDFromBytes(sourceKeyOrRandom)>`
+— the caller's `sourceKey` string is hashed into a deterministic, filesystem-safe directory
+name rather than ever used as a raw path segment. When no `sourceKey` is supplied (3E-C has no
+product/import integration to derive a stable one from yet), a fresh per-call random namespace
+is used instead — correctness over cache persistence, exactly as required: a caller unable to
+supply a reliable stable identity sacrifices cross-reopen reuse rather than risk serving stale
+bytes under a reused key for a different archive. Entry key = physical ordinal; final filename
+= `"$physicalIndex.bin"` (never a raw entry name). Max bytes: 256MiB (deliberately far larger
+than `RenderMemoryPolicy.SESSION_BUDGET_BYTES`'s ~96MiB in-memory budget or
+`ThumbnailLoader.DEFAULT_BUDGET_BYTES`'s 16MiB, since a `cacheDir`-backed, OS-reclaimable disk
+artifact is not competing for the same scarce resource those two budgets protect; comfortably
+holds several full-resolution comic pages at the 128MiB-per-entry ceiling below). Max entries:
+64 (mirrors `ByteBudgetedLruCache.DEFAULT_MAX_ENTRIES`'s identical reasoning from 3B). Both are
+constructor-injectable (`RarPageSource.open`'s `maxCacheBytes`/`maxCacheEntries` parameters) so
+tests can force deterministic eviction with tiny limits. Per-entry byte ceiling reuses
+`ArchivePolicy.MAX_IMAGE_BYTES` (128MiB), enforced by measuring the real extracted file size
+*after* extraction completes — an honest, documented post-hoc check, not a true mid-stream
+abort (`RarArchiveSession.extractEntry`/`NativeRarSession.extractEntry` is one blocking native
+call with no interruption point; adding one would mean changing 3E-B's native C++, which this
+checkpoint does not do). Eviction: deterministic LRU, bounded by both byte and entry budgets,
+tie-broken by an injectable monotonic access counter (never wall-clock time); a slot with an
+active, unreleased reference is never evicted even if that leaves the cache temporarily over
+budget. Atomicity: extraction writes to a ShelfOS-generated temp sibling file, is verified
+(native success, file present, within the per-entry ceiling), then atomically renamed
+(`File.renameTo`, same-directory) to the final filename; any failure deletes the temp file and
+never produces/promotes a final file. Concurrency: one lock object per cache key (never a
+process-global archive lock) deduplicates concurrent `acquire` calls for the same key; 3E-C
+does not yet wire `RarPageSource` into any shared `FixedReaderViewModel`-style render mutex
+since it has no reader-UI caller yet — that discipline (mirroring how `ThumbnailLoader`'s
+decode already routes through the same mutex/session CBZ full-page reads use) is deferred to
+whichever later slice (3E-D) first calls this from the reader. Stale cleanup: a
+`RarExtractionCache` constructor lazily deletes any leftover `*.tmp-*` file under its own
+`root` only (never a wider scan), handling a process death mid-extraction from a previous run.
+Namespace cleanup (deleting an entire old source-key directory once it is known stale) is
+NOT implemented in this checkpoint — an honest limitation, not an oversight: nothing in 3E-C
+yet has the product context to know when a source key is genuinely retired; a caller may
+delete `cacheRoot/cbr/<namespace>` itself if it wishes.
+
+**Error mapping**: `NativeRarError.toPublicationProblem()` (internal, `core/reader/
+RarPageSource.kt`) maps the native engine's error categories onto the EXISTING
+`PublicationProblem` enum — `PROTECTED`, `UNSUPPORTED_FORMAT`, `CORRUPT` map directly;
+`NOT_SEEKABLE`/`IO`/`NATIVE_INTERNAL` all collapse to the existing `UNREADABLE` for now. No new
+`PublicationProblem`/`PublicationExceptionDetail` enum value was added (adding one would touch
+exhaustive UI `when`s this checkpoint does not touch, and risks requiring a new user-facing
+string), and no raw native error code or message ever crosses this mapping. The three-way
+`NOT_SEEKABLE`/`IO`/`NATIVE_INTERNAL` collapse is a real, flagged loss of distinction, left for
+whichever later slice (3E-D) first needs to tell them apart in product UX.
+
+**Tests** (all pass; see `docs/VALIDATION.md`'s "PHASE 3E-C" entry for exact commands/counts):
+`RarExtractionCacheTest` (pure JVM, 10 tests) — first-extraction-once/cache-hit-zero,
+bounds-then-full reuse, distinct/non-colliding keys, distinct namespaces, extraction-failure
+leaves no partial file + retry succeeds, stale-temp cleanup on construction, deterministic
+eviction by entry count and by byte budget, an actively-referenced entry is never evicted,
+an oversized entry fails cleanly. `RarPageSourceTest` (pure JVM, 15 tests, against
+`FakeRarArchiveSession`) — natural ordering matches CBZ, duplicate filenames at different
+ordinals never collide, unsafe names never become pages, non-image entries excluded, empty
+archive fails, first-materialization-once/cache-hit evidence, solid-style non-sequential access
+pattern (later page -> same page again [0 more] -> different page [+1] -> first page again
+[0 more]), `ComicInfo.xml` identified/parsed/excluded-from-pages, no-ComicInfo returns null,
+every `NativeRarError` category's mapping, extraction-failure-then-retry-succeeds, post-close
+throws, distinct source keys never collide even with identical ordinals, entry-count-over-limit
+fails, tiny injectable cache limits trigger deterministic eviction. `RarPageSourceRenderInstrumentedTest`
+(instrumented, 3 tests, against a local fake carrying real PNG bytes) — proves the actual
+`ImagePageRenderer.bounds`/`ImagePageRenderer.render` pipeline (real `BitmapFactory` decode)
+sees exactly one extraction across a bounds-then-full-decode pair, exactly two extractions
+across two distinct pages (with a third render of page 0 staying a cache hit), and a corrupt
+page never poisons its healthy sibling. `RarPageSourceRealSessionInstrumentedTest`
+(instrumented, 1 test) — drives `NativeRarArchiveSession` over the REAL `NativeRarSession`
+against a real vendored `.uu` fixture through a full open/enumerate/extract/close cycle and
+asserts the source `.rar` file's SHA-256 hash is unchanged before and after.
+
+**Build/validation**: `assembleDebug`, `assembleDebugAndroidTest`, and `lintDebug` all pass
+with zero findings in the new files. No native rebuild was needed or triggered (confirmed:
+`assembleDebug`'s CMake tasks ran only because of toolchain/ABI configuration, not because any
+`.cpp`/`.h` source changed). APK fixture hygiene: a quick `unzip -l` check of the production
+debug APK confirms no `.uu`, `.rar`, fixture, or owner-CBR content is present. Physical ARM
+hardware validation was NOT performed (not required for this checkpoint, no native change).
+Full JVM suite and full connected/instrumented regression were NOT run (reserved for Phase
+3F), consistent with standing policy; only this checkpoint's own targeted tests were run.
+
+**What this slice deliberately does NOT do** (explicit 3E-D/E or later scope): no
+`PublicationFormat.CBR`, no Room/`LibraryEntity` change, no import routing/magic-byte
+classification/`FixedReaderFactory` routing/library category integration, no reader UI/Compose
+change, no localized user-facing error strings, no encrypted-archive password UI, no shared
+render-mutex wiring to any reader ViewModel (deferred to whichever slice first calls
+`RarPageSource` from a reader), no namespace/cross-session cache garbage collection, no CBR
+acceptance-gate work from §17.
 
 ## 2. Why Phase 3 is not green-field
 

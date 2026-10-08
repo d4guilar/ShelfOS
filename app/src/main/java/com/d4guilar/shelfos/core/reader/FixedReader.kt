@@ -318,10 +318,13 @@ private class PdfPages(descriptor: ParcelFileDescriptor) : FixedReader {
  * concern. [ZipPageSource] is backed by true random access (`SeekableZip`'s positional reads); a future CBR
  * adapter over a "solid" RAR archive that cannot offer ZIP-style random access could instead serve this from a
  * one-time sequential index or a bounded extract-to-cache, without this interface -- or [ImagePageRenderer], which
- * is written only against it -- changing at all. This is the Phase 3A container/page-source boundary; no CBR
- * adapter exists yet (see `docs/PHASE_3_IMPLEMENTATION_PLAN.md` section 6/12).
+ * is written only against it -- changing at all. This is the Phase 3A container/page-source boundary. Phase 3E-C
+ * adds exactly that future CBR adapter, `RarPageSource` (`core/reader/RarPageSource.kt`): this interface and
+ * [ImagePageRenderer] below were widened from file-private to `internal` for that one reason (a visibility-only
+ * change, see `docs/PHASE_3_IMPLEMENTATION_PLAN.md`'s 3E-C record) -- `RarPageSource` is NOT wired into
+ * [FixedReaderFactory]/any product format routing yet.
  */
-private interface PageSource : Closeable {
+internal interface PageSource : Closeable {
     val pageCount: Int
     fun openPage(index: Int): InputStream
 }
@@ -341,7 +344,7 @@ private class ZipPageSource(private val zip: SeekableZip, private val entries: L
  * same safety ceilings regardless of container format. Used by [ArchivePages] today; a future CBR [PageSource]
  * reuses this unchanged, rather than duplicating the bounds-then-sample decode policy per container format.
  */
-private object ImagePageRenderer {
+internal object ImagePageRenderer {
     /** Bounds-only decode (no full-resolution allocation) -- the same `inJustDecodeBounds` pass [render] already
      * performs before every full decode, exposed standalone for [FixedReader.pageGeometry] (Phase 3C). Returns
      * `null` rather than throwing for an out-of-range index or an undecodable page. */
