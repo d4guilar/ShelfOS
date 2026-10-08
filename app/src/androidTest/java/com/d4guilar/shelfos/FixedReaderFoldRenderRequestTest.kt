@@ -12,6 +12,7 @@ import com.d4guilar.shelfos.core.reader.FitMode
 import com.d4guilar.shelfos.core.reader.FixedReader
 import com.d4guilar.shelfos.core.reader.FixedReaderFactory
 import com.d4guilar.shelfos.core.reader.FoldPaneWidths
+import com.d4guilar.shelfos.core.reader.FoldPresentation
 import com.d4guilar.shelfos.core.reader.PageRenderRequest
 import com.d4guilar.shelfos.core.reader.ReaderPreferences
 import com.d4guilar.shelfos.core.reader.ReaderRenderGeometry
@@ -45,6 +46,12 @@ import java.util.zip.ZipOutputStream
  * [FixedReaderSpreadViewModelTest]'s `GatedGeometryFixedReaderFactory` wraps it for a different purpose, so the
  * actual [PageRenderRequest] each logical page is decoded with can be inspected directly, rather than only
  * inferring it from the decoded bitmap's own (possibly budget-reduced) size.
+ *
+ * Codex R2 remediation, finding A: [ReaderRenderGeometry] now reports BOTH the solo target and the two-pane
+ * spread target unconditionally from a single [FixedReaderViewModel.updateViewport] call -- it no longer needs a
+ * SECOND call carrying a corrective [ReaderRenderGeometry] once a spread's slots happen to already be published
+ * (R1's own test here used to simulate exactly that two-pass sequence; see each test's own updated doc below for
+ * why a single call is now both sufficient and the actually-correct production behavior).
  */
 class FixedReaderFoldRenderRequestTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
@@ -128,20 +135,14 @@ class FixedReaderFoldRenderRequestTest {
         })
         val vm = provider[FixedReaderViewModel::class.java]
         awaitSettled(vm, 0)
-        // A deliberately asymmetric vertical fold split: the left pane is far narrower than the right. Mirrors
-        // the real FixedReaderScreen.onGloballyPositioned sequence: only ONE slot exists before turn(1), so the
-        // FIRST layout pass is Single-shaped (the eligibility input, FoldPaneWidths, is still recorded so the
-        // upcoming render's spreadActive() decision already sees it).
+        // A deliberately asymmetric vertical fold split: the left pane is far narrower than the right. Codex R2
+        // remediation, finding A: ONE updateViewport call now carries BOTH the solo target (for page 0, still
+        // solo) AND the two-pane spread target -- exactly what the real FixedReaderScreen.onGloballyPositioned
+        // now reports unconditionally, independent of `state.slots.size` (see ReaderRenderGeometry's own doc).
+        // No second, corrective updateViewport call is needed or performed here.
         val foldPaneWidths = FoldPaneWidths(leftPx = 150, rightPx = 1700, leftDp = 75f, rightDp = 850f)
-        vm.updateViewport(ReaderRenderGeometry.Single(2000, 3000, 1000), foldPaneWidths)
-        vm.turn(1) // -> logical pair [1, 2]
-        awaitSettled(vm, 1)
-        // Second layout pass: now that 2 slots are actually visible, the real screen would recompute a
-        // Spread-shaped geometry from the SAME two panes -- mirrored here, which triggers the corrective
-        // re-render using each pane's own real width/height (see EffectiveRenderKey's own "route-entry
-        // correction" doc for why a stale first-pass geometry is always corrected by the next effective-key
-        // change, never left stale).
-        vm.updateViewport(ReaderRenderGeometry.Spread(150, 3000, 1700, 3000, 75f, 850f), foldPaneWidths)
+        vm.updateViewport(verticalSpreadGeometry(150, 3000, 1700, 3000, 75f, 850f), foldPaneWidths)
+        vm.turn(1) // -> logical pair [1, 2]; the FIRST decode of this pair must already use each pane's own width.
         awaitSettled(vm, 1)
 
         val requestForPage1 = recorded[1] // physical LEFT in LTR (narrow pane)
@@ -175,12 +176,29 @@ class FixedReaderFoldRenderRequestTest {
             slot2!!.byteCount <= RenderMemoryPolicy.MAX_SPREAD_BITMAP_BYTES)
     }
 
+    /** Codex R2 remediation, finding A: a VERTICAL_SPLIT [ReaderRenderGeometry] carrying both the solo target
+     * (the wider of the two panes, mirroring [selectSoloPane][com.d4guilar.shelfos.core.reader.selectSoloPane]'s
+     * own "larger pane wins" rule closely enough for a test where `single` is never actually exercised while
+     * `groupSize == 2`) and the two-pane spread target -- the single call shape the real
+     * `FixedReaderScreen.onGloballyPositioned` now always reports, replacing the pre-remediation two-call
+     * Single-then-Spread sequence these tests used to simulate. */
+    private fun verticalSpreadGeometry(leftPx: Int, leftHeightPx: Int, rightPx: Int, rightHeightPx: Int, leftDp: Float, rightDp: Float) =
+        ReaderRenderGeometry(presentation = FoldPresentation.VERTICAL_SPLIT,
+            single = if (rightPx >= leftPx) ReaderRenderGeometry.SingleTarget(rightPx, rightHeightPx, rightDp.toInt())
+                else ReaderRenderGeometry.SingleTarget(leftPx, leftHeightPx, leftDp.toInt()),
+            spread = ReaderRenderGeometry.SpreadTarget(leftPx, leftHeightPx, rightPx, rightHeightPx, leftDp, rightDp))
+
     /**
      * Phase 3D render-storm guard: a continuous stream of [FixedReaderViewModel.updateViewport] calls carrying
      * DIFFERENT fold pane widths that never actually change the [SpreadMode.AUTO] single/spread DECISION (the
      * "effective layout key" this slice reuses from 3C's own AUTO-width coalescing, see `updateViewport`'s doc)
      * must never trigger a new decode -- only the one call that actually flips that decision may. Simulates what
      * a real fold/unfold posture animation looks like (many layout events, most not materially different).
+     *
+     * Codex R2 remediation: this test's final assertion used to only check `vm.state.value.slots.size == 1`
+     * (whether the flip is VISIBLE), which a comment claimed proved "exactly one render" without the assertion
+     * itself ever counting a render. It now asserts the actual recorded decode COUNT delta directly, closing
+     * that assertion-by-comment gap Codex flagged.
      */
     @Test fun continuousFoldPaneWidthChangesThatNeverFlipSpreadActiveNeverTriggerANewDecode() {
         val recorded = ConcurrentHashMap<Int, PageRenderRequest>()
@@ -203,17 +221,15 @@ class FixedReaderFoldRenderRequestTest {
         val vm = provider[FixedReaderViewModel::class.java]
         awaitSettled(vm, 0)
         // Establish an AUTO-eligible vertical split (each pane comfortably >= half of AUTO_SPREAD_MIN_WIDTH_DP,
-        // combined width comfortably over it) and land on the pair [1, 2] -- mirroring the real two-pass
-        // Single-then-Spread sequence (see the sibling test's own comment for why).
+        // combined width comfortably over it) and land on the pair [1, 2]. Codex R2 remediation, finding A: ONE
+        // updateViewport call (never a corrective second one) carries the full geometry from the start.
         // Pane PX widths are chosen at exact RENDER_KEY_BUCKET_PX (32) centers (25*32=800, 34*32=1088) so the
         // drift below has a full +-16px margin before crossing into a neighboring bucket on either side -- dp
         // values stay fixed at comfortably-AUTO-eligible 400/550 throughout (this test is about the render-key
         // bucket guard, not about re-deriving dp from px at some assumed density).
         val initialFold = FoldPaneWidths(leftPx = 800, rightPx = 1088, leftDp = 400f, rightDp = 550f)
-        vm.updateViewport(ReaderRenderGeometry.Single(2000, 3000, 1000), initialFold)
+        vm.updateViewport(verticalSpreadGeometry(800, 3000, 1088, 3000, 400f, 550f), initialFold)
         vm.turn(1)
-        awaitSettled(vm, 1)
-        vm.updateViewport(ReaderRenderGeometry.Spread(800, 3000, 1088, 3000, 400f, 550f), initialFold)
         awaitSettled(vm, 1)
         val initialCount1 = counts[1] ?: 0
         val initialCount2 = counts[2] ?: 0
@@ -226,7 +242,7 @@ class FixedReaderFoldRenderRequestTest {
         // floor), so the single/spread decision itself never changes either.
         val driftingPanes = listOf(806 to 1082, 794 to 1094, 804 to 1084, 796 to 1092, 800 to 1088)
         driftingPanes.forEach { (leftPx, rightPx) ->
-            vm.updateViewport(ReaderRenderGeometry.Spread(leftPx, 3000, rightPx, 3000, 400f, 550f),
+            vm.updateViewport(verticalSpreadGeometry(leftPx, 3000, rightPx, 3000, 400f, 550f),
                 FoldPaneWidths(leftPx = leftPx, rightPx = rightPx, leftDp = 400f, rightDp = 550f))
         }
         Thread.sleep(300) // give any (wrongly) triggered render a chance to actually run before asserting it didn't.
@@ -237,16 +253,24 @@ class FixedReaderFoldRenderRequestTest {
 
         // The ONE call that actually flips the decision (both panes now far below the AUTO floor) must trigger
         // exactly one new render -- proving the guard coalesces continuous noise WITHOUT silently suppressing a
-        // genuine, required re-render. Mirrors production's own stale-geometry self-correction: the VM sees a
-        // still-Spread-shaped geometry (the layout pass that would reclassify it to Single hasn't happened yet)
-        // but a freshly-false spreadActive() from the updated FoldPaneWidths -- resolveCurrentGroup still
-        // collapses the group to 1 page, proving the flip is driven by the real AUTO decision, not merely by a
-        // geometry-shape change.
-        vm.updateViewport(ReaderRenderGeometry.Spread(100, 3000, 100, 3000, 50f, 50f),
+        // genuine, required re-render. Codex R2 remediation: asserts the ACTUAL recorded decode count delta for
+        // the page that flips to solo (page 1 must be decoded exactly once more; page 2, no longer part of any
+        // visible group, must never be decoded again), not merely that one slot ends up visible.
+        val countsBeforeFlip1 = counts[1] ?: 0
+        val countsBeforeFlip2 = counts[2] ?: 0
+        vm.updateViewport(verticalSpreadGeometry(100, 3000, 100, 3000, 50f, 50f),
             FoldPaneWidths(leftPx = 100, rightPx = 100, leftDp = 50f, rightDp = 50f))
         val deadline = System.currentTimeMillis() + 10_000
         while (System.currentTimeMillis() < deadline && vm.state.value.slots.size != 1) Thread.sleep(25)
         assertEquals("the genuine AUTO flip to SINGLE must actually re-render (never silently suppressed)",
             1, vm.state.value.slots.size)
+        // The actual decode-count proof Codex flagged as missing: page 1 (now solo) must have been decoded
+        // EXACTLY ONCE more than before the flip; page 2 (no longer part of any visible group) must never be
+        // decoded again. A bare "one slot visible" check cannot distinguish a real new decode from the old
+        // bitmap simply being re-published, or from an extra, wasted re-render beyond the one genuinely needed.
+        assertEquals("the flip to SINGLE must decode page 1 exactly once more, never zero and never more than once",
+            countsBeforeFlip1 + 1, counts[1] ?: 0)
+        assertEquals("page 2 must never be decoded again once it is no longer part of any visible group",
+            countsBeforeFlip2, counts[2] ?: 0)
     }
 }

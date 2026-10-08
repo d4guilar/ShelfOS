@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.asImageBitmap
@@ -138,6 +139,24 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
     }
     // Back never leaves the reader from hidden chrome: it reveals controls first, then a second Back exits.
     fun backPress() { if (controls) onBack() else { controls = true; controlFocusRequests++ } }
+    // Phase 3D Codex R2 remediation, finding B: closing a hinge-safe modal always restores USABLE focus, never
+    // leaving it simply disappear (the "focus restoration" requirement). The reader stays open and `state.page`
+    // is untouched by either of these -- they only ever flip the local `appearance`/`thumbnails` dialog-
+    // visibility flags; reused for BOTH the ordinary scrim-tap/Close-button dismissal path AND the root-level
+    // Back/gamepad-B interception below, so there is exactly one dismissal implementation per dialog.
+    //
+    // Chosen restoration rule (documented per the 3D contract's own explicit fallback allowance): restore focus
+    // to the reader's own STABLE control surface (`pageFocus`, the same target the reader's initial-open
+    // `LaunchedEffect(Unit)` below already uses), never attempting fragile precise-original-trigger restoration.
+    // This is deliberate, not a shortcut: when the overlay's own focused `Surface` is disposed (R1's overlay
+    // always holds its own initial focus -- see `HingeSafeDialogOverlay`'s class doc), Compose's focus owner
+    // itself needs to reassign focus somewhere, and empirically/reliably lands on `pageFocus` (the main page-
+    // content surface, the first focusable candidate in the background once it is unblocked) -- confining the
+    // explicit request here to that SAME stable target, rather than racing a specific trigger button through
+    // several frames of a disposal-driven reassignment it cannot reliably outlast, is simpler and strictly
+    // satisfies "focus must never simply disappear, even if not the exact originating control."
+    fun dismissAppearance() { appearance = false; runCatching { pageFocus.requestFocus() } }
+    fun dismissThumbnails() { thumbnails = false; runCatching { pageFocus.requestFocus() } }
 
     LaunchedEffect(Unit) { pageFocus.requestFocus() }
     LaunchedEffect(controlFocusRequests) { if (controlFocusRequests > 0) runCatching { firstControl.requestFocus() } }
@@ -156,6 +175,13 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
     // (chrome already sits at the screen's true top/bottom edges, clear of a horizontal fold in the ordinary
     // case, and there is no vertical hinge to avoid horizontally).
     val chromePane = if (foldLayoutState.presentation == FoldPresentation.VERTICAL_SPLIT) selectSoloPane(foldLayoutState, rtl) else null
+    // Phase 3D Codex R2 remediation, finding B: `true` exactly while Appearance or Pages is rendering through
+    // HingeSafeDialogOverlay (never for the ordinary, unconstrained AlertDialog/BasicAlertDialog path -- that one
+    // already gets real platform window modality for free and is intentionally untouched by this remediation).
+    // Drives BOTH halves of true modality that HingeSafeDialogOverlay itself cannot own, because it is a SIBLING
+    // (not a wrapper) of this screen's own background content: (1) the root-level Back/gamepad-B/page-command
+    // interception below, and (2) the background Column's own conditional focus/accessibility suppression.
+    val hingeSafeModalOpen = chromePane != null && ((appearance && item != null) || (thumbnails && state.count > 0))
     // The ONE pane active content renders into for every case EXCEPT a vertical-split spread (which needs two
     // independently-positioned panes -- see foldSpreadPanes below): FLAT's whole bounds, HORIZONTAL_SPLIT's
     // chosen safe pane (reusing the existing flat 3C single/spread rendering unchanged, just confined to that
@@ -228,8 +254,42 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
     // (see chromePane's own doc below) -- so the dialog and the chrome that opened it always agree on which
     // pane is "the" safe pane. `null` (flat/horizontal-fold/no vertical split) keeps the ordinary, unconstrained
     // platform AlertDialog/BasicAlertDialog path, completely unchanged from pre-3D behavior.
-    Box(Modifier.fillMaxSize()) {
-    Column(Modifier.fillMaxSize().background(t.colors.canvas).testTag("reader_screen").onPreviewKeyEvent { event ->
+    //
+    // Codex R2 remediation, finding B: this outer Box is a genuine ANCESTOR of BOTH the background Column below
+    // AND the hinge-safe dialogs (which are its siblings, not nested inside Column) -- for ANY currently focused
+    // node anywhere in this screen, Compose's key-event TUNNELING (preview) phase always visits this Box before
+    // it can reach either child subtree. While `hingeSafeModalOpen`, this `onPreviewKeyEvent` therefore sees the
+    // existing semantic `ShelfCommand.BACK` BEFORE the background Column's own handler ever could -- even in the
+    // edge case focus has somehow moved to a background control -- closing the exact gap Codex flagged in
+    // relying solely on HingeSafeDialogOverlay's own Surface-local `onKeyEvent` (R1's approach): Back/gamepad-B
+    // always dismisses the open modal first. Deliberately NOT a blanket swallow of NEXT_PAGE/PREVIOUS_PAGE/
+    // OPEN_MENU here -- `ShelfCommand.NEXT_PAGE`/`PREVIOUS_PAGE` are also the plain LEFT/RIGHT arrow keys, which
+    // must remain free to move FOCUS between the dialog's own controls (e.g. across thumbnail cells) while it is
+    // open; blocking those unconditionally at this level would break the dialog's own internal D-pad navigation.
+    // "Page commands never turn the page while the modal is open" is instead guaranteed structurally by the
+    // background focus trap just below: Column (the only place NEXT_PAGE/PREVIOUS_PAGE ever reach `vm.turn`) can
+    // never be an ancestor of the currently focused node while every one of its own focus targets is disabled,
+    // so its onPreviewKeyEvent simply never runs for an arrow key while the modal is open. This reuses the SAME
+    // `InputMapper`/`ShelfCommand` semantic layer Column itself already uses -- no second key-mapping system.
+    Box(Modifier.fillMaxSize().onPreviewKeyEvent { event ->
+        if (!hingeSafeModalOpen) return@onPreviewKeyEvent false
+        val native = event.nativeKeyEvent
+        if (native.action != KeyEvent.ACTION_UP) return@onPreviewKeyEvent false
+        if (native.shelfCommand(InputContext.READER, rtl) == ShelfCommand.BACK) {
+            if (appearance) dismissAppearance() else if (thumbnails) dismissThumbnails()
+            true
+        } else false
+    }) {
+    // Codex R2 remediation, finding B: while a hinge-safe modal is open, the ENTIRE background reader subtree
+    // (chrome rows, page content, Previous/Next/slider) is made structurally unfocusable (`canFocus = false`,
+    // which Compose's focus search propagates to every descendant focus target reachable through this Column --
+    // the standard "a scrim blocks focus" idiom) and its semantics are cleared from the accessibility-facing
+    // tree (`clearAndSetSemantics {}`) -- TalkBack/D-pad/keyboard traversal can no longer land on a background
+    // control at all, the structural complement to the root-level key interception above. Neither modifier is
+    // ever applied outside a hinge-safe modal, so the ordinary (non-fold, or fold-but-no-dialog-open) reader is
+    // completely unaffected -- focus/accessibility behave exactly as before this remediation.
+    val backgroundModalBlock = if (hingeSafeModalOpen) Modifier.focusProperties { canFocus = false }.clearAndSetSemantics { } else Modifier
+    Column(Modifier.fillMaxSize().background(t.colors.canvas).testTag("reader_screen").then(backgroundModalBlock).onPreviewKeyEvent { event ->
         val native = event.nativeKeyEvent
         // Raw modality classification is independent of which (if any) ShelfCommand the event becomes: it must
         // also apply to focus-navigation keys, CONFIRM and anything else that never reaches the branch below.
@@ -257,7 +317,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
         if (controls) Row(topChromeModifier.onFocusChanged { topFocused = it.hasFocus }.horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically) {
             TextButton(onBack, Modifier.focusRequester(firstControl).testTag("reader_library")) { Text(stringResource(R.string.nav_library)) }
-            TextButton({ appearance = true }, enabled = item != null) { Text(stringResource(R.string.action_appearance)) }
+            TextButton({ appearance = true }, Modifier.testTag("reader_appearance"), enabled = item != null) { Text(stringResource(R.string.action_appearance)) }
             TextButton({ thumbnails = true }, Modifier.testTag("reader_thumbnails"), enabled = state.count > 0) { Text(stringResource(R.string.action_thumbnails)) }
             TextButton({ scale = if (scale == 1f) 2f else 1f; panX = 0f; panY = 0f; foldSpreadProgress = 0f }) { Text(stringResource(if (scale == 1f) R.string.action_zoom_in else R.string.action_reset_zoom)) }
             TextButton({ hideControls() }) { Text(stringResource(R.string.action_hide_controls)) }
@@ -286,25 +346,32 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
                     FoldPaneWidths(leftPx = left.width.roundToInt(), rightPx = right.width.roundToInt(),
                         leftDp = left.width.toDp().value, rightDp = right.width.toDp().value)
                 } else null
-                // Phase 3D Codex R1 remediation, finding 2: the ACTUAL decode-target box(es) for the CURRENT fold
-                // presentation -- computed from this SAME freshly-resolved `layout`, never a second geometry
-                // re-derivation. A 2-slot active vertical-fold spread gets each physical pane's own independent
-                // (width, height); every other case (FLAT, HORIZONTAL_SPLIT's safe pane, a VERTICAL_SPLIT solo
-                // page) gets ONE box -- the ACTIVE pane's own size, never the whole surface's -- so a solo page
-                // confined to one fold-safe pane is never requested at whole-reader dimensions.
+                // Phase 3D Codex R2 remediation, finding A: BOTH the solo target AND the two-pane spread target
+                // are computed here, unconditionally, from this SAME freshly-resolved `layout` -- NEVER gated on
+                // `state.slots.size`. The pre-remediation code chose exactly one of these two shapes using the
+                // ALREADY-PUBLISHED slot count, which is circular: when the user navigates from a solo page to a
+                // newly-eligible spread, this callback runs (and reports geometry) BEFORE the new spread's slots
+                // are published, so a slot-count-gated `spread` would stay null across exactly the one call that
+                // needed it, forcing the ViewModel to decode the new spread's first frame from a stale solo-pane
+                // box. `single` (the ACTIVE solo pane's own size, never the whole surface's) and `spread` (each
+                // physical pane's own independent size, present exactly when the layout genuinely has two usable
+                // panes) are now simply two independent, always-current facts about the CURRENT fold layout;
+                // FixedReaderViewModel.render resolves the real PageGroup for the page it is about to show and
+                // picks the matching shape BEFORE decoding -- see ReaderRenderGeometry's and render()'s own docs.
                 val geometry = with(screenDensity) {
-                    if (layout.presentation == FoldPresentation.VERTICAL_SPLIT && layout.hasTwoPanes && state.slots.size >= 2) {
+                    val solo = when (layout.presentation) {
+                        FoldPresentation.FLAT -> layout.flatPane
+                        FoldPresentation.HORIZONTAL_SPLIT -> layout.safePane
+                        FoldPresentation.VERTICAL_SPLIT -> selectSoloPane(layout, rtl)
+                    } ?: FoldRect(0f, 0f, size.width.toFloat(), size.height.toFloat())
+                    val single = ReaderRenderGeometry.SingleTarget(solo.width.roundToInt(), solo.height.roundToInt(),
+                        solo.width.toDp().value.toInt())
+                    val spread = if (layout.presentation == FoldPresentation.VERTICAL_SPLIT && layout.hasTwoPanes) {
                         val left = requireNotNull(layout.leftPane); val right = requireNotNull(layout.rightPane)
-                        ReaderRenderGeometry.Spread(left.width.roundToInt(), left.height.roundToInt(),
+                        ReaderRenderGeometry.SpreadTarget(left.width.roundToInt(), left.height.roundToInt(),
                             right.width.roundToInt(), right.height.roundToInt(), left.width.toDp().value, right.width.toDp().value)
-                    } else {
-                        val pane = when (layout.presentation) {
-                            FoldPresentation.FLAT -> layout.flatPane
-                            FoldPresentation.HORIZONTAL_SPLIT -> layout.safePane
-                            FoldPresentation.VERTICAL_SPLIT -> selectSoloPane(layout, rtl)
-                        } ?: FoldRect(0f, 0f, size.width.toFloat(), size.height.toFloat())
-                        ReaderRenderGeometry.Single(pane.width.roundToInt(), pane.height.roundToInt(), pane.width.toDp().value.toInt())
-                    }
+                    } else null
+                    ReaderRenderGeometry(layout.presentation, single, spread)
                 }
                 vm.updateViewport(geometry, foldPaneWidths)
             }
@@ -660,10 +727,14 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
             }
         } }
     }
-    if (appearance && item != null) ReaderAppearance(state.preferences, capabilities(item.format, item.category), { appearance = false },
+    // Codex R2 remediation, finding B: every dismissal path (Cancel, Apply, scrim tap, Back, gamepad B) now
+    // goes through the SAME dismissAppearance()/dismissThumbnails() -- the reader stays open, `state.page` is
+    // untouched by either, and focus is always restored to the control that opened the dialog, never left to
+    // simply disappear.
+    if (appearance && item != null) ReaderAppearance(state.preferences, capabilities(item.format, item.category), ::dismissAppearance,
         vm::applyAppearance, vm::resetAppearance, safePane = chromePane)
     if (thumbnails && state.count > 0) ThumbnailNavigator(state.count, state.page, rtl, vm.thumbnails,
-        onSelect = { page -> vm.showPage(page); thumbnails = false }, onDismiss = { thumbnails = false }, safePane = chromePane)
+        onSelect = { page -> vm.showPage(page); dismissThumbnails() }, onDismiss = ::dismissThumbnails, safePane = chromePane)
     }
 }
 

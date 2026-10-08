@@ -21,6 +21,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
+import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.core.input.InputContext
 import com.d4guilar.shelfos.core.input.ShelfCommand
 import com.d4guilar.shelfos.core.input.shelfCommand
@@ -51,12 +55,29 @@ import com.d4guilar.shelfos.core.reader.FoldRect
  * inside) the reader's own, so it always intercepts Back first while visible -- exactly mirroring a real Dialog
  * window's own back-interception precedence. [content]'s own Surface absorbs its own clicks so tapping inside
  * the dialog itself never dismisses it.
+ *
+ * Phase 3D Codex R2 remediation, finding B: R1's version was visually dialog-like but not TRULY modal for
+ * keyboard/D-pad/controller focus or accessibility traversal -- nothing stopped focus from moving OUT of this
+ * overlay into the reader's own background chrome/page content (a sibling in the composition tree, never a
+ * descendant of this overlay), at which point this overlay's own [BackHandler]/`onKeyEvent` (both scoped to this
+ * overlay's own focus subtree) would simply never see a subsequent key event again, and D-pad arrow keys would
+ * be read by the background reader as page-turn commands. This container now additionally exposes dialog-like
+ * accessibility semantics ([paneTitle], spoken by TalkBack as "this is a modal surface," never visible on
+ * screen) on its own [Surface]. BACKGROUND focus/accessibility suppression -- the other half of true modality --
+ * is applied by the CALLER ([FixedReaderScreen][com.d4guilar.shelfos.feature.reader.FixedReaderScreen], via
+ * `hingeSafeModalOpen`-gated `Modifier.focusProperties { canFocus = false }` + `Modifier.clearAndSetSemantics {}`
+ * on its own background content, plus a root-level `onPreviewKeyEvent` that intercepts Back/gamepad-B and
+ * swallows page/menu commands BEFORE they can reach the background handler), because this overlay is
+ * DELIBERATELY a sibling (not a wrapper) of the reader's own content -- it has no way to reach into that
+ * sibling subtree itself. See [FixedReaderScreen]'s own `hingeSafeModalOpen`/`dismissAppearance`/
+ * `dismissThumbnails` docs for that half of the fix.
  */
 @Composable
 fun HingeSafeDialogOverlay(paneWindow: FoldRect, onDismissRequest: () -> Unit, content: @Composable () -> Unit) {
     BackHandler { onDismissRequest() }
     val density = LocalDensity.current
     val focus = remember { FocusRequester() }
+    val dialogPaneTitle = stringResource(R.string.content_desc_hinge_safe_dialog)
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     Box(Modifier.fillMaxSize()
         .background(Color.Black.copy(alpha = 0.32f))
@@ -70,6 +91,11 @@ fun HingeSafeDialogOverlay(paneWindow: FoldRect, onDismissRequest: () -> Unit, c
             Surface(
                 modifier = Modifier.testTag("hinge_safe_dialog_surface")
                     .focusRequester(focus).focusable()
+                    // Codex R2 remediation, finding B: dialog-like accessibility semantics -- paneTitle marks
+                    // this subtree as a distinct, spoken-of modal pane (the same primitive Compose's own
+                    // drawer/sheet-style surfaces use when they are not backed by a real platform Dialog window),
+                    // without inventing visible "hinge dialog" copy -- the string is spoken by TalkBack only.
+                    .semantics { paneTitle = dialogPaneTitle }
                     // Mirrors ThumbnailNavigator's pre-existing gamepad-B fix: BackHandler above reliably
                     // catches system Back/Escape, but not KEYCODE_BUTTON_B, which this app's own InputMapper
                     // maps to the same semantic ShelfCommand.BACK -- checked here too so gamepad B dismisses

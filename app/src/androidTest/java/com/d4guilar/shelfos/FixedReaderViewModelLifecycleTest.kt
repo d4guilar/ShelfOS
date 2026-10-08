@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+﻿// SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos
 
 import android.graphics.Bitmap
@@ -138,7 +138,7 @@ class FixedReaderViewModelLifecycleTest {
         val beforeWidth = before.width
         val beforeHeight = before.height
 
-        vm.updateViewport(ReaderRenderGeometry.Single(1920, 1080, 960))
+        vm.updateViewport(ReaderRenderGeometry.flat(1920, 1080, 960))
         vm.retry()
         awaitUntil { vm.state.value.loading || vm.state.value.bitmap !== before }
         val after = awaitStableBitmap(vm)

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+﻿// SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos
 
 import android.graphics.Bitmap
@@ -167,7 +167,7 @@ class FixedReaderSpreadViewModelTest {
     @Test fun explicitSpreadRendersCoverSoloThenAnInteriorPairAsTwoSlots() {
         val item = cbzFixture("spread-cover.cbz", listOf(portrait, portrait, portrait, portrait, portrait), spreadMode = SpreadMode.SPREAD)
         val vm = viewModel(item)
-        vm.updateViewport(ReaderRenderGeometry.Single(2000, 1000, 1000)) // wide viewport; irrelevant to SPREAD (it overrides AUTO's width check)
+        vm.updateViewport(ReaderRenderGeometry.flat(2000, 1000, 1000)) // wide viewport; irrelevant to SPREAD (it overrides AUTO's width check)
         awaitSettled(vm, targetPage = 0)
         assertEquals(listOf(0), vm.state.value.slots.map { it.page }) // cover solo
 
@@ -182,7 +182,7 @@ class FixedReaderSpreadViewModelTest {
     @Test fun explicitSingleNeverShowsTwoSlotsRegardlessOfViewportWidth() {
         val item = cbzFixture("single-wide.cbz", listOf(portrait, portrait, portrait), spreadMode = SpreadMode.SINGLE)
         val vm = viewModel(item)
-        vm.updateViewport(ReaderRenderGeometry.Single(4000, 1000, 4000))
+        vm.updateViewport(ReaderRenderGeometry.flat(4000, 1000, 4000))
         awaitSettled(vm, targetPage = 0)
         vm.turn(1)
         awaitSettled(vm, targetPage = 1)
@@ -194,17 +194,17 @@ class FixedReaderSpreadViewModelTest {
     @Test fun autoResolvesToSingleOnANarrowViewportAndToSpreadOnAWideOne() {
         val item = cbzFixture("auto-resize.cbz", listOf(portrait, portrait, portrait, portrait, portrait), spreadMode = SpreadMode.AUTO)
         val vm = viewModel(item)
-        vm.updateViewport(ReaderRenderGeometry.Single(400, 800, 400)) // narrow: below AUTO_SPREAD_MIN_WIDTH_DP
+        vm.updateViewport(ReaderRenderGeometry.flat(400, 800, 400)) // narrow: below AUTO_SPREAD_MIN_WIDTH_DP
         awaitSettled(vm, targetPage = 0)
         vm.turn(1)
         awaitSettled(vm, targetPage = 1)
         assertEquals(listOf(1), vm.state.value.slots.map { it.page }) // narrow -> single
 
-        vm.updateViewport(ReaderRenderGeometry.Single(1600, 800, 1600)) // wide: at/above the threshold -> should reconcile to a spread
+        vm.updateViewport(ReaderRenderGeometry.flat(1600, 800, 1600)) // wide: at/above the threshold -> should reconcile to a spread
         awaitUntil { vm.state.value.slots.map { it.page } == listOf(1, 2) }
         assertEquals(1, vm.state.value.page) // logical page never changed by the resize-driven reconciliation
 
-        vm.updateViewport(ReaderRenderGeometry.Single(400, 800, 400)) // back to narrow -> single again
+        vm.updateViewport(ReaderRenderGeometry.flat(400, 800, 400)) // back to narrow -> single again
         awaitUntil { vm.state.value.slots.map { it.page } == listOf(1) }
         assertEquals(1, vm.state.value.page) // still unchanged throughout every resize
     }
@@ -215,7 +215,7 @@ class FixedReaderSpreadViewModelTest {
         // 5 pages; page index 2 (page "3") is landscape -> canonical pair [1,2] (0-based) must split.
         val item = cbzFixture("landscape.cbz", listOf(portrait, portrait, landscape, portrait, portrait), spreadMode = SpreadMode.SPREAD)
         val vm = viewModel(item)
-        vm.updateViewport(ReaderRenderGeometry.Single(2000, 1000, 1000))
+        vm.updateViewport(ReaderRenderGeometry.flat(2000, 1000, 1000))
         awaitSettled(vm, targetPage = 0)
 
         vm.turn(1) // -> page 1, should now be solo (its canonical partner, page 2, is landscape)
@@ -262,7 +262,7 @@ class FixedReaderSpreadViewModelTest {
         val gate = CountDownLatch(1)
         val gatedFactory = GatedGeometryFixedReaderFactory(PublicationFiles(context), gatedPages = setOf(1, 2), gate = gate)
         val (vm, repository) = viewModelWithRepository(item, factoryOverride = gatedFactory)
-        vm.updateViewport(ReaderRenderGeometry.Single(2000, 1000, 1000))
+        vm.updateViewport(ReaderRenderGeometry.flat(2000, 1000, 1000))
         awaitSettled(vm, targetPage = 0) // (A) page 0's group is solo -- never touches the gated pages 1/2.
 
         vm.turn(1) // (B) first Next: canonicalGroups[0]=[0] -> next group's first page, no geometry lookup needed.
@@ -330,7 +330,7 @@ class FixedReaderSpreadViewModelTest {
         val item = cbzFixture("unusable-geometry.cbz", listOf(portrait, portrait, portrait, portrait, portrait),
             corruptPages = setOf(3), spreadMode = SpreadMode.SPREAD) // page index 2 (0-based) corrupt
         val vm = viewModel(item)
-        vm.updateViewport(ReaderRenderGeometry.Single(2000, 1000, 1000))
+        vm.updateViewport(ReaderRenderGeometry.flat(2000, 1000, 1000))
         awaitSettled(vm, targetPage = 0)
         vm.turn(1) // -> page 1, pair [1,2]; page 2's geometry lookup fails and gets cached as PageGeometry(0, 0).
         awaitSettled(vm, targetPage = 1)
@@ -346,7 +346,7 @@ class FixedReaderSpreadViewModelTest {
     @Test fun aCorruptPageWithinAPairLeavesItsHealthySiblingVisibleAndDoesNotBlankTheWholePair() {
         val item = cbzFixture("corrupt-pair.cbz", listOf(portrait, portrait, portrait), corruptPages = setOf(3), spreadMode = SpreadMode.SPREAD)
         val vm = viewModel(item)
-        vm.updateViewport(ReaderRenderGeometry.Single(2000, 1000, 1000))
+        vm.updateViewport(ReaderRenderGeometry.flat(2000, 1000, 1000))
         awaitSettled(vm, targetPage = 0)
         vm.turn(1) // -> page 1, paired with page 2 (the corrupt entry, 0-based index 2 == "page3.png")
         awaitSettled(vm, targetPage = 1)
@@ -372,7 +372,7 @@ class FixedReaderSpreadViewModelTest {
     @Test fun jumpingDirectlyToTheSecondPairMemberKeepsItCurrentRatherThanNormalizingToTheFirst() {
         val item = cbzFixture("jump.cbz", listOf(portrait, portrait, portrait, portrait, portrait), spreadMode = SpreadMode.SPREAD)
         val vm = viewModel(item)
-        vm.updateViewport(ReaderRenderGeometry.Single(2000, 1000, 1000))
+        vm.updateViewport(ReaderRenderGeometry.flat(2000, 1000, 1000))
         awaitSettled(vm, targetPage = 0)
 
         vm.showPage(2) // the exact call a thumbnail-strip selection uses; page 2 is the second member of pair [1,2]
@@ -392,7 +392,7 @@ class FixedReaderSpreadViewModelTest {
         // because its format happens to be PDF/CBZ-capable).
         val item = cbzFixture("book.cbz", listOf(portrait, portrait, portrait), category = MediaCategory.BOOK, spreadMode = SpreadMode.SPREAD)
         val vm = viewModel(item)
-        vm.updateViewport(ReaderRenderGeometry.Single(2000, 1000, 1000))
+        vm.updateViewport(ReaderRenderGeometry.flat(2000, 1000, 1000))
         awaitSettled(vm, targetPage = 0)
         vm.turn(1)
         awaitSettled(vm, targetPage = 1)
@@ -408,7 +408,7 @@ class FixedReaderSpreadViewModelTest {
         val big = 3000 to 4500
         val item = cbzFixture("spread-memory.cbz", List(9) { big }, spreadMode = SpreadMode.SPREAD)
         val vm = viewModel(item)
-        vm.updateViewport(ReaderRenderGeometry.Single(2000, 1200, 1000))
+        vm.updateViewport(ReaderRenderGeometry.flat(2000, 1200, 1000))
         awaitSettled(vm, targetPage = 0)
 
         System.gc(); Thread.sleep(200)
