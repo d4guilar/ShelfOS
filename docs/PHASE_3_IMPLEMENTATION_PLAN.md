@@ -5,13 +5,18 @@ Status: **3A (rendering/fidelity foundation) COMPLETE and MERGED to `main`** (`#
 navigation) COMPLETE and MERGED to `main`** (`#25`, "feat: add Phase 3B page thumbnail
 navigation"). **3C (spreads + Manga pairing) COMPLETE and MERGED to `main`** (`#26`,
 "feat: add Phase 3C comic and manga spread reading"). **3D (adaptive/foldable comic
-spreads) IMPLEMENTED + R1/R2 REMEDIATION on `phase-3/3d-adaptive-foldable-spreads`,
-pending independent re-review (administrator/Codex R3). 3D is NOT merged.** 3E–3F
-remain PLANNING ONLY — no later slice has started. Phase 3 overall is **NOT complete**.
-See §22/§23 for what 3A landed, §24 for what 3B actually landed, §25 for what 3C
-actually landed (including the R1 and R2 remediation records), §26/§26a for what 3D
-and its R1 remediation landed, and §26b for the R2 remediation (render-geometry
-state-independence + hysteresis, hinge-safe modal focus/accessibility) recorded below.
+spreads) COMPLETE and MERGED to `main`** (`#27`, "feat: add Phase 3D adaptive foldable
+comic spreads"). **3E-A (native CBR dependency foundation — NDK/CMake plumbing,
+vendored libarchive, JNI smoke test; ZERO archive-reading logic) IMPLEMENTED on
+`phase-3/3e-native-cbr`, pending independent review (administrator/Codex). 3E-A is
+NOT merged.** 3E-B through 3E-E (archive I/O, CBR import, extraction, page caching,
+reader integration) are **NOT STARTED**. 3F remains PLANNING ONLY. Phase 3 overall is
+**NOT complete**. See §22/§23 for what 3A landed, §24 for what 3B actually landed, §25
+for what 3C actually landed (including the R1 and R2 remediation records), §26/§26a
+for what 3D and its R1 remediation landed, §26b for the R2 remediation (render-geometry
+state-independence + hysteresis, hinge-safe modal focus/accessibility) recorded below,
+and `docs/adr/0024-native-cbr-libarchive.md` plus `docs/VALIDATION.md` for what 3E-A
+actually landed.
 
 ## 1. Status / base
 

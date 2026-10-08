@@ -17,6 +17,26 @@ android {
         versionCode = 2
         versionName = "0.1.0-alpha"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        ndk {
+            // CBR native foundation (Phase 3E-A): read-only RAR4/RAR5 via vendored
+            // libarchive. No x86 (32-bit) target; see docs/adr/0024-native-cbr-libarchive.md.
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+        externalNativeBuild {
+            cmake {
+                arguments += listOf("-DANDROID_STL=c++_static")
+            }
+        }
+    }
+    // Pinned to the installed NDK under .tools/android-sdk/ndk/<version>; see
+    // docs/adr/0024-native-cbr-libarchive.md.
+    ndkVersion = "28.2.13676358"
+    externalNativeBuild {
+        cmake {
+            // Keep in sync with .tools/android-sdk/cmake/<version>.
+            version = "3.31.6"
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
     }
     buildFeatures { compose = true }
     compileOptions {

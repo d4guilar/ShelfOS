@@ -1,6 +1,159 @@
 # Validation
 
-## PHASE 3D CODEX R3 REMEDIATION (2026-10-07)
+## PHASE 3E-A NATIVE CBR DEPENDENCY FOUNDATION (2026-10-07)
+
+Status: **IMPLEMENTED, pending independent review (administrator/Codex).** Branch:
+`phase-3/3e-native-cbr`, base `main` @ `12b4fb7` ("feat: add Phase 3D adaptive foldable
+comic spreads (#27)"). This is a deliberately narrow checkpoint: native build plumbing
+only, **zero archive-reading logic**. It does not implement CBR import, `PublicationFormat.CBR`,
+a `RarPageSource`, archive I/O of any kind, or touch reader UI/Compose/`PageSource`/
+`LibraryItem`. See `docs/adr/0024-native-cbr-libarchive.md` for the dependency decision
+this checkpoint implements.
+
+**Toolchain actually used**: NDK `28.2.13676358` at `.tools/android-sdk/ndk/28.2.13676358/`
+(confirmed present before use). CMake `3.31.6`, the only version found under
+`.tools/android-sdk/cmake/`. `clang.exe --version` from that NDK reported:
+`Android (13624864, based on r530567e) clang version 19.0.1
+(https://android.googlesource.com/toolchain/llvm-project
+97a699bf4812a18fb657c2779f5296a4ab2694d2)`, target `x86_64-w64-windows-gnu` (host triple;
+the toolchain cross-compiles to each Android target ABI).
+
+**libarchive pin verification**: `git ls-remote --tags https://github.com/libarchive/libarchive v3.8.9`
+returned annotated tag object `f1f785cc218bb05876c54680f10d3d4e54575ea2`, which peels
+(`^{}`) to commit `27cbc7827172698143e440801fc0ba39ccb4f1f5` — an exact match to the
+required pin. Independently confirmed via `git clone --depth 1 --branch v3.8.9
+https://github.com/libarchive/libarchive.git`, which landed on that same commit
+(`git rev-parse HEAD` after clone: `27cbc7827172698143e440801fc0ba39ccb4f1f5`).
+
+**License evidence**: read directly from that exact commit. `COPYING`: 2-clause
+BSD-style ("Copyright (c) 2003-2018 <author(s)>"), with only a short, explicitly listed
+set of exceptions (3-clause UC Regents for the compress filter, public domain for
+`archive_parse_date.c`, CC0/OpenSSL/Apache-2.0 triple-license for the BLAKE2 files) —
+none of which are the RAR reader files. `libarchive/archive_read_support_format_rar.c`
+header: 2-clause BSD ("Copyright (c) 2003-2007 Tim Kientzle", "Copyright (c) 2011 Andres
+Mejia"). `libarchive/archive_read_support_format_rar5.c` header: 2-clause BSD
+("Copyright (c) 2018 Grzegorz Antoniak"). No UnRAR-derived-source notice, no
+UnRAR-License field-of-use clause, no GPL/AGPL text found in either file or in
+`COPYING`. Both `archive_read_support_format_rar` and `archive_read_support_format_rar5`
+confirmed present and callable in this tagged tree (and, this checkpoint, confirmed
+linkable and callable via the native smoke test below).
+
+**Vendoring**: `third_party/libarchive/` — a reasoned subset (the `libarchive/` source
+directory minus its 16 MB all-formats `test/` fixture corpus, top-level `CMakeLists.txt`,
+`build/cmake` + `build/version`, `contrib/android`, `COPYING`, and guard-only
+`CMakeLists.txt` stubs for `cat/`/`tar/`/`cpio/`/`unzip/`/`test/` subdirectories so
+upstream's own unconditional `add_subdirectory()` calls resolve while those tools stay
+disabled via `ENABLE_TAR`/`ENABLE_CPIO`/`ENABLE_CAT`/`ENABLE_UNZIP`/`ENABLE_TEST=OFF`).
+Source modifications: NONE — `COPYING` and every source file's copyright header are
+byte-for-byte as vendored. No build-time network fetch: the build is fully offline once
+vendored.
+
+**Upstream test fixtures vendored** (test-only, `app/src/androidTest/assets/libarchive_fixtures/`,
+same exact tagged commit, raw uuencoded `.uu` text, not decoded, not referenced by any
+production code): `test_read_format_rar.rar.uu` (plain RAR4), `test_read_format_rar4_encrypted.rar.uu`
+(encrypted RAR4), `test_read_format_rar5_compressed.rar.uu` (plain non-solid RAR5),
+`test_read_format_rar5_solid.rar.uu` (solid RAR5), `test_read_format_rar5_encrypted.rar.uu`
+(encrypted RAR5). Confirmed absent from the built debug APK (see APK inspection below).
+
+**Gradle/CMake wiring**: `app/build.gradle.kts` pins `ndkVersion = "28.2.13676358"` and
+`externalNativeBuild.cmake.version = "3.31.6"` (top-level `android {}` block — note this
+must be at the top level, not inside `defaultConfig`, or AGP silently falls back to its
+own bundled CMake; this was hit and fixed during this checkpoint, see deviations below),
+`abiFilters = ["arm64-v8a", "armeabi-v7a", "x86_64"]` (no `x86`). CMake entry point:
+`app/src/main/cpp/CMakeLists.txt`, target `shelfos_cbr` (`SHARED`), which forces every
+libarchive `ENABLE_*` optional-dependency/CLI/test option OFF (including `ENABLE_WERROR`,
+needed because upstream defaults it ON for Debug builds and two pre-existing upstream
+`-Wunused-function`/`-Wunused-variable` warnings in `archive_read_support_format_zip.c`
+and `archive_write_set_format_mtree.c` — files ShelfOS does not use for RAR — would
+otherwise fail the build under `-Werror`; this is upstream's own documented escape hatch,
+not a suppression we invented) and `BUILD_SHARED_LIBS OFF`, then links `shelfos_cbr`
+statically against the resulting `archive_static` target plus `log`. No new optional
+native dependency (OpenSSL, zstd, lz4, xz, bzip2, expat, libxml2) was required: `rar.c`
+only conditionally touches `zlib.h` for CRC32 with a bundled fallback (unused here since
+`ENABLE_ZLIB OFF`), and `rar5.c` has no crypto/OpenSSL/mbedTLS reference at all in this
+version.
+
+**JNI bridge**: `app/src/main/cpp/shelfos_cbr_jni.cpp`. Exposes exactly two native
+methods: `nativeBackendVersion()` (returns libarchive's version/details string) and
+`nativeProbeRarCapability()` (creates and frees one `archive_read` object via an RAII
+wrapper, registers RAR4 and RAR5 format support, returns a bitmask; never opens or reads
+archive data). No archive I/O, no global/mutable native state, no raw pointer exposed to
+Kotlin, every path frees the `archive_read` object (destructor-based). Kotlin wrapper:
+`app/src/main/java/com/d4guilar/shelfos/core/files/LibarchiveNative.kt` — knows nothing
+about `LibraryItem`/`PublicationFormat`/reader state/Compose/`PageSource`.
+
+**Native smoke test**: `app/src/androidTest/java/com/d4guilar/shelfos/core/files/LibarchiveNativeSmokeTest.kt`.
+Command: `./gradlew.bat :app:connectedDebugAndroidTest
+-Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.core.files.LibarchiveNativeSmokeTest`.
+Device: `emulator-5554`, reported as `shelfos-api24(AVD) - 7.0` (API 24), ABI confirmed
+x86_64 via `adb shell getprop ro.product.cpu.abi`. Result: **BUILD SUCCESSFUL**, all 3
+tests passed, 0 failures, 0 errors
+(`app/build/outputs/androidTest-results/connected/debug/TEST-shelfos-api24(AVD) - 7.0.xml`):
+`nativeLibraryLoads` (native library loaded), `backendVersionReportsLibarchive389`
+(version string contained both "libarchive" and "3.8.9"), `rarAndRar5CapabilityRegisterCleanly`
+(archive_read create + RAR4 registration + RAR5 registration all succeeded — full
+expected bitmask). No RAR file was opened or parsed by this test.
+
+**Three-ABI build**: `assembleDebug` built and physically verified on disk for every
+pinned ABI (stripped, as packaged into the APK):
+- `arm64-v8a`: `app/build/intermediates/stripped_native_libs/debug/stripDebugDebugSymbols/out/lib/arm64-v8a/libshelfos_cbr.so` — 569,616 bytes
+- `armeabi-v7a`: `app/build/intermediates/stripped_native_libs/debug/stripDebugDebugSymbols/out/lib/armeabi-v7a/libshelfos_cbr.so` — 338,836 bytes
+- `x86_64`: `app/build/intermediates/stripped_native_libs/debug/stripDebugDebugSymbols/out/lib/x86_64/libshelfos_cbr.so` — 562,680 bytes
+
+All three built cleanly (only pre-existing upstream warnings noted above; zero errors).
+
+**APK inspection**: `app/build/outputs/apk/debug/app-debug.apk` unzipped and inspected
+directly (not just trusting the build log). Exactly one `libshelfos_cbr.so` per
+configured ABI (`lib/arm64-v8a/`, `lib/armeabi-v7a/`, `lib/x86_64/`), alongside the
+pre-existing `libandroidx.graphics.path.so` (unrelated Compose dependency, present
+before this checkpoint). No `x86` directory. Confirmed **absent**: any libarchive CLI
+binary (`bsdtar`/`bsdcpio`/`bsdcat`/`bsdunzip`), any `.uu` test fixture, any decoded
+`.rar` file, any Daredevil-derived content, any duplicate native library, any separate
+`libarchive.so` (statically linked into `shelfos_cbr` as intended).
+
+**APK size**: pre-3E-A baseline (built directly at this checkpoint's base commit,
+`12b4fb7`, before any 3E-A change — a real build, not an estimate): **24,088,943 bytes**.
+Post-3E-A debug APK: **24,538,184 bytes**. Delta: **+449,241 bytes (~439 KiB)** for three
+ABIs' worth of `libshelfos_cbr.so`.
+
+**AAB**: `bundleDebug` — **BUILD SUCCESSFUL**. `app/build/outputs/bundle/debug/app-debug.aab`
+(20,762,942 bytes) unzipped and inspected: `base/lib/<abi>/libshelfos_cbr.so` present for
+all three ABIs, correctly namespaced under `base/lib/`.
+
+**CI**: `.github/workflows/android.yml` — added one step ("Install pinned NDK and CMake
+for native CBR foundation (3E-A)") running `sdkmanager --licenses` followed by
+`sdkmanager "ndk;28.2.13676358" "cmake;3.31.6"` before the existing build step, since
+`ubuntu-latest`'s preinstalled Android SDK does not bundle these specific pinned
+versions by default. No other CI change. Local-equivalent build (this checkpoint's own
+`assembleDebug`/`assembleDebugAndroidTest`/`lintDebug`/`bundleDebug` runs, all
+BUILD SUCCESSFUL) stands in for this; **remote CI result is PENDING PR** — not run or
+claimed passing here.
+
+**Targeted builds run** (and only these, per this checkpoint's scope): `assembleDebug`,
+`assembleDebugAndroidTest`, `lintDebug`, `bundleDebug` — all BUILD SUCCESSFUL. The one
+filtered instrumented smoke test above. **No full `testDebugUnitTest` run. No full
+connected test suite run. No Phase 3A-3D test class re-run.** Physical ARM hardware was
+**not** used — only the x86_64 emulator and host cross-compilation for all three ABIs.
+Physical-device validation remains Phase 3F scope.
+
+**What does NOT work yet and must not be assumed**: CBR files are not recognized,
+imported, or readable. `PublicationFormat.CBR` does not exist. No RAR archive (real or
+the vendored test fixtures) was opened, enumerated, or extracted by any code added in
+this checkpoint — only a version query and a side-effect-free capability probe were
+exercised. Encrypted/password-protected RAR is unaddressed. Solid-archive handling is
+unaddressed. None of this is implied to work by this checkpoint passing.
+
+**Deviations from a hypothetically perfect first pass** (all resolved within this
+checkpoint, recorded for transparency): (1) `externalNativeBuild.cmake.version` was
+initially placed inside `defaultConfig`, where AGP ignores it and silently falls back to
+its own bundled CMake 3.22.1; moved to the top-level `android.externalNativeBuild.cmake`
+block. (2) The first configure+build attempt (with the wrong CMake 3.22.1) failed with a
+`CONFIGURE_FILE ... Permission denied` error from `CheckFuncs.cmake`; this did not
+recur once the correct pinned CMake 3.31.6 was used, so it is recorded as resolved by
+the version fix rather than independently root-caused. (3) `ENABLE_WERROR` (upstream's
+own switch, defaulting ON for Debug builds) had to be forced OFF to avoid two
+pre-existing upstream `-Werror` warnings-as-errors failures unrelated to RAR; see Gradle/CMake
+wiring above.
 
 Status: **IMPLEMENTED, one remediation commit on top of `b3b6062`** ("fix: finalize Phase 3D
 adaptive reader behavior", the R2 remediation entry below). Branch:
