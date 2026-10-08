@@ -267,11 +267,29 @@ class FixedReaderFoldRenderGeometryUiTest {
         val request = recorded[0]?.lastOrNull()
         assertNotNull("page 0's decode request under the horizontal fold must be recorded", request)
         request!!
-        // The safe pane is at most half the reader's full height (plus the hinge gutter); the request's height
-        // must reflect THAT pane, never the whole reader surface's full height.
+
+        // Codex R3 remediation, task 3: the prior assertion here only checked that the request's height was
+        // under a loose 75%-of-whole-reader threshold -- true of the correct value, but also true of plenty of
+        // WRONG values, so it was too weak to actually prove "the request uses the selected safe pane's own
+        // dimensions." Tightened to measure the real, selected safe pane ([pane], already fetched above) and
+        // assert the recorded request matches it on BOTH dimensions, not just height. A couple of px of integer
+        // rounding tolerance is allowed between the Compose-measured pane bounds and the Int pixel request the
+        // production code actually builds; anything beyond that would mean the request is not really sized from
+        // this pane.
+        val roundingToleranceLx = 2
+        assertTrue("the horizontal-fold request's width (${request.viewportWidth}px) must match the selected " +
+            "safe pane's own measured width (${pane.width.toInt()}px), within integer rounding tolerance",
+            Math.abs(request.viewportWidth - pane.width.toInt()) <= roundingToleranceLx)
         assertTrue("the horizontal-fold request's height (${request.viewportHeight}px) must match the selected " +
-            "safe pane's own height (~${pane.height.toInt()}px), never the whole reader surface's full height " +
-            "(~${readerBounds.height.toInt()}px)",
-            request.viewportHeight < readerBounds.height * 0.75f)
+            "safe pane's own measured height (${pane.height.toInt()}px), within integer rounding tolerance",
+            Math.abs(request.viewportHeight - pane.height.toInt()) <= roundingToleranceLx)
+        // The safe pane is at most half the reader's full height (plus the hinge gutter) -- re-asserted directly
+        // against the whole reader's own measured bounds, so a request that accidentally matched the WHOLE
+        // reader surface (never the selected pane) would still be caught even if some coincidence made the two
+        // numeric checks above pass.
+        assertTrue("the horizontal-fold request's height (${request.viewportHeight}px) must never equal the " +
+            "whole reader surface's own full height (${readerBounds.height.toInt()}px) -- that would mean the " +
+            "safe-pane confinement was bypassed entirely",
+            Math.abs(request.viewportHeight - readerBounds.height.toInt()) > roundingToleranceLx)
     }
 }

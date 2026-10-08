@@ -66,8 +66,11 @@ import com.d4guilar.shelfos.core.reader.FoldRect
  * screen) on its own [Surface]. BACKGROUND focus/accessibility suppression -- the other half of true modality --
  * is applied by the CALLER ([FixedReaderScreen][com.d4guilar.shelfos.feature.reader.FixedReaderScreen], via
  * `hingeSafeModalOpen`-gated `Modifier.focusProperties { canFocus = false }` + `Modifier.clearAndSetSemantics {}`
- * on its own background content, plus a root-level `onPreviewKeyEvent` that intercepts Back/gamepad-B and
- * swallows page/menu commands BEFORE they can reach the background handler), because this overlay is
+ * on its own background content, plus a root-level `onPreviewKeyEvent` that intercepts ONLY the semantic
+ * Back/gamepad-B dismissal path -- it does NOT globally swallow NEXT_PAGE/PREVIOUS_PAGE there (those stay free
+ * so they can still move FOCUS between the overlay's own controls); the background reader simply can never
+ * RECEIVE a page/menu command while a modal is open because its own focus is structurally suppressed (the
+ * `canFocus = false` above), not because any key is centrally blocked), because this overlay is
  * DELIBERATELY a sibling (not a wrapper) of the reader's own content -- it has no way to reach into that
  * sibling subtree itself. See [FixedReaderScreen]'s own `hingeSafeModalOpen`/`dismissAppearance`/
  * `dismissThumbnails` docs for that half of the fix.

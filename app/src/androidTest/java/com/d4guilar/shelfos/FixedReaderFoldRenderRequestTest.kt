@@ -93,7 +93,7 @@ class FixedReaderFoldRenderRequestTest {
         }
     }
 
-    private fun cbzFixture(name: String, pageSizes: List<Pair<Int, Int>>): LibraryItem {
+    private fun cbzFixture(name: String, pageSizes: List<Pair<Int, Int>>, spreadMode: SpreadMode = SpreadMode.SPREAD): LibraryItem {
         val file = File(context.filesDir, "publications/$name").also { it.parentFile!!.mkdirs() }
         ZipOutputStream(file.outputStream()).use { zip ->
             pageSizes.forEachIndexed { index, (w, h) ->
@@ -105,7 +105,7 @@ class FixedReaderFoldRenderRequestTest {
         }
         return LibraryItem(name, "Fold render $name", "ShelfOS test", MediaCategory.COMIC, "test:$name",
             PublicationFormat.CBZ, file.name, file.length(), managedPath = file.path,
-            preferences = ReaderPreferences(fit = FitMode.PAGE, spreadMode = SpreadMode.SPREAD).json())
+            preferences = ReaderPreferences(fit = FitMode.PAGE, spreadMode = spreadMode).json())
     }
 
     private fun awaitSettled(vm: FixedReaderViewModel, targetPage: Int, timeoutMs: Long = 15_000) {
@@ -116,6 +116,129 @@ class FixedReaderFoldRenderRequestTest {
             Thread.sleep(25)
         }
         fail("Reader did not settle on page $targetPage within ${timeoutMs}ms")
+    }
+
+    /** Shared setup for the two R3 remediation tests below: a REAL [FixedReaderViewModel] wired to a
+     * [RecordingFixedReaderFactory] that counts every full-page decode per logical page index, so the tests can
+     * assert an actual decode-count DELTA through the real `updateViewport` -> `effectiveRenderKey` ->
+     * `render()` -> `FixedReader.render(PageRenderRequest)` path, never a synthetic/local counter and never a
+     * direct comparison of two keys in isolation (Codex R3's own deficiency: the prior pure test proved the
+     * ACCEPTED-KEY MATH doesn't change across 783<->784, but never proved the real integration actually avoids
+     * an extra decode, or that a real material resize changes the real request by exactly the expected amount). */
+    private fun viewModel(item: LibraryItem, recorded: ConcurrentHashMap<Int, PageRenderRequest>,
+        counts: ConcurrentHashMap<Int, Int>): FixedReaderViewModel {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scopes += it }
+        val store = ViewModelStore().also { stores += it }
+        val repository = FakeLibraryRepository(item)
+        val factory = RecordingFixedReaderFactory(PublicationFiles(context), recorded, counts)
+        val provider = ViewModelProvider(store, object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                FixedReaderViewModel(item.id, repository, factory, scope) as T
+        })
+        return provider[FixedReaderViewModel::class.java]
+    }
+
+    /**
+     * Codex R3 remediation, task 1: real decode boundary-jitter integration evidence. The pure `RenderKeyTest`
+     * hysteresis math (783<->784 never changing the ACCEPTED key) is necessary but not sufficient -- it only
+     * proves a key-equality comparison, never that the real `FixedReaderViewModel.updateViewport` path (which
+     * conditionally calls `render()`, which alone actually decodes) avoids an extra decode. This test drives
+     * that REAL path directly: a STABLE single-page group (explicit `SpreadMode.SINGLE`, so AUTO can never flip
+     * the group shape mid-test and confound the evidence) is first settled at raw width 784px -- exactly the
+     * half-bucket boundary (`RENDER_KEY_BUCKET_PX` == 32, so 784.0 == 24.5*32 is the exact plain-rounding
+     * boundary between buckets 24 and 25) -- then driven through 784->783->784->783->784->783, a single-px
+     * oscillation straddling that exact old boundary, exactly as a continuous layout recomputation would
+     * produce. Once the first call accepts a bucket, `acceptedRenderKeyBucket`'s hysteresis band (+-12px beyond
+     * the bucket's own nearest-rounding span) comfortably contains both 783 and 784, so none of these six calls
+     * may ever change `effectiveRenderKey` -- and since `updateViewport` only calls `render()` (the only place
+     * that decodes) when the key actually changes, the real recorded decode COUNT for page 0 must stay exactly
+     * where it was after the initial settle.
+     */
+    @Test fun boundaryJitterThroughTheRealViewModelPathNeverTriggersAnExtraDecode() {
+        val recorded = ConcurrentHashMap<Int, PageRenderRequest>()
+        val counts = ConcurrentHashMap<Int, Int>()
+        val big = 3000 to 4000
+        // SpreadMode.SINGLE keeps this a stable one-page group for the whole test -- never AUTO, so there is no
+        // risk of the group shape itself flipping and confounding the jitter evidence with a real shape change.
+        val item = cbzFixture("fold-jitter-real", listOf(big, big), spreadMode = SpreadMode.SINGLE)
+        val vm = viewModel(item, recorded, counts)
+        awaitSettled(vm, 0) // the session's own initial open() decode, before any updateViewport call below.
+
+        // Establish the accepted bucket at the exact half-bucket boundary (784px, the real raw dimension used
+        // throughout) through the REAL updateViewport entry point -- this is the call whose decode COUNT the
+        // jitter below must never increase beyond.
+        vm.updateViewport(ReaderRenderGeometry.flat(784, 3000, 400))
+        Thread.sleep(300) // let this baseline-establishing decode (if any) actually finish before counting it.
+        val initialCount = counts[0] ?: 0
+        assertTrue("page 0 must have been decoded at least once to establish the baseline", initialCount >= 1)
+
+        val jitterSequence = listOf(784, 783, 784, 783, 784, 783)
+        jitterSequence.forEach { px -> vm.updateViewport(ReaderRenderGeometry.flat(px, 3000, 400)) }
+        Thread.sleep(300) // give any (wrongly) triggered extra decode a chance to actually run before asserting it didn't.
+
+        val finalCount = counts[0] ?: 0
+        assertEquals("boundary jitter (784<->783, straddling the exact old half-bucket boundary at px 784.0) " +
+            "through the REAL updateViewport->effectiveRenderKey->render() path must never trigger an extra " +
+            "decode once the bucket is accepted -- got $initialCount initial decodes and $finalCount after jitter",
+            initialCount, finalCount)
+    }
+
+    /**
+     * Codex R3 remediation, task 2: real material same-shape resize integration evidence. Companion to the
+     * jitter test above -- proves the OTHER half of the hysteresis contract through the same real path: a
+     * genuinely material resize (well past `acceptedRenderKeyBucket`'s widened hysteresis band) must still
+     * correct, through the REAL `updateViewport`/`render()` path, exactly once -- never zero (silently
+     * suppressed) and never more than once (thrashing) -- while the group SHAPE stays unchanged throughout
+     * (the exact R3 deficiency being closed: a prior resize proof must never be confounded with an AUTO
+     * single<->spread flip). Also inspects the final recorded [PageRenderRequest] directly: both `viewportWidth`
+     * and `viewportHeight` must equal the NEW raw geometry exactly (production already uses raw, not bucketed,
+     * dimensions for the actual request -- `resolveRenderTargets`'s own doc -- this test proves that delivery,
+     * not merely the bucket-level re-render decision).
+     */
+    @Test fun materialResizeThroughTheRealViewModelPathCorrectsExactlyOnceAndDeliversTheNewRawDimensions() {
+        val recorded = ConcurrentHashMap<Int, PageRenderRequest>()
+        val counts = ConcurrentHashMap<Int, Int>()
+        val big = 3000 to 4000
+        // Same stable single-page-group discipline as the jitter test: explicit SINGLE, never AUTO, so this
+        // resize can never be confused with, or ride along with, a shape flip.
+        val item = cbzFixture("fold-resize-real", listOf(big, big), spreadMode = SpreadMode.SINGLE)
+        val vm = viewModel(item, recorded, counts)
+        awaitSettled(vm, 0)
+
+        // Before: settle at 783px (bucket 24 under plain rounding -- renderKeyBucket(783) == round(24.46) == 24;
+        // accepted range once settled: center 24*32=768, +-(16+12)=28 -> [740, 796)).
+        vm.updateViewport(ReaderRenderGeometry.flat(783, 3000, 400))
+        Thread.sleep(300)
+        val countBeforeResize = counts[0] ?: 0
+        assertTrue("page 0 must have been decoded at least once before the material resize", countBeforeResize >= 1)
+
+        // After: a genuinely material resize to 900px (renderKeyBucket(900) == round(28.125) == 28) -- far
+        // outside the [740, 796) accepted range above, and far outside RENDER_KEY_BUCKET_PX (32) +
+        // RENDER_KEY_HYSTERESIS_PX (12) combined margin from the old bucket by any measure. Height also changes
+        // (3000 -> 4500) so BOTH dimensions' delivery can be checked below, not just width. Still SpreadMode.SINGLE
+        // -- the group shape (one page, no spread) is byte-for-byte unchanged across this resize.
+        vm.updateViewport(ReaderRenderGeometry.flat(900, 4500, 450))
+        val deadline = System.currentTimeMillis() + 10_000
+        while (System.currentTimeMillis() < deadline && (counts[0] ?: 0) == countBeforeResize) Thread.sleep(25)
+        Thread.sleep(300) // settle, then confirm no FURTHER (thrashing) decode follows.
+
+        val countAfterResize = counts[0] ?: 0
+        assertEquals("a genuinely material resize (783px -> 900px, well past the accepted-bucket hysteresis " +
+            "band) through the REAL updateViewport->effectiveRenderKey->render() path must correct the " +
+            "single-page group's decode EXACTLY once -- never silently suppressed, never thrashed",
+            countBeforeResize + 1, countAfterResize)
+
+        val finalRequest = recorded[0]
+        assertNotNull("page 0's post-resize request must have been recorded", finalRequest)
+        finalRequest!!
+        // The actual delivery proof: the recorded PageRenderRequest must carry the NEW raw pane dimensions
+        // exactly (single-page group, so resolveRenderTargets's even-split-by-slot-count degenerates to the
+        // whole geometry.single box unchanged) -- never a bucketed/quantized approximation of them.
+        assertEquals("the final request's viewportWidth must equal the new raw geometry width exactly " +
+            "(production request sizing always uses raw, never bucketed, dimensions)", 900, finalRequest.viewportWidth)
+        assertEquals("the final request's viewportHeight must equal the new raw geometry height exactly",
+            4500, finalRequest.viewportHeight)
     }
 
     @Test fun verticalFoldSpreadRequestsEachSlotAtItsOwnAsymmetricPaneWidth() {

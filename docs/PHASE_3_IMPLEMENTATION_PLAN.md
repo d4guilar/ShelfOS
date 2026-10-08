@@ -1161,8 +1161,8 @@ none of their own files were touched by this remediation beyond the mechanical
 needed the flat/no-fold-spread shape).
 
 **Dependencies/Room/ReaderPreferences/manifest**: unchanged — no new dependency, no schema change,
-no new persisted field, no manifest change. Two new localized string resources were added
-(`content_desc_hinge_safe_dialog`, English/Spanish/Portuguese — spoken-only accessibility copy,
+no new persisted field, no manifest change. One localized content-description resource was added
+across EN, ES, and PT-BR (`content_desc_hinge_safe_dialog` — spoken-only accessibility copy,
 never visible UI text). See `docs/VALIDATION.md`'s "PHASE 3D CODEX R2 REMEDIATION" entry for exact
 commands/results.
 

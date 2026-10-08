@@ -729,8 +729,9 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
     }
     // Codex R2 remediation, finding B: every dismissal path (Cancel, Apply, scrim tap, Back, gamepad B) now
     // goes through the SAME dismissAppearance()/dismissThumbnails() -- the reader stays open, `state.page` is
-    // untouched by either, and focus is always restored to the control that opened the dialog, never left to
-    // simply disappear.
+    // untouched by either, and focus is restored to the reader's own stable `pageFocus` surface (see those two
+    // functions' own doc above for why that stable-surface fallback -- never exact-original-trigger restoration
+    // -- is the accepted behavior), never left to simply disappear.
     if (appearance && item != null) ReaderAppearance(state.preferences, capabilities(item.format, item.category), ::dismissAppearance,
         vm::applyAppearance, vm::resetAppearance, safePane = chromePane)
     if (thumbnails && state.count > 0) ThumbnailNavigator(state.count, state.page, rtl, vm.thumbnails,

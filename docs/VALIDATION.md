@@ -1,5 +1,140 @@
 # Validation
 
+## PHASE 3D CODEX R3 REMEDIATION (2026-10-07)
+
+Status: **IMPLEMENTED, one remediation commit on top of `b3b6062`** ("fix: finalize Phase 3D
+adaptive reader behavior", the R2 remediation entry below). Branch:
+`phase-3/3d-adaptive-foldable-spreads`. Codex R3 found **no remaining production correctness
+defect** in the range from the original 3D commit (`9e26140`) through `b3b6062` — this remediation
+is test/evidence/documentation/comment-only. **No production behavior changed.** It does not start
+3E, implement CBR, or touch Fit Width/Fit Page/pane sizing/the memory model/gamepad-B/system
+Back/focus-restoration/background-suppression/continuity, all of which R3 explicitly accepted.
+
+**Why this remediation exists**: R3's own finding was that the EXISTING pure `RenderKeyTest`
+hysteresis test (783<->784 never changing the ACCEPTED key) proves the key-equality MATH, but never
+proves the real `FixedReaderViewModel.updateViewport -> effectiveRenderKey -> render() ->
+FixedReader.render(PageRenderRequest)` integration actually avoids an extra decode, or that a real
+material resize changes the real request by exactly the expected amount. R3 also flagged the
+existing horizontal-fold request test as too loose (only checked request height against a 75%-of-
+whole-reader threshold, which plenty of wrong values would also satisfy) and three comments/docs
+that no longer matched actual accepted behavior. All four are closed below with real, observed
+evidence — not merely corrected prose.
+
+**Task 1 — real decode boundary-jitter integration evidence.** New test
+`FixedReaderFoldRenderRequestTest.boundaryJitterThroughTheRealViewModelPathNeverTriggersAnExtraDecode`:
+a STABLE single-page group (explicit `SpreadMode.SINGLE`, so `AUTO` can never flip the group shape
+mid-test and confound the evidence) is settled through the REAL `FixedReaderViewModel`, then driven
+through the REAL `updateViewport` entry point with raw widths `784 -> 784(baseline) -> [784, 783,
+784, 783, 784, 783]` (784px is the exact old half-bucket boundary: `RENDER_KEY_BUCKET_PX` == 32,
+and 784.0 == 24.5*32). Group shape (one page, never a spread) was unchanged throughout, confirmed
+by construction (`SpreadMode.SINGLE`) rather than merely observed. **Initial decode count (after
+the baseline-establishing `updateViewport(784)` call) was 2** (1 from the session's own initial
+`open()` decode + 1 from the baseline call actually changing the key from its initial
+geometry-`flat(0,0,0)` state). **Final decode count after the full 784/783 jitter sequence was
+also 2 — zero additional decodes.** This proves `acceptedRenderKeyBucket`'s hysteresis band
+(bucket 25's accepted range widens to px [772, 828), comfortably containing both 783 and 784) holds
+through the real integration path, not merely in the isolated key-math comparison.
+
+**Task 2 — real material same-shape resize integration evidence.** New test
+`FixedReaderFoldRenderRequestTest.materialResizeThroughTheRealViewModelPathCorrectsExactlyOnceAndDeliversTheNewRawDimensions`:
+the SAME stable single-page group (`SpreadMode.SINGLE`, unchanged throughout — the exact R3
+deficiency closed: this resize is never confounded with an `AUTO` single<->spread flip) is settled
+at raw dimensions **783x3000**, then moved to **900x4500** — well outside `renderKeyBucket(783)`'s
+(24) accepted range `[740, 796)` (`RENDER_KEY_BUCKET_PX` (32) + `RENDER_KEY_HYSTERESIS_PX` (12) on
+each side), landing on a genuinely different bucket (`renderKeyBucket(900)` == 28). **Decode count
+before the resize was 2, after was 3 — an actual delta of exactly +1**, matching the expected
+single-page-group delta exactly (never 0 — silently suppressed; never >1 — thrashed). The final
+recorded `PageRenderRequest` was inspected directly: **`viewportWidth == 900`, `viewportHeight ==
+4500`** — an EXACT match (no rounding tolerance needed; a single-page group's `resolveRenderTargets`
+passes `geometry.single`'s raw px straight through unchanged), proving production delivers the new
+RAW geometry to the actual decode call, never a bucketed/quantized approximation of it.
+
+**Task 3 — tightened horizontal request dimension assertions.** Rewrote the final assertions of
+`FixedReaderFoldRenderGeometryUiTest.horizontalFoldRequestUsesTheSafePaneDimensionsNeverTheWholeReaderSurface`.
+The prior assertion only checked `request.viewportHeight < readerBounds.height * 0.75f` — true of
+the correct value, but also true of many wrong ones, and never checked width at all. Under the same
+injected centered horizontal fold as before, the real selected safe pane
+(`node("reader_pane_content").boundsInWindow`) was measured at **1080x666px**; the whole,
+un-confined reader surface measured **1080x1353px**; and the actual recorded `PageRenderRequest`
+was **1080x666px** — an EXACT match (both width and height) to the measured safe pane, within the
+test's documented 2px integer-rounding tolerance, and clearly distinct from (not merely "less
+than some fraction of") the whole reader's own height. No production code needed to change — this
+test only measures more precisely what production was already doing correctly.
+
+**Comment fixes (production, comment-only — no behavior changed)**:
+
+- `HingeSafeDialog.kt` (~line 70): corrected an inaccurate claim that the root preview handler
+  "swallows page/menu commands." It intercepts ONLY the semantic Back/gamepad-B dismissal path;
+  `NEXT_PAGE`/`PREVIOUS_PAGE` are never globally swallowed there (they stay free to move focus
+  between the overlay's own controls). The background reader cannot receive a page command while a
+  modal is open because its own focus is structurally suppressed (`canFocus = false`), not because
+  any key is centrally blocked at the root.
+- `FixedReaderScreen.kt` (~line 730): corrected an inaccurate claim that focus returns to "the
+  control that opened the dialog." Actual (R2-accepted) behavior: focus is restored to the reader's
+  own stable `pageFocus` surface, never an attempt at exact-original-trigger restoration — the
+  accurate description already present a few lines above `dismissAppearance()`/
+  `dismissThumbnails()`'s own declaration now matches the comment at the call site too.
+- `docs/PHASE_3_IMPLEMENTATION_PLAN.md` (~line 1164): corrected "Two new localized string resources
+  were added" to "One localized content-description resource was added across EN, ES, and PT-BR" —
+  there is exactly one string key (`content_desc_hinge_safe_dialog`), translated into three locale
+  files (`values/strings.xml`, `values-es/strings.xml`, `values-pt-rBR/strings.xml`), confirmed by
+  inspection of all three.
+
+**Stale-evidence note**: this remediation looked for the "42/42 instrumented" vs. "closer to 45"
+discrepancy the task brief described, but found no such literal claim anywhere in
+`docs/VALIDATION.md` or `docs/PHASE_3_IMPLEMENTATION_PLAN.md` to correct (the only "42/42" hits in
+either document are `SpreadModelTest`'s own unrelated JVM count from Phase 3C). Rather than invent a
+correction for text that does not exist, this entry instead records the ACTUAL observed counts for
+every class this remediation touched or re-ran (below) — so the record stays accurate going
+forward even if no prior literal discrepancy existed.
+
+**Targeted JVM unit tests — PASS.**
+`./gradlew testDebugUnitTest --tests "com.d4guilar.shelfos.core.reader.RenderKeyTest"` — exit 0,
+**25/25 PASS**, unchanged/preserved exactly as R2 left it (including the mutation-proof hysteresis
+cases) — this remediation's new evidence is layered ON TOP of this pure math layer, never a
+replacement for it.
+
+**Targeted instrumented tests — PASS** (API 24 x86_64 emulator, `shelfos-api24` AVD, each class run
+SEPARATELY per standing policy):
+
+- `./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderFoldRenderRequestTest`
+  — **4/4 PASS** (8s). Two tests preserved unchanged
+  (`verticalFoldSpreadRequestsEachSlotAtItsOwnAsymmetricPaneWidth`,
+  `continuousFoldPaneWidthChangesThatNeverFlipSpreadActiveNeverTriggerANewDecode` — the latter is
+  the existing mutation-proof render-storm guard, left exactly as-is); two NEW real-integration
+  tests added for Tasks 1 and 2 above.
+- `./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderFoldRenderGeometryUiTest`
+  — **3/3 PASS** (12s). `soloToSpreadFirstDecodeAlreadyUsesCorrectPerPaneTargetsWithNoIncidentalSecondLayout`
+  and `spreadToSoloFirstDecodeAlreadyUsesTheSoloPaneTarget` unchanged;
+  `horizontalFoldRequestUsesTheSafePaneDimensionsNeverTheWholeReaderSurface` tightened per Task 3.
+- `./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.ReaderDialogFoldSafetyTest`
+  — **4/4 PASS** (7s), unchanged — re-run as a regression guard since this remediation's comment
+  changes touched `HingeSafeDialog.kt`/`FixedReaderScreen.kt`; confirms the pane-confinement proof
+  still holds with zero behavior change.
+
+**Full JVM suite / full connected suite**: NOT RUN (reserved for Phase 3F; never
+`testDebugUnitTest` unfiltered, never the full connected suite, never `NavigationSmokeTest`, never
+Phase 2/3C broad suites, per standing policy). `FixedReaderFoldableUiTest`,
+`FixedReaderSpreadViewModelTest`, `FixedReaderViewModelLifecycleTest`, `ThumbnailNavigationUiTest`,
+`FixedReaderHingeSafeModalTest` were not re-run this pass — none of their own files, or any file
+they depend on beyond the comment-only edits above, changed.
+
+**Build/Lint**: NOT RUN. Every source change this pass is either a new/modified test (`@Test`
+methods and one test helper in two `androidTest` files, no new production API) or a COMMENT-ONLY
+edit to two existing production Kotlin functions' doc comments (no signature, behavior, or
+visible-string change) — per the task's own build/lint policy, a full `assembleDebug`/
+`assembleDebugAndroidTest`/`lintDebug` pass is not required when no production function signature
+changes. `assembleDebugAndroidTest` WAS run once to confirm the new/modified test code compiles
+cleanly (**BUILD SUCCESSFUL**).
+
+**Dependencies/Room/ReaderPreferences/manifest**: unchanged.
+
+**git diff --check**: PASS (no whitespace errors). **Working tree**: clean after commit.
+
+**Risks / Phase 3F follow-ups**: none new. The standing real-foldable-physical-device gap noted in
+the R1/R2 entries below is unchanged by this remediation (test/evidence-only, no new hardware-
+dependent behavior introduced).
+
 ## PHASE 3D CODEX R2 REMEDIATION (2026-10-07)
 
 Status: **IMPLEMENTED, one remediation commit on top of `ba391c9`** ("fix: complete Phase 3D
