@@ -17,8 +17,11 @@
 // archive_read_open_fd() itself never closes the fd it is given (confirmed
 // by reading third_party/libarchive/libarchive/archive_read_open_fd.c's
 // file_close(), which only frees its own internal buffer struct) - closing
-// the fd is entirely this file's responsibility, exactly once, via
-// nativeClose() on success or inline on nativeOpen() failure.
+// the fd is entirely this file's responsibility, exactly once: Session's own
+// destructor is the single structural close point, reached either via
+// nativeClose()'s `delete session` on success, or via a
+// std::unique_ptr<Session> unwinding out of scope on any nativeOpen()
+// failure/exception path (see Session's and nativeOpen()'s doc comments).
 //
 // SEEK/RESTART: RAR (especially solid RAR) cannot be treated as randomly
 // seekable per-entry. There is no page cache here (explicitly out of scope
@@ -53,6 +56,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -90,9 +94,25 @@ struct EntryMeta {
     int64_t size = -1;    // -1 = unknown/unset/negative-and-therefore-distrusted.
 };
 
+// Owns both the source fd and the collected entry metadata. The destructor
+// is the single, structural point that closes `fd` (if still owned):
+// whether a Session is destroyed via `delete` from nativeClose() or via a
+// std::unique_ptr<Session> unwinding out of scope on a nativeOpen() failure/
+// exception path, exactly the same cleanup runs - no call site needs to
+// remember to close the fd itself once a Session owns it.
 struct Session {
     int fd = -1;
     std::vector<EntryMeta> entries;
+
+    explicit Session(int ownedFd) : fd(ownedFd) {}
+    ~Session() {
+        if (fd >= 0) {
+            ::close(fd);
+            fd = -1;
+        }
+    }
+    Session(const Session&) = delete;
+    Session& operator=(const Session&) = delete;
 };
 
 // RAII wrapper for a short-lived archive_read, used for exactly one
@@ -347,35 +367,52 @@ ErrorCode extractEntry(int fd, const std::vector<EntryMeta>& entries, int index,
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeOpen(
         JNIEnv* /*env*/, jclass /*clazz*/, jint fd) {
-    try {
-        if (fd < 0) {
-            // Never a real fd Kotlin could have owned via detachFd(); nothing to close.
-            return -static_cast<jlong>(ErrorCode::INVALID_ARGUMENT);
-        }
+    if (fd < 0) {
+        // Never a real fd Kotlin could have owned via detachFd(); nothing to close.
+        return -static_cast<jlong>(ErrorCode::INVALID_ARGUMENT);
+    }
 
-        auto* session = new (std::nothrow) Session();
-        if (session == nullptr) {
-            ::close(fd);
-            return -static_cast<jlong>(ErrorCode::NATIVE_INTERNAL);
-        }
-        session->fd = fd;
+    // `session` is declared here (function scope, not inside the try block)
+    // specifically so the catch block below can inspect it: once
+    // std::make_unique<Session>(fd) has returned, this unique_ptr is the
+    // single owner of both the Session and `fd`, and letting it fall out of
+    // scope - on ANY return out of this function, success or failure -
+    // automatically and exactly-once runs Session's destructor (closes fd,
+    // frees entries). No path below ever calls close(fd) or delete session
+    // manually once `session` is non-null.
+    std::unique_ptr<Session> session;
+    try {
+        session = std::make_unique<Session>(fd);
 
         ErrorCode err = collectEntries(fd, &session->entries);
         if (err != ErrorCode::OK) {
-            ::close(fd);
-            delete session;
+            // `session` destructs on return, closing fd and freeing entries.
             return -static_cast<jlong>(err);
         }
 
         // A real heap pointer is never 0 and (on every Android ABI's
         // address space) never large enough to look negative as a signed
         // 64-bit value, so this is unambiguous against the negative error
-        // encoding above.
-        return reinterpret_cast<jlong>(session);
+        // encoding above. release() hands fd/entry ownership to the opaque
+        // handle now returned to Kotlin; nativeClose() is the only
+        // remaining path that may destroy this Session.
+        return reinterpret_cast<jlong>(session.release());
     } catch (...) {
-        // No C++ exception may cross the JNI boundary. We still own `fd`
-        // on this path and must close it.
-        ::close(fd);
+        // No C++ exception may cross the JNI boundary (e.g. std::bad_alloc
+        // from make_unique or from collectEntries growing its entry
+        // vector/strings). Ownership of `fd` depends on exactly how far we
+        // got: if `session` is still null, std::make_unique<Session>(fd)
+        // itself never completed constructing a Session, so `fd` was never
+        // taken into any Session's care and this catch must close it here,
+        // exactly once. If `session` is non-null, it already owns `fd`
+        // (the constructor ran) and its destructor - which fires
+        // automatically when `session` goes out of scope at this function's
+        // return below - is the sole, single point that closes `fd`; this
+        // catch block must NOT also close(fd) in that case, or it would be
+        // double-closed.
+        if (!session) {
+            ::close(fd);
+        }
         return -static_cast<jlong>(ErrorCode::NATIVE_INTERNAL);
     }
 }
@@ -388,10 +425,8 @@ Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeClose(
             return;
         }
         auto* session = reinterpret_cast<Session*>(handle);
-        if (session->fd >= 0) {
-            ::close(session->fd);
-            session->fd = -1;
-        }
+        // Session's destructor closes fd (if still owned) exactly once;
+        // see the Session struct's doc comment.
         delete session;
     } catch (...) {
         // close() must never throw across the JNI boundary.

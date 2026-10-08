@@ -128,6 +128,38 @@ class LibarchiveRarNativeLifecycleTest {
     }
 
     @Test
+    fun openClosesTransferredFdWhenNativeBackendIsUnavailable() {
+        val archive = RarFixtures.decodeFixtureToTempFile(
+            "test_read_format_rar.rar.uu",
+            "native-unavailable-${System.nanoTime()}.rar",
+        )
+        tempFiles.add(archive)
+        val fd = RarFixtures.detachedReadFd(archive)
+
+        val before = currentOpenFdCount()
+
+        // Internal test-only overload (see NativeRarSession.open's doc
+        // comment): forces the native-backend-unavailable path
+        // deterministically, without any global mutable flag.
+        val result = NativeRarSession.open(fd) { false }
+        assertTrue(
+            "expected NATIVE_INTERNAL when the native backend is unavailable, got: $result",
+            result is NativeRarResult.Failure,
+        )
+        assertEquals(NativeRarError.NATIVE_INTERNAL, (result as NativeRarResult.Failure).error)
+
+        val after = currentOpenFdCount()
+        if (before >= 0 && after >= 0) {
+            assertEquals(
+                "open() must close the transferred fd exactly once when the " +
+                    "native backend is unavailable, never leak it",
+                before,
+                after,
+            )
+        }
+    }
+
+    @Test
     fun failedOpenDueToWrongFormatDoesNotLeakTheSourceFd() {
         val before = currentOpenFdCount()
 

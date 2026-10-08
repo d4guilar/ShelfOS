@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos.core.files
 
+import android.os.ParcelFileDescriptor
+
 /**
  * Phase 3E-B: a generic internal native RAR4/RAR5 archive engine, built on
  * the Phase 3E-A `shelfos_cbr` JNI foundation (see [LibarchiveNative] and
@@ -173,8 +175,34 @@ class NativeRarSession private constructor(initialHandle: Long) {
          * encrypted/unencrypted entries is reported as PROTECTED, not as a
          * usable session exposing only the unencrypted entries).
          */
-        fun open(fd: Int): NativeRarResult<NativeRarSession> {
-            if (!LibarchiveNative.isLoaded) {
+        fun open(fd: Int): NativeRarResult<NativeRarSession> = open(fd, LibarchiveNative::isLoaded)
+
+        /**
+         * Test seam only: [isNativeLoaded] lets a test force the
+         * native-backend-unavailable path deterministically, without a
+         * global mutable flag, product setting, or other production-visible
+         * switch. It defaults to [LibarchiveNative.isLoaded] via the public
+         * [open] overload above; this overload is `internal` so only code in
+         * this module (including this module's test source sets) can
+         * override it.
+         */
+        internal fun open(
+            fd: Int,
+            isNativeLoaded: () -> Boolean,
+        ): NativeRarResult<NativeRarSession> {
+            if (!isNativeLoaded()) {
+                // Ownership transition: by this point [fd] has already been
+                // transferred to us under open()'s FD ownership contract
+                // (see the class doc) - the caller has relinquished it and
+                // will never close it itself. Since the native backend is
+                // unavailable, no native Session can take custody of it, so
+                // this failure path must close it itself, exactly once,
+                // before returning. ParcelFileDescriptor.adoptFd(fd).close()
+                // is this codebase's established, reflection-free way to
+                // close a raw already-detached fd number (see
+                // LibarchiveRarNativeLifecycleTest's closedSourceFdFails...
+                // test for the same idiom used to invalidate a fd).
+                ParcelFileDescriptor.adoptFd(fd).close()
                 return NativeRarResult.Failure(NativeRarError.NATIVE_INTERNAL)
             }
             val handle = nativeOpen(fd)
