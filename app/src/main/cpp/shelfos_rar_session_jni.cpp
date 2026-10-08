@@ -87,6 +87,7 @@ enum class ErrorCode : jint {
 // archive-claimed entry size (hostile input: a malicious/corrupt archive
 // entry's declared size must never size a native allocation).
 constexpr size_t kStreamBufferSize = 64 * 1024;  // 64 KiB
+constexpr uint8_t kRarCommonMarker[] = {0x52, 0x61, 0x72, 0x21, 0x1A, 0x07};
 constexpr uint8_t kRar4Signature[] = {0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00};
 constexpr uint8_t kRar5Signature[] = {0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00};
 constexpr size_t kJniCountMax = static_cast<size_t>(std::numeric_limits<jint>::max());
@@ -151,10 +152,11 @@ ErrorCode restartFd(int fd) {
 }
 
 // Reads at most the longest RAR signature without changing the fd's current
-// position. Any non-empty byte sequence that exactly matches the beginning
-// of either pinned signature is recognizable RAR input: it may be incomplete,
-// but it is not unrelated data. A complete signature also remains recognized
-// when damaged header bytes follow it.
+// position. The common six-byte marker is the minimum meaningful evidence of
+// RAR-family input; shorter coincidences remain unrelated/unsupported. Once
+// those six bytes match, the input is recognizable but may still be incomplete
+// or damaged. Complete RAR4/RAR5 signatures remain recognized when broken
+// header bytes follow them.
 struct RarSignatureInfo {
     bool recognizable = false;
     bool signatureOnly = false;
@@ -176,13 +178,9 @@ ErrorCode inspectRarSignaturePrefix(int fd, RarSignatureInfo* info) {
     }
 
     const size_t byteCount = static_cast<size_t>(count);
-    const size_t rar4Compared =
-            byteCount < sizeof(kRar4Signature) ? byteCount : sizeof(kRar4Signature);
-    const size_t rar5Compared =
-            byteCount < sizeof(kRar5Signature) ? byteCount : sizeof(kRar5Signature);
     info->recognizable =
-            std::memcmp(bytes, kRar4Signature, rar4Compared) == 0 ||
-            std::memcmp(bytes, kRar5Signature, rar5Compared) == 0;
+            byteCount >= sizeof(kRarCommonMarker) &&
+            std::memcmp(bytes, kRarCommonMarker, sizeof(kRarCommonMarker)) == 0;
     info->signatureOnly =
             (byteCount == sizeof(kRar4Signature) &&
              std::memcmp(bytes, kRar4Signature, sizeof(kRar4Signature)) == 0) ||

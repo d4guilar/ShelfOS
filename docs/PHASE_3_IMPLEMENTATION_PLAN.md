@@ -10,7 +10,7 @@ comic spreads"). **3E-A (native CBR dependency foundation — NDK/CMake plumbing
 vendored libarchive, JNI smoke test; ZERO archive-reading logic) is COMPLETE and
 ACCEPTED on `phase-3/3e-native-cbr`.** **3E-B (generic internal native RAR4/RAR5 engine —
 real open/enumerate/extract session on top of 3E-A, no product/reader integration) is
-IMPLEMENTED on the same branch and undergoing remediation/review.** 3E-C, 3E-D, and
+IMPLEMENTED on the same branch; remediation is complete, pending final confirmation.** 3E-C, 3E-D, and
 3E-E are **NOT STARTED**. 3F
 remains PLANNING ONLY. Phase 3 overall is **NOT complete**. See §22/§23 for what 3A
 landed, §24 for what 3B actually landed, §25 for what 3C actually landed (including the
@@ -37,7 +37,7 @@ and `docs/adr/0024-native-cbr-libarchive.md` plus `docs/VALIDATION.md` for what 
   (§25, including its Codex R1/R2 remediation records), and 3D (§26/§26a/§26b) are
   complete and merged to `main` (`#24`, `#25`, `#26`, `#27`). 3E-A (native CBR
   dependency foundation) is complete and accepted on `phase-3/3e-native-cbr`. 3E-B is
-  implemented on that branch and undergoing remediation/review. 3E-C, 3E-D, and 3E-E
+  implemented on that branch; remediation is complete, pending final confirmation. 3E-C, 3E-D, and 3E-E
   have not started. 3F remains planning only, and Phase 3 overall is not complete.
 
 ## 22. 3A implementation record (landed)
@@ -1191,15 +1191,15 @@ handle, enforcing atomic set/clear-on-close, idempotent `close()`, and rejecting
 operations entirely in Kotlin before any native call — the native side's own defense is limited
 to a cheap `handle <= 0` sanity check, documented as not a substitute for that contract.
 
-**FD ownership (source)**: `NativeRarSession.open(fd: Int)` takes ownership of `fd` the instant
-it is called, on every path. The caller must relinquish Java-level ownership first via
-`ParcelFileDescriptor.detachFd()`. No `dup()` is used anywhere — there is exactly one owned fd,
-restarted in place via `lseek(fd, 0, SEEK_SET)` whenever a fresh sequential pass is needed, so
-there is no shared-offset subtlety to reason about. This was verified directly against the
-vendored `archive_read_open_fd.c` source (its `file_close()` only frees its own internal buffer
-struct and never calls `close()` on the fd), confirming the engine — not libarchive — is
-responsible for closing the fd, exactly once, in `NativeRarSession.close()` on success or inline
-in `nativeOpen()` on every failure path.
+**FD ownership (source)**: the caller transfers ownership of `fd` to
+`NativeRarSession.open(fd: Int)` and must first relinquish Java-level ownership via
+`ParcelFileDescriptor.detachFd()`. If the native backend is unavailable before JNI,
+`NativeRarSession.open()` closes the fd itself. Once native session initialization begins,
+ownership transitions into native `Session` handling; every success/failure path closes exactly
+once. No `dup()` is used anywhere — there is exactly one owned fd, restarted in place via
+`lseek(fd, 0, SEEK_SET)` whenever a fresh sequential pass is needed, so there is no shared-offset
+subtlety. The vendored `archive_read_open_fd.c` `file_close()` only frees its own internal buffer
+and never closes the fd, so ShelfOS remains responsible for that exactly-once cleanup.
 
 **Seek/restart (no cache)**: every operation that needs a specific entry's data — the metadata
 pass in `open()`, and each `extractEntry()` call — restarts a brand-new `archive_read` from
@@ -1263,10 +1263,11 @@ session covering only the unencrypted subset.
 
 **Wrong-format detection**: with only RAR4/RAR5 registered, the engine combines libarchive's
 format-bid result with a position-preserving `pread()` of the pinned RAR signatures. Unrelated
-bytes map to `UNSUPPORTED`; a non-empty exact signature prefix or complete signature followed by
-an early open/first-header failure maps to `CORRUPT`. This avoids treating truncated recognizable
-RAR input as unrelated merely because libarchive reported `EILSEQ`/`EINVAL` before selecting a
-reader.
+bytes and matching prefixes shorter than six bytes map to `UNSUPPORTED`. The six-byte common RAR
+marker is the minimum recognizable family prefix; once it matches, an early open/first-header
+failure maps to `CORRUPT`, including incomplete/complete RAR4/RAR5 signatures. This avoids
+treating meaningfully recognizable truncated RAR input as unrelated merely because libarchive
+reported `EILSEQ`/`EINVAL` before selecting a reader.
 Extension/magic-byte classification (`.cbr`/`.rar` filenames) is explicitly not this engine's
 job — it operates on fd bytes only.
 

@@ -259,9 +259,21 @@ class LibarchiveRarNativeTest {
     }
 
     @Test
-    fun shortRar4PrefixMapsToCorrupt() {
+    fun matchingRarPrefixesShorterThanSixBytesRemainUnsupported() {
+        val commonMarker = byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07)
+        for (length in 1 until commonMarker.size) {
+            assertOpenError(
+                "too-short-rar-prefix-$length.bin",
+                commonMarker.copyOf(length),
+                NativeRarError.UNSUPPORTED,
+            )
+        }
+    }
+
+    @Test
+    fun sixByteCommonRarMarkerMapsToCorrupt() {
         assertOpenError(
-            "short-rar4-prefix.rar",
+            "six-byte-rar-marker.rar",
             byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07),
             NativeRarError.CORRUPT,
         )

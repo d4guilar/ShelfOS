@@ -1,5 +1,42 @@
 # Validation
 
+## PHASE 3E-B CODEX R1C MICROSCOPIC REMEDIATION (2026-10-08)
+
+Status: **COMPLETE locally; pending final confirmation.** Branch:
+`phase-3/3e-native-cbr`; pre-remediation HEAD `cc95120`. This pass addresses only the
+RAR-prefix classification and stale FD-ownership documentation findings. It does not begin 3E-C.
+
+**RAR-prefix classification**: the prior classifier treated even a one-byte match as recognizable
+RAR input. The bounded, position-preserving `pread()` check now requires the complete six-byte
+common marker (`52 61 72 21 1A 07`). Matching prefixes of lengths 1 through 5 remain
+`UNSUPPORTED`; the six-byte marker, complete RAR4/RAR5 prefixes and signatures, and recognizable
+truncations remain `CORRUPT` when opening or reading the first header fails.
+
+**Focused instrumented test**: `./gradlew.bat :app:connectedDebugAndroidTest
+-Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.core.files.LibarchiveRarNativeTest
+--console=plain --no-daemon` on `emulator-5554`, `shelfos-api24(AVD) - 7.0`, x86_64 ->
+**12 tests, 0 failures, 0 errors, 0 skipped**. The added table-driven regression checks each
+matching prefix length from 1 through 5 as `UNSUPPORTED`; the explicit six-byte boundary remains
+`CORRUPT`. Lifecycle/ownership executable code did not change, so
+`LibarchiveRarNativeLifecycleTest` was intentionally not rerun.
+
+**FD-ownership documentation**: this file and `docs/PHASE_3_IMPLEMENTATION_PLAN.md` now state the
+actual transition: the caller transfers the detached fd to `NativeRarSession.open()`; Kotlin
+closes it if native is unavailable before JNI, otherwise ownership transitions into native
+`Session` handling. Every path closes exactly once. No ownership implementation changed.
+
+**Build**: `./gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
+--console=plain --no-daemon` -> **BUILD SUCCESSFUL** for all three tasks and configured ABIs.
+Stripped native outputs: `arm64-v8a` **678,392 bytes**, `armeabi-v7a` **406,048 bytes**, and
+`x86_64` **665,248 bytes**. No `x86` ABI was added; `bundleDebug` was not run.
+
+**Native crash scan**: logcat was cleared before the focused test and scanned afterward for
+`SIGSEGV`, `SIGABRT`, `Fatal signal`, `JNI DETECTED ERROR`, and `FORTIFY` -> **0 matches**.
+
+**Scope/test exclusions**: full JVM tests **NOT RUN**; full connected suite **NOT RUN**;
+physical ARM **NOT PERFORMED**. No `PublicationFormat.CBR`, `RarPageSource`, cache, image/page
+filtering, reader/thumbnail/spread/fold integration, or other 3E-C+ work was added.
+
 ## PHASE 3E-B CODEX R1B REMEDIATION (2026-10-08)
 
 Status: **COMPLETE locally; pending focused independent re-review.** Branch:
@@ -16,11 +53,10 @@ closed transferred fd is no longer incorrectly counted only in the `before` valu
 
 **Early/truncated RAR classification**: a bounded, position-preserving `pread()` inspects the
 exact pinned RAR4 (`52 61 72 21 1A 07 00`) and RAR5 (`52 61 72 21 1A 07 01 00`) signatures.
-Unrelated bytes remain `UNSUPPORTED`; any non-empty exact signature prefix, a complete signature
-with a broken first header, and an exact signature-only file are recognizable RAR input and map
-to `CORRUPT`. The check applies both when format bidding fails and when the first header fails;
-the exact-signature EOF case is also rejected. Classification therefore no longer depends solely
-on `EILSEQ`/`EINVAL`.
+Unrelated bytes and matching prefixes shorter than the six-byte common RAR marker remain
+`UNSUPPORTED`. Once all six common-marker bytes match, the input is recognizable RAR-family data;
+an early open/first-header failure or exact-signature EOF maps to `CORRUPT`. Classification does
+not depend solely on `EILSEQ`/`EINVAL`.
 
 **Native edge hardening**: the extraction loop returns `IO` when `write()` returns zero, before
 advancing its offset, removing the no-progress infinite-loop risk while retaining `EINTR` retry
@@ -93,13 +129,13 @@ call. Files: `app/src/main/cpp/shelfos_rar_session_jni.cpp` (new),
 `shelfos_cbr_jni.cpp`/`LibarchiveNative.kt` are unmodified; the new source file was added to the
 same `shelfos_cbr` CMake target.
 
-**FD ownership model**: source fd ownership transfers to native the instant `open()` is called
-(every path, success and failure); the caller must call `ParcelFileDescriptor.detachFd()` first.
-No `dup()` — one owned fd, restarted via `lseek(fd, 0, SEEK_SET)`. Verified directly against
-`third_party/libarchive/libarchive/archive_read_open_fd.c`: its `file_close()` callback only
-frees its own internal buffer struct and never closes the fd, confirming the engine alone is
-responsible for closing it exactly once. Destination fd (extraction) is borrowed — never closed
-by the engine on any path.
+**FD ownership model**: the caller transfers source-fd ownership to `NativeRarSession.open()`
+after `ParcelFileDescriptor.detachFd()`. If the native backend is unavailable before JNI,
+`NativeRarSession.open()` closes the fd itself; once JNI/native Session initialization begins,
+ownership transitions into native Session handling. Every path closes exactly once. No `dup()` —
+one owned fd, restarted via `lseek(fd, 0, SEEK_SET)`. The vendored
+`archive_read_open_fd.c` `file_close()` callback only frees its internal buffer and never closes
+the fd. Destination fd (extraction) remains borrowed and is never closed by the engine.
 
 **Handle model**: opaque `jlong`, never exposed/logged/persisted outside `NativeRarSession`.
 Raw pointer persisted outside the handle: **NO**. Global "current archive": **NO**.
@@ -119,9 +155,10 @@ and remain subject to the archive-policy limits planned for 3E-C.
 `UNSUPPORTED`, `NATIVE_INTERNAL`. No raw libarchive numeric code and no
 `archive_error_string()` text crosses into Kotlin or any test assertion as product text.
 Wrong-format detection does not depend solely on libarchive's format-bid errno. The engine uses
-position-preserving `pread()` against the pinned RAR4/RAR5 signatures: a non-empty exact prefix
-or complete signature is recognizable RAR input and maps an early open/first-header failure to
-`CORRUPT`; unrelated bytes retain the `EILSEQ`/defensive-`EINVAL` mapping to `UNSUPPORTED`.
+position-preserving `pread()` against the pinned RAR4/RAR5 signatures. Matching prefixes shorter
+than the six-byte common RAR marker remain unrecognized/`UNSUPPORTED`; six matching common-marker
+bytes are the minimum recognizable RAR-family prefix and map an early open/first-header failure
+to `CORRUPT`. Unrelated bytes retain the `EILSEQ`/defensive-`EINVAL` mapping to `UNSUPPORTED`.
 Encryption: any entry encrypted (data and/or metadata) maps the WHOLE `open()` to `PROTECTED` —
 no partial-success interpretation — checked both after a successful metadata pass
 (`archive_read_has_encrypted_entries()`) and immediately after any header-read failure (so a
