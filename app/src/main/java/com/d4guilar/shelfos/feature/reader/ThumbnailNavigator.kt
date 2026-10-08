@@ -40,6 +40,7 @@ import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.core.input.InputContext
 import com.d4guilar.shelfos.core.input.ShelfCommand
 import com.d4guilar.shelfos.core.input.shelfCommand
+import com.d4guilar.shelfos.core.reader.FoldRect
 import com.d4guilar.shelfos.core.reader.ThumbnailLoader
 import com.d4guilar.shelfos.core.reader.ThumbnailResult
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
@@ -86,7 +87,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ThumbnailNavigator(pageCount: Int, currentPage: Int, rtl: Boolean, loader: ThumbnailLoader<Bitmap>?,
-    onSelect: (Int) -> Unit, onDismiss: () -> Unit) {
+    onSelect: (Int) -> Unit, onDismiss: () -> Unit,
+    // Phase 3D Codex R1 remediation, finding 4: non-null ONLY while a relevant vertical fold constrains the
+    // reader -- see ReaderAppearance's own matching parameter doc and HingeSafeDialogOverlay's class doc.
+    safePane: FoldRect? = null) {
     val listState = rememberLazyListState()
     val revisionFlow = remember(loader) { loader?.revision ?: MutableStateFlow(0L) }
     val revision by revisionFlow.collectAsStateWithLifecycle()
@@ -115,52 +119,61 @@ fun ThumbnailNavigator(pageCount: Int, currentPage: Int, rtl: Boolean, loader: T
         }
     }
 
-    BasicAlertDialog(onDismissRequest = onDismiss) {
-        // Codex R2 finding: this Surface is the single container that is an ancestor of BOTH the thumbnail
-        // content AND the Close button below (see this file's class doc) -- unlike AlertDialog's separate `text`/
-        // `confirmButton` slots, a key event bubbling up from whichever child currently has focus always reaches
-        // this one `onKeyEvent`, so gamepad B (and Escape, redundantly with the system handling `BasicAlertDialog`
-        // already provides via the same `DialogProperties` AlertDialog uses) dismisses Pages regardless of
-        // whether focus is on a thumbnail cell or on Close. Only ShelfCommand.BACK is ever consumed here -- every
-        // other key (including D-pad/focus-navigation keys and Enter/center activation) is left unconsumed, so
-        // normal focus movement and activation across the whole dialog, Close button included, keep working.
-        Surface(
-            modifier = Modifier
-                .testTag("thumbnail_dialog_surface")
-                .focusRequester(dialogFocus)
-                .focusable()
-                .onKeyEvent { event ->
-                    val native = event.nativeKeyEvent
-                    if (native.action == KeyEvent.ACTION_UP && native.shelfCommand(InputContext.READER) == ShelfCommand.BACK) {
-                        onDismiss(); true
-                    } else false
-                },
-            shape = AlertDialogDefaults.shape,
-            color = AlertDialogDefaults.containerColor,
-            tonalElevation = AlertDialogDefaults.TonalElevation,
-        ) {
-            Column(Modifier.padding(24.dp)) {
-                Text(stringResource(R.string.action_thumbnails), style = MaterialTheme.typography.headlineSmall,
-                    color = AlertDialogDefaults.titleContentColor)
-                Spacer(Modifier.height(16.dp))
-                CompositionLocalProvider(
-                    LocalContentColor provides AlertDialogDefaults.textContentColor,
-                    LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
-                ) {
-                    LazyRow(state = listState, modifier = Modifier.fillMaxWidth().height(176.dp).testTag("thumbnail_strip"),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(pageCount, key = { it }) { page ->
-                            val entry = remember(revision, page) { loader?.peek(page) }
-                            ThumbnailCell(page, page == currentPage, entry, { onSelect(page) },
-                                pageDescTemplate, currentPageDescTemplate, failedLabel)
-                        }
+    val body: @Composable () -> Unit = {
+        Column(Modifier.padding(24.dp)) {
+            Text(stringResource(R.string.action_thumbnails), style = MaterialTheme.typography.headlineSmall,
+                color = AlertDialogDefaults.titleContentColor)
+            Spacer(Modifier.height(16.dp))
+            CompositionLocalProvider(
+                LocalContentColor provides AlertDialogDefaults.textContentColor,
+                LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
+            ) {
+                LazyRow(state = listState, modifier = Modifier.fillMaxWidth().height(176.dp).testTag("thumbnail_strip"),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(pageCount, key = { it }) { page ->
+                        val entry = remember(revision, page) { loader?.peek(page) }
+                        ThumbnailCell(page, page == currentPage, entry, { onSelect(page) },
+                            pageDescTemplate, currentPageDescTemplate, failedLabel)
                     }
                 }
-                Spacer(Modifier.height(24.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onDismiss) { Text(stringResource(R.string.action_close)) }
-                }
             }
+            Spacer(Modifier.height(24.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onDismiss, Modifier.testTag("thumbnail_close")) { Text(stringResource(R.string.action_close)) }
+            }
+        }
+    }
+    if (safePane != null) {
+        // Phase 3D Codex R1 remediation, finding 4: same title/strip/Close content, confined to the one
+        // selected safe pane via HingeSafeDialogOverlay -- see that composable's own class doc (including its
+        // own equivalent gamepad-B ShelfCommand.BACK handling, mirroring this file's original BasicAlertDialog
+        // fix below).
+        HingeSafeDialogOverlay(paneWindow = safePane, onDismissRequest = onDismiss) { body() }
+    } else {
+        BasicAlertDialog(onDismissRequest = onDismiss) {
+            // Codex R2 finding: this Surface is the single container that is an ancestor of BOTH the thumbnail
+            // content AND the Close button below (see this file's class doc) -- unlike AlertDialog's separate `text`/
+            // `confirmButton` slots, a key event bubbling up from whichever child currently has focus always reaches
+            // this one `onKeyEvent`, so gamepad B (and Escape, redundantly with the system handling `BasicAlertDialog`
+            // already provides via the same `DialogProperties` AlertDialog uses) dismisses Pages regardless of
+            // whether focus is on a thumbnail cell or on Close. Only ShelfCommand.BACK is ever consumed here -- every
+            // other key (including D-pad/focus-navigation keys and Enter/center activation) is left unconsumed, so
+            // normal focus movement and activation across the whole dialog, Close button included, keep working.
+            Surface(
+                modifier = Modifier
+                    .testTag("thumbnail_dialog_surface")
+                    .focusRequester(dialogFocus)
+                    .focusable()
+                    .onKeyEvent { event ->
+                        val native = event.nativeKeyEvent
+                        if (native.action == KeyEvent.ACTION_UP && native.shelfCommand(InputContext.READER) == ShelfCommand.BACK) {
+                            onDismiss(); true
+                        } else false
+                    },
+                shape = AlertDialogDefaults.shape,
+                color = AlertDialogDefaults.containerColor,
+                tonalElevation = AlertDialogDefaults.TonalElevation,
+            ) { body() }
         }
     }
 }

@@ -1,5 +1,445 @@
 # Validation
 
+## PHASE 3D CODEX R3 REMEDIATION (2026-10-07)
+
+Status: **IMPLEMENTED, one remediation commit on top of `b3b6062`** ("fix: finalize Phase 3D
+adaptive reader behavior", the R2 remediation entry below). Branch:
+`phase-3/3d-adaptive-foldable-spreads`. Codex R3 found **no remaining production correctness
+defect** in the range from the original 3D commit (`9e26140`) through `b3b6062` — this remediation
+is test/evidence/documentation/comment-only. **No production behavior changed.** It does not start
+3E, implement CBR, or touch Fit Width/Fit Page/pane sizing/the memory model/gamepad-B/system
+Back/focus-restoration/background-suppression/continuity, all of which R3 explicitly accepted.
+
+**Why this remediation exists**: R3's own finding was that the EXISTING pure `RenderKeyTest`
+hysteresis test (783<->784 never changing the ACCEPTED key) proves the key-equality MATH, but never
+proves the real `FixedReaderViewModel.updateViewport -> effectiveRenderKey -> render() ->
+FixedReader.render(PageRenderRequest)` integration actually avoids an extra decode, or that a real
+material resize changes the real request by exactly the expected amount. R3 also flagged the
+existing horizontal-fold request test as too loose (only checked request height against a 75%-of-
+whole-reader threshold, which plenty of wrong values would also satisfy) and three comments/docs
+that no longer matched actual accepted behavior. All four are closed below with real, observed
+evidence — not merely corrected prose.
+
+**Task 1 — real decode boundary-jitter integration evidence.** New test
+`FixedReaderFoldRenderRequestTest.boundaryJitterThroughTheRealViewModelPathNeverTriggersAnExtraDecode`:
+a STABLE single-page group (explicit `SpreadMode.SINGLE`, so `AUTO` can never flip the group shape
+mid-test and confound the evidence) is settled through the REAL `FixedReaderViewModel`, then driven
+through the REAL `updateViewport` entry point with raw widths `784 -> 784(baseline) -> [784, 783,
+784, 783, 784, 783]` (784px is the exact old half-bucket boundary: `RENDER_KEY_BUCKET_PX` == 32,
+and 784.0 == 24.5*32). Group shape (one page, never a spread) was unchanged throughout, confirmed
+by construction (`SpreadMode.SINGLE`) rather than merely observed. **Initial decode count (after
+the baseline-establishing `updateViewport(784)` call) was 2** (1 from the session's own initial
+`open()` decode + 1 from the baseline call actually changing the key from its initial
+geometry-`flat(0,0,0)` state). **Final decode count after the full 784/783 jitter sequence was
+also 2 — zero additional decodes.** This proves `acceptedRenderKeyBucket`'s hysteresis band
+(bucket 25's accepted range widens to px [772, 828), comfortably containing both 783 and 784) holds
+through the real integration path, not merely in the isolated key-math comparison.
+
+**Task 2 — real material same-shape resize integration evidence.** New test
+`FixedReaderFoldRenderRequestTest.materialResizeThroughTheRealViewModelPathCorrectsExactlyOnceAndDeliversTheNewRawDimensions`:
+the SAME stable single-page group (`SpreadMode.SINGLE`, unchanged throughout — the exact R3
+deficiency closed: this resize is never confounded with an `AUTO` single<->spread flip) is settled
+at raw dimensions **783x3000**, then moved to **900x4500** — well outside `renderKeyBucket(783)`'s
+(24) accepted range `[740, 796)` (`RENDER_KEY_BUCKET_PX` (32) + `RENDER_KEY_HYSTERESIS_PX` (12) on
+each side), landing on a genuinely different bucket (`renderKeyBucket(900)` == 28). **Decode count
+before the resize was 2, after was 3 — an actual delta of exactly +1**, matching the expected
+single-page-group delta exactly (never 0 — silently suppressed; never >1 — thrashed). The final
+recorded `PageRenderRequest` was inspected directly: **`viewportWidth == 900`, `viewportHeight ==
+4500`** — an EXACT match (no rounding tolerance needed; a single-page group's `resolveRenderTargets`
+passes `geometry.single`'s raw px straight through unchanged), proving production delivers the new
+RAW geometry to the actual decode call, never a bucketed/quantized approximation of it.
+
+**Task 3 — tightened horizontal request dimension assertions.** Rewrote the final assertions of
+`FixedReaderFoldRenderGeometryUiTest.horizontalFoldRequestUsesTheSafePaneDimensionsNeverTheWholeReaderSurface`.
+The prior assertion only checked `request.viewportHeight < readerBounds.height * 0.75f` — true of
+the correct value, but also true of many wrong ones, and never checked width at all. Under the same
+injected centered horizontal fold as before, the real selected safe pane
+(`node("reader_pane_content").boundsInWindow`) was measured at **1080x666px**; the whole,
+un-confined reader surface measured **1080x1353px**; and the actual recorded `PageRenderRequest`
+was **1080x666px** — an EXACT match (both width and height) to the measured safe pane, within the
+test's documented 2px integer-rounding tolerance, and clearly distinct from (not merely "less
+than some fraction of") the whole reader's own height. No production code needed to change — this
+test only measures more precisely what production was already doing correctly.
+
+**Comment fixes (production, comment-only — no behavior changed)**:
+
+- `HingeSafeDialog.kt` (~line 70): corrected an inaccurate claim that the root preview handler
+  "swallows page/menu commands." It intercepts ONLY the semantic Back/gamepad-B dismissal path;
+  `NEXT_PAGE`/`PREVIOUS_PAGE` are never globally swallowed there (they stay free to move focus
+  between the overlay's own controls). The background reader cannot receive a page command while a
+  modal is open because its own focus is structurally suppressed (`canFocus = false`), not because
+  any key is centrally blocked at the root.
+- `FixedReaderScreen.kt` (~line 730): corrected an inaccurate claim that focus returns to "the
+  control that opened the dialog." Actual (R2-accepted) behavior: focus is restored to the reader's
+  own stable `pageFocus` surface, never an attempt at exact-original-trigger restoration — the
+  accurate description already present a few lines above `dismissAppearance()`/
+  `dismissThumbnails()`'s own declaration now matches the comment at the call site too.
+- `docs/PHASE_3_IMPLEMENTATION_PLAN.md` (~line 1164): corrected "Two new localized string resources
+  were added" to "One localized content-description resource was added across EN, ES, and PT-BR" —
+  there is exactly one string key (`content_desc_hinge_safe_dialog`), translated into three locale
+  files (`values/strings.xml`, `values-es/strings.xml`, `values-pt-rBR/strings.xml`), confirmed by
+  inspection of all three.
+
+**Stale-evidence note**: this remediation looked for the "42/42 instrumented" vs. "closer to 45"
+discrepancy the task brief described, but found no such literal claim anywhere in
+`docs/VALIDATION.md` or `docs/PHASE_3_IMPLEMENTATION_PLAN.md` to correct (the only "42/42" hits in
+either document are `SpreadModelTest`'s own unrelated JVM count from Phase 3C). Rather than invent a
+correction for text that does not exist, this entry instead records the ACTUAL observed counts for
+every class this remediation touched or re-ran (below) — so the record stays accurate going
+forward even if no prior literal discrepancy existed.
+
+**Targeted JVM unit tests — PASS.**
+`./gradlew testDebugUnitTest --tests "com.d4guilar.shelfos.core.reader.RenderKeyTest"` — exit 0,
+**25/25 PASS**, unchanged/preserved exactly as R2 left it (including the mutation-proof hysteresis
+cases) — this remediation's new evidence is layered ON TOP of this pure math layer, never a
+replacement for it.
+
+**Targeted instrumented tests — PASS** (API 24 x86_64 emulator, `shelfos-api24` AVD, each class run
+SEPARATELY per standing policy):
+
+- `./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderFoldRenderRequestTest`
+  — **4/4 PASS** (8s). Two tests preserved unchanged
+  (`verticalFoldSpreadRequestsEachSlotAtItsOwnAsymmetricPaneWidth`,
+  `continuousFoldPaneWidthChangesThatNeverFlipSpreadActiveNeverTriggerANewDecode` — the latter is
+  the existing mutation-proof render-storm guard, left exactly as-is); two NEW real-integration
+  tests added for Tasks 1 and 2 above.
+- `./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderFoldRenderGeometryUiTest`
+  — **3/3 PASS** (12s). `soloToSpreadFirstDecodeAlreadyUsesCorrectPerPaneTargetsWithNoIncidentalSecondLayout`
+  and `spreadToSoloFirstDecodeAlreadyUsesTheSoloPaneTarget` unchanged;
+  `horizontalFoldRequestUsesTheSafePaneDimensionsNeverTheWholeReaderSurface` tightened per Task 3.
+- `./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.ReaderDialogFoldSafetyTest`
+  — **4/4 PASS** (7s), unchanged — re-run as a regression guard since this remediation's comment
+  changes touched `HingeSafeDialog.kt`/`FixedReaderScreen.kt`; confirms the pane-confinement proof
+  still holds with zero behavior change.
+
+**Full JVM suite / full connected suite**: NOT RUN (reserved for Phase 3F; never
+`testDebugUnitTest` unfiltered, never the full connected suite, never `NavigationSmokeTest`, never
+Phase 2/3C broad suites, per standing policy). `FixedReaderFoldableUiTest`,
+`FixedReaderSpreadViewModelTest`, `FixedReaderViewModelLifecycleTest`, `ThumbnailNavigationUiTest`,
+`FixedReaderHingeSafeModalTest` were not re-run this pass — none of their own files, or any file
+they depend on beyond the comment-only edits above, changed.
+
+**Build/Lint**: NOT RUN. Every source change this pass is either a new/modified test (`@Test`
+methods and one test helper in two `androidTest` files, no new production API) or a COMMENT-ONLY
+edit to two existing production Kotlin functions' doc comments (no signature, behavior, or
+visible-string change) — per the task's own build/lint policy, a full `assembleDebug`/
+`assembleDebugAndroidTest`/`lintDebug` pass is not required when no production function signature
+changes. `assembleDebugAndroidTest` WAS run once to confirm the new/modified test code compiles
+cleanly (**BUILD SUCCESSFUL**).
+
+**Dependencies/Room/ReaderPreferences/manifest**: unchanged.
+
+**git diff --check**: PASS (no whitespace errors). **Working tree**: clean after commit.
+
+**Risks / Phase 3F follow-ups**: none new. The standing real-foldable-physical-device gap noted in
+the R1/R2 entries below is unchanged by this remediation (test/evidence-only, no new hardware-
+dependent behavior introduced).
+
+## PHASE 3D CODEX R2 REMEDIATION (2026-10-07)
+
+Status: **IMPLEMENTED, one remediation commit on top of `ba391c9`** ("fix: complete Phase 3D
+foldable reader behavior", the R1 remediation entry below). Branch:
+`phase-3/3d-adaptive-foldable-spreads`. See `docs/PHASE_3_IMPLEMENTATION_PLAN.md` §26b for the
+full architectural record of what changed and why; this entry is the validation evidence. Fixes
+Codex R2's 2 CHANGES-REQUIRED findings (circular render-geometry delivery + render-key
+quantization boundary jitter; `HingeSafeDialogOverlay` not truly modal for focus/accessibility),
+while R2 explicitly accepted everything else R1 fixed. Does not start 3E, implement CBR, or
+redesign Fit Width/the multiple-`FoldingFeature` architecture/route entry/the memory model — all
+of those are byte-for-byte unchanged from `ba391c9`. No dependency/Room/preference/manifest change.
+
+**What changed** (see §26b for the full "why"): `core/reader/RenderKey.kt` — `ReaderRenderGeometry`
+is no longer sealed (`Single`/`Spread`); it is one data class with `single: SingleTarget` (always
+populated) and `spread: SpreadTarget?` (populated whenever the fold layout genuinely has two usable
+panes, independent of published slot count) plus a `flat(...)` convenience factory for the common
+no-fold-spread case. New `resolveRenderTargets(geometry, groupSize)` (the one shared shape-selection
+helper `effectiveRenderKey` and `FixedReaderViewModel.render` both use). `effectiveRenderKey` now
+takes the resolved `groupSize` and the previous accepted key; new `acceptedRenderKeyBucket`/
+`RENDER_KEY_HYSTERESIS_PX` (hysteresis around the last-accepted bucket, not just nearest-rounding).
+`FixedReaderScreen.kt`: `onGloballyPositioned` computes `single`/`spread` unconditionally from the
+current `ReaderFoldLayout` alone — no `state.slots.size` check anywhere in that computation; a new
+`hingeSafeModalOpen`-gated root `onPreviewKeyEvent` (Back interception) and background `Column`
+modifier (`Modifier.focusProperties { canFocus = false }.clearAndSetSemantics {}`);
+`dismissAppearance()`/`dismissThumbnails()` restore focus to the reader's own stable `pageFocus`
+surface. `FixedReaderViewModel.kt`: new `isLandscapeAtForPresentationSync` (synchronous, cache-only,
+optimistic — used by both `updateViewport` and `render` to resolve `groupSize` before selecting a
+render target or building the key); `currentWidthDp()` simplified (no stale-`Spread`-fallback
+special case, since `single` is now always correct). `HingeSafeDialog.kt`: the overlay's `Surface`
+gained `Modifier.semantics { paneTitle = ... }` (new string `content_desc_hinge_safe_dialog`,
+English/Spanish/Portuguese — spoken-only, never visible).
+
+**Targeted JVM unit tests — PASS.**
+`./gradlew testDebugUnitTest --tests "com.d4guilar.shelfos.core.reader.RenderKeyTest"` — exit 0,
+25/25 pass (rewritten for the new `ReaderRenderGeometry`/`effectiveRenderKey(geometry, groupSize,
+spreadActive, previous)` API; 8 new hysteresis-specific cases:
+`acceptedBucketNeverThrashesAcrossTheOldPlainBoundary`,
+`acceptedBucketStillMovesOnceDriftGenuinelyExitsTheHysteresisBand`,
+`acceptedBucketWithNoPriorStateFallsBackToPlainNearestRounding`,
+`acceptedBucketOfNonPositivePxIsZeroRegardlessOfPriorState`,
+`boundaryJitterAroundTheOldBucketBoundaryProducesZeroKeyChangesAfterStabilizing`,
+`boundaryJitterOnASpreadPaneAlsoProducesZeroExtraRendersAfterStabilizing`,
+`materialResizeProducesExactlyOneRenderCorrection`,
+`sameGeometryDifferentGroupSizeNeverCollidesEitherSinceShapeFollowsGroupSizeNow`; 3 new
+`resolveRenderTargets` cases). No other JVM classes touched this remediation — `FoldLayoutTest`/
+`FixedReaderTransformTest`/`SpreadModelTest` were not re-run (not filtered-relevant; none of their
+own files changed).
+
+**Targeted instrumented tests — PASS** (API 24 x86_64 emulator, `shelfos-api24` AVD, each class run
+SEPARATELY per standing policy):
+
+- `./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderFoldRenderGeometryUiTest`
+  — 3/3 PASS. **NEW class** — the required production-screen-driven proof that render geometry no
+  longer depends on `state.slots.size`: `soloToSpreadFirstDecodeAlreadyUsesCorrectPerPaneTargetsWithNoIncidentalSecondLayout`
+  (an off-center fold, so panes are meaningfully asymmetric; records EVERY decode per page, not
+  just the last, and asserts each new slot decoded exactly once with meaningfully asymmetric
+  widths — **verified to actually catch the regression**: temporarily reintroducing the old
+  `state.slots.size >= 2` gate made this test fail with "page 1... expected:&lt;1&gt; but
+  was:&lt;2&gt;", confirming an incidental second decode; removing the gate again restored the
+  pass), `spreadToSoloFirstDecodeAlreadyUsesTheSoloPaneTarget` (the reverse transition),
+  `horizontalFoldRequestUsesTheSafePaneDimensionsNeverTheWholeReaderSurface` (closes the horizontal-
+  fold request-evidence gap Codex flagged).
+- `./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderHingeSafeModalTest`
+  — 7/7 PASS. **NEW class** — drives the REAL `FixedReaderScreen` under an injected vertical fold:
+  `pagesUnderFoldBlocksPageCommandsWhileOpenAndGamepadBDismissesIt`,
+  `appearanceUnderFoldBackDismissesItWithPageUnchanged`, `backgroundTouchWhileModalOpenNeverTurnsThePage`
+  (no click-through), `accessibilityExposesDialogSemanticsAndHidesABackgroundControlWhileOpen`
+  (`PaneTitle` present; a background control absent from the merged tree while open, present
+  again after dismiss), `focusCannotMoveFromOverlayToBackgroundControlsWhileModalOpen`
+  (`canFocus = false` proven directly), `dismissingAppearanceRestoresFocusToAStableReaderControlRatherThanLeavingItStranded`/
+  `dismissingPagesRestoresFocusToAStableReaderControlRatherThanLeavingItStranded` (focus lands on
+  `reader_page`, never nowhere). See §26b's own "honest limitation" note: this harness
+  (`createComposeRule()`, no real Activity window) could not reliably force KEYBOARD focus onto a
+  SPECIFIC deeper dialog descendant via `requestFocus()`/Tab — a harness characteristic, not a
+  production claim; `performKeyInput` still dispatches to whichever node actually holds focus
+  regardless of which node reference it is called on, so the dismissal/page-command-block proofs
+  remain genuine.
+- `./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderFoldRenderRequestTest`
+  — 2/2 PASS. Both tests reworked to carry the full `ReaderRenderGeometry` (single + spread) from
+  ONE `updateViewport` call (never a corrective second one, matching the architecture fix). The
+  render-storm-guard test's final assertion — previously assertion-by-comment (comment claimed
+  "exactly one render," assertion only checked `slots.size == 1`) — now asserts the actual recorded
+  decode-count delta directly.
+- `./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.ReaderDialogFoldSafetyTest`
+  — 4/4 PASS, unchanged (R1's pane-confinement proof still holds with the new modal machinery).
+- `./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderFoldableUiTest`
+  — 9/9 PASS, unchanged (no dialog involved; confirms the broader fold reading/gesture path is
+  unaffected by the `FixedReaderScreen.kt` changes).
+- `./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.ThumbnailNavigationUiTest`
+  — 7/7 PASS, unchanged. The pre-existing NON-fold regression suite (real `MainActivity` flow,
+  ordinary `BasicAlertDialog` path) — proves the new hinge-safe-specific modal machinery does not
+  touch the ordinary, unconstrained dialog case.
+- Regression (mechanical `ReaderRenderGeometry.Single(...)` → `.flat(...)` rename only, both files'
+  own test semantics unchanged; each run SEPARATELY): `FixedReaderSpreadViewModelTest` — 11/11
+  PASS; `FixedReaderViewModelLifecycleTest` — 2/2 PASS.
+
+**Foldable AVD / physical foldable**: same honest gap as the R1 entry below — `shelfos-api24` has
+no real fold-posture simulation; every scenario here is an injected `ReaderFoldDescriptor`/
+`FoldRect` parameter, needing no real posture event, by design. Flagged for Phase 3F, not required
+for this remediation.
+
+**Full JVM suite / full connected suite**: NOT RUN (reserved for Phase 3F; never
+`testDebugUnitTest` unfiltered, never the full connected suite, never `NavigationSmokeTest`, never
+Phase 2/3C broad suites, per standing policy).
+
+**Build**: `assembleDebug` — PASS. `assembleDebugAndroidTest` — PASS.
+
+**Lint**: `lintDebug` — PASS, 0 errors, 21 pre-existing warnings (required adding Spanish/
+Portuguese translations for the one new string resource, `content_desc_hinge_safe_dialog`, to
+clear a `MissingTranslation` error before this passed).
+
+**git diff --check**: PASS (no whitespace errors). **Working tree**: clean after commit.
+
+**Risks / Phase 3F follow-ups**:
+
+- Real foldable physical-device acceptance remains untested (consistent with the standing 3D/3F
+  honest gap — no hardware confirmed available this pass).
+- This test harness's inability to force precise intra-dialog keyboard focus (see the "honest
+  limitation" note above) means a FUTURE change that needs to assert exact focus position within
+  an open hinge-safe dialog will need either a different test harness (`createAndroidComposeRule`)
+  or a different verification strategy.
+- Recommended next step: administrator review followed by a focused Codex R3 of the range from the
+  original 3D commit (`9e26140`) through this remediation's new HEAD.
+
+## PHASE 3D CODEX R1 REMEDIATION (2026-10-07)
+
+Status: **IMPLEMENTED, one remediation commit on top of `3550484`** ("feat: add fold-aware comic
+spread layout", the 3D entry below). Branch: `phase-3/3d-adaptive-foldable-spreads`. See
+`docs/PHASE_3_IMPLEMENTATION_PLAN.md` §26a for the full architectural record of what changed and
+why; this entry is the validation evidence. Fixes Codex R1's 5 CHANGES-REQUIRED findings
+(folded Fit Width reachability, the effective render key, multiple-`FoldingFeature` selection +
+an untested production mapper, Appearance/Pages hinge safety, and two documentation/test-coverage
+overclaims) plus the explicitly-requested missing horizontal-fold UI test and corrupt-SECOND-member
+test. Does not start 3E; no dependency/Room/preference change.
+
+**What changed** (see §26a for the full "why"): `core/reader/FixedReaderTransform.kt` gained
+`foldPaneVerticalOverflow`/`foldPaneReadingTranslationY`/`foldSpreadDragToProgress` (finding 1's
+shared-normalized-progress model). New `core/reader/RenderKey.kt` —
+`ReaderRenderGeometry`/`EffectiveRenderKey`/`effectiveRenderKey`/`renderKeyBucket` (finding 2).
+`core/reader/FoldLayout.kt` gained `selectRelevantFoldDescriptor` and a `List<ReaderFoldDescriptor>`-
+taking `resolveReaderFoldLayout` overload (finding 3); the single-descriptor overload is now a thin
+delegate, unchanged behaviorally. `MainActivity.kt`'s `toReaderFoldDescriptor()` is now `internal`
+(was `private`) and maps the FULL feature list, never `firstOrNull` before reader bounds are known;
+its own non-reader legacy padding calculation moved into `ShelfApp.kt` (computed synchronously,
+same composition pass as `reading` — the route-entry race fix). `FixedReaderViewModel.kt`:
+`updateViewport` now takes `(geometry: ReaderRenderGeometry, foldPaneWidths: FoldPaneWidths?)`;
+`render()` sizes every `PageRenderRequest` from `geometry` (per-pane width AND height for an active
+fold spread, never a flat approximation). `FixedReaderScreen.kt`: `fold: ReaderFoldDescriptor?` is
+now `folds: List<ReaderFoldDescriptor>`; computes `ReaderRenderGeometry` alongside `foldPaneWidths`
+in the same `onGloballyPositioned` callback; the vertical-fold-spread gesture/render path now tracks
+`foldSpreadProgress` instead of a shared `panY`. New `feature/reader/HingeSafeDialog.kt`
+(`HingeSafeDialogOverlay`); `ReaderAppearance.kt`/`ThumbnailNavigator.kt` gained an optional
+`safePane: FoldRect?` parameter routing through it when non-null, else the unchanged ordinary
+platform dialog.
+
+**Targeted JVM unit tests — PASS.**
+`./gradlew :app:testDebugUnitTest --tests "com.d4guilar.shelfos.core.reader.FoldLayoutTest" --tests "com.d4guilar.shelfos.core.reader.FixedReaderTransformTest" --tests "com.d4guilar.shelfos.core.reader.RenderKeyTest" --tests "com.d4guilar.shelfos.core.reader.SpreadModelTest"`
+— exit 0, all 139 tests pass: `FoldLayoutTest` 29/29 (22 original + 7 new multiple-descriptor-
+selection cases), `FixedReaderTransformTest` 54/54 (41 original + 13 new fold-spread-progress-model
+cases, including the required mixed-fitted-height regression — pane 1000 / fitted 1600 / fitted
+2600, directly refuting the old `min(600, 1600)` defect), `RenderKeyTest` 14/14 (new file — bucket
+quantization + `Single`/`Spread`/material-change/harmless-drift key comparisons), `SpreadModelTest`
+42/42 (untouched, re-run as a regression guard since `FixedReaderViewModel.render()` changed).
+
+**Targeted instrumented tests — PASS** (API 24 x86_64 emulator, `shelfos-api24` AVD, each class run
+SEPARATELY per standing policy — the AGP multi-class caveat):
+- `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderFoldableUiTest`
+  — 9/9 PASS (the original 6 cases A–F, still passing unchanged, plus 3 new: (G) a horizontal
+  separating fold resolves to exactly one safe pane with no `spread_slot_*` tag ever created; (H)
+  pair `[3, 4]` with page 4 (the SECOND member) corrupt — page 3 stays visible in its own pane,
+  page 4's placeholder stays in its own pane, neither intersects the hinge, no substitution with a
+  nonexistent page 5, LTR physical identity unchanged; (I) a real one-finger drag through the
+  production gesture handler, under Fit Width with two deliberately very-differently-shaped pages,
+  moves `foldSpreadProgress` (read via the extended `reader_transform_probe`) from `0` at base
+  scale, and a full reverse drag returns it exactly to `0` with no stuck/unreachable region).
+- `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderFoldRenderRequestTest`
+  — 2/2 PASS (both extended to mirror production's real two-pass Single-then-Spread layout
+  sequence and the new `EffectiveRenderKey`/`ReaderRenderGeometry` API; same two production
+  behaviors re-proven: asymmetric per-pane request widths, and the render-storm coalescing guard).
+- `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FoldDescriptorMapperTest`
+  — 9/9 PASS (NEW class — the previously-untested REAL production `FoldingFeature.toReaderFoldDescriptor()`
+  mapper: bounds, `VERTICAL`/`HORIZONTAL` orientation, `isSeparating` true/false, FULL occlusion,
+  no-occlusion, irrelevant-crease-flags-preserved, multiple-feature list mapping).
+- `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.ReaderDialogFoldSafetyTest`
+  — 4/4 PASS (NEW class — mounts the REAL `ReaderAppearance`/`ThumbnailNavigator` composables
+  directly: both dialogs' surfaces stay entirely inside the given safe pane and never intersect a
+  simulated hinge with their primary action reachable; an RTL-selected opposite-side pane is also
+  honored; `safePane == null` still uses the ordinary unconstrained platform dialog).
+- Regression (mechanically updated for the new `updateViewport(ReaderRenderGeometry, ...)`
+  signature; each run SEPARATELY): `FixedReaderSpreadViewModelTest` — 11/11 PASS;
+  `FixedReaderViewModelLifecycleTest` — 2/2 PASS.
+
+**Foldable AVD**: `shelfos-api24` (the same x86_64 phone emulator used throughout Phase 3D) was
+used to run every instrumented test above — it has no real fold-posture simulation capability, but
+every fold/hinge scenario in this remediation is a plain Compose parameter
+(`FixedReaderScreen(folds = ...)`/`safePane = ...`) needing no real posture event, by design. A
+dedicated foldable-posture-simulation AVD or physical foldable device remains an honest, flagged
+Phase 3F follow-up, not required for this slice (R1 explicitly did not gate merge on it).
+
+**Physical foldable**: not performed (no hardware confirmed available this pass; consistent with
+the standing Phase 3D/3F honest-gap note).
+
+**Full JVM suite / full connected suite**: NOT RUN (reserved for Phase 3F per standing policy; the
+targeted filters above are the required/bounded validation for this slice).
+
+**Build**: `assembleDebug` — PASS. `assembleDebugAndroidTest` — PASS (required fixing three
+pre-existing test files' mechanical call sites to the new `updateViewport` signature before this
+passed: `FixedReaderFoldableUiTest`'s `fold =` → `folds = listOfNotNull(fold)`,
+`FixedReaderSpreadViewModelTest`/`FixedReaderViewModelLifecycleTest`'s raw-int `updateViewport`
+calls → `ReaderRenderGeometry.Single(...)`).
+
+**Lint**: `lintDebug` — PASS, 0 errors (SARIF report checked directly).
+
+**git diff --check**: PASS (no whitespace errors). **Working tree**: clean after commit.
+
+## PHASE 3D — ADAPTIVE / FOLDABLE COMIC SPREADS (2026-10-06)
+
+Status: **IMPLEMENTED, pending administrator/Codex review.** Base: `main` @ `9e26140`
+("feat: add Phase 3C comic and manga spread reading (#26)"). Branch:
+`phase-3/3d-adaptive-foldable-spreads`. See `docs/PHASE_3_IMPLEMENTATION_PLAN.md` §26 for the
+full architectural record; this entry is the validation evidence.
+
+**What changed**: new `core/reader/FoldLayout.kt` (pure, Android/Compose-free) —
+`FoldRect`/`FoldOrientation`/`ReaderFoldDescriptor`/`FoldPresentation`/`ReaderFoldLayout`/
+`FoldPaneWidths`/`FoldInset`, `resolveReaderFoldLayout` (window-to-local coordinate translation +
+relevant-feature filtering + vertical/horizontal split resolution), `selectSoloPane`,
+`verticalFoldSpreadEligibleForAuto`/`verticalFoldHasTwoUsablePanes`, and `legacySafePaneInset`
+(the pre-3D `MainActivity` padding formula extracted unchanged for non-reader-screen regression
+testing). `MainActivity.kt`: one new private `FoldingFeature.toReaderFoldDescriptor()` mapping
+function (the only `WindowInfoTracker`/`FoldingFeature` consumer in the app, unchanged from
+Phase 0); `reading` state (reported by `ShelfApp`) now gates whether the existing legacy
+safe-pane padding applies (non-reader screens, unchanged behavior) or the reader gets the full
+safe-drawing window plus the raw fold descriptor. `feature/home/ShelfApp.kt`: new
+`readerFold`/`onReadingChanged` parameters threading the descriptor to `FixedReaderScreen` only
+on the reader route. `feature/reader/FixedReaderViewModel.kt`: `updateViewport` gained an
+optional `foldPaneWidths: FoldPaneWidths?` parameter (stored like the existing px/dp fields,
+never itself triggering a render); `spreadActive()` consults the fold-aware AUTO/SPREAD policy
+when a vertical split is active; `render()` computes per-slot pane-aware pixel widths for an
+active fold spread (reusing `PageGroup.physicalOrder(rtl)` for the logical-to-physical mapping,
+never a second RTL system) while leaving the flat/solo-page path and the existing
+`RenderMemoryPolicy`/`spreadSlot` budget untouched. `feature/reader/FixedReaderScreen.kt`:
+measures its own window bounds via `onGloballyPositioned`, resolves `ReaderFoldLayout` each
+layout pass, confines solo-page/legacy-spread rendering to the single active pane
+(FLAT/HORIZONTAL_SPLIT/VERTICAL_SPLIT-solo, reusing all existing 3C Fit Page/Fit Width/zoom-pan
+code against the pane's own size), and adds a new, small vertical-split two-pane spread renderer
+(two independently fixed, clipped pane `Box`es, one shared scale/pan state, clamped via the new
+`foldPaneMaxPan`/`foldSpreadSharedMaxPan` helpers) plus fold-aware confinement of the reader
+chrome rows under a vertical split. No new dependency, no Room schema change, no new persisted
+preference.
+
+**Pure JVM unit tests — PASS.**
+`./gradlew :app:testDebugUnitTest --tests "com.d4guilar.shelfos.core.reader.FoldLayoutTest" --tests "com.d4guilar.shelfos.core.reader.SpreadModelTest" --tests "com.d4guilar.shelfos.core.reader.PageRenderRequestTest" --tests "com.d4guilar.shelfos.core.reader.ReaderPreferencesSpreadTest" --tests "com.d4guilar.shelfos.core.reader.FixedReaderTransformTest"`
+— exit 0, all tests pass (22 `FoldLayoutTest` cases: no-fold==flat, non-separating/non-occluding
+crease ignored, feature outside reader bounds ignored, vertical center/asymmetric/full-occlusion/
+zero-width hinges, horizontal fold safe-pane selection + exact-tie-break, malformed/empty-bounds
+fallback, solo-pane selection including the reading-direction tie-break, AUTO's fold-aware
+per-pane-floor policy, explicit SPREAD's two-usable-panes policy, and the extracted
+`legacySafePaneInset` non-reader-regression-guard cases). `SpreadModelTest`/`PageRenderRequestTest`/
+`ReaderPreferencesSpreadTest`/`FixedReaderTransformTest` re-run unchanged (no 3D regression) since
+this slice reuses, rather than modifies, their underlying policies.
+
+**Targeted instrumented tests — PASS** (API 24 x86_64 emulator, `shelfos-api24` AVD, each class run
+SEPARATELY per standing policy):
+- `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderFoldableUiTest`
+  — 6/6 PASS. The required test matrix: (A) vertical LTR spread (pair [1,2] correctly placed in
+  their own panes, no hinge intersection), (B) vertical RTL Manga (physical placement mirrored,
+  logical page identity unchanged), (C) solo/cover page wholly inside one safe pane, (D) a corrupt
+  spread member's placeholder stays in its own hinge-safe pane with the healthy sibling in its
+  own, (E) a real zoom (double-tap) + one-finger drag through the production `awaitEachGesture`
+  transform loop never moves either slot under the hinge, (F) fold→flat→fold preserves the exact
+  same authoritative `state.page` throughout and presentation correctly cycles back to a
+  fold-aware spread.
+- `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.FixedReaderFoldRenderRequestTest`
+  — 2/2 PASS. `verticalFoldSpreadRequestsEachSlotAtItsOwnAsymmetricPaneWidth`: an asymmetric fold
+  (150px/1700px panes) proves each slot's actual `PageRenderRequest.viewportWidth` matches its own
+  pane (never the flat `viewportWidth/2` approximation), both still flagged `spreadSlot = true`,
+  and both decoded bitmaps stay within `RenderMemoryPolicy.MAX_SPREAD_BITMAP_BYTES`.
+  `continuousFoldPaneWidthChangesThatNeverFlipSpreadActiveNeverTriggerANewDecode`: the render-storm
+  guard — five drifting-but-AUTO-eligible `updateViewport` calls trigger zero additional decodes,
+  while the one call that actually flips AUTO's decision below its floor triggers exactly the
+  required re-render (proving the guard doesn't silently suppress a genuine required change).
+- Regression (existing 3C classes re-run, each separately, to confirm no behavioral regression from
+  the `FixedReaderScreen`/`FixedReaderViewModel` changes above): `FixedReaderSpreadUiTest` — PASS;
+  `FixedReaderSpreadViewModelTest` — PASS; `ReaderPreferencesSpreadInstrumentedTest` — PASS;
+  `FixedReaderViewModelLifecycleTest` (memory/PSS evidence, light-touch re-run since this slice
+  changed render-request sizing) — PASS.
+
+**Foldable AVD**: not available this pass (the `shelfos-api24` x86_64 phone emulator has no fold
+posture simulation capability). No dedicated foldable AVD was created or attempted given the time
+budget for this slice; the deterministic injected-fold-descriptor tests above (which need no real
+posture event, by design — `fold` is a plain `FixedReaderScreen` parameter) are the primary gate,
+exactly as `docs/PHASE_3_IMPLEMENTATION_PLAN.md` §15 anticipates. A bounded real foldable-AVD or
+physical-device posture-transition check remains an honest, flagged Phase 3F follow-up.
+
+**Physical foldable**: not performed (no hardware confirmed available this pass; consistent with
+§15's standing honest-gap note).
+
+**Full JVM suite / full connected suite**: NOT RUN (reserved for Phase 3F per standing policy).
+
+**Build**: `assembleDebug` — PASS. `assembleDebugAndroidTest` — PASS.
+
+**Lint**: `lintDebug` — PASS, no new errors.
+
+**git diff --check**: PASS (no whitespace errors). **Working tree**: clean after commit.
+
 ## PHASE 3C — SPREADS + MANGA PAIRING (2026-10-05)
 
 Status: **IMPLEMENTED, pending administrator/Codex review.** Base: `main` @ `673ff49`

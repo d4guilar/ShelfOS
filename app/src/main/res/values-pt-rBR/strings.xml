@@ -162,6 +162,7 @@
     <string name="content_desc_thumbnail_unavailable">Indisponível</string>
     <string name="content_desc_spread_current_page">Página %1$d de %2$d, página atual</string>
     <string name="content_desc_spread_page_unavailable">Página %1$d, indisponível</string>
+    <string name="content_desc_hinge_safe_dialog">Diálogo</string>
     <string name="appearance_spread_mode">Página dupla</string>
     <string name="appearance_spread_auto">Automático</string>
     <string name="appearance_spread_single">Página única</string>

@@ -162,6 +162,10 @@
     <string name="content_desc_thumbnail_unavailable">Unavailable</string>
     <string name="content_desc_spread_current_page">Page %1$d of %2$d, current page</string>
     <string name="content_desc_spread_page_unavailable">Page %1$d, unavailable</string>
+    <!-- Phase 3D Codex R2 remediation, finding B: spoken-only (never visually rendered) accessibility pane
+         title for HingeSafeDialogOverlay, communicating "this is a modal dialog surface" to TalkBack without
+         inventing user-visible "hinge dialog" copy. -->
+    <string name="content_desc_hinge_safe_dialog">Dialog</string>
     <string name="appearance_spread_mode">Two-page spread</string>
     <string name="appearance_spread_auto">Automatic</string>
     <string name="appearance_spread_single">Single page</string>

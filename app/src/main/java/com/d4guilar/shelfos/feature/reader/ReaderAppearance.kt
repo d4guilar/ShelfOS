@@ -39,13 +39,19 @@ fun ReaderAppearance(preferences: ReaderPreferences, capabilities: ReaderCapabil
     fontImportError: UiMessage? = null,
     onImportFont: (() -> Unit)? = null,
     onRemoveFont: ((String) -> Unit)? = null,
+    // Phase 3D Codex R1 remediation, finding 4: non-null ONLY while a relevant vertical fold constrains the
+    // reader -- the SAME selected safe pane (reader-LOCAL FoldRect) FixedReaderScreen's own chrome already uses
+    // (see its chromePane doc). When present, this dialog renders through HingeSafeDialogOverlay, confined
+    // entirely within that one pane, instead of the ordinary platform AlertDialog -- see HingeSafeDialogOverlay's
+    // own class doc for why a real Dialog window cannot be reliably fold-aware.
+    safePane: FoldRect? = null,
 ) {
     val t = LocalShelfTokens.current
     val initial = rememberSaveable(saver = ReaderPreferencesSaver) { preferences }
     var draft by rememberSaveable(stateSaver = ReaderPreferencesSaver) { mutableStateOf(initial) }
     var globally by rememberSaveable { mutableStateOf(false) }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.appearance_dialog_title)) }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    val body: @Composable () -> Unit = {
+        Column(Modifier.verticalScroll(rememberScrollState()).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (capabilities.typography) {
                 Text(stringResource(R.string.appearance_presentation))
                 PresentationMode.entries.forEach { mode -> ShelfChoiceChip(draft.presentationMode == mode,
@@ -117,8 +123,31 @@ fun ReaderAppearance(preferences: ReaderPreferences, capabilities: ReaderCapabil
                 Text(stringResource(R.string.appearance_direction_title_only_notice), color = t.colors.secondary, style = MaterialTheme.typography.bodySmall)
             TextButton({ onReset(globally); onDismiss() }) { Text(stringResource(if (globally) R.string.appearance_reset_all_titles else R.string.appearance_reset_this_title)) }
         }
-    }, confirmButton = { TextButton({ onApply(initial, draft, globally); onDismiss() }) { Text(stringResource(R.string.action_apply)) } },
-        dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.action_cancel)) } })
+    }
+    if (safePane != null) {
+        // Phase 3D Codex R1 remediation, finding 4: same title/body/actions, confined to the one selected safe
+        // pane via HingeSafeDialogOverlay instead of a window-centered platform AlertDialog -- see that
+        // composable's own class doc.
+        HingeSafeDialogOverlay(paneWindow = safePane, onDismissRequest = onDismiss) {
+            Column(Modifier.padding(24.dp).widthIn(max = 360.dp).testTag("appearance_hinge_safe_content")) {
+                Text(stringResource(R.string.appearance_dialog_title), style = MaterialTheme.typography.headlineSmall)
+                Spacer(Modifier.height(16.dp))
+                Box(Modifier.heightIn(max = 420.dp)) { body() }
+                Spacer(Modifier.height(16.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onDismiss) { Text(stringResource(R.string.action_cancel)) }
+                    TextButton({ onApply(initial, draft, globally); onDismiss() }, Modifier.testTag("appearance_hinge_safe_apply")) {
+                        Text(stringResource(R.string.action_apply))
+                    }
+                }
+            }
+        }
+    } else {
+        AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.appearance_dialog_title)) },
+            text = { body() },
+            confirmButton = { TextButton({ onApply(initial, draft, globally); onDismiss() }) { Text(stringResource(R.string.action_apply)) } },
+            dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.action_cancel)) } })
+    }
 }
 
 /** The two builtin font families' display names are ShelfOS-owned UI copy, not font metadata (unlike a USER

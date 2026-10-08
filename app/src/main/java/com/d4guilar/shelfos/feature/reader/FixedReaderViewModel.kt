@@ -54,16 +54,24 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
     // state.count == 0 that way for the page slider.
     private var thumbnailLoader: ThumbnailLoader<Bitmap>? = null
     val thumbnails: ThumbnailLoader<Bitmap>? get() = thumbnailLoader
-    // Last viewport size reported by FixedReaderScreen (Phase 3A). Read only when a *new* render is already about
-    // to happen (open/page-turn/retry); updating it on its own never triggers a render, so a resize/rotation/fold
-    // stream of onSizeChanged calls can never itself cause a render storm -- it only changes what resolution the
-    // next naturally-occurring render asks for.
-    @Volatile private var viewportWidth: Int = 0
-    @Volatile private var viewportHeight: Int = 0
-    // Phase 3C: dp (density-independent) viewport width, the unit AUTO's window-size decision is specified in
-    // (resolveSpreadActive) -- tracked separately from the px viewportWidth/Height above, which stay the actual
-    // decode-target inputs. Updated the same "never itself triggers a render" way as viewportWidth/Height.
-    @Volatile private var viewportWidthDp: Int = 0
+    // Phase 3D Codex R1 remediation, finding 2 (R2 remediation, finding A: now reports BOTH the solo target AND
+    // the two-pane spread target unconditionally -- see ReaderRenderGeometry's own doc for why that independence
+    // from published slot count is the actual fix): the complete decode-target SHAPE for the CURRENT fold
+    // presentation -- replaces the old flat viewportWidth/Height/viewportWidthDp trio, which was always the WHOLE
+    // reader surface's own size even when the active content could only ever occupy one fold-safe pane
+    // (HORIZONTAL_SPLIT, or a VERTICAL_SPLIT solo page). Updated unconditionally on every updateViewport call;
+    // updating it alone never triggers a render -- see updateViewport's doc for the one narrow exception (an
+    // actual effectiveRenderKey() change), the same "never itself triggers a render" discipline the old fields
+    // observed for a continuous resize/rotation/fold stream.
+    @Volatile private var renderGeometry: ReaderRenderGeometry = ReaderRenderGeometry.flat(0, 0, 0)
+    // Phase 3D: non-null only while FixedReaderScreen's measured fold layout is a VERTICAL_SPLIT with two
+    // positive-area panes; null for FLAT/HORIZONTAL_SPLIT (whose AUTO policy stays exactly the flat 3C behavior,
+    // driven by renderGeometry's own Single.widthDp above) or before the first fold layout is measured. This is
+    // the AUTO/SPREAD two-pane ELIGIBILITY input (verticalFoldSpreadEligibleForAuto/FoldPaneWidths.bothPanesUsable)
+    // -- deliberately a SEPARATE field from renderGeometry, because "could a spread be shown" must stay evaluable
+    // even while the CURRENT render is still a single/solo page (renderGeometry reflects what IS currently
+    // rendered, not what COULD be). Same "updating never itself triggers a render" discipline as renderGeometry.
+    @Volatile private var foldPaneWidths: FoldPaneWidths? = null
     // Pure index structure only (no geometry/IO) -- cheap to build once per session regardless of page count; see
     // SpreadModel.kt's nextPage/previousPage/resolveCurrentGroup docs for why this stays bounded-cost even for a
     // very large publication (geometry is only ever looked up for the single pair actually being navigated/shown,
@@ -88,7 +96,10 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
     // computed decision on every updateViewport call so a continuous resize/rotation stream only triggers a new
     // render on the rare call that actually flips single<->spread, never on every pixel of movement (see
     // updateViewport's doc).
-    @Volatile private var lastSpreadActiveRendered: Boolean? = null
+    // Phase 3D Codex R1 remediation, finding 2: replaces lastSpreadActiveRendered -- the EffectiveRenderKey
+    // actually used by the most recently started render, compared against a freshly computed key on every
+    // updateViewport call (see EffectiveRenderKey's own doc for exactly what "materially different" means here).
+    @Volatile private var lastEffectiveRenderKey: EffectiveRenderKey? = null
     // Codex R1 finding 5 (3C remediation): the effective title SpreadMode this ViewModel last actually rendered
     // against, so the init{} collector below can detect a genuine mode change (title override set/cleared, or a
     // reset restoring AUTO) and reconcile the currently-visible page immediately -- see the collector's doc.
@@ -162,6 +173,15 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
     /** The spread preference currently in effect for this title (AUTO if unset -- see [ReaderPreferences.DEFAULT]). */
     private fun spreadMode() = _state.value.preferences.spreadMode ?: SpreadMode.AUTO
 
+    /** Phase 3D: the same RTL resolution [FixedReaderScreen] already computes for physical page placement
+     * (`readingDirection(item.category, preferences.direction) == ReadingDirection.RTL`), reused here ONLY to
+     * map a fold-aware spread's logical pages onto the correct physical pane for render-request sizing -- never
+     * a second RTL system, never affecting [FixedReaderState.page]/the locator/progress. */
+    private fun itemCategoryIsRtl(): Boolean {
+        val item = _state.value.item ?: return false
+        return readingDirection(item.category, _state.value.preferences.direction) == ReadingDirection.RTL
+    }
+
     /** Whether a spread is currently active: the window/preference decision ([resolveSpreadActive]), defensively
      * ANDed with [spreadCapable] for this item's actual format/category -- never Books/Documents, regardless of
      * what a stray [SpreadMode] value might say (e.g. a title re-categorized from Comic to Book after a SPREAD
@@ -172,8 +192,25 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
     private fun spreadActive(): Boolean {
         val item = _state.value.item ?: return false
         if (!spreadCapable(item.format, item.category)) return false
-        return resolveSpreadActive(spreadMode(), viewportWidthDp)
+        // Phase 3D: under a vertical fold split, AUTO/SPREAD consult the fold-aware two-pane policy
+        // (verticalFoldSpreadEligibleForAuto / FoldPaneWidths.bothPanesUsable) instead of the flat 3C
+        // total-width rule -- "don't decide from total window width alone if one pane is a tiny sliver." SINGLE
+        // is unaffected either way: it is always false. FLAT/HORIZONTAL_SPLIT (foldPaneWidths == null) keep the
+        // exact flat 3C behavior unchanged.
+        val fold = foldPaneWidths
+        return when (val mode = spreadMode()) {
+            SpreadMode.SINGLE -> false
+            SpreadMode.SPREAD -> if (fold != null) fold.bothPanesUsable else resolveSpreadActive(mode, currentWidthDp())
+            SpreadMode.AUTO -> if (fold != null) verticalFoldSpreadEligibleForAuto(fold.leftDp, fold.rightDp)
+                else resolveSpreadActive(mode, currentWidthDp())
+        }
     }
+
+    /** The current decode-target box's own width in dp -- [ReaderRenderGeometry.single]'s own `widthDp`, which
+     * (Codex R2 remediation, finding A) is now ALWAYS the correct solo-page box regardless of whether a two-pane
+     * spread is also currently available, so this never needs a stale-[Spread]-fallback special case the way
+     * R1's sealed geometry type did. */
+    private fun currentWidthDp(): Int = renderGeometry.single.widthDp
 
     /**
      * Codex R1 finding 1 (3C remediation): cached/bounded landscape lookup used ONLY by semantic navigation
@@ -203,6 +240,23 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
     private fun isLandscapeAtForNavigation(page: Int): Boolean {
         val geometry = geometryCache[page] ?: return true
         return !geometry.isUsable || geometry.isLandscape
+    }
+
+    /**
+     * Codex R2 remediation, finding A: a synchronous, CACHE-ONLY, optimistic landscape read -- never performs IO
+     * itself (unlike [render]'s own presentation lambda, which may call [FixedReader.pageGeometry] the first time
+     * a page is actually decoded) -- so it stays safe to call synchronously from the UI thread inside
+     * [updateViewport] and at the top of [render], to resolve the [PageGroup] size the new state-independent
+     * [EffectiveRenderKey]/decode-target selection needs BEFORE any IO happens. An unresolved cache entry reads as
+     * "not landscape" -- the SAME optimistic default [resolveGroups]/[render]'s own presentation lambda already
+     * use (see their docs: "unknown geometry is treated as not landscape, optimistic pairing reconciles naturally
+     * once geometry resolves") -- deliberately the OPPOSITE of [isLandscapeAtForNavigation]'s conservative
+     * `true` default, which exists only to protect semantic Next/Previous from skipping over an unresolved pair;
+     * this function is never used for navigation.
+     */
+    private fun isLandscapeAtForPresentationSync(page: Int): Boolean {
+        val geometry = geometryCache[page] ?: return false
+        return geometry.isUsable && geometry.isLandscape
     }
 
     /**
@@ -260,24 +314,34 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
 
     fun retry() = render(_state.value.page)
 
-    /** Records the reader page surface's current measured size (Phase 3A) plus its density-independent width in
-     * dp (Phase 3C -- the unit AUTO's window threshold, [AUTO_SPREAD_MIN_WIDTH_DP], is specified in). Updating the
-     * stored size never itself triggers a render -- see the field docs above -- EXCEPT for the one narrowly-scoped
-     * Phase 3C case where the width crossing [AUTO_SPREAD_MIN_WIDTH_DP] actually changes AUTO's single/spread
-     * decision: that is the only resize-driven re-render, it is coalesced to at most once per actual flip (not
-     * once per pixel of a continuous resize/rotation/fold gesture, since most size changes don't cross the
-     * threshold), it never changes `state.page`/the locator/progress, and it is a no-op before a session/page
-     * exists (count == 0), so this stays safe to call on every `onSizeChanged`. */
-    fun updateViewport(width: Int, height: Int, widthDp: Int) {
-        if (width > 0 && height > 0) { viewportWidth = width; viewportHeight = height }
-        if (widthDp > 0) {
-            viewportWidthDp = widthDp
-            val count = _state.value.count
-            if (count > 0) {
-                val active = spreadActive()
-                if (active != lastSpreadActiveRendered) render(_state.value.page)
-            }
-        }
+    /**
+     * Records the reader's current decode-target geometry (Phase 3A; Phase 3D Codex R1 remediation, finding 2;
+     * R2 remediation, finding A -- see [ReaderRenderGeometry]'s own doc for exactly what [geometry] represents,
+     * now reporting BOTH the solo and two-pane-spread targets unconditionally, independent of published slot
+     * count) and [foldPaneWidths] (Phase 3D's fold-aware two-pane AUTO/SPREAD eligibility input, `null` when
+     * flat/horizontal-fold/not-yet-measured -- see the field's own doc). Both are stored unconditionally on every
+     * call so they are always current the next time [render] actually runs, but storing them never itself
+     * triggers a render -- per the render-storm guard this method has always enforced, only the rare call that
+     * actually changes [effectiveRenderKey] (see its own doc for exactly what "materially different" means:
+     * presentation shape, each relevant slot's own hysteresis-ACCEPTED bucketed width/height, and its
+     * `spreadSlot` classification) forces a new decode.
+     *
+     * Codex R2 remediation, finding A's actual fix lives here: [groupSize] -- the real [PageGroup.pages].size for
+     * the page ABOUT TO be shown -- is resolved synchronously, via [isLandscapeAtForPresentationSync] (never IO),
+     * from [canonicalGroups] alone, BEFORE building the key. This is what lets [effectiveRenderKey] (and, from
+     * [render] itself, the actual [PageRenderRequest] target) choose [geometry]'s two-pane [ReaderRenderGeometry.spread]
+     * shape the moment a group that size is about to render -- WITHOUT waiting for `state.slots` to already
+     * contain that many published slots, which is exactly the circular dependency this remediation closes.
+     */
+    fun updateViewport(geometry: ReaderRenderGeometry, foldPaneWidths: FoldPaneWidths? = null) {
+        this.renderGeometry = geometry
+        this.foldPaneWidths = foldPaneWidths
+        val current = _state.value
+        if (current.count <= 0) return
+        val spreadActive = spreadActive()
+        val groupSize = resolveCurrentGroup(canonicalGroups, current.page, spreadActive, ::isLandscapeAtForPresentationSync).pages.size
+        val key = effectiveRenderKey(geometry, groupSize, spreadActive, lastEffectiveRenderKey)
+        if (key != lastEffectiveRenderKey) render(current.page)
     }
 
     /**
@@ -303,11 +367,20 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
      * so that real four-bitmap worst case is mechanically bounded at exactly [RenderMemoryPolicy.READING_BUDGET_BYTES]
      * rather than merely reasoned about in documentation.
      *
-     * Per-slot sizing: each slot's [PageRenderRequest.viewportWidth] is the measured viewport width divided by
-     * the number of slots in the group (full [viewportHeight] either way) -- an approximation that ignores the
-     * few-dp inter-page gutter (a pure design-token/layout concern, not a decode-resolution one); harmless, since
-     * [RenderMemoryPolicy]'s byte-budget ceiling already bounds the result regardless of a slightly-generous
-     * width estimate.
+     * Per-slot sizing (Phase 3D Codex R1 remediation, finding 2; R2 remediation, finding A): each slot's
+     * [PageRenderRequest.viewportWidth]/`viewportHeight` come from [renderGeometry]'s own box for the CURRENT
+     * fold presentation (see [ReaderRenderGeometry]'s doc) -- the ACTIVE pane's size for a solo page, or each
+     * physical pane's own independent size for an active vertical-fold spread -- never the whole reader surface's
+     * raw size divided evenly, except for the still-correct flat/in-pane 2-slot spread case (FLAT/HORIZONTAL_SPLIT),
+     * which keeps exactly 3C's own even-width-split approximation (ignoring the few-dp inter-page gutter, a pure
+     * design-token/layout concern, not a decode-resolution one); harmless, since [RenderMemoryPolicy]'s byte-
+     * budget ceiling already bounds the result regardless of a slightly-generous width estimate. [group] (via
+     * [resolveCurrentGroup]) is resolved FIRST, from this call's own [page] -- never from `state.slots.size` --
+     * and [resolveRenderTargets] picks the two-pane-spread shape the moment [group] has 2 pages AND
+     * [geometry].[spread][ReaderRenderGeometry.spread] is populated, with NO dependency on how many slots were
+     * published by any PREVIOUS render: the first decode of a freshly-eligible spread (or a freshly-resolved solo
+     * page) already uses the correct target, closing the circular "decide geometry from already-published slots"
+     * defect R2 found.
      *
      * Corrupt-page handling: a decode failure for one slot never blanks its sibling -- that slot's [PageSlot]
      * carries [PageSlot.error] instead of a bitmap, the other slot (if any) keeps its own successfully-decoded
@@ -318,7 +391,13 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
         rendering?.cancel()
         _state.update { it.copy(loading = true, error = null) }
         val spreadActive = spreadActive()
-        lastSpreadActiveRendered = spreadActive
+        val geometry = renderGeometry
+        // Codex R2 remediation, finding A: the SAME synchronous, cache-only group-size resolution
+        // updateViewport() uses, so the key this call accepts is built from exactly the shape this call is about
+        // to render -- never from a boolean that can't distinguish "which shape." lastEffectiveRenderKey is
+        // threaded through as the hysteresis baseline (see effectiveRenderKey's own doc).
+        val groupSize = resolveCurrentGroup(canonicalGroups, page, spreadActive, ::isLandscapeAtForPresentationSync).pages.size
+        lastEffectiveRenderKey = effectiveRenderKey(geometry, groupSize, spreadActive, lastEffectiveRenderKey)
         val fit = _state.value.preferences.fit ?: FitMode.PAGE
         rendering = viewModelScope.launch {
             withContext(Dispatchers.IO) {
@@ -330,22 +409,35 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
                         val group = resolveCurrentGroup(canonicalGroups, page, spreadActive) { idx ->
                             geometryCache.getOrPut(idx) { reader.pageGeometry(idx) ?: PageGeometry(0, 0) }.isLandscape
                         }
-                        val slotWidth = if (viewportWidth > 0 && group.pages.isNotEmpty()) (viewportWidth / group.pages.size) else viewportWidth
                         // Codex R1 finding 2 (3C remediation): an ACTIVE spread's slots (group.pages.size > 1)
                         // decode under RenderMemoryPolicy's stricter spread-transition per-slot budget -- see
                         // PageRenderRequest.spreadSlot / RenderMemoryPolicy.MAX_SPREAD_BITMAP_BYTES.
                         val spreadSlot = group.pages.size > 1
+                        // Codex R2 remediation, finding A: resolveRenderTargets is the SAME shape-selection logic
+                        // effectiveRenderKey above already applied -- two independent per-pane boxes when
+                        // group.pages.size == 2 and geometry.spread is populated (mapping logical->physical reuses
+                        // the EXACT SAME PageGroup.physicalOrder(rtl) the Compose layer uses for drawing -- no
+                        // second RTL system), else geometry.single split evenly by slot count exactly as 3C did.
+                        val targetDims = resolveRenderTargets(geometry, group.pages.size)
+                        val targets: Map<Int, Pair<Int, Int>> = if (geometry.spread != null && group.pages.size == 2) {
+                            val rtl = itemCategoryIsRtl()
+                            val physical = PageGroup(group.pages).physicalOrder(rtl) // [0]=left pane, [1]=right pane
+                            mapOf(physical[0] to targetDims[0], physical[1] to targetDims[1])
+                        } else {
+                            group.pages.mapIndexed { i, idx -> idx to targetDims[i] }.toMap()
+                        }
                         for (idx in group.pages) {
                             ensureActive() // Re-checked before each sequential decode, not just once for the whole group.
                             // Codex R1 finding 3 (3C remediation): always resolve this page's own geometry BEFORE
                             // deciding its fate, regardless of whether the decode below succeeds -- a failed
                             // decode must still carry its own source geometry so combinedContentDimensions()/the
                             // Compose placeholder never have to borrow a sibling's aspect ratio for it.
-                            val geometry = geometryCache.getOrPut(idx) { reader.pageGeometry(idx) ?: PageGeometry(0, 0) }
-                            val request = PageRenderRequest(slotWidth, viewportHeight, fit = fit, spreadSlot = spreadSlot)
-                            decoded += try { PageSlot(idx, bitmap = reader.render(idx, request), geometry = geometry) }
+                            val pageGeometry = geometryCache.getOrPut(idx) { reader.pageGeometry(idx) ?: PageGeometry(0, 0) }
+                            val (targetWidth, targetHeight) = targets[idx] ?: (0 to 0)
+                            val request = PageRenderRequest(targetWidth, targetHeight, fit = fit, spreadSlot = spreadSlot)
+                            decoded += try { PageSlot(idx, bitmap = reader.render(idx, request), geometry = pageGeometry) }
                             catch (e: CancellationException) { throw e }
-                            catch (e: Exception) { PageSlot(idx, error = e.readerMessage(), geometry = geometry) }
+                            catch (e: Exception) { PageSlot(idx, error = e.readerMessage(), geometry = pageGeometry) }
                         }
                         ensureActive() // Checked once more, still holding the lock, before publishing -- see the method doc above.
                         val allFailed = decoded.all { it.bitmap == null }
