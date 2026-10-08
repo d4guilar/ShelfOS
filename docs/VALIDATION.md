@@ -1,5 +1,81 @@
 # Validation
 
+## PHASE 3E-B CODEX R1B REMEDIATION (2026-10-08)
+
+Status: **COMPLETE locally; pending focused independent re-review.** Branch:
+`phase-3/3e-native-cbr`; original 3E-B commit `1746d53`; Claude R1A ownership
+remediation `38e8ac6` ("fix: make native RAR ownership exception-safe"). This R1B
+pass implements only the five remaining lower-severity review findings plus the
+newly discovered test-baseline bug. It does not begin 3E-C.
+
+**R1A ownership preservation and FD-test correction**: R1A's `std::unique_ptr<Session>`
+initialization ownership, release-after-success, Session destructor cleanup, and Kotlin
+native-unavailable fd close remain unchanged. The native-unavailable lifecycle test now captures
+its `/proc/self/fd` baseline before creating/opening/detaching the fixture descriptor, so the
+closed transferred fd is no longer incorrectly counted only in the `before` value.
+
+**Early/truncated RAR classification**: a bounded, position-preserving `pread()` inspects the
+exact pinned RAR4 (`52 61 72 21 1A 07 00`) and RAR5 (`52 61 72 21 1A 07 01 00`) signatures.
+Unrelated bytes remain `UNSUPPORTED`; any non-empty exact signature prefix, a complete signature
+with a broken first header, and an exact signature-only file are recognizable RAR input and map
+to `CORRUPT`. The check applies both when format bidding fails and when the first header fails;
+the exact-signature EOF case is also rejected. Classification therefore no longer depends solely
+on `EILSEQ`/`EINVAL`.
+
+**Native edge hardening**: the extraction loop returns `IO` when `write()` returns zero, before
+advancing its offset, removing the no-progress infinite-loop risk while retaining `EINTR` retry
+and positive partial-write behavior. A real Android fd cannot deterministically produce a
+zero-byte write for a positive request without an artificial production hook, so this regression
+is static-inspection-only as explicitly allowed. `restartFd()` now maps only `ESPIPE` to
+`NOT_SEEKABLE`; `EBADF` and every other `lseek` errno map to `IO`. A real pipe test proves the
+`ESPIPE` path, while the existing unopened/closed-fd tests prove `IO`.
+
+**JNI narrowing**: entry count is bounded against `jint` maximum before the vector can exceed
+the representable count and again immediately before the getter cast. Entry names are measured
+with bounded `strnlen` and rejected with `NATIVE_INTERNAL` before string storage/JNI allocation
+if they exceed `jsize`; `nativeEntryName` retains a defensive no-allocation check immediately
+before its casts. No oversized fixture or enormous allocation was created.
+
+**Documentation truthfulness**: the original 3E-B record now states that catch-all boundaries
+cover the four allocating/fallible JNI calls, while the four non-allocating metadata getters do
+not have catch-all wrappers. It distinguishes the fixed 64 KiB payload streaming buffer from
+Session metadata allocations that scale with entry count/name bytes and remain subject to 3E-C
+policy limits. `docs/PHASE_3_IMPLEMENTATION_PLAN.md` now consistently records 3E-A as complete
+and accepted, 3E-B as implemented and undergoing remediation/review, 3E-C through 3E-E as not
+started, and Phase 3 as incomplete.
+
+**Focused instrumented tests** (separate invocations on `emulator-5554`,
+`shelfos-api24(AVD) - 7.0`, x86_64; never a comma-separated class argument):
+
+- `./gradlew.bat :app:connectedDebugAndroidTest
+  -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.core.files.LibarchiveRarNativeTest
+  --console=plain --no-daemon` -> **11 tests, 0 failures, 0 errors, 0 skipped**. This covers RAR4
+  enumerate/extract, RAR5 enumerate/extract, solid last-to-earlier-to-last, encrypted RAR4/RAR5
+  `PROTECTED`, unrelated bytes `UNSUPPORTED`, short RAR4/RAR5 prefixes `CORRUPT`, RAR4/RAR5
+  signature-only `CORRUPT`, and the existing 100-byte truncation `CORRUPT` case.
+- `./gradlew.bat :app:connectedDebugAndroidTest
+  -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.core.files.LibarchiveRarNativeLifecycleTest
+  --console=plain --no-daemon` -> **9 tests, 0 failures, 0 errors, 0 skipped**. This covers the
+  corrected native-unavailable ownership baseline, real pipe `NOT_SEEKABLE`, unopened/closed fd
+  `IO`, destination failure, normal/double close, use-after-close, and failed-open cleanup.
+
+The first 11-test run exposed libarchive treating a bare RAR5 signature as an empty archive; the
+bounded inspection was extended by one byte to identify the exact signature-only EOF case, after
+which the full class passed. No production ownership behavior changed in response.
+
+**Build**: `./gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
+--console=plain --no-daemon` -> **BUILD SUCCESSFUL** for all three tasks and configured ABIs.
+Stripped native outputs: `arm64-v8a` **678,472 bytes**, `armeabi-v7a` **406,112 bytes**, and
+`x86_64` **665,408 bytes**. No `x86` ABI was added. `bundleDebug` was not required or run.
+
+**Native crash scan**: logcat was cleared before the focused runs and scanned afterward for
+`SIGSEGV`, `SIGABRT`, `Fatal signal`, `JNI DETECTED ERROR`, `FORTIFY`, and `native abort`.
+Result: **0 matches; no ShelfOS native crash signal**.
+
+**Scope/test exclusions**: full JVM tests **NOT RUN**; full connected suite **NOT RUN**;
+physical ARM **NOT PERFORMED**. No `PublicationFormat.CBR`, `RarPageSource`, cache, image/page
+filtering, reader/thumbnail/spread/fold integration, or other 3E-C+ work was added.
+
 ## PHASE 3E-B NATIVE RAR ENGINE (2026-10-08)
 
 Status: **IMPLEMENTED, pending independent review (administrator/Codex).** Branch:
@@ -32,20 +108,20 @@ Raw pointer persisted outside the handle: **NO**. Global "current archive": **NO
 single call; `NativeRarSession` synchronizes every public operation on its own per-instance
 lock (never a global/cross-archive lock); native performs no internal synchronization.
 
-**Native buffer size**: fixed 64 KiB (`kStreamBufferSize`) for extraction streaming, never
-sized from archive-claimed entry size. `EINTR` on `write()` retries the same write; any other
-write failure reports `IO` immediately; a real partial write is handled by accumulating the
-written offset.
+**Native memory behavior**: payload extraction uses a fixed 64 KiB (`kStreamBufferSize`)
+streaming buffer, never sized from archive-claimed entry size. `EINTR` on `write()` retries the
+same write; a zero-byte/no-progress write and every other write failure report `IO`; a real
+partial write is handled by accumulating the written offset. Session metadata is not
+constant-memory: the entry vector and entry-name strings scale with enumerated archive metadata
+and remain subject to the archive-policy limits planned for 3E-C.
 
 **Error categories**: `INVALID_ARGUMENT`, `IO`, `NOT_SEEKABLE`, `CORRUPT`, `PROTECTED`,
 `UNSUPPORTED`, `NATIVE_INTERNAL`. No raw libarchive numeric code and no
 `archive_error_string()` text crosses into Kotlin or any test assertion as product text.
-Wrong-format detection verified against `archive_read.c`'s `choose_format()`: a non-RAR fd fails
-format bidding during `archive_read_open_fd()` itself, tagged with `ARCHIVE_ERRNO_FILE_FORMAT`,
-confirmed via this exact vendored build's generated `config.h`
-(`app/.cxx/Debug/*/{arm64-v8a,armeabi-v7a,x86_64}/libarchive-build/config.h`:
-`HAVE_EILSEQ 1`, `HAVE_EFTYPE` undefined) to resolve to `EILSEQ` on every ABI; `open()` checks
-`archive_errno(a) == EILSEQ` (also accepting `EINVAL` defensively) to map this to `UNSUPPORTED`.
+Wrong-format detection does not depend solely on libarchive's format-bid errno. The engine uses
+position-preserving `pread()` against the pinned RAR4/RAR5 signatures: a non-empty exact prefix
+or complete signature is recognizable RAR input and maps an early open/first-header failure to
+`CORRUPT`; unrelated bytes retain the `EILSEQ`/defensive-`EINVAL` mapping to `UNSUPPORTED`.
 Encryption: any entry encrypted (data and/or metadata) maps the WHOLE `open()` to `PROTECTED` —
 no partial-success interpretation — checked both after a successful metadata pass
 (`archive_read_has_encrypted_entries()`) and immediately after any header-read failure (so a
@@ -92,13 +168,17 @@ fd number 999999) — `IO`, `/proc/self/fd` count unchanged, pass. Failed open (
 Destination-fd write failure (destination pfd closed before `extractEntry`) — `IO`, and the
 session remained usable (`entryCount`/`entryAt` still worked) and closable afterward, pass.
 
-**JNI/C++ safety**: every `extern "C"` entry point wraps its body in `try { } catch (...) { }`,
-mapping any C++ exception to `NATIVE_INTERNAL` (or, for `nativeOpen`/`nativeClose`, closing the
-owned fd first) — no C++ exception crosses the JNI boundary. No global mutable state (every
-piece of session state lives in the heap-allocated `Session` reachable only via its handle). No
-unbounded allocation (fixed 64 KiB streaming buffer only). No path-based extraction (destination
-is always a caller-supplied fd; the archive pathname is never used as an output path). `archive_write`
-usage: **NONE**.
+**JNI/C++ safety**: the allocating/fallible entry points (`nativeOpen`, `nativeClose`,
+`nativeEntryName`, and `nativeExtractEntry`) have catch-all exception boundaries. The four
+metadata getters (`nativeEntryCount`, `nativeEntryType`, `nativeEntrySize`, and
+`nativeEntryIsNameUtf8`) do not: by construction they perform only handle/index checks and
+non-allocating reads from already-collected metadata. Entry-count and entry-name lengths are
+explicitly bounded to JNI `jint`/`jsize` limits before narrowing/allocation; oversized metadata
+fails session creation with `NATIVE_INTERNAL`. No global mutable state exists. Payload extraction
+uses the fixed 64 KiB streaming buffer, while Session metadata allocation scales with enumerated
+entry count/name bytes and remains subject to later 3E-C archive-policy limits. No path-based
+extraction exists (destination is always a caller-supplied fd; the archive pathname is never
+used as an output path). `archive_write` usage: **NONE**.
 
 **Targeted tests** (each run as its own separate Gradle invocation, per this checkpoint's
 standing constraint — never a comma-separated class list), on `emulator-5554`

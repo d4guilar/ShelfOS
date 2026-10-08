@@ -129,14 +129,14 @@ class LibarchiveRarNativeLifecycleTest {
 
     @Test
     fun openClosesTransferredFdWhenNativeBackendIsUnavailable() {
+        val before = currentOpenFdCount()
+
         val archive = RarFixtures.decodeFixtureToTempFile(
             "test_read_format_rar.rar.uu",
             "native-unavailable-${System.nanoTime()}.rar",
         )
         tempFiles.add(archive)
         val fd = RarFixtures.detachedReadFd(archive)
-
-        val before = currentOpenFdCount()
 
         // Internal test-only overload (see NativeRarSession.open's doc
         // comment): forces the native-backend-unavailable path
@@ -157,6 +157,20 @@ class LibarchiveRarNativeLifecycleTest {
                 after,
             )
         }
+    }
+
+    @Test
+    fun pipeSourceFdMapsToNotSeekable() {
+        val pipe = ParcelFileDescriptor.createPipe()
+        val readFd = pipe[0].detachFd()
+        pipe[1].close()
+
+        val result = NativeRarSession.open(readFd)
+        assertTrue(
+            "expected NOT_SEEKABLE for a pipe fd, got: $result",
+            result is NativeRarResult.Failure,
+        )
+        assertEquals(NativeRarError.NOT_SEEKABLE, (result as NativeRarResult.Failure).error)
     }
 
     @Test

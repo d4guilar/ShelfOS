@@ -56,6 +56,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -86,6 +87,10 @@ enum class ErrorCode : jint {
 // archive-claimed entry size (hostile input: a malicious/corrupt archive
 // entry's declared size must never size a native allocation).
 constexpr size_t kStreamBufferSize = 64 * 1024;  // 64 KiB
+constexpr uint8_t kRar4Signature[] = {0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00};
+constexpr uint8_t kRar5Signature[] = {0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00};
+constexpr size_t kJniCountMax = static_cast<size_t>(std::numeric_limits<jint>::max());
+constexpr size_t kJniArrayLengthMax = static_cast<size_t>(std::numeric_limits<jsize>::max());
 
 struct EntryMeta {
     std::string name;    // Best-effort UTF-8 bytes (see collectEntries()).
@@ -141,7 +146,49 @@ ErrorCode restartFd(int fd) {
     if (lseek(fd, 0, SEEK_SET) == 0) {
         return ErrorCode::OK;
     }
-    return (errno == EBADF) ? ErrorCode::IO : ErrorCode::NOT_SEEKABLE;
+    const int seekErrno = errno;
+    return (seekErrno == ESPIPE) ? ErrorCode::NOT_SEEKABLE : ErrorCode::IO;
+}
+
+// Reads at most the longest RAR signature without changing the fd's current
+// position. Any non-empty byte sequence that exactly matches the beginning
+// of either pinned signature is recognizable RAR input: it may be incomplete,
+// but it is not unrelated data. A complete signature also remains recognized
+// when damaged header bytes follow it.
+struct RarSignatureInfo {
+    bool recognizable = false;
+    bool signatureOnly = false;
+};
+
+ErrorCode inspectRarSignaturePrefix(int fd, RarSignatureInfo* info) {
+    // One byte beyond the longest signature distinguishes a signature-only
+    // file from a signature followed by any header data.
+    uint8_t bytes[sizeof(kRar5Signature) + 1] = {};
+    ssize_t count;
+    do {
+        count = pread(fd, bytes, sizeof(bytes), 0);
+    } while (count < 0 && errno == EINTR);
+    if (count < 0) {
+        return ErrorCode::IO;
+    }
+    if (count == 0) {
+        return ErrorCode::OK;
+    }
+
+    const size_t byteCount = static_cast<size_t>(count);
+    const size_t rar4Compared =
+            byteCount < sizeof(kRar4Signature) ? byteCount : sizeof(kRar4Signature);
+    const size_t rar5Compared =
+            byteCount < sizeof(kRar5Signature) ? byteCount : sizeof(kRar5Signature);
+    info->recognizable =
+            std::memcmp(bytes, kRar4Signature, rar4Compared) == 0 ||
+            std::memcmp(bytes, kRar5Signature, rar5Compared) == 0;
+    info->signatureOnly =
+            (byteCount == sizeof(kRar4Signature) &&
+             std::memcmp(bytes, kRar4Signature, sizeof(kRar4Signature)) == 0) ||
+            (byteCount == sizeof(kRar5Signature) &&
+             std::memcmp(bytes, kRar5Signature, sizeof(kRar5Signature)) == 0);
+    return ErrorCode::OK;
 }
 
 // Opens a fresh archive_read positioned at the start of `fd`, registering
@@ -176,12 +223,22 @@ archive* openReaderAtStart(int fd, ErrorCode* err) {
         // (archive_platform.h); this vendored build's generated config.h
         // confirms HAVE_EILSEQ=1/HAVE_EFTYPE=0 for every ABI, so it is
         // EILSEQ here. EINVAL is also accepted defensively in case a
-        // future reconfigure ever resolves it differently.
+        // future reconfigure ever resolves it differently. Before using
+        // that errno as UNSUPPORTED, inspect the pinned magic: recognizable
+        // partial/full RAR input is damaged/truncated and therefore CORRUPT.
         int archiveErrno = archive_errno(a);
+        RarSignatureInfo signature;
+        ErrorCode signatureErr = inspectRarSignaturePrefix(fd, &signature);
         archive_read_free(a);
-        *err = (archiveErrno == EILSEQ || archiveErrno == EINVAL)
-                   ? ErrorCode::UNSUPPORTED
-                   : ErrorCode::IO;
+        if (signatureErr != ErrorCode::OK) {
+            *err = signatureErr;
+        } else if (signature.recognizable) {
+            *err = ErrorCode::CORRUPT;
+        } else {
+            *err = (archiveErrno == EILSEQ || archiveErrno == EINVAL)
+                       ? ErrorCode::UNSUPPORTED
+                       : ErrorCode::IO;
+        }
         return nullptr;
     }
     *err = ErrorCode::OK;
@@ -192,15 +249,19 @@ archive* openReaderAtStart(int fd, ErrorCode* err) {
 // Checked AFTER the failure so a fully header-encrypted archive (which
 // never yields a single successful header) still maps to PROTECTED rather
 // than CORRUPT/UNSUPPORTED - "don't require a successful entry list first".
-ErrorCode classifyHeaderFailure(archive* a, bool anyHeaderSucceededYet) {
+ErrorCode classifyHeaderFailure(archive* a, bool anyHeaderSucceededYet, int fd) {
     if (archive_read_has_encrypted_entries(a) == 1) {
         return ErrorCode::PROTECTED;
     }
-    // No header ever succeeded: most likely this fd's content simply isn't
-    // RAR/RAR5 at all (format bidding failed on the very first header).
-    // At least one header succeeded already: a later structural failure in
-    // what IS a real RAR/RAR5 stream - treat as corruption.
-    return anyHeaderSucceededYet ? ErrorCode::CORRUPT : ErrorCode::UNSUPPORTED;
+    if (anyHeaderSucceededYet) {
+        return ErrorCode::CORRUPT;
+    }
+    RarSignatureInfo signature;
+    ErrorCode signatureErr = inspectRarSignaturePrefix(fd, &signature);
+    if (signatureErr != ErrorCode::OK) {
+        return signatureErr;
+    }
+    return signature.recognizable ? ErrorCode::CORRUPT : ErrorCode::UNSUPPORTED;
 }
 
 // Full sequential metadata pass: reads every header, records entry
@@ -232,7 +293,7 @@ ErrorCode collectEntries(int fd, std::vector<EntryMeta>* out) {
             // (ARCHIVE_RETRY/ARCHIVE_FAILED/ARCHIVE_FATAL) aborts the whole
             // pass deterministically; this engine does not implement a
             // retry loop for any of them.
-            return classifyHeaderFailure(a, anyHeaderSucceeded);
+            return classifyHeaderFailure(a, anyHeaderSucceeded, fd);
         }
         anyHeaderSucceeded = true;
 
@@ -241,15 +302,23 @@ ErrorCode collectEntries(int fd, std::vector<EntryMeta>* out) {
             anyEncrypted = true;
         }
 
+        if (out->size() >= kJniCountMax) {
+            return ErrorCode::NATIVE_INTERNAL;
+        }
+
         EntryMeta meta;
         const char* nameUtf8 = archive_entry_pathname_utf8(ae);
-        if (nameUtf8 != nullptr) {
-            meta.name.assign(nameUtf8);
-            meta.nameIsUtf8 = true;
-        } else {
-            const char* nameRaw = archive_entry_pathname(ae);
-            meta.name.assign(nameRaw != nullptr ? nameRaw : "");
-            meta.nameIsUtf8 = false;
+        const char* name = nameUtf8;
+        meta.nameIsUtf8 = nameUtf8 != nullptr;
+        if (name == nullptr) {
+            name = archive_entry_pathname(ae);
+        }
+        if (name != nullptr) {
+            const size_t nameSize = strnlen(name, kJniArrayLengthMax + 1);
+            if (nameSize > kJniArrayLengthMax) {
+                return ErrorCode::NATIVE_INTERNAL;
+            }
+            meta.name.assign(name, nameSize);
         }
 
         __LA_MODE_T ft = archive_entry_filetype(ae);
@@ -272,6 +341,17 @@ ErrorCode collectEntries(int fd, std::vector<EntryMeta>* out) {
 
         int skipRc = archive_read_data_skip(a);
         if (skipRc != ARCHIVE_OK && skipRc != ARCHIVE_EOF && skipRc != ARCHIVE_WARN) {
+            return ErrorCode::CORRUPT;
+        }
+    }
+
+    if (!anyHeaderSucceeded) {
+        RarSignatureInfo signature;
+        ErrorCode signatureErr = inspectRarSignaturePrefix(fd, &signature);
+        if (signatureErr != ErrorCode::OK) {
+            return signatureErr;
+        }
+        if (signature.signatureOnly) {
             return ErrorCode::CORRUPT;
         }
     }
@@ -315,7 +395,7 @@ ErrorCode extractEntry(int fd, const std::vector<EntryMeta>& entries, int index,
             break;
         }
         if (rc != ARCHIVE_OK && rc != ARCHIVE_WARN) {
-            return classifyHeaderFailure(a, anyHeaderSucceeded);
+            return classifyHeaderFailure(a, anyHeaderSucceeded, fd);
         }
         anyHeaderSucceeded = true;
         if (physical == index) {
@@ -354,6 +434,9 @@ ErrorCode extractEntry(int fd, const std::vector<EntryMeta>& entries, int index,
                     continue;  // Transient signal interruption: retry the same write.
                 }
                 return ErrorCode::IO;  // Any other failure (e.g. closed/unwritable destFd): stop.
+            }
+            if (w == 0) {
+                return ErrorCode::IO;  // No progress: never spin forever on this chunk.
             }
             written += static_cast<size_t>(w);  // Handle a real partial write.
         }
@@ -440,6 +523,9 @@ Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeEntryCount(
         return -1;
     }
     auto* session = reinterpret_cast<Session*>(handle);
+    if (session->entries.size() > kJniCountMax) {
+        return -static_cast<jint>(ErrorCode::NATIVE_INTERNAL);
+    }
     return static_cast<jint>(session->entries.size());
 }
 
@@ -494,6 +580,11 @@ Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeEntryName(
             return env->NewByteArray(0);
         }
         const std::string& name = session->entries[static_cast<size_t>(index)].name;
+        if (name.size() > kJniArrayLengthMax) {
+            // collectEntries() rejects this before a Session can be exposed;
+            // retain a defensive no-allocation guard at the narrowing site.
+            return nullptr;
+        }
         jbyteArray result = env->NewByteArray(static_cast<jsize>(name.size()));
         if (result == nullptr) {
             return nullptr;  // OutOfMemoryError already pending in the JVM.

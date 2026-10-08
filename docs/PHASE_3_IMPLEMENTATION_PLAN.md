@@ -7,12 +7,11 @@ navigation"). **3C (spreads + Manga pairing) COMPLETE and MERGED to `main`** (`#
 "feat: add Phase 3C comic and manga spread reading"). **3D (adaptive/foldable comic
 spreads) COMPLETE and MERGED to `main`** (`#27`, "feat: add Phase 3D adaptive foldable
 comic spreads"). **3E-A (native CBR dependency foundation — NDK/CMake plumbing,
-vendored libarchive, JNI smoke test; ZERO archive-reading logic) IMPLEMENTED on
-`phase-3/3e-native-cbr`, pending independent review (administrator/Codex). 3E-A is
-NOT merged.** **3E-B (generic internal native RAR4/RAR5 engine — real open/enumerate/
-extract session on top of 3E-A, no product/reader integration) IMPLEMENTED on the same
-branch, pending independent review; NOT merged.** 3E-C through 3E-E (CBR import/
-`PublicationFormat.CBR`, page caching, reader integration) are **NOT STARTED**. 3F
+vendored libarchive, JNI smoke test; ZERO archive-reading logic) is COMPLETE and
+ACCEPTED on `phase-3/3e-native-cbr`.** **3E-B (generic internal native RAR4/RAR5 engine —
+real open/enumerate/extract session on top of 3E-A, no product/reader integration) is
+IMPLEMENTED on the same branch and undergoing remediation/review.** 3E-C, 3E-D, and
+3E-E are **NOT STARTED**. 3F
 remains PLANNING ONLY. Phase 3 overall is **NOT complete**. See §22/§23 for what 3A
 landed, §24 for what 3B actually landed, §25 for what 3C actually landed (including the
 R1 and R2 remediation records), §26/§26a for what 3D and its R1 remediation landed,
@@ -37,9 +36,9 @@ and `docs/adr/0024-native-cbr-libarchive.md` plus `docs/VALIDATION.md` for what 
 - §12/§13/§21 below authorized exactly one slice at a time. 3A (§22/§23), 3B (§24), 3C
   (§25, including its Codex R1/R2 remediation records), and 3D (§26/§26a/§26b) are
   complete and merged to `main` (`#24`, `#25`, `#26`, `#27`). 3E-A (native CBR
-  dependency foundation) is implemented on `phase-3/3e-native-cbr`, pending
-  review/remediation; 3E-B through 3E-E have not started. 3F remains planning only,
-  and Phase 3 overall is not complete.
+  dependency foundation) is complete and accepted on `phase-3/3e-native-cbr`. 3E-B is
+  implemented on that branch and undergoing remediation/review. 3E-C, 3E-D, and 3E-E
+  have not started. 3F remains planning only, and Phase 3 overall is not complete.
 
 ## 22. 3A implementation record (landed)
 
@@ -1207,8 +1206,8 @@ pass in `open()`, and each `extractEntry()` call — restarts a brand-new `archi
 `lseek(fd, 0, SEEK_SET)` and sequentially skips (`archive_read_data_skip`) to the target physical
 index. This applies equally to solid RAR5 (proven by `rar5SolidEnumeratesAllEntriesAndRestartBasedAccessSequenceWorks`'s
 non-sequential last→earlier→last-again access sequence). If the fd cannot be seeked at all
-(verified via a direct `lseek` probe, distinguishing `EBADF` → `IO` from any other seek failure,
-e.g. a pipe's `ESPIPE`, → `NOT_SEEKABLE`), `open()` fails with `NOT_SEEKABLE` rather than falling
+(verified via a direct `lseek` probe: `ESPIPE` → `NOT_SEEKABLE`; `EBADF` and every other errno
+→ `IO`), `open()` fails with `NOT_SEEKABLE` rather than falling
 back to any managed-copy behavior — that policy mapping (e.g. to ShelfOS's existing NEEDS_COPY
 semantics) is explicitly deferred to a later slice.
 
@@ -1229,10 +1228,11 @@ against the new file returns 0.
 
 **Streaming/memory**: extraction streams through one fixed 64 KiB (`kStreamBufferSize`) native
 buffer into the destination fd — never a whole-entry or whole-archive allocation, and never
-sized from an archive-claimed entry size. `EINTR` on `write()` retries the same write; any other
-`write()` failure (e.g. a closed/unwritable destination fd) is reported immediately as `IO`; a
-real partial write is handled by accumulating the written offset until the chunk is fully
-flushed.
+sized from an archive-claimed entry size. `EINTR` on `write()` retries the same write; a
+zero-byte/no-progress write and every other `write()` failure (e.g. a closed/unwritable
+destination fd) are reported immediately as `IO`; a real partial write is handled by
+accumulating the written offset until the chunk is fully flushed. Session metadata allocation
+scales with enumerated entry count/name bytes and remains subject to 3E-C archive-policy limits.
 
 **Entry metadata/encoding**: `NativeRarEntry` exposes physical index, name, a confirmed-UTF-8
 flag, type (`REGULAR_FILE`/`DIRECTORY`/`OTHER`), and a nullable size (`null` = declared size
@@ -1261,14 +1261,12 @@ metadata), the WHOLE `open()` fails with `PROTECTED` — the real vendored encry
 (see below) have some entries unencrypted and some encrypted, and this engine never exposes a
 session covering only the unencrypted subset.
 
-**Wrong-format detection**: verified directly against `archive_read.c`'s `choose_format()` — with
-only RAR4/RAR5 registered (`archive_read_support_format_rar`/`_rar5`; never
-`archive_read_support_format_all`, never `archive_read_support_format_filter_all`), a non-RAR fd
-fails format bidding *during* `archive_read_open_fd()` itself (inside `archive_read_open1()`),
-tagged internally with `ARCHIVE_ERRNO_FILE_FORMAT` — confirmed via this exact vendored build's
-generated `config.h` (`HAVE_EILSEQ=1`, `HAVE_EFTYPE` undefined for every ABI) to resolve to
-`EILSEQ` here; `archive_errno(a) == EILSEQ` (with `EINVAL` also accepted defensively) is what
-`open()` checks to map this specific failure to `UNSUPPORTED` rather than a generic `IO` error.
+**Wrong-format detection**: with only RAR4/RAR5 registered, the engine combines libarchive's
+format-bid result with a position-preserving `pread()` of the pinned RAR signatures. Unrelated
+bytes map to `UNSUPPORTED`; a non-empty exact signature prefix or complete signature followed by
+an early open/first-header failure maps to `CORRUPT`. This avoids treating truncated recognizable
+RAR input as unrelated merely because libarchive reported `EILSEQ`/`EINVAL` before selecting a
+reader.
 Extension/magic-byte classification (`.cbr`/`.rar` filenames) is explicitly not this engine's
 job — it operates on fd bytes only.
 

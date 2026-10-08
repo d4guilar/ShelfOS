@@ -53,6 +53,17 @@ class LibarchiveRarNativeTest {
         return outFile.readBytes()
     }
 
+    private fun assertOpenError(name: String, bytes: ByteArray, expected: NativeRarError) {
+        val file = tempFile(name)
+        file.writeBytes(bytes)
+        val result = NativeRarSession.open(RarFixtures.detachedReadFd(file))
+        if (result is NativeRarResult.Success) {
+            result.value.close()
+        }
+        assertTrue("expected $expected, got: $result", result is NativeRarResult.Failure)
+        assertEquals(expected, (result as NativeRarResult.Failure).error)
+    }
+
     @Test
     fun rar4PlainOpensEnumeratesAndExtractsExpectedBytes() {
         val archive = RarFixtures.decodeFixtureToTempFile(
@@ -244,6 +255,42 @@ class LibarchiveRarNativeTest {
         assertTrue(
             "expected UNSUPPORTED, got: $result",
             result is NativeRarResult.Failure && result.error == NativeRarError.UNSUPPORTED,
+        )
+    }
+
+    @Test
+    fun shortRar4PrefixMapsToCorrupt() {
+        assertOpenError(
+            "short-rar4-prefix.rar",
+            byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07),
+            NativeRarError.CORRUPT,
+        )
+    }
+
+    @Test
+    fun rar4SignatureOnlyMapsToCorrupt() {
+        assertOpenError(
+            "rar4-signature-only.rar",
+            byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00),
+            NativeRarError.CORRUPT,
+        )
+    }
+
+    @Test
+    fun shortRar5PrefixMapsToCorrupt() {
+        assertOpenError(
+            "short-rar5-prefix.rar",
+            byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01),
+            NativeRarError.CORRUPT,
+        )
+    }
+
+    @Test
+    fun rar5SignatureOnlyMapsToCorrupt() {
+        assertOpenError(
+            "rar5-signature-only.rar",
+            byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00),
+            NativeRarError.CORRUPT,
         )
     }
 
