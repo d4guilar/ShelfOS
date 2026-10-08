@@ -9,14 +9,17 @@ spreads) COMPLETE and MERGED to `main`** (`#27`, "feat: add Phase 3D adaptive fo
 comic spreads"). **3E-A (native CBR dependency foundation — NDK/CMake plumbing,
 vendored libarchive, JNI smoke test; ZERO archive-reading logic) IMPLEMENTED on
 `phase-3/3e-native-cbr`, pending independent review (administrator/Codex). 3E-A is
-NOT merged.** 3E-B through 3E-E (archive I/O, CBR import, extraction, page caching,
-reader integration) are **NOT STARTED**. 3F remains PLANNING ONLY. Phase 3 overall is
-**NOT complete**. See §22/§23 for what 3A landed, §24 for what 3B actually landed, §25
-for what 3C actually landed (including the R1 and R2 remediation records), §26/§26a
-for what 3D and its R1 remediation landed, §26b for the R2 remediation (render-geometry
-state-independence + hysteresis, hinge-safe modal focus/accessibility) recorded below,
-and `docs/adr/0024-native-cbr-libarchive.md` plus `docs/VALIDATION.md` for what 3E-A
-actually landed.
+NOT merged.** **3E-B (generic internal native RAR4/RAR5 engine — real open/enumerate/
+extract session on top of 3E-A, no product/reader integration) IMPLEMENTED on the same
+branch, pending independent review; NOT merged.** 3E-C through 3E-E (CBR import/
+`PublicationFormat.CBR`, page caching, reader integration) are **NOT STARTED**. 3F
+remains PLANNING ONLY. Phase 3 overall is **NOT complete**. See §22/§23 for what 3A
+landed, §24 for what 3B actually landed, §25 for what 3C actually landed (including the
+R1 and R2 remediation records), §26/§26a for what 3D and its R1 remediation landed,
+§26b for the R2 remediation (render-geometry state-independence + hysteresis,
+hinge-safe modal focus/accessibility) recorded below, §27 for what 3E-B actually landed,
+and `docs/adr/0024-native-cbr-libarchive.md` plus `docs/VALIDATION.md` for what 3E-A and
+3E-B actually landed.
 
 ## 1. Status / base
 
@@ -1169,6 +1172,148 @@ no new persisted field, no manifest change. One localized content-description re
 across EN, ES, and PT-BR (`content_desc_hinge_safe_dialog` — spoken-only accessibility copy,
 never visible UI text). See `docs/VALIDATION.md`'s "PHASE 3D CODEX R2 REMEDIATION" entry for exact
 commands/results.
+
+## 27. 3E-B implementation record (generic internal native RAR engine)
+
+**Scope delivered**: real RAR4/RAR5 open/enumerate/extract through a new, generic,
+product-free native session (`NativeRarSession`, `app/src/main/java/com/d4guilar/shelfos/
+core/files/NativeRarSession.kt` + `app/src/main/cpp/shelfos_rar_session_jni.cpp`), built on
+top of 3E-A's accepted foundation (vendored libarchive 3.8.9, the `shelfos_cbr` JNI library,
+NDK/CMake plumbing) without reopening or modifying any of it. This checkpoint still does NOT
+add `PublicationFormat.CBR`, a `RarPageSource`, any page/image filtering, a cache, or any
+reader/product integration — see `docs/adr/0024-native-cbr-libarchive.md` and this section for
+exactly what is and is not in scope.
+
+**Session/handle model**: one native C++ `Session` struct per `NativeRarSession.open(fd)` call,
+addressed by an opaque `jlong` (a `reinterpret_cast` of the heap pointer — never meaningful
+outside the native file, never logged/persisted). There is no process-global "current archive"
+and no native handle-validity registry; `NativeRarSession` itself is the sole owner of the
+handle, enforcing atomic set/clear-on-close, idempotent `close()`, and rejecting post-close
+operations entirely in Kotlin before any native call — the native side's own defense is limited
+to a cheap `handle <= 0` sanity check, documented as not a substitute for that contract.
+
+**FD ownership (source)**: `NativeRarSession.open(fd: Int)` takes ownership of `fd` the instant
+it is called, on every path. The caller must relinquish Java-level ownership first via
+`ParcelFileDescriptor.detachFd()`. No `dup()` is used anywhere — there is exactly one owned fd,
+restarted in place via `lseek(fd, 0, SEEK_SET)` whenever a fresh sequential pass is needed, so
+there is no shared-offset subtlety to reason about. This was verified directly against the
+vendored `archive_read_open_fd.c` source (its `file_close()` only frees its own internal buffer
+struct and never calls `close()` on the fd), confirming the engine — not libarchive — is
+responsible for closing the fd, exactly once, in `NativeRarSession.close()` on success or inline
+in `nativeOpen()` on every failure path.
+
+**Seek/restart (no cache)**: every operation that needs a specific entry's data — the metadata
+pass in `open()`, and each `extractEntry()` call — restarts a brand-new `archive_read` from
+`lseek(fd, 0, SEEK_SET)` and sequentially skips (`archive_read_data_skip`) to the target physical
+index. This applies equally to solid RAR5 (proven by `rar5SolidEnumeratesAllEntriesAndRestartBasedAccessSequenceWorks`'s
+non-sequential last→earlier→last-again access sequence). If the fd cannot be seeked at all
+(verified via a direct `lseek` probe, distinguishing `EBADF` → `IO` from any other seek failure,
+e.g. a pipe's `ESPIPE`, → `NOT_SEEKABLE`), `open()` fails with `NOT_SEEKABLE` rather than falling
+back to any managed-copy behavior — that policy mapping (e.g. to ShelfOS's existing NEEDS_COPY
+semantics) is explicitly deferred to a later slice.
+
+**Destination FD (extraction)**: `extractEntry(index, destinationFd)`'s destination is a
+BORROWED fd — the engine never closes it, on any path; the caller retains ownership.
+
+**Threading**: one archive_read object alive at a time per session, scoped to a single call.
+`NativeRarSession` synchronizes every public operation on its own per-instance lock (never a
+global/cross-archive lock); the native engine performs no internal synchronization and relies
+entirely on that contract.
+
+**Minimal native API** (8 JNI functions, all on `NativeRarSession`): `nativeOpen`, `nativeClose`,
+`nativeEntryCount`, `nativeEntryType`, `nativeEntryName`, `nativeEntryIsNameUtf8`,
+`nativeEntrySize`, `nativeExtractEntry`. No writing, no delete/rename/repack, no generic
+execute-command, no extract-all-to-directory, no shell/bsdtar invocation, and no
+arbitrary-destination-path extraction exist anywhere in this surface. `grep -c archive_write`
+against the new file returns 0.
+
+**Streaming/memory**: extraction streams through one fixed 64 KiB (`kStreamBufferSize`) native
+buffer into the destination fd — never a whole-entry or whole-archive allocation, and never
+sized from an archive-claimed entry size. `EINTR` on `write()` retries the same write; any other
+`write()` failure (e.g. a closed/unwritable destination fd) is reported immediately as `IO`; a
+real partial write is handled by accumulating the written offset until the chunk is fully
+flushed.
+
+**Entry metadata/encoding**: `NativeRarEntry` exposes physical index, name, a confirmed-UTF-8
+flag, type (`REGULAR_FILE`/`DIRECTORY`/`OTHER`), and a nullable size (`null` = declared size
+unknown or distrusted, e.g. negative — distinct from a real 0-byte entry; a real entry size can
+never be negative, so native uses `-1` unambiguously as that sentinel across the JNI boundary).
+Names cross the JNI boundary as raw UTF-8 bytes (`jbyteArray`, not `NewStringUTF`/Modified-UTF-8)
+— `archive_entry_pathname_utf8()` is used natively whenever available (a correct conversion
+libarchive already performs); when it is not, the raw `archive_entry_pathname()` bytes are
+returned instead and Kotlin decodes them as ISO-8859-1 (every byte value is a valid code point —
+this path can never throw) as a documented, deliberately non-claiming-correctness fallback.
+Directory/symlink/other-special entries are never extractable (`extractEntry` on a non-regular
+entry returns `INVALID_ARGUMENT`); no link creation, no materializing special filesystem objects.
+
+**Error contract**: one `NativeRarError` enum (`INVALID_ARGUMENT`, `IO`, `NOT_SEEKABLE`,
+`CORRUPT`, `PROTECTED`, `UNSUPPORTED`, `NATIVE_INTERNAL`) — no raw libarchive numeric code and no
+`archive_error_string()` text ever crosses into Kotlin or any test assertion as product text
+(internal diagnostic/test-assertion use of libarchive's own codes stays entirely inside the C++
+file). `ARCHIVE_OK`/`ARCHIVE_WARN`/`ARCHIVE_EOF` are the only "proceed" results during header
+reads; `ARCHIVE_RETRY`/`ARCHIVE_FAILED`/`ARCHIVE_FATAL` all abort the current pass deterministically
+(no retry loop is implemented for any of them) after first checking
+`archive_read_has_encrypted_entries()` — this ordering is what lets a fully header-encrypted
+archive (which never yields a single successful header) still map to `PROTECTED` rather than
+`CORRUPT`/`UNSUPPORTED`, without ever requiring a successful entry list first. **No
+partial-success interpretation**: if ANY entry in the archive is encrypted (data and/or
+metadata), the WHOLE `open()` fails with `PROTECTED` — the real vendored encryption fixtures
+(see below) have some entries unencrypted and some encrypted, and this engine never exposes a
+session covering only the unencrypted subset.
+
+**Wrong-format detection**: verified directly against `archive_read.c`'s `choose_format()` — with
+only RAR4/RAR5 registered (`archive_read_support_format_rar`/`_rar5`; never
+`archive_read_support_format_all`, never `archive_read_support_format_filter_all`), a non-RAR fd
+fails format bidding *during* `archive_read_open_fd()` itself (inside `archive_read_open1()`),
+tagged internally with `ARCHIVE_ERRNO_FILE_FORMAT` — confirmed via this exact vendored build's
+generated `config.h` (`HAVE_EILSEQ=1`, `HAVE_EFTYPE` undefined for every ABI) to resolve to
+`EILSEQ` here; `archive_errno(a) == EILSEQ` (with `EINVAL` also accepted defensively) is what
+`open()` checks to map this specific failure to `UNSUPPORTED` rather than a generic `IO` error.
+Extension/magic-byte classification (`.cbr`/`.rar` filenames) is explicitly not this engine's
+job — it operates on fd bytes only.
+
+**Test matrix** (two instrumented classes, each run via its own separate Gradle invocation per
+this checkpoint's standing constraint — never a comma-separated class list):
+
+- `LibarchiveRarNativeTest` (format/extraction/encryption): RAR4 plain (`test_read_format_rar.rar.uu`,
+  5 entries verified by name/type against direct inspection of upstream
+  `libarchive/test/test_read_format_rar.c` — `test.txt`/`testlink`(symlink, `OTHER`, non-extractable)/
+  `testdir/test.txt`/`testdir`/`testemptydir` — with `test.txt` and `testdir/test.txt` both extracted
+  and compared byte-for-byte against the exact expected `"test text document\r\n"`); RAR5 compressed
+  (`test_read_format_rar5_compressed.rar.uu`, `test.bin`, 1200 bytes, extracted and verified against
+  the exact upstream `verify_data()` generator formula from `test_read_format_rar5.c`
+  — `val = max(0, k*k - 3*k + 1)` per little-endian int32 word, not just "bytes > 0"); RAR5 solid
+  (`test_read_format_rar5_solid.rar.uu`, 7 entries `test.bin`/`test1..6.bin` enumerated in order,
+  plus a last→earlier→last-again extraction sequence verified via CRC32 against the exact upstream
+  values from `test_read_format_rar5.c`'s `test_read_format_rar5_solid_skip_all_but_second`
+  (`test1.bin` = `0x7E13B2C6`) and `..._skip_all_but_last` (`test6.bin` = `0x36A448FF`), proving
+  restart-based non-sequential access); RAR4 and RAR5 encrypted fixtures both map to `PROTECTED`
+  (never `CORRUPT`, no crash); a synthetic non-RAR byte buffer maps to `UNSUPPORTED`; a RAR5 solid
+  fixture truncated to a 100-byte prefix (empirically chosen — see the test's own comment for the
+  bisection evidence across 16 cut points, since this fixture's full payload is only ~1050 bytes
+  and several naive cut points happened to still land on a valid entry boundary) maps to `CORRUPT`.
+- `LibarchiveRarNativeLifecycleTest` (FD/handle/lifecycle/failure): an unopened fd number maps to
+  `IO` with no open-fd-count growth (`/proc/self/fd` before/after); a source fd closed out from
+  under the contract (via `ParcelFileDescriptor.adoptFd(fd).close()`) maps to `IO`; normal close;
+  double close (harmless no-op); use-after-close (`entryCount` → 0, `entryAt` → null, `extractEntry`
+  → `INVALID_ARGUMENT`, all without touching native code again); a failed open due to wrong format
+  does not leak the source fd (`/proc/self/fd` count check); a destination fd closed before
+  extraction maps to `IO` while the session itself remains fully usable/closable afterward.
+
+Upstream ground truth (entry names/sizes/content/CRC32 values) for every fixture above was taken
+by directly fetching and reading the real upstream test sources at the exact pinned commit
+(`libarchive/test/test_read_format_rar.c`, `test_read_format_rar5.c`,
+`test_read_format_rar_encryption.c`) rather than assumed from memory or "bytes > 0" placeholder
+assertions. See `docs/VALIDATION.md`'s "PHASE 3E-B" entry for exact commands, counts, and results,
+including the truncation bisection evidence, the solid-RAR5 diagnostic timing note, ABI compile
+results, and native `.so` sizes.
+
+**What this slice deliberately does NOT do** (explicit 3E-C/D/E or later scope, consistent with
+AGENTS.md's "do not build yet" list and this checkpoint's own boundary): no `PublicationFormat.CBR`,
+no `RarPageSource`, no page/image filtering, `isPageImage`, `naturalCompare`, or `ComicInfo.xml`
+parsing, no Manga/RTL handling at this layer, no cache/LRU/cacheDir/page-cache/stale-session-cleanup
+logic of any kind, no reader UI or `LibraryItem`/import-routing/persistence change, no extension/
+magic-byte format classification, no passphrase/password support, no partial-archive recovery.
 
 ## 2. Why Phase 3 is not green-field
 

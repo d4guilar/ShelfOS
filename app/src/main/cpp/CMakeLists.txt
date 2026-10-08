@@ -50,11 +50,15 @@ add_subdirectory(
 )
 
 # --- ShelfOS JNI bridge ---
-# Minimal smoke-test surface only: backendVersion() + a capability probe.
-# No archive I/O, no entry enumeration, no extraction. See
+# shelfos_cbr_jni.cpp: Phase 3E-A minimal smoke-test surface (backendVersion()
+# + a capability probe only). Unmodified by 3E-B; see
 # docs/adr/0024-native-cbr-libarchive.md for scope.
+# shelfos_rar_session_jni.cpp: Phase 3E-B generic internal RAR engine (real
+# open/enumerate/extract session). See its header comment for the design
+# contract (FD ownership, handle model, threading, error categories).
 add_library(shelfos_cbr SHARED
     shelfos_cbr_jni.cpp
+    shelfos_rar_session_jni.cpp
 )
 
 target_link_libraries(shelfos_cbr
