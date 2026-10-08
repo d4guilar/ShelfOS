@@ -13,3 +13,6 @@ gradlew.bat text eol=crlf
 *.jar binary
 *.png binary
 *.jpeg binary
+
+# Preserve exact upstream blobs and ignore upstream-only whitespace style.
+third_party/libarchive/** -text -whitespace

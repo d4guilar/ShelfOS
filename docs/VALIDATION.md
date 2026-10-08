@@ -1,5 +1,98 @@
 # Validation
 
+## PHASE 3E-A CODEX R1 REMEDIATION (2026-10-07)
+
+Status: **COMPLETE locally; pending focused independent re-review.** Branch:
+`phase-3/3e-native-cbr`; original 3E-A commit `9f7eb21`; clean-worktree test
+commit `6e88c22` (the same remediation commit before this validation record was
+added). This pass implements only the five accepted review findings. It makes
+no executable production or native API change, adds no archive I/O, does not
+add `PublicationFormat.CBR`, and does not begin 3E-B.
+
+**Ignored vendor-input defect and exact fix**: the global `**/build/` rule had
+left all 17 locally present libarchive CMake inputs untracked. `.gitignore` now
+has only the scoped exceptions `!third_party/libarchive/build/` and
+`!third_party/libarchive/build/**`. Exactly 17 files from upstream libarchive
+tag `v3.8.9`, commit `27cbc7827172698143e440801fc0ba39ccb4f1f5`, are now tracked:
+15 files under `build/cmake/`, `build/pkgconfig/libarchive.pc.in`, and
+`build/version`. No generated CMake output, cache, `.cxx` content, binary, host
+file, or upstream release-helper script is tracked. A detached clean worktree
+configured and compiled successfully without copying any ignored source from
+the original worktree, proving the old ignored files are no longer a hidden
+build dependency.
+
+**Vendor-byte preservation and provenance**: `.gitattributes` now scopes
+`third_party/libarchive/** -text -whitespace`, which `git check-attr` reports as
+`text: unset` and `whitespace: unset` for vendor paths while ShelfOS-owned files
+retain their existing text/whitespace policy. This prevents line-ending
+normalization and prevents untouched upstream whitespace style from failing
+ShelfOS diff hygiene. `contrib/android/include/android_lf.h` was restored to
+the exact upstream blob. Blob-level comparison against the pinned commit found
+**251 tracked vendored upstream files, 251 exact matches, 0 mismatches**. The
+five test-only `.uu` fixtures were compared separately against
+`libarchive/test/` at the same commit: **5 exact matches, 0 mismatches**.
+`git diff --cached --check` and ordinary `git diff --check` both passed.
+
+**Other accepted findings**: the stale Phase 3 status paragraph now records 3A
+through 3D merged as PRs #24-#27, 3E-A implemented on this branch pending
+review/remediation, 3E-B through 3E-E not started, and Phase 3 incomplete.
+`docs/DEPENDENCIES.md` now says five `.uu` fixtures, matching the five named
+files in the repository. The CMake comment now accurately says libarchive's
+broader static source set is compiled, with bounded linked packaging and only
+ShelfOS's small JNI capability surface exposed; executable CMake is unchanged.
+ADR-0024 is unchanged because its claim that `build/cmake` and `build/version`
+are vendored became literally accurate after this remediation.
+
+**Clean-worktree method**: `git worktree add --detach .tmp-r1-clean 6e88c22`.
+The only pre-build untracked file added there was ignored `local.properties`,
+pointing at the existing Android SDK. Gradle used the existing external
+`GRADLE_USER_HOME`; Android debug-signing state used an ignored temporary
+Android user directory. No source or vendor input was copied into the clean
+worktree. Initial attempts stopped before or at packaging because the managed
+sandbox exposed unwritable Gradle/Android user-state paths; after selecting
+writable external state and restarting the daemon outside the sandbox, the
+same source tree passed all gates.
+
+**Clean build gates**: one invocation of `:app:assembleDebug
+:app:assembleDebugAndroidTest :app:lintDebug :app:bundleDebug --console=plain
+--no-daemon` finished **BUILD SUCCESSFUL**. Each of the four requested tasks
+completed successfully. Full JVM tests and the full connected suite were not
+run.
+
+**Native smoke**: from the clean worktree,
+`./gradlew.bat :app:connectedDebugAndroidTest
+-Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.core.files.LibarchiveNativeSmokeTest
+--console=plain --no-daemon` ran separately on `emulator-5554`
+(`shelfos-api24(AVD) - 7.0`, x86_64). Result: **3 tests, 0 failures, 0 errors,
+0 skipped**: `nativeLibraryLoads`, `backendVersionReportsLibarchive389`, and
+`rarAndRar5CapabilityRegisterCleanly`.
+
+**Clean three-ABI outputs** (stripped/package payload sizes):
+
+- `arm64-v8a/libshelfos_cbr.so`: **569,616 bytes**
+- `armeabi-v7a/libshelfos_cbr.so`: **338,836 bytes**
+- `x86_64/libshelfos_cbr.so`: **562,680 bytes**
+
+These exactly match the original 3E-A measurements. No `x86` output exists.
+The clean debug APK is **24,538,184 bytes**, also unchanged from the original
+record. The clean debug AAB is **20,765,157 bytes** (2,215 bytes above the
+original archive-level measurement); all three embedded native payload sizes
+are unchanged.
+
+**APK/AAB inspection**: the APK contains exactly
+`lib/<abi>/libshelfos_cbr.so` and the AAB exactly
+`base/lib/<abi>/libshelfos_cbr.so` for the three required ABIs. Both packages
+contain no `x86`, standalone `libarchive.so`, `bsdtar`, `bsdcpio`, `bsdcat`,
+`bsdunzip`, `.rar`, `.rar.uu`, other `.uu` fixture, Daredevil/owner fixture, or
+generated test-output entry. Result: **PASS**.
+
+**CI**: static inspection confirms `.github/workflows/android.yml` invokes
+`$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager`, installs NDK
+`28.2.13676358` and CMake `3.31.6` matching `app/build.gradle.kts`, and contains
+no local `.tools/android-sdk` path. The clean worktree executed the equivalent
+compile/build gates locally. Remote GitHub Actions remains **PENDING FINAL 3E
+PR BY ADMINISTRATOR POLICY**; nothing was pushed solely to test CI.
+
 ## PHASE 3E-A NATIVE CBR DEPENDENCY FOUNDATION (2026-10-07)
 
 Status: **IMPLEMENTED, pending independent review (administrator/Codex).** Branch:

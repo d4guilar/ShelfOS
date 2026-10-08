@@ -6,6 +6,8 @@ local.properties
 .idea/
 *.iml
 **/build/
+!third_party/libarchive/build/
+!third_party/libarchive/build/**
 **/.cxx/
 captures/
 .DS_Store

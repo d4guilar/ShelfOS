@@ -8,10 +8,11 @@ cmake_minimum_required(VERSION 3.22)
 project(shelfos_cbr C CXX)
 
 # --- Vendored libarchive (third_party/libarchive), configured minimally ---
-# Disable every optional system dependency, CLI front-end and test target so
-# only the core reader plus the RAR4/RAR5 format handlers are compiled, and
-# only archive_static is produced (no libarchive.so, no bsdtar/bsdcpio/bsdcat
-# executables).
+# Disable every optional system dependency, CLI front-end and test target.
+# Libarchive's broader static-library source set is compiled and linked into
+# the ShelfOS JNI library; link-time dead stripping keeps packaging bounded,
+# and ShelfOS exposes only its small capability surface (no generic archive
+# API, libarchive.so, or bsdtar/bsdcpio/bsdcat executables).
 set(ENABLE_WERROR OFF CACHE BOOL "" FORCE)
 set(ENABLE_TEST OFF CACHE BOOL "" FORCE)
 set(ENABLE_COVERAGE OFF CACHE BOOL "" FORCE)

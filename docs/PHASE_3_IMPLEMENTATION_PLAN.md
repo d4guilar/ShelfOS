@@ -31,13 +31,12 @@ actually landed.
   same discipline level as the Phase 2 planning docs. It supersedes ad hoc CBR framing
   scattered across `docs/ROADMAP.md`, `docs/PRODUCT.md`, `docs/features/COMICS_MANGA.md`,
   and `docs/features/READER.md` (see §5).
-- §12/§13/§21 below authorized exactly one slice at a time. 3A (§22/§23), 3B (§24), and 3C
-  (§25, including its Codex R1/R2 remediation records) are complete and merged to `main`
-  (`#24`, `#25`, `#26`). 3D (adaptive/foldable comic spreads) is implemented on
-  `phase-3/3d-adaptive-foldable-spreads` — see §26/§26a for the original slice and the
-  R1 remediation, and §26b for the R2 remediation (this document's own most current
-  record of 3D's actual behavior) — pending independent re-review (administrator/Codex
-  R3); 3D has not merged. 3E (CBR) and 3F have not started.
+- §12/§13/§21 below authorized exactly one slice at a time. 3A (§22/§23), 3B (§24), 3C
+  (§25, including its Codex R1/R2 remediation records), and 3D (§26/§26a/§26b) are
+  complete and merged to `main` (`#24`, `#25`, `#26`, `#27`). 3E-A (native CBR
+  dependency foundation) is implemented on `phase-3/3e-native-cbr`, pending
+  review/remediation; 3E-B through 3E-E have not started. 3F remains planning only,
+  and Phase 3 overall is not complete.
 
 ## 22. 3A implementation record (landed)
 

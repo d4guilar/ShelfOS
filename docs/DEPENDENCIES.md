@@ -43,7 +43,7 @@ header are preserved byte-for-byte as vendored. No build-time network fetch:
 the vendored tree is checked in and built entirely offline/locally by
 Gradle's CMake integration.
 
-Upstream test fixtures: four `.uu`-encoded RAR test archives from the same
+Upstream test fixtures: five `.uu`-encoded RAR test archives from the same
 exact tagged commit are vendored test-only (not in any production source
 set) for a later (3E-B) slice to decode and exercise; see
 `docs/VALIDATION.md` for the exact list and paths. They are not referenced by
