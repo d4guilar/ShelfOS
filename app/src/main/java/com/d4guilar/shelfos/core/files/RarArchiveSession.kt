@@ -78,6 +78,9 @@ internal class NativeRarArchiveSession(private val session: NativeRarSession) : 
  */
 internal class RarExtractionException(val error: NativeRarError) : IOException(error.name)
 
+/** Typed internal cause for a whole-archive native session-open failure. */
+internal class RarOpenException(val error: NativeRarError) : IOException(error.name)
+
 /**
  * Internal-only, UI/localization-free mapping of [NativeRarError] onto ShelfOS's existing
  * [PublicationProblem] model -- never a raw native code, never a new [PublicationProblem]/
@@ -106,6 +109,10 @@ internal fun NativeRarError.toPublicationProblem(): PublicationProblem = when (t
     NativeRarError.IO, NativeRarError.NATIVE_INTERNAL -> PublicationProblem.UNREADABLE
 }
 
+/** Preserves an archive-open failure's typed native category without changing its product-facing problem. */
+internal fun NativeRarResult.Failure.toRarOpenPublicationException(): PublicationException =
+    PublicationException(error.toPublicationProblem()).apply { initCause(RarOpenException(error)) }
+
 /**
  * Phase 3E-D: opens a production [RarArchiveSession] over [descriptor] for product code (import-time
  * inspection in [PublicationFiles], and the reading-session route in `core.reader.FixedReader`'s `RarPages`).
@@ -113,13 +120,13 @@ internal fun NativeRarError.toPublicationProblem(): PublicationProblem = when (t
  * [ArchivePolicy.open] hands `SeekableZip` a duplicate for CBZ -- so [descriptor] itself is left open and still
  * owned by the caller on every path, success or failure. A whole-archive open failure (including every entry
  * being encrypted, or a non-seekable source) is mapped immediately onto [PublicationException] via
- * [toPublicationProblem], never left as a raw [NativeRarError] for product code to interpret itself.
+ * [toPublicationProblem], with [RarOpenException] retaining the typed [NativeRarError] as its internal cause.
  */
 internal fun openRarArchiveSession(descriptor: ParcelFileDescriptor): RarArchiveSession {
     val fd = ParcelFileDescriptor.dup(descriptor.fileDescriptor).detachFd()
     return when (val opened = NativeRarSession.open(fd)) {
         is NativeRarResult.Success -> NativeRarArchiveSession(opened.value)
-        is NativeRarResult.Failure -> throw PublicationException(opened.error.toPublicationProblem())
+        is NativeRarResult.Failure -> throw opened.toRarOpenPublicationException()
     }
 }
 

@@ -190,9 +190,9 @@ needed — nothing in that layer changed).
 PERFORMED. `PublicationFormat.CBR`: RETAINED. Room schema: unchanged. Migration: NONE. Owner's real
 local CBR fixture: not committed, not packaged, not re-run for this remediation.
 
-**Lower findings explicitly NOT addressed by this remediation** (reserved for a separate R1B pass): the
-archive-open failure path losing the typed `NativeRarError` cause, and stale KDoc that still describes
-CBR/`RarPages` as future/unwired in places this fix did not otherwise need to touch for compilation.
+**Subsequent R1B closure**: archive-open failures retain their typed `NativeRarError` through an
+internal `RarOpenException` cause without changing `PublicationProblem` mapping; stale source KDoc now
+describes CBR's active shared-reader route truthfully.
 
 ## PHASE 3E-C R1B — CACHE LIFECYCLE / ERROR SEMANTICS REMEDIATION (2026-10-08)
 

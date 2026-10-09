@@ -1801,9 +1801,9 @@ and `RarMagicDetectionTest` (6/6) all pass unchanged otherwise.
 `CbrProductIntegrationTest` (instrumented, real native engine, API 24 emulator) reran 3/3 PASS after
 the refactor, with no native crash signal observed in logcat.
 
-**Deliberately not touched by this remediation** (reserved for a separate R1B pass): the archive-open
-failure path losing the typed `NativeRarError` cause, and stale KDoc that still describes CBR/`RarPages`
-as future/unwired in places this fix did not otherwise need to edit.
+**Subsequent R1B closure**: archive-open failures now retain their typed `NativeRarError` through an
+internal `RarOpenException` cause without changing `PublicationProblem` mapping, and stale source KDoc
+now describes CBR's active shared-reader route truthfully.
 
 ## 2. Why Phase 3 is not green-field
 

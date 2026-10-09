@@ -269,7 +269,7 @@ interface FixedReader : Closeable {
      * -- deliberately NOT a reading-resolution render. CBZ ([ArchivePages]) reuses the exact bounds-only
      * `BitmapFactory` decode pass [ImagePageRenderer] already performs before every full decode (no new decode
      * path); PDF ([PdfPages]) reads `PdfRenderer.Page.width`/`height`, which `PdfRenderer` already exposes without
-     * rasterizing. A future CBR [PageSource] adapter satisfies this the same way CBZ does today, through the same
+     * rasterizing. CBR's [RarPageSource] satisfies this the same way CBZ does, through the same
      * [ImagePageRenderer]-shared bounds pass -- no CBR-specific geometry method is needed. Returns `null` for an
      * out-of-range index or an undecodable page, rather than throwing -- callers (spread pairing) already treat
      * unknown geometry as "not landscape" (see [resolvePageGroups]), so a geometry failure degrades gracefully
@@ -317,24 +317,16 @@ private class PdfPages(descriptor: ParcelFileDescriptor) : FixedReader {
  * One page's bytes from a paged image-sequence container, independent of the container's archive format. A
  * container need not support random access to satisfy this contract: [openPage] is indexed by logical page
  * position, but whether (or how efficiently) an implementation serves pages out of order is entirely its own
- * concern. [ZipPageSource] is backed by true random access (`SeekableZip`'s positional reads); a future CBR
- * adapter over a "solid" RAR archive that cannot offer ZIP-style random access could instead serve this from a
- * one-time sequential index or a bounded extract-to-cache, without this interface -- or [ImagePageRenderer], which
- * is written only against it -- changing at all. This is the Phase 3A container/page-source boundary. Phase 3E-C
- * adds exactly that future CBR adapter, `RarPageSource` (`core/reader/RarPageSource.kt`): this interface and
- * [ImagePageRenderer] below were widened from file-private to `internal` for that one reason (a visibility-only
- * change, see `docs/PHASE_3_IMPLEMENTATION_PLAN.md`'s 3E-C record) -- `RarPageSource` is NOT wired into
- * [FixedReaderFactory]/any product format routing yet.
+ * concern. [ZipPageSource] uses `SeekableZip` positional reads, while [RarPageSource] adapts the lower RAR
+ * container's bounded extraction cache. `PublicationFormat.CBR` reaches this shared image-sequence path through
+ * [FixedReaderFactory] and `RarPages`; no separate CBR reader contract exists.
  */
 internal interface PageSource : Closeable {
     val pageCount: Int
     fun openPage(index: Int): InputStream
 }
 
-/** [PageSource] backed by `SeekableZip`'s true random access; today's only container implementation, and the
- * only one CBZ (a ZIP container) needs. Named for that backing container -- not `ArchivePageSource` -- since
- * "archive" is generic enough to misleadingly suggest it already covers a future non-ZIP (e.g. RAR/CBR) format;
- * it does not (Codex R1 finding 5). */
+/** [PageSource] backed by `SeekableZip` true random access for CBZ; RAR/CBR uses [RarPageSource] instead. */
 private class ZipPageSource(private val zip: SeekableZip, private val entries: List<SeekableZip.Entry>) : PageSource {
     override val pageCount get() = entries.size
     override fun openPage(index: Int): InputStream = zip.open(entries[index])
@@ -343,8 +335,8 @@ private class ZipPageSource(private val zip: SeekableZip, private val entries: L
 
 /**
  * Decodes one page image from any [PageSource] at a resolution driven by a [PageRenderRequest], bounded by the
- * same safety ceilings regardless of container format. Used by [ArchivePages] today; a future CBR [PageSource]
- * reuses this unchanged, rather than duplicating the bounds-then-sample decode policy per container format.
+ * same safety ceilings regardless of container format. [ArchivePages] and CBR's `RarPages` both reuse this
+ * unchanged rather than duplicating the bounds-then-sample decode policy per container.
  */
 internal object ImagePageRenderer {
     /** Bounds-only decode (no full-resolution allocation) -- the same `inJustDecodeBounds` pass [render] already
