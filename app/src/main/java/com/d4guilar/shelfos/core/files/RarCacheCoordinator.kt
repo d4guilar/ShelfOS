@@ -26,7 +26,8 @@ import java.util.concurrent.atomic.AtomicLong
  * cross-reopen reuse real rather than aspirational. The first caller to create a root's coordinator decides its
  * [maxBytes]/[maxEntries] for that root's lifetime in this process; a later [getInstance] call for the same root
  * with different budget arguments reuses the existing instance's budgets unchanged (documented, not enforced,
- * since ShelfOS has exactly one production call site for this today -- see `RarPageSource.open`). There is no
+ * since ShelfOS has exactly one production call site for this today -- see [RarContainer.open], moved there from
+ * `RarPageSource.open` by the Phase 3E-D R1A layering fix). There is no
  * cross-process locking: nothing in this codebase shares one cache root across processes (single ShelfOS
  * process owns its own `context.cacheDir`), so this coordinator only ever needs to be correct within one JVM.
  *
@@ -68,13 +69,15 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * This class makes no attempt to detect a changed source itself: a reusable `sourceKey`/namespace MUST change
  * when the underlying source's content/revision changes -- that is entirely the caller's responsibility (see
- * `RarPageSource.open`'s doc). A later slice with real product/import integration (3E-D+) is expected to derive
- * a revision-sensitive key from a real `LibraryItem`; this checkpoint only preserves the contract, it does not
- * fulfill it.
+ * [RarContainer.open]'s doc). Phase 3E-D R1A's HIGH-2 fix is the product/import integration that fulfills this
+ * contract: [com.d4guilar.shelfos.domain.library.rarCacheSourceKey] derives a stable key from a real
+ * `LibraryItem` only when its `managedPath` proves the source is a ShelfOS-owned immutable private copy, and
+ * returns `null` (ephemeral) for every other source -- never a key derived from unrefreshed, potentially stale
+ * persisted metadata.
  *
  * ## Ephemeral/random namespaces
  *
- * When `RarPageSource.open` has no stable `sourceKey`, it falls back to a fresh random namespace per open (see
+ * When [RarContainer.open] has no stable `sourceKey`, it falls back to a fresh random namespace per open (see
  * its own doc). Chosen policy (b): an ephemeral namespace's entries are accounted and evicted by this
  * coordinator EXACTLY like any other namespace's -- there is no separate "clean up on source close" path. This
  * is deliberately the simpler of the two policies the remediation brief allows, and it is still sufficient to

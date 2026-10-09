@@ -350,6 +350,35 @@ class RarPageSourceTest {
     }
 
     @Test
+    fun nullSourceKeyNeverReusesCachedBytesAcrossReopensEvenWithIdenticalPhysicalOrdinals() {
+        // Phase 3E-D R1A (HIGH-2) integration-level proof: a `null` sourceKey (the production policy for a
+        // referenced external source without a trustworthy refreshed revision token, or any other source that
+        // cannot safely offer a persistent key) must fall back to a fresh ephemeral/random namespace on EVERY
+        // open -- simulating the underlying source's bytes changing between two "reopens" of the same logical
+        // publication (same physical ordinal 0) must therefore never expose a stale cache hit, with or without a
+        // byteSize/content-size change.
+        val entriesBefore = listOf(FakeRarArchiveSession.entry(0, "page1.jpg"))
+        val before = RarPageSource.open(FakeRarArchiveSession(entriesBefore, mapOf(0 to byteArrayOf(1))), cacheRoot, sourceKey = null)
+        assertEquals(1, before.openPage(0).use { it.readBytes() }[0].toInt())
+        before.close()
+
+        // Same-size replacement: the most dangerous case for the old "$id:$byteSize" key (identical declared
+        // size would have reused the same key/namespace and served the OLD, now-stale materialized bytes).
+        val entriesSameSize = listOf(FakeRarArchiveSession.entry(0, "page1.jpg"))
+        val sameSize = RarPageSource.open(FakeRarArchiveSession(entriesSameSize, mapOf(0 to byteArrayOf(2))), cacheRoot, sourceKey = null)
+        assertEquals("a null sourceKey must never reuse a prior open's cached bytes", 2, sameSize.openPage(0).use { it.readBytes() }[0].toInt())
+        sameSize.close()
+
+        // Changed-size replacement: same requirement, for completeness.
+        val entriesChangedSize = listOf(FakeRarArchiveSession.entry(0, "page1.jpg"))
+        val changedSize = RarPageSource.open(
+            FakeRarArchiveSession(entriesChangedSize, mapOf(0 to byteArrayOf(3, 3, 3))), cacheRoot, sourceKey = null,
+        )
+        assertEquals(3, changedSize.openPage(0).use { it.readBytes() }[0].toInt())
+        changedSize.close()
+    }
+
+    @Test
     fun tinyInjectableCacheLimitsTriggerDeterministicEviction() {
         val entries = listOf(
             FakeRarArchiveSession.entry(0, "page1.jpg"),

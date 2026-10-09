@@ -397,13 +397,16 @@ private class ArchivePages(private val descriptor: ParcelFileDescriptor) : Fixed
  * and every page render/geometry lookup goes through the SAME [ImagePageRenderer] CBZ and PDF already share --
  * no CBR-specific decode, zoom, spread or fold code exists anywhere in this class. [cacheRoot]/[sourceKey] are
  * threaded straight to [RarPageSource.open] unchanged; see [com.d4guilar.shelfos.domain.library.rarCacheSourceKey]
- * for what [sourceKey] is actually derived from. The underlying native session and its extraction cache handle are
- * owned exclusively by [source] (created once here, when [FixedReaderFactory.open] is called -- never recreated
- * per page) and released exactly once by [close] -- never across a ViewModel recreation, which always calls
- * [FixedReaderFactory.open] again from scratch (see [com.d4guilar.shelfos.feature.reader.FixedReaderViewModel]'s
- * class doc: "the session is closed when this ViewModel is cleared").
+ * for what [sourceKey] is actually derived from -- a `null` [sourceKey] (Phase 3E-D R1A HIGH-2: any source without
+ * a [com.d4guilar.shelfos.domain.library.LibraryItem.managedPath], i.e. not a ShelfOS-owned immutable private
+ * copy) is a deliberate, safe choice meaning "ephemeral/random cache namespace, never reused across reopens of
+ * this source" -- it is NOT a bug or a missing value. The underlying native session and its extraction cache
+ * handle are owned exclusively by [source] (created once here, when [FixedReaderFactory.open] is called -- never
+ * recreated per page) and released exactly once by [close] -- never across a ViewModel recreation, which always
+ * calls [FixedReaderFactory.open] again from scratch (see [com.d4guilar.shelfos.feature.reader.FixedReaderViewModel]
+ * 's class doc: "the session is closed when this ViewModel is cleared").
  */
-private class RarPages(private val descriptor: ParcelFileDescriptor, cacheRoot: File, sourceKey: String) : FixedReader {
+private class RarPages(private val descriptor: ParcelFileDescriptor, cacheRoot: File, sourceKey: String?) : FixedReader {
     private val source: PageSource = RarPageSource.open(openRarArchiveSession(descriptor), cacheRoot, sourceKey)
     override val pageCount get() = source.pageCount
     override fun render(index: Int, request: PageRenderRequest): Bitmap = ImagePageRenderer.render(source, index, request)

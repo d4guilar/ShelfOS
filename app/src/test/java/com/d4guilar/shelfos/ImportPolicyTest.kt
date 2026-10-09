@@ -69,17 +69,48 @@ class ImportPolicyTest {
         assertFalse(spreadCapable(PublicationFormat.CBR, MediaCategory.DOCUMENT))
     }
 
-    @Test fun rarCacheSourceKeyIsStableForTheSameIdentityAndSensitiveToARevisionChangeNeverToDisplayNameAlone() {
-        // Phase 3E-D: the production RAR extraction-cache namespace key must be derived only from the item's own
-        // stable id and its persisted byte size (the one revision signal already available) -- never from its
-        // mutable, user-editable title/fileName, so a cosmetic rename can never change (or collide) a cache key.
-        assertEquals(rarCacheSourceKey("abc", 100L), rarCacheSourceKey("abc", 100L))
-        assertNotEquals(rarCacheSourceKey("abc", 100L), rarCacheSourceKey("abc", 200L))
-        assertNotEquals(rarCacheSourceKey("abc", 100L), rarCacheSourceKey("def", 100L))
-        val a = LibraryItem("same-id", "Original Title", category = MediaCategory.COMIC, sourceUri = "content://a",
-            format = PublicationFormat.CBR, fileName = "a.cbr", byteSize = 100L)
-        val renamed = a.copy(title = "A Completely Different Title", fileName = "renamed.cbr")
-        assertEquals(a.rarCacheSourceKey(), renamed.rarCacheSourceKey())
+    // Phase 3E-D R1A (HIGH-2): the production RAR extraction-cache namespace key factory. The old
+    // "$id:$byteSize" key was proven unsafe for a referenced external SAF source, because LibraryItem.byteSize is
+    // import-time-persisted metadata that is never refreshed on reopen -- a changed-content source (same size OR
+    // different size) could collide with an earlier materialization of different bytes. The fixed policy: a
+    // managed (ShelfOS-owned, immutable private copy) source gets a stable key derived from id alone; every other
+    // source (no managedPath, i.e. a referenced external source with no trustworthy refreshed revision token)
+    // gets `null`, meaning "ephemeral/random namespace, never reused across reopens."
+
+    @Test fun managedSourcesGetAStablePersistentKeyDerivedOnlyFromIdNeverFromByteSizeOrDisplayName() {
+        val managed = LibraryItem("same-id", "Original Title", category = MediaCategory.COMIC, sourceUri = "content://a",
+            format = PublicationFormat.CBR, fileName = "a.cbr", byteSize = 100L, managedPath = "same-id.cbr")
+        assertEquals(rarCacheSourceKey("same-id", "same-id.cbr"), rarCacheSourceKey("same-id", "same-id.cbr"))
+        assertNotEquals(rarCacheSourceKey("abc", "abc.cbr"), rarCacheSourceKey("def", "def.cbr"))
+        // A cosmetic rename, or a byteSize change recorded for the SAME managed copy, must never change the key --
+        // the managed copy's identity (and therefore cache safety) rests entirely on its own immutable id.
+        val renamed = managed.copy(title = "A Completely Different Title", fileName = "renamed.cbr")
+        assertEquals(managed.rarCacheSourceKey(), renamed.rarCacheSourceKey())
+        val resized = managed.copy(byteSize = 999L)
+        assertEquals(managed.rarCacheSourceKey(), resized.rarCacheSourceKey())
+        assertNotNull(managed.rarCacheSourceKey())
+    }
+
+    @Test fun externalReferencedSourcesWithoutATrustworthyRefreshedRevisionAlwaysGetAnEphemeralNullKey() {
+        // No managedPath => a referenced external SAF source. ShelfOS has no revision signal for this that is
+        // actually re-queried at open time -- only the stale, persisted byteSize, which is exactly the signal
+        // proven unsafe. The factory must return null (ephemeral/random namespace) regardless of id/byteSize/
+        // title/fileName -- it must never fall back to using byteSize or any other unrefreshed persisted field.
+        assertNull(rarCacheSourceKey("abc", null))
+        val external = LibraryItem("same-id", "Original Title", category = MediaCategory.COMIC, sourceUri = "content://a",
+            format = PublicationFormat.CBR, fileName = "a.cbr", byteSize = 100L, managedPath = null)
+        assertNull(external.rarCacheSourceKey())
+        // Simulates the underlying provider content being replaced behind the SAME durable URI/id while the
+        // persisted byteSize happens to stay IDENTICAL -- the single most dangerous case for the old
+        // "$id:$byteSize" key, since that key would have been unchanged (and therefore unsafely reused) here.
+        val sameSizeAfterReplacement = external.copy()
+        assertNull(sameSizeAfterReplacement.rarCacheSourceKey())
+        // And the changed-size case: still null, never a key derived from byteSize at all.
+        val changedSizeAfterReplacement = external.copy(byteSize = 4096L)
+        assertNull(changedSizeAfterReplacement.rarCacheSourceKey())
+        // Unknown/unavailable size metadata must still fall back safely to ephemeral, never crash or default to
+        // some other persistent key.
+        assertNull(external.copy(byteSize = null).rarCacheSourceKey())
     }
 
     @Test fun repeatedSourcesAreIdempotentAndSimilarFilesOnlyWarn() {

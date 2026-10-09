@@ -69,7 +69,7 @@ internal class RarExtractionCache(
 
     companion object {
         /** Reuses [ArchivePolicy.MAX_IMAGE_BYTES] -- as of Phase 3E-C R1A's HIGH-2 fix, this is the same value
-         * `RarPageSource` passes as `NativeRarSession.extractEntry`'s real, mid-stream `maxOutputBytes` ceiling,
+         * [RarContainer] passes as `NativeRarSession.extractEntry`'s real, mid-stream `maxOutputBytes` ceiling,
          * not only a post-hoc check against the finished temp file's length (the latter remains as defense in
          * depth). */
         const val MAX_ENTRY_BYTES: Long = ArchivePolicy.MAX_IMAGE_BYTES

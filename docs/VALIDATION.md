@@ -26,6 +26,8 @@ the descriptor's fd, mirrors `ArchivePolicy.open` for ZIP; original descriptor n
 `RarPageSource.open` (unchanged 3E-C policy: index/filter/safety-check, `ComicInfo.xml` read via the
 existing `EmbeddedMetadataReader`). Source mutation: **NO**. Conversion/repack: **NONE**. A rejected
 import leaves no partial private copy (same transaction discipline as CBZ/EPUB/PDF).
+**Superseded by the "PHASE 3E-D R1A" entry below**: `PublicationFiles.inspectRar` no longer imports or
+calls `core.reader.RarPageSource` at all — it opens `core.files`'s `RarContainer` directly.
 
 **Source key**: `rarCacheSourceKey(id, byteSize) = "$id:${byteSize ?: -1}"` (new,
 `domain/library/LibraryItem.kt`) — the item's own stable id plus its persisted byte size; never
@@ -34,6 +36,10 @@ derived from title/fileName/display name. Same formula and same cache root
 `FixedReaderFactory` reading route, so `RarCacheCoordinator.getInstance` resolves to the same
 singleton coordinator both times (reopen-reuse for an unchanged source; a changed byte size yields a
 different key).
+**Superseded by the "PHASE 3E-D R1A" entry below**: this formula was proven NOT revision-safe for a
+referenced external source (`byteSize` is stale, never refreshed on reopen) and is replaced by a
+managed-vs-external-aware factory that returns `null` (ephemeral) for any source without a
+`LibraryItem.managedPath`.
 
 **Metadata/ComicInfo**: `RarPageSource.comicInfo()` (unchanged) reuses the existing
 `EmbeddedMetadataReader.comicInfo(Document)` mapping (title/series/number/writer/Manga-RTL flag) —
@@ -116,6 +122,77 @@ classes above were run).
 file updated. No other canonical doc (`PRODUCT.md`/`ARCHITECTURE.md`/`COMICS_MANGA.md`/`READER.md`)
 required a change: none of their existing statements became factually false by CBR becoming a working
 format at this checkpoint.
+
+## PHASE 3E-D R1A — HIGH ARCHITECTURE REMEDIATION (2026-10-08)
+
+Status: **IMPLEMENTED locally; pending review.** Fixes exactly the two HIGH findings Codex High
+returned against the "PHASE 3E-D" entry above; everything else there was accepted and is unchanged.
+No native file changed; `NativeRarSession`, `shelfos_rar_session_jni.cpp`, `RarCacheCoordinator`'s
+global limits/eviction/lease model, and the native extraction API are all byte-for-byte unchanged. See
+`docs/PHASE_3_IMPLEMENTATION_PLAN.md`'s §32 for the full narrative record.
+
+**HIGH-1 (layering, `core.files → core.reader`)**: new `RarContainer` (`core/files/RarContainer.kt`,
+`internal class`) is the lower-level container abstraction both `PublicationFiles` (import) and
+`RarPageSource` (reader) depend on independently. It owns entry indexing/safety/filtering/ordering
+(`ArchivePolicy.safeName`/`MAX_ENTRIES`, `isPageImage`, `naturalCompare`, physical-ordinal tie-break),
+`ComicInfo.xml` identification/extraction/parsing (`EmbeddedMetadataReader`, unchanged), and cached
+materialization (`RarExtractionCache`/`RarCacheCoordinator`, unchanged). `PublicationFiles.inspectRar`
+now opens `RarContainer` directly and calls only `comicInfo()` — **zero** imports of `core.reader`
+anywhere in `core.files` for the CBR path (verified: `grep -rn "import com.d4guilar.shelfos.core.reader"
+app/src/main/java/com/d4guilar/shelfos/core/files/` returns nothing). `core.reader.RarPageSource` is
+now a thin `PageSource` adapter (`pageCount`/`openPage`/`close`/`comicInfo()` all delegate to
+`RarContainer`) — no second enumeration/filter/ComicInfo policy exists anywhere. One unrelated,
+pre-existing exception noted (not fixed, out of scope): `core/designsystem/FontImportMessages.kt`
+imports `core.reader` — unconnected to CBR/RAR.
+
+**HIGH-2 (cache identity)**: `rarCacheSourceKey` (`domain/library/LibraryItem.kt`) now derives from
+`LibraryItem.managedPath`, the only managed-vs-external distinction ShelfOS's data model has today (the
+same split `PublicationDetails` already shows the user as "linked" vs "private copy"). Non-null
+`managedPath` (a ShelfOS-owned private copy, written once at import, never mutated after) → stable
+`"managed:$id"` key, cross-reopen reuse preserved. Null `managedPath` (a referenced external source,
+no revision signal refreshed at open time) → `null`, which `RarContainer.open` turns into a fresh
+ephemeral/random namespace per open — never reused, so a same-size OR changed-size content replacement
+behind the same durable URI can never serve a stale cached page. `byteSize`/`title`/`fileName` are
+never consulted. `PublicationFiles.inspectRar` always opens with `sourceKey = null` (import-time
+inspection never needs cross-reopen reuse); only the reader-time route
+(`FixedReaderFactory`'s `RarPages`, via `LibraryItem.rarCacheSourceKey()`) ever uses the persistent
+managed-copy key. Room schema change: **NONE**. No revision fingerprint added to persistence.
+
+**Tests**: `ImportPolicyTest` — new
+`managedSourcesGetAStablePersistentKeyDerivedOnlyFromIdNeverFromByteSizeOrDisplayName` and
+`externalReferencedSourcesWithoutATrustworthyRefreshedRevisionAlwaysGetAnEphemeralNullKey` (replacing
+the obsolete byteSize-sensitivity test), covering: managed key depends only on `id`; external key is
+always `null` including same-size-after-replacement (the old key's most dangerous case) and
+changed-size-after-replacement; unknown/null byteSize still falls back to ephemeral; title/fileName
+never affect either outcome. `RarPageSourceTest` — new
+`nullSourceKeyNeverReusesCachedBytesAcrossReopensEvenWithIdenticalPhysicalOrdinals`, an
+integration-level stale-hit regression against `FakeRarArchiveSession` proving a `null` sourceKey never
+serves a stale page across simulated reopens with same-size and changed-size replacement content.
+
+**Targeted JVM tests** (`./gradlew :app:testDebugUnitTest --tests "com.d4guilar.shelfos.core.reader.RarPageSourceTest" --tests "com.d4guilar.shelfos.ImportPolicyTest" --tests "com.d4guilar.shelfos.core.files.RarMagicDetectionTest"`):
+`RarPageSourceTest` 20/20 (19 original + 1 new), `ImportPolicyTest` 13/13 (12 original, 1 obsolete test
+replaced by 2 new ones), `RarMagicDetectionTest` 6/6 (unaffected). Total: 39/39, 0 failures.
+
+**Targeted instrumented test** (API 24 emulator, `shelfos-api24(AVD)`, run via
+`./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.CbrProductIntegrationTest`):
+`CbrProductIntegrationTest` 3/3 PASS, rerun after the import-layer refactor — real native routing,
+import detection, and protected-archive handling all still work. `adb logcat` scanned for
+SIGSEGV/SIGABRT/fatal signal/FORTIFY/JNI fatal: **none observed**.
+
+**Native/cache regression**: production native files unchanged (`git diff --stat` shows no `.cpp`/
+`.h`/CMake changes); `RarCacheCoordinator`/`RarExtractionCache`/native extraction API architecture
+unchanged (not touched by this diff); no 3E-B native matrix or 3E-C coordinator matrix re-run (not
+needed — nothing in that layer changed).
+
+**Build gates**: `assembleDebug` PASS, `assembleDebugAndroidTest` PASS, `lintDebug` PASS.
+
+**Full JVM suite**: NOT RUN. **Full connected suite**: NOT RUN. **Physical ARM hardware**: NOT
+PERFORMED. `PublicationFormat.CBR`: RETAINED. Room schema: unchanged. Migration: NONE. Owner's real
+local CBR fixture: not committed, not packaged, not re-run for this remediation.
+
+**Lower findings explicitly NOT addressed by this remediation** (reserved for a separate R1B pass): the
+archive-open failure path losing the typed `NativeRarError` cause, and stale KDoc that still describes
+CBR/`RarPages` as future/unwired in places this fix did not otherwise need to touch for compilation.
 
 ## PHASE 3E-C R1B — CACHE LIFECYCLE / ERROR SEMANTICS REMEDIATION (2026-10-08)
 

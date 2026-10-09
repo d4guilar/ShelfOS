@@ -12,7 +12,6 @@ import android.provider.OpenableColumns
 import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
-import com.d4guilar.shelfos.core.reader.RarPageSource
 import com.d4guilar.shelfos.domain.importing.*
 import com.d4guilar.shelfos.domain.library.*
 import kotlinx.coroutines.*
@@ -98,7 +97,7 @@ class PublicationFiles(
             stage(ImportProgressStage.Inspecting)
             val descriptor = owned?.let { ParcelFileDescriptor.open(it, ParcelFileDescriptor.MODE_READ_ONLY) }
                 ?: open(LibraryItem(id, name, category = MediaCategory.BOOK, sourceUri = sourceUri, format = PublicationFormat.PDF, fileName = name, byteSize = size))
-            val (format, metadata) = descriptor.use { inspect(it, rarCacheSourceKey(id, size)) }
+            val (format, metadata) = descriptor.use { inspect(it) }
             currentCoroutineContext().ensureActive()
             owned?.let { partial ->
                 val completed = File(directory, "$id.${format.name.lowercase()}")
@@ -159,12 +158,11 @@ class PublicationFiles(
         }
     }
 
-    /** Bounded detection: headers and container directories only, never whole-publication loading. [sourceKey]
-     * (see [rarCacheSourceKey]) is only ever consulted for a RAR/CBR source -- a reused RAR extraction cache
-     * namespace for metadata inspection is a free bonus for an immediately-following first read, never required
-     * for correctness (a null/ignored key elsewhere still falls back to [RarPageSource.open]'s own ephemeral
-     * per-call namespace). */
-    private fun inspect(descriptor: ParcelFileDescriptor, sourceKey: String): Pair<PublicationFormat, EmbeddedMetadata> {
+    /** Bounded detection: headers and container directories only, never whole-publication loading. A RAR/CBR
+     * source is always inspected under an ephemeral cache namespace (see [inspectRar]'s doc) -- import-time
+     * inspection never needs cross-reopen cache reuse, so it never needs (and never computes) a persistent
+     * [com.d4guilar.shelfos.domain.library.rarCacheSourceKey]. */
+    private fun inspect(descriptor: ParcelFileDescriptor): Pair<PublicationFormat, EmbeddedMetadata> {
         try { Os.lseek(descriptor.fileDescriptor, 0, OsConstants.SEEK_SET) }
         catch (_: ErrnoException) { throw PublicationException(PublicationProblem.NEEDS_COPY) }
         val head = ByteArray(1024)
@@ -186,36 +184,48 @@ class PublicationFiles(
                     else -> { ArchivePolicy.pages(zip); PublicationFormat.CBZ to EmbeddedMetadataReader.comicInfo(zip) }
                 }
             }
-            isRarMagic(head, count) -> inspectRar(descriptor, sourceKey)
+            isRarMagic(head, count) -> inspectRar(descriptor)
             else -> throw PublicationException(PublicationProblem.UNSUPPORTED_FORMAT)
         }
     }
 
     /**
-     * Phase 3E-D: validates a RAR/CBR container the same way [ArchivePolicy.pages] validates a CBZ ZIP entry --
-     * opened once through [openRarArchiveSession] (never a second detector/parser), indexed and page-filtered by
-     * [RarPageSource.open] (throwing [PublicationProblem.EMPTY_ARCHIVE]/[PublicationProblem.PROTECTED]/etc exactly
-     * as that shared policy already does for the real reading-session route), then closed again immediately --
-     * import-time inspection never keeps a session or extracted pages alive past this call. [RarPageSource.
-     * comicInfo] reuses the exact same `ComicInfo.xml` mapping CBZ's own [EmbeddedMetadataReader.comicInfo] already
-     * produces (best-effort; a missing/unparsable `ComicInfo.xml` still imports successfully via filename/fallback
-     * evidence, same as CBZ).
+     * Phase 3E-D, re-layered in 3E-D R1A (HIGH-1/HIGH-2): validates a RAR/CBR container the same way [ArchivePolicy
+     * .pages] validates a CBZ ZIP entry -- opened once through [openRarArchiveSession] (never a second
+     * detector/parser), indexed and page-filtered by [RarContainer.open] (throwing [PublicationProblem.
+     * EMPTY_ARCHIVE]/[PublicationProblem.PROTECTED]/etc exactly as that shared policy already does for the real
+     * reading-session route), then closed again immediately -- import-time inspection never keeps a session or
+     * extracted pages alive past this call. [RarContainer.comicInfo] reuses the exact same `ComicInfo.xml` mapping
+     * CBZ's own [EmbeddedMetadataReader.comicInfo] already produces (best-effort; a missing/unparsable
+     * `ComicInfo.xml` still imports successfully via filename/fallback evidence, same as CBZ).
+     *
+     * Opens [RarContainer] directly -- NEVER `core.reader.RarPageSource` -- so import-time inspection has no
+     * dependency on the reader layer at all (Phase 3E-D R1A HIGH-1): validating an archive and best-effort reading
+     * its `ComicInfo.xml` needs none of [RarContainer]'s page-extraction/[PageSource] surface.
+     *
+     * Always opened with a `null` [RarContainer.open] `sourceKey` -- i.e. an ephemeral, per-call cache namespace
+     * (Phase 3E-D R1A HIGH-2). Import-time inspection never needs cross-reopen cache reuse (a page materialized
+     * here is simply discarded when [source] closes below), so it never needs to decide whether a persistent key
+     * would be safe for this not-yet-committed item -- that decision belongs entirely to the reader-time route
+     * (see [com.d4guilar.shelfos.domain.library.rarCacheSourceKey]'s doc), which only ever runs after the item (and
+     * its [LibraryItem.managedPath]) is already durably decided.
      */
-    private fun inspectRar(descriptor: ParcelFileDescriptor, sourceKey: String): Pair<PublicationFormat, EmbeddedMetadata> {
+    private fun inspectRar(descriptor: ParcelFileDescriptor): Pair<PublicationFormat, EmbeddedMetadata> {
         val session = openRarArchiveSession(descriptor)
-        val source = RarPageSource.open(session, rarCacheRoot, sourceKey)
+        val container = RarContainer.open(session, rarCacheRoot, sourceKey = null)
         return try {
-            PublicationFormat.CBR to (source.comicInfo() ?: EmbeddedMetadata())
+            PublicationFormat.CBR to (container.comicInfo() ?: EmbeddedMetadata())
         } finally {
-            source.close()
+            container.close()
         }
     }
 
-    /** Shared, process-wide RAR extraction-cache root (see [RarCacheCoordinator]/[RarPageSource.open]'s "cache
+    /** Shared, process-wide RAR extraction-cache root (see [RarCacheCoordinator]/[RarContainer.open]'s "cache
      * namespace" doc): the SAME path is used here (import-time inspection) and by `core.reader.FixedReader`'s
      * `RarPages` (the real reading session), so [RarCacheCoordinator.getInstance] resolves to the same singleton
-     * coordinator both times -- a page materialized while inspecting a just-imported CBR during import can be
-     * reused the moment that same title is first opened to read, for the SAME [rarCacheSourceKey]. */
+     * coordinator both times. Import-time inspection always uses an ephemeral namespace (see [inspectRar]), so in
+     * practice this sharing only ever matters for reuse ACROSS reader-time reopens of a managed (ShelfOS-owned,
+     * immutable) copy -- never between import-time inspection and the first read. */
     internal val rarCacheRoot: File get() = context.cacheDir
 
     /** Opening the document reads only its cross-reference data; protected and damaged PDFs fail early. */
