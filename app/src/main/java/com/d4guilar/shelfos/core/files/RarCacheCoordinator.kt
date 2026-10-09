@@ -96,7 +96,10 @@ import java.util.concurrent.atomic.AtomicLong
  * with `activeReaders > 0` (an [acquire] whose returned handle has not yet been [release]d, across ANY client
  * sharing this coordinator) is NEVER evicted, even if that temporarily leaves the cache over budget. Releasing
  * its last reader reruns eviction immediately. A failed final-file deletion stays accounted; other inactive
- * candidates are attempted in LRU order, with one deterministic pass when none can be removed.
+ * candidates are attempted in LRU order, with one deterministic pass when none can be removed. A final that has
+ * already vanished from disk (e.g. the app cache was cleared while ShelfOS was running) is not a failed deletion:
+ * its accounting is reclaimed on eviction, and a later [acquire] of that key re-materializes it instead of
+ * returning a handle to a missing file (Phase 3E-E).
  *
  * ## Locking / lock ordering
  *
@@ -152,9 +155,15 @@ internal class RarCacheCoordinator private constructor(
         synchronized(keyLock) {
             synchronized(stateLock) {
                 slots[key]?.let { slot ->
-                    slot.activeReaders++
-                    slot.lastAccess = ++accessCounter
-                    return CachedExtraction(slot.file) { release(key) }
+                    // Phase 3E-E: a final can vanish underneath accounting (Android or the user clearing the app
+                    // cache while ShelfOS runs). Never hand out a handle to a missing file -- fall through and
+                    // re-materialize under this same key lock; the replacement slot below inherits this slot's
+                    // outstanding leases and replaces (never double-counts) its bytes.
+                    if (slot.file.isFile) {
+                        slot.activeReaders++
+                        slot.lastAccess = ++accessCounter
+                        return CachedExtraction(slot.file) { release(key) }
+                    }
                 }
             }
 
@@ -192,7 +201,9 @@ internal class RarCacheCoordinator private constructor(
             }
 
             synchronized(stateLock) {
-                val slot = Slot(finalFile, bytes, ++accessCounter, activeReaders = 1)
+                val previous = slots[key] // non-null only when re-materializing a vanished final (see above)
+                if (previous != null) usedBytes -= previous.bytes
+                val slot = Slot(finalFile, bytes, ++accessCounter, activeReaders = (previous?.activeReaders ?: 0) + 1)
                 slots[key] = slot
                 usedBytes += bytes
                 evictLocked()
@@ -219,7 +230,9 @@ internal class RarCacheCoordinator private constructor(
                 .sortedBy { it.value.lastAccess }
             var evicted = false
             for (victim in candidates) {
-                if (!deleteFile(victim.value.file)) continue
+                // A final that already vanished from disk holds no bytes, so its accounting is reclaimed rather
+                // than left pinned forever as a "failed deletion".
+                if (!deleteFile(victim.value.file) && victim.value.file.exists()) continue
                 usedBytes -= victim.value.bytes
                 slots.remove(victim.key)
                 evicted = true

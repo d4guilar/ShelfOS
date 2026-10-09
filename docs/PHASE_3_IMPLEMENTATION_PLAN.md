@@ -15,14 +15,16 @@ COMPLETE and ACCEPTED on the same branch.** **3E-C (CBR container adapter —
   integration) is COMPLETE and ACCEPTED on the same branch (final Codex R2 PASS).** **3E-D (CBR product
 integration — `PublicationFormat.CBR` wired end to end through import, magic detection, metadata,
 category/Manga-RTL, `FixedReaderFactory` routing, spread/fold inheritance, progress/resume, and error
-mapping, on top of 3E-C, with no change to the accepted native/cache architecture) is IMPLEMENTED on
-the same branch; pending review.** 3E-E is **NOT STARTED**. 3F
+mapping, on top of 3E-C, with no change to the accepted native/cache architecture) is COMPLETE and
+ACCEPTED on the same branch (including its R1A/R1B remediation).** **3E-E (final CBR-specific acceptance
+hardening) is IMPLEMENTED on the same branch; pending independent final review** (see §33). 3F
 remains PLANNING ONLY. Phase 3 overall is **NOT complete**. See §22/§23 for what 3A
 landed, §24 for what 3B actually landed, §25 for what 3C actually landed (including the
 R1 and R2 remediation records), §26/§26a for what 3D and its R1 remediation landed,
 §26b for the R2 remediation (render-geometry state-independence + hysteresis,
 hinge-safe modal focus/accessibility) recorded below, §27 for what 3E-B actually landed,
-  §28-§30 for what 3E-C and its remediation actually landed, §31 for what 3E-D actually landed, and
+  §28-§30 for what 3E-C and its remediation actually landed, §31/§32 for what 3E-D actually landed, §33 for
+  3E-E's acceptance-hardening record, and
 `docs/adr/0024-native-cbr-libarchive.md` plus `docs/VALIDATION.md` for what 3E-A/3E-B/3E-C/3E-D actually landed.
 
 ## 1. Status / base
@@ -44,9 +46,9 @@ hinge-safe modal focus/accessibility) recorded below, §27 for what 3E-B actuall
   dependency foundation) is complete and accepted on `phase-3/3e-native-cbr`. 3E-B
   (generic native RAR engine) is complete and accepted on the same branch. 3E-C (CBR
   container adapter + bounded cache) is complete and accepted on that branch (final Codex R2
-  PASS). 3E-D (CBR product integration) is implemented on that branch; pending review.
-  3E-E has not started. 3F remains planning only, and Phase 3 overall is not
-  complete.
+  PASS). 3E-D (CBR product integration) is complete and accepted on that branch. 3E-E (CBR
+  acceptance hardening) is implemented on that branch; pending independent final review. 3F remains
+  planning only, and Phase 3 overall is not complete.
 
 ## 22. 3A implementation record (landed)
 
@@ -1806,6 +1808,71 @@ the refactor, with no native crash signal observed in logcat.
 **Subsequent R1B closure**: archive-open failures now retain their typed `NativeRarError` through an
 internal `RarOpenException` cause without changing `PublicationProblem` mapping, and stale source KDoc
 now describes CBR's active shared-reader route truthfully.
+
+## 33. 3E-E implementation record (final CBR acceptance hardening)
+
+**Scope**: acceptance evidence for the accepted 3E-A/B/C/D CBR stack under hostile and edge conditions, plus
+one small isolated defect fix the checks exposed. No feature, no native/C++ change, no Room/schema change, no
+new dependency, no reader/cache/source-identity redesign. Exact commands/counts are in `docs/VALIDATION.md`'s
+"PHASE 3E-E" entry.
+
+**Defect fixed (small, isolated, `RarCacheCoordinator` only)**: a cached final that vanished from disk while
+ShelfOS was running (Android or the user clearing the app cache) was still treated as a cache hit. The reader
+got a handle to a missing file, which surfaced as `FileNotFoundException`, and that maps to
+`SOURCE_UNAVAILABLE`. That message is untrue, because the source is fine. Eviction could not fix it either:
+`File.delete()` on a missing file returns `false`, so the slot stayed accounted forever as a "failed
+deletion". The page stayed broken until the process died. Fix: (1) a hit whose final is no longer a file
+re-materializes under the same per-key lock. The replacement slot takes over the old slot's outstanding leases
+and replaces its bytes rather than adding to them. (2) Eviction reclaims accounting for a final that no longer
+exists. A genuine failed deletion (file still present) is still kept accounted, unchanged. Regression tests are
+in `RarAcceptanceHardeningTest`. Three of them fail against the pre-fix coordinator.
+
+**Acceptance evidence added**: `RarAcceptanceHardeningTest` (JVM, 27 cases) covers:
+
+- hostile names: absolute, Windows-drive, UNC and backslash traversal paths, all rejected before any
+  extraction with the session closed once; Unicode and odd-but-safe names; on disk only
+  `<uuid>/<ordinal>.bin` ever appears
+- entries that must be skipped: empty name, directory, symlink, `__MACOSX` and hidden entries
+- duplicate names, sorted deterministically by physical ordinal
+- duplicate `ComicInfo.xml` (the first root match wins); malformed, oversized and failing `ComicInfo.xml`
+  never blocks reading
+- the exact `MAX_ENTRIES` boundary, checked lazily (over-limit is rejected before any enumeration)
+- a declared size exactly at the limit; a dishonestly sized entry aborted by the ceiling (no final, no temp,
+  no accounting change, sibling still readable)
+- `SecurityException` at index and at extraction; cancellation at index
+- an interrupted extraction that throws mid-write
+- an unusable cache root, and a failed atomic publish/rename
+- physical on-disk payload equal to the accounting after cross-namespace pressure and after rediscovery
+- managed reopen reuse; repeated later/earlier/adjacent access; thumbnail-then-reader on the same page
+- idempotent close and post-close failure; publication switch
+- bounded 4-thread concurrent access (no deadlock); recreation restore; no stale external reuse
+
+`CbrProductIntegrationTest` gained three real-JNI cases:
+
+- malformed valid-magic archives (truncated RAR5, RAR4 signature-only, RAR5 signature-only) reach the native
+  engine and fail `CORRUPT` with a typed `RarOpenException` cause, through both import and the reader route;
+  the six-byte marker and random bytes fail `UNSUPPORTED_FORMAT`
+- native `NOT_SEEKABLE` becomes `NEEDS_COPY` at `openRarArchiveSession`, and the caller's descriptor stays
+  valid
+- 40 bounded open → materialize → cached re-read → close cycles plus failing reader-route opens with no
+  file-descriptor growth
+
+**NEEDS_COPY truthfulness**: a non-seekable source surfaces the existing actionable `NEEDS_COPY` problem
+(import pre-checks `lseek` before the native engine is reached). ShelfOS does not perform an automatic copy.
+The user re-imports as a private offline copy. No copy subsystem was built.
+
+**Corrupt-final guarantee (documented, not changed)**: ShelfOS publishes finals only by atomic temp→final rename
+after a successful, size-checked extraction, so ShelfOS itself never leaves a partial final. Finals carry no
+integrity metadata. Arbitrary external corruption of a private-cache final is detected only when the image is
+decoded, as a page `CORRUPT`/decode failure. No hashing was added.
+
+**Owner real-world fixture**: an owner-provided local real-world CBR fixture (not committed) passed a final
+local smoke through the real product path: import, render, thumbnail, fit, zoom, navigation, progress,
+recreation/resume, spread pairing, managed-copy reuse, an ephemeral namespace for external sources, file
+descriptors, memory and cache-disk sanity. Source SHA-256 before == after. See `docs/VALIDATION.md`.
+
+**Status**: 3E-A/B/C/D complete/accepted; 3E-E implemented, pending independent final review; Phase 3 NOT
+complete. Full JVM and full connected regression remain Phase 3F.
 
 ## 2. Why Phase 3 is not green-field
 
