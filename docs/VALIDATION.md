@@ -65,6 +65,14 @@ devices: <one device>` and the per-device result XML. Targeted classes ran one p
      SIGSEGV/SIGABRT/Fatal signal/JNI DETECTED ERROR. JVM `LegacyPdfGateTest` 1/1 (24/25 legacy, 26+ not).
    - API 25 was not run (no device image available); its path was verified from source (same natives, shared
      `sPdfiumLock`) and the gate test. Full JVM and full connected suites were not rerun for this remediation.
+   - Codex R2 finding (MEDIUM): the lock lookup turned a missing field into a private monitor on every legacy SDK,
+     which is wrong on API 25 (its framework serializes with `sPdfiumLock`). Fix: a pure SDK-aware decision
+     (`resolveLegacyPdfiumLock`, the same code production uses). API 24 missing field remains an intentional private
+     monitor fallback; API 25 now requires the actual framework lock, and an absent, inaccessible, null or unusable
+     lock fails closed with `UNREADABLE` before the native preflight or any `PdfRenderer` is reached. API 26+ is
+     unchanged. JVM `LegacyPdfiumLockResolutionTest` 9/9 and `LegacyPdfGateTest` 1/1. API 24 emulator
+     `PdfFailedOpenFinalizationTest` 5/5 after the change, crash scan clean. API 25 runtime was NOT executed (source
+     contract only). Independent review and Samsung UAT are pending; Phase 3 is NOT complete.
    - Build gates after R1: assembleDebug, assembleDebugAndroidTest, lintDebug (the private-API reflection is
      suppressed with a justification, since it runs only on API 24/25), bundleDebug: BUILD SUCCESSFUL.
    - Also corrected: the CBR JNI transport header comment no longer says handles `<= 0` are invalid (comment only).

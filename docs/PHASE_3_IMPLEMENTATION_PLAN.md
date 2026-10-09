@@ -1931,6 +1931,13 @@ behavior is covered only by the existing fold tests and emulator geometry; no fo
    finalization interleaved on a concurrent thread, a live document surviving failures finalized afterwards, and 40
    repeated failures with a descriptor and cache-file check) plus the JVM `LegacyPdfGateTest`. Status: PDF
    remediation complete; fresh Codex High R2 and Samsung UAT pending; Phase 3 is NOT complete.
+   **Codex R2 follow-up (API 25 lock):** a missing `sPdfiumLock` was previously replaced by a private monitor on
+   every legacy SDK. That stays intentional only for API 24 (AOSP 7.0 has no Java lock). API 25 (AOSP 7.1) must
+   resolve the real framework lock; if it is absent, inaccessible, null or an unusable type, setup fails closed with
+   `UNREADABLE`, native preflight and `PdfRenderer` construction are never reached, and no unrelated monitor is
+   substituted. The choice is the pure `resolveLegacyPdfiumLock(sdk, lookup)`, covered by
+   `LegacyPdfiumLockResolutionTest`. API 24 focused regression 5/5. API 25 runtime was NOT executed (source contract
+   only). Independent review and Samsung UAT remain pending; Phase 3 is NOT complete.
 3. **Hinge-safe modal focus (3D)**. Dismissing Appearance/Pages under a fold requested reader focus while the
    background was still `canFocus = false`, so the request was refused. Focus then landed nowhere (RP5) or on the
    Library button (API 24, keyboard mode), and D-pad/gamepad input lost its target. Separately, the top chrome

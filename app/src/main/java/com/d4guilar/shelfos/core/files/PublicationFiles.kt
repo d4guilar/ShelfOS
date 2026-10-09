@@ -44,6 +44,38 @@ fun openPdf(descriptor: ParcelFileDescriptor): PdfRenderer = try {
 /** Android 7.0/7.1 (API 24/25) only; API 26+ keeps the plain `PdfRenderer` path. */
 internal fun usesLegacyPdfiumProbe(sdkInt: Int): Boolean = sdkInt < Build.VERSION_CODES.O
 
+/** Outcome of reflecting the framework's `PdfRenderer.sPdfiumLock`. */
+internal sealed interface PlatformLockLookup {
+    /** The field exists; [value] may still be null or unusable. */
+    data class Found(val value: Any?) : PlatformLockLookup
+    data object Absent : PlatformLockLookup
+    data object Inaccessible : PlatformLockLookup
+}
+
+internal sealed interface LockResolution {
+    data class Monitor(val monitor: Any, val isFrameworkLock: Boolean) : LockResolution
+    data object SetupFailure : LockResolution
+}
+
+/**
+ * Chooses the monitor the legacy probe synchronizes on. API 24 (AOSP 7.0) has no Java `sPdfiumLock`, so a missing
+ * field there is expected and a private monitor is used. API 25 (AOSP 7.1) has it and its constructor and natives
+ * synchronize on it, so on API 25 the real framework lock is mandatory: any absent, inaccessible, null or unusable
+ * value is a setup failure (fail closed, no unrelated fallback monitor). Source contract only; API 25 has not been
+ * executed on a device.
+ */
+internal fun resolveLegacyPdfiumLock(sdkInt: Int, lookup: PlatformLockLookup): LockResolution {
+    val framework = (lookup as? PlatformLockLookup.Found)?.value?.takeIf { isUsableMonitor(it) }
+    return when {
+        framework != null -> LockResolution.Monitor(framework, isFrameworkLock = true)
+        sdkInt < Build.VERSION_CODES.N_MR1 && lookup == PlatformLockLookup.Absent -> LockResolution.Monitor(Any(), isFrameworkLock = false)
+        else -> LockResolution.SetupFailure
+    }
+}
+
+private fun isUsableMonitor(value: Any): Boolean =
+    value !is Number && value !is Boolean && value !is Char && value !is CharSequence
+
 /**
  * Android 7.0/7.1 platform bug guard. pdfium's process-wide init count is bumped by `PdfRenderer.nativeCreate`
  * and dropped by `nativeClose`. A `PdfRenderer` whose `nativeCreate` fails (corrupt or protected PDF) has already
@@ -72,18 +104,24 @@ internal object LegacyPdfiumProbe {
             val create = PdfRenderer::class.java.getDeclaredMethod("nativeCreate", Int::class.javaPrimitiveType, Long::class.javaPrimitiveType)
             val close = PdfRenderer::class.java.getDeclaredMethod("nativeClose", Long::class.javaPrimitiveType)
             create.isAccessible = true; close.isAccessible = true
-            Natives(create, close, platformLock() ?: Any())
+            when (val lock = resolveLegacyPdfiumLock(Build.VERSION.SDK_INT, lookUpPlatformLock())) {
+                is LockResolution.Monitor -> Natives(create, close, lock.monitor)
+                LockResolution.SetupFailure -> null
+            }
         } catch (_: ReflectiveOperationException) { null } catch (_: SecurityException) { null }
     }
 
     /**
      * Android 7.1 serializes every native PDF call with the static `PdfRenderer.sPdfiumLock`; the probe must use
-     * the same monitor. Android 7.0 has no Java-level lock (only a native mutex around the init count), so a
-     * private monitor is used there and the probe is exactly as unsynchronized as the platform constructor.
+     * the same monitor (see [resolveLegacyPdfiumLock]). Android 7.0 has no Java-level lock (only a native mutex
+     * around the init count). Every lookup problem is reported as an outcome, never swallowed into a fallback.
      */
-    private fun platformLock(): Any? = try {
-        PdfRenderer::class.java.getDeclaredField("sPdfiumLock").apply { isAccessible = true }.get(null)
-    } catch (_: NoSuchFieldException) { null }
+    private fun lookUpPlatformLock(): PlatformLockLookup = try {
+        PlatformLockLookup.Found(PdfRenderer::class.java.getDeclaredField("sPdfiumLock").apply { isAccessible = true }.get(null))
+    } catch (_: NoSuchFieldException) { PlatformLockLookup.Absent
+    } catch (_: ReflectiveOperationException) { PlatformLockLookup.Inaccessible
+    } catch (_: SecurityException) { PlatformLockLookup.Inaccessible
+    } catch (_: RuntimeException) { PlatformLockLookup.Inaccessible }
 
     /** Throws the same [SecurityException], [IOException] or [IllegalArgumentException] the constructor would. */
     fun requireOpenable(descriptor: ParcelFileDescriptor) {
