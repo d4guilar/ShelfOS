@@ -21,7 +21,7 @@ import java.io.IOException
  * `LibarchiveRarNativeLifecycleTest`) against [NativeRarSession] directly, plus this checkpoint's own
  * `RarPageSourceRealSessionInstrumentedTest`, which drives the real native session end to end.
  */
-interface RarArchiveSession {
+internal interface RarArchiveSession {
     val entryCount: Int
 
     /** Metadata for the physical entry at [index], or null if out of range -- mirrors [NativeRarSession.entryAt]. */
@@ -46,7 +46,7 @@ interface RarArchiveSession {
  * closes [session] more than once even if [close] is called repeatedly (delegated to [NativeRarSession.close]'s
  * own idempotency).
  */
-class NativeRarArchiveSession(private val session: NativeRarSession) : RarArchiveSession {
+internal class NativeRarArchiveSession(private val session: NativeRarSession) : RarArchiveSession {
     override val entryCount: Int get() = session.entryCount
     override fun entryAt(index: Int): NativeRarEntry? = session.entryAt(index)
 
@@ -74,4 +74,4 @@ class NativeRarArchiveSession(private val session: NativeRarSession) : RarArchiv
  * `RarPageSource` -- can map it onto ShelfOS's existing [com.d4guilar.shelfos.domain.library.PublicationProblem]
  * model. Never thrown across any UI-facing boundary directly.
  */
-class RarExtractionException(val error: NativeRarError) : IOException(error.name)
+internal class RarExtractionException(val error: NativeRarError) : IOException(error.name)

@@ -1,5 +1,68 @@
 # Validation
 
+## PHASE 3E-C R1B — CACHE LIFECYCLE / ERROR SEMANTICS REMEDIATION (2026-10-08)
+
+Status: **COMPLETE locally; pending fresh Codex High R2.** Branch:
+`phase-3/3e-native-cbr`; base/R1A HEAD `68ae828`; original 3E-C `8ca4960`. This pass closes only
+the four reserved lower-cost findings and does not begin 3E-D.
+
+**Lease/accounting mechanics**: releasing a slot's last active lease immediately reruns the
+existing global eviction path, so a cache temporarily over budget only because candidates were
+active returns to bounds without another cache access. `CachedExtraction.open()` releases its
+acquired lease if stream construction throws. Eviction removes a final from slot/byte accounting
+only after deletion succeeds; a failed deletion stays accounted, other eligible inactive
+candidates are still attempted, and an all-failed pass terminates without looping.
+
+**Error semantics**: `PROTECTED` -> `PROTECTED`; `CORRUPT`/`INVALID_ARGUMENT` -> `CORRUPT`;
+`UNSUPPORTED` -> `UNSUPPORTED_FORMAT`; `TOO_LARGE` -> `TOO_LARGE`; `NOT_SEEKABLE` ->
+`NEEDS_COPY`. `IO` and `NATIVE_INTERNAL` retain `UNREADABLE` as the canonical problem, while the
+exact typed `RarExtractionException` remains attached as the `PublicationException` cause, so no
+native-category information is lost before 3E-D. Expected filesystem/PFD `IOException` is mapped
+to `UNREADABLE` with its cause retained; `SecurityException` maps to `PERMISSION_LOST`;
+`CancellationException` is rethrown unchanged. No UI strings or raw libarchive codes were added.
+
+**Internal surface**: `RarArchiveSession`, `NativeRarArchiveSession`, `RarExtractionException`,
+`RarExtractionCache`, `CachedExtraction`, and `RarCacheCoordinator` are now `internal`; the
+coordinator `Key` is private. Kotlin unit/androidTest friend paths compile normally.
+
+**Global cache and byte ceiling retained**: production root remains `cacheDir/cbr`, coordinated by
+one process-local/root-scoped `RarCacheCoordinator`. The 256 MiB/64-final limits apply across
+namespaces; existing finals are lazily discovered/accounted; stable revision-sensitive namespaces
+reuse finals across reopen; random per-open namespaces remain globally accounted; eviction stays
+deterministic and lease-aware. Known declared size is prechecked, while native extraction enforces
+`maxOutputBytes` during streaming before a chunk could exceed the limit, with the fixed 64 KiB
+buffer retained. `TOO_LARGE` removes the partial temp and never publishes a final. R1B changes no
+native production code.
+
+**Focused JVM tests**:
+
+`./gradlew.bat :app:testDebugUnitTest --tests "com.d4guilar.shelfos.core.files.RarCacheCoordinatorTest" --tests "com.d4guilar.shelfos.core.files.RarExtractionCacheTest" --tests "com.d4guilar.shelfos.core.files.RarExtractionCacheCeilingTest" --tests "com.d4guilar.shelfos.core.reader.RarPageSourceTest" --console=plain --no-daemon`
+-> **BUILD SUCCESSFUL**. Exact results: coordinator **10/10**, extraction cache **11/11**, ceiling
+**3/3**, page source/error mapping **19/19**; 0 failures, 0 errors, 0 skipped. Coverage includes
+release-driven bound restoration, stream-open cleanup, deletion-failure accounting plus alternate
+candidate eviction, every native mapping/cause, representative filesystem IO, and cancellation.
+
+**Focused instrumented regression**:
+
+`./gradlew.bat :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.core.reader.RarPageSourceRenderInstrumentedTest --console=plain --no-daemon`
+on `shelfos-api24(AVD) - 7.0` -> **3/3 PASS**, 0 failures/errors/skips. Post-run logcat scan for
+`SIGSEGV`, `SIGABRT`, `JNI DETECTED ERROR`, `FORTIFY`, and `Fatal signal` -> **0 matches**.
+
+**Retained administrator-verified on-device evidence**: `RarPageSourceRealSessionInstrumentedTest`
+**1/1 PASS**; `LibarchiveRarNativeTest` **13/13 PASS**, including
+`extractEntryEnforcesHardByteCeilingDuringExtractionOnRealDevice`;
+`LibarchiveRarNativeLifecycleTest` **PASS** (count not restated); no ShelfOS native crash signals.
+R1B intentionally did not rerun these unchanged native/session classes.
+
+**Build**: `./gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
+--console=plain --no-daemon` -> **BUILD SUCCESSFUL**. No native source changed.
+
+**Exclusions/scope**: full JVM **NOT RUN**; full connected **NOT RUN**; physical ARM
+**NOT PERFORMED**. `PublicationFormat.CBR` **NOT ADDED**; no import routing, Room/schema,
+factory/thumbnail/reader product wiring, or other 3E-D work added. 3E-A/3E-B remain accepted;
+3E-C is implemented/remediation complete/pending fresh R2; 3E-D/3E-E are not started; Phase 3 is
+not complete.
+
 ## PHASE 3E-C R1A — GLOBAL CACHE COORDINATOR + HARD EXTRACTION CEILING (2026-10-08)
 
 Status: **COMPLETE locally.** Branch: `phase-3/3e-native-cbr`; pre-remediation HEAD `8ca4960`
@@ -52,12 +115,9 @@ declared-size-precheck-still-works test; the existing error-mapping test was ext
 **Targeted instrumented tests**: `LibarchiveRarNativeTest` gained
 `extractEntryEnforcesHardByteCeilingDuringExtractionOnRealDevice` (real native engine, tiny
 injectable limit against the real rar4-plain fixture's 21-byte entry — never a 128MiB payload).
-Verified to **compile and package** via `assembleDebugAndroidTest` (below). **NOT executed on a
-device/emulator**: no connected Android device or running emulator was available in this
-environment (`adb devices` unavailable). This is flagged honestly as **NOT RUN (environment)**,
-not fabricated — the one genuine evidence gap this remediation leaves behind, specifically for the
-new native-ceiling test; all pre-existing instrumented tests this pass did not touch remain exactly
-as previously validated.
+R1A itself only compiled/packaged it because no device was then available. Later administrator-
+verified on-device evidence now records `LibarchiveRarNativeTest` **13/13 PASS**, including this
+case, plus `LibarchiveRarNativeLifecycleTest` **PASS** and no ShelfOS native crash signal.
 
 **Build**: `./gradlew.bat assembleDebug` -> **BUILD SUCCESSFUL**; native C++ changed
 (`shelfos_rar_session_jni.cpp`), so all 3 ABIs' CMake configure+build genuinely re-ran and
@@ -187,13 +247,12 @@ the REAL `NativeRarArchiveSession`/`NativeRarSession` for a full open -> enumera
 `assertArrayEquals` failure message if ever violated — not reproduced here as a magic string
 since the fixture is regenerated per test run from the vendored `.uu` asset). Result: **PASS**.
 
-**Error mapping**: `NativeRarError.toPublicationProblem()` (`core/reader/RarPageSource.kt`) —
-`PROTECTED` -> `PublicationProblem.PROTECTED`; `UNSUPPORTED` -> `UNSUPPORTED_FORMAT`; `CORRUPT`
-and `INVALID_ARGUMENT` -> `CORRUPT`; `NOT_SEEKABLE`/`IO`/`NATIVE_INTERNAL` -> `UNREADABLE`
-(collapsed — flagged honestly as a real loss of distinction, deferred to 3E-D). No new
-`PublicationProblem`/`PublicationExceptionDetail` value was added; no user-facing string was
-added. Proven by `RarPageSourceTest.errorMappingPreservesEachNativeRarErrorCategory` (all 7
-categories) and `.extractionFailureDuringRenderThrowsAMappedPublicationExceptionAndRetrySucceeds`.
+**Error mapping (original behavior; superseded by the R1B entry above)**:
+`NativeRarError.toPublicationProblem()` originally collapsed `NOT_SEEKABLE`/`IO`/
+`NATIVE_INTERNAL` to `UNREADABLE`. R1B now maps `NOT_SEEKABLE` to `NEEDS_COPY` and preserves the
+exact typed `IO`/`NATIVE_INTERNAL` cause through the `PublicationException`, without new UI strings
+or raw codes. `PROTECTED`, `UNSUPPORTED`, `CORRUPT`, `INVALID_ARGUMENT`, and `TOO_LARGE` retain
+their documented canonical mappings.
 
 **Cache failure tests**: `RarExtractionCacheTest.extractionFailureNeverLeavesAPartialFileMasqueradingAsACacheHitAndRetrySucceeds`
 (partial bytes written, `IO` error simulated, temp deleted, no `.bin`/`.tmp-` leftover, retry
@@ -217,18 +276,10 @@ failure reopen). Duplicate-key-collision: covered by `.distinctPhysicalEntriesPr
 Result: **BUILD SUCCESSFUL**. `RarExtractionCacheTest`: **10 tests, 0 failures, 0 errors, 0
 skipped**. `RarPageSourceTest`: **15 tests, 0 failures, 0 errors, 0 skipped**.
 
-**Targeted instrumented tests**: written (`RarPageSourceRenderInstrumentedTest`, 3 tests;
-`RarPageSourceRealSessionInstrumentedTest`, 1 test) and verified to **compile** via
-`assembleDebugAndroidTest` (below) — **NOT executed on a device/emulator in this pass**. No
-connected Android device/emulator was available/started in this session's environment, and
-per this checkpoint's own ~20-minute infrastructure budget and "do not spend more than
-~20 minutes on infrastructure" instruction, starting/booting a fresh AVD was not attempted
-given the real native-correctness portion of this work (3E-B) already has its own accepted,
-real-device-class instrumented evidence on record, and this checkpoint's instrumented tests
-exercise only (a) the already-accepted native session end to end with no new native behavior,
-and (b) a local fake carrying real PNG bytes through the unmodified `ImagePageRenderer`. This
-is flagged honestly as **NOT RUN (environment)** rather than fabricated — a genuine gap this
-report does not paper over.
+**Targeted instrumented tests**: the original environment only compiled the written classes.
+Subsequent administrator-verified execution records `RarPageSourceRenderInstrumentedTest`
+**3/3 PASS** and `RarPageSourceRealSessionInstrumentedTest` **1/1 PASS**. The R1B focused render
+rerun also passes **3/3** on the API 24 emulator with no native/JNI crash signature.
 
 **Build**: `./gradlew.bat assembleDebug` -> **BUILD SUCCESSFUL** (3 ABI CMake configure/build
 tasks ran as part of normal incremental Gradle bookkeeping; no `.cpp`/`.h` source changed, so

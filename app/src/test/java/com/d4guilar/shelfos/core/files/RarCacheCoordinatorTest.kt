@@ -207,4 +207,45 @@ class RarCacheCoordinatorTest {
         assertTrue(cacheC.containsForTest(1))
         held.release()
     }
+
+    @Test
+    fun releasingLastLeaseRestoresGlobalEntryBoundWithoutAnotherCacheAccess() {
+        val coordinator = RarCacheCoordinator.createForTest(root, maxBytes = Long.MAX_VALUE, maxEntries = 1)
+        val first = coordinator.acquire("ns", 1) { it.writeBytes(byteArrayOf(1)); null }
+        val second = coordinator.acquire("ns", 2) { it.writeBytes(byteArrayOf(2)); null }
+
+        assertEquals("both active entries may temporarily defer eviction", 2, coordinator.entryCountForTest)
+        first.release()
+
+        assertEquals("release must restore the bound immediately", 1, coordinator.entryCountForTest)
+        assertFalse(coordinator.containsForTest("ns", 1))
+        assertTrue(coordinator.containsForTest("ns", 2))
+        second.release()
+    }
+
+    @Test
+    fun failedDeletionStaysAccountedWhileAnotherEligibleCandidateCanBeEvicted() {
+        val attempted = mutableListOf<String>()
+        val coordinator = RarCacheCoordinator.createForTest(
+            root,
+            maxBytes = Long.MAX_VALUE,
+            maxEntries = 2,
+            deleteFile = { file ->
+                attempted += file.name
+                if (file.name == "1.bin") false else file.delete()
+            },
+        )
+        coordinator.acquire("ns", 1) { it.writeBytes(ByteArray(4)); null }.release()
+        coordinator.acquire("ns", 2) { it.writeBytes(ByteArray(5)); null }.release()
+
+        val newest = coordinator.acquire("ns", 3) { it.writeBytes(ByteArray(6)); null }
+
+        assertEquals(listOf("1.bin", "2.bin"), attempted)
+        assertTrue("the undeletable final must remain accounted", coordinator.containsForTest("ns", 1))
+        assertFalse("eviction must continue to another eligible candidate", coordinator.containsForTest("ns", 2))
+        assertTrue(coordinator.containsForTest("ns", 3))
+        assertEquals(2, coordinator.entryCountForTest)
+        assertEquals("failed deletion must not falsely reclaim bytes", 10L, coordinator.usedBytesForTest)
+        newest.release()
+    }
 }

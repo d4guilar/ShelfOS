@@ -2,6 +2,7 @@
 package com.d4guilar.shelfos.core.files
 
 import java.io.File
+import java.io.IOException
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -166,6 +167,25 @@ class RarExtractionCacheTest {
         // maxEntries=1 would normally evict key 1, but it is still actively referenced.
         assertTrue(cache.containsForTest(1))
         held.release()
+    }
+
+    @Test
+    fun streamOpenFailureReleasesLeaseAndAllowsImmediateEviction() {
+        val coordinator = RarCacheCoordinator.createForTest(root, maxBytes = Long.MAX_VALUE, maxEntries = 0)
+        val cache = RarExtractionCache(coordinator, "ns")
+        val extraction = cache.acquire(1) { it.writeBytes(bytesOf(4, 1)); null }
+        assertEquals(1, cache.activeReadersForTest(1))
+
+        try {
+            extraction.open { throw IOException("synthetic stream-open failure") }
+            throw AssertionError("expected IOException")
+        } catch (_: IOException) {
+            // expected
+        }
+
+        assertEquals(0, cache.activeReadersForTest(1))
+        assertEquals("release on open failure must let eviction restore the configured bound", 0, cache.entryCountForTest)
+        assertEquals(0L, cache.usedBytesForTest)
     }
 
     @Test

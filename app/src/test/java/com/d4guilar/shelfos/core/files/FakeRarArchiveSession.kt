@@ -11,10 +11,11 @@ import java.io.File
  * instrumented tests (`LibarchiveRarNativeTest`/`LibarchiveRarNativeLifecycleTest`) against the real
  * [NativeRarSession], plus this checkpoint's own real-session instrumented smoke test.
  */
-class FakeRarArchiveSession(
+internal class FakeRarArchiveSession(
     private val entryList: List<NativeRarEntry>,
     private val content: Map<Int, ByteArray> = emptyMap(),
     private val failures: Map<Int, NativeRarError> = emptyMap(),
+    private val throwables: Map<Int, Throwable> = emptyMap(),
     /** Simulates a partial write before failure (process-death-mid-extraction style): bytes written to the
      * destination before the configured [failures] error (if any) is returned for that index. */
     private val partialBytesBeforeFailure: Map<Int, ByteArray> = emptyMap(),
@@ -32,6 +33,7 @@ class FakeRarArchiveSession(
     override fun extractEntry(index: Int, destination: File, maxBytes: Long): NativeRarError? {
         extractionCount++
         extractedIndices += index
+        throwables[index]?.let { throw it }
         partialBytesBeforeFailure[index]?.let { destination.writeBytes(it) }
         failures[index]?.let { return it }
         val bytes = content[index] ?: return NativeRarError.INVALID_ARGUMENT

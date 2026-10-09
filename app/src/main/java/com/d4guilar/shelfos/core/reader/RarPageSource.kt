@@ -17,8 +17,10 @@ import com.d4guilar.shelfos.domain.library.PublicationException
 import com.d4guilar.shelfos.domain.library.PublicationExceptionDetail
 import com.d4guilar.shelfos.domain.library.PublicationProblem
 import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.util.UUID
+import java.util.concurrent.CancellationException
 
 /**
  * One logical comic page's identity, retaining the RAR entry's own [physicalIndex] (never just [name]) as its
@@ -124,7 +126,15 @@ internal class RarPageSource private constructor(
             session.extractEntry(physicalIndex, destination, RarExtractionCache.MAX_ENTRY_BYTES)
         }
     } catch (e: RarExtractionException) {
-        throw PublicationException(e.error.toPublicationProblem())
+        throw PublicationException(e.error.toPublicationProblem()).apply { initCause(e) }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: PublicationException) {
+        throw e
+    } catch (e: IOException) {
+        throw PublicationException(PublicationProblem.UNREADABLE).apply { initCause(e) }
+    } catch (e: SecurityException) {
+        throw PublicationException(PublicationProblem.PERMISSION_LOST).apply { initCause(e) }
     }
 
     override fun close() {
@@ -223,10 +233,10 @@ internal class RarPageSource private constructor(
  * [PublicationProblem] model -- never a raw native code, never a new [PublicationProblem]/
  * [PublicationExceptionDetail] value (both are UI-mapped elsewhere by exhaustive `when`s this checkpoint
  * deliberately does not touch), and never surfaced as localized text from this checkpoint. [NativeRarError.
- * NOT_SEEKABLE], [NativeRarError.IO], and [NativeRarError.NATIVE_INTERNAL] all collapse to the existing
- * [PublicationProblem.UNREADABLE] for now -- a real loss of the three-way distinction the native layer itself
- * still makes (see `NativeRarSession`'s doc), explicitly flagged here for whichever later slice (3E-D) first
- * needs to tell them apart in product UX, rather than inventing a new enum entry speculatively today.
+ * NOT_SEEKABLE] maps to the existing actionable [PublicationProblem.NEEDS_COPY]. [NativeRarError.IO] and
+ * [NativeRarError.NATIVE_INTERNAL] both use [PublicationProblem.UNREADABLE], while the thrown
+ * [PublicationException] retains the originating typed [RarExtractionException] as its cause so 3E-D can still
+ * distinguish source/cache I/O from an internal native/program failure without string parsing or raw codes.
  * [NativeRarError.TOO_LARGE] (Phase 3E-C R1A, HIGH-2's hard extraction-time ceiling) reuses the existing
  * [PublicationProblem.TOO_LARGE] -- the SAME problem CBZ's own oversized-page-image policy
  * ([com.d4guilar.shelfos.core.files.ArchivePolicy]) already reports -- rather than collapsing into
@@ -238,5 +248,6 @@ internal fun NativeRarError.toPublicationProblem(): PublicationProblem = when (t
     NativeRarError.UNSUPPORTED -> PublicationProblem.UNSUPPORTED_FORMAT
     NativeRarError.CORRUPT, NativeRarError.INVALID_ARGUMENT -> PublicationProblem.CORRUPT
     NativeRarError.TOO_LARGE -> PublicationProblem.TOO_LARGE
-    NativeRarError.NOT_SEEKABLE, NativeRarError.IO, NativeRarError.NATIVE_INTERNAL -> PublicationProblem.UNREADABLE
+    NativeRarError.NOT_SEEKABLE -> PublicationProblem.NEEDS_COPY
+    NativeRarError.IO, NativeRarError.NATIVE_INTERNAL -> PublicationProblem.UNREADABLE
 }

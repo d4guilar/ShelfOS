@@ -43,7 +43,7 @@ import java.io.InputStream
  * parameter, no longer only a post-hoc check), per-key lock deduplication, and global LRU eviction across every
  * namespace sharing the same coordinator.
  */
-class RarExtractionCache(
+internal class RarExtractionCache(
     private val coordinator: RarCacheCoordinator,
     private val namespace: String,
 ) {
@@ -90,13 +90,22 @@ class RarExtractionCache(
  * (safe to call more than once; only the first call has any effect) so a caller can never double-release by
  * accident.
  */
-class CachedExtraction internal constructor(val file: File, private val onRelease: () -> Unit) {
+internal class CachedExtraction internal constructor(val file: File, private val onRelease: () -> Unit) {
     @Volatile private var released = false
 
     /** Opens a fresh [InputStream] over [file]; closing the returned stream releases this handle exactly once.
-     * Safe to call more than once (each call opens its own independent stream), but [RarPageSource] never does
-     * so in practice -- one [acquire] -> one [open] -> one close. */
-    fun open(): InputStream = ReleasingInputStream(FileInputStream(file)) { release() }
+     * If stream creation throws, this method releases the handle before propagating the failure. Safe to call
+     * more than once (each call opens its own independent stream), but [RarPageSource] never does so in practice
+     * -- one [acquire] -> one [open] -> one close. */
+    fun open(openStream: (File) -> InputStream = ::FileInputStream): InputStream {
+        val stream = try {
+            openStream(file)
+        } catch (t: Throwable) {
+            release()
+            throw t
+        }
+        return ReleasingInputStream(stream) { release() }
+    }
 
     @Synchronized
     fun release() {

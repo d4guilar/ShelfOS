@@ -4,14 +4,18 @@ package com.d4guilar.shelfos.core.reader
 import com.d4guilar.shelfos.core.files.FakeRarArchiveSession
 import com.d4guilar.shelfos.core.files.NativeRarEntryType
 import com.d4guilar.shelfos.core.files.NativeRarError
+import com.d4guilar.shelfos.core.files.RarExtractionException
 import com.d4guilar.shelfos.core.files.RarExtractionCache
 import com.d4guilar.shelfos.domain.library.PublicationException
 import com.d4guilar.shelfos.domain.library.PublicationProblem
 import java.io.File
+import java.io.IOException
+import java.util.concurrent.CancellationException
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -174,13 +178,84 @@ class RarPageSourceTest {
             NativeRarError.UNSUPPORTED to PublicationProblem.UNSUPPORTED_FORMAT,
             NativeRarError.CORRUPT to PublicationProblem.CORRUPT,
             NativeRarError.INVALID_ARGUMENT to PublicationProblem.CORRUPT,
-            NativeRarError.NOT_SEEKABLE to PublicationProblem.UNREADABLE,
+            NativeRarError.NOT_SEEKABLE to PublicationProblem.NEEDS_COPY,
             NativeRarError.IO to PublicationProblem.UNREADABLE,
             NativeRarError.NATIVE_INTERNAL to PublicationProblem.UNREADABLE,
             NativeRarError.TOO_LARGE to PublicationProblem.TOO_LARGE,
         )
         for ((native, expected) in cases) {
             assertEquals(expected, native.toPublicationProblem())
+        }
+    }
+
+    @Test
+    fun extractionErrorsPreserveProblemAndExactTypedNativeCause() {
+        val expectedProblems = mapOf(
+            NativeRarError.PROTECTED to PublicationProblem.PROTECTED,
+            NativeRarError.UNSUPPORTED to PublicationProblem.UNSUPPORTED_FORMAT,
+            NativeRarError.CORRUPT to PublicationProblem.CORRUPT,
+            NativeRarError.INVALID_ARGUMENT to PublicationProblem.CORRUPT,
+            NativeRarError.NOT_SEEKABLE to PublicationProblem.NEEDS_COPY,
+            NativeRarError.IO to PublicationProblem.UNREADABLE,
+            NativeRarError.NATIVE_INTERNAL to PublicationProblem.UNREADABLE,
+            NativeRarError.TOO_LARGE to PublicationProblem.TOO_LARGE,
+        )
+        val entries = listOf(FakeRarArchiveSession.entry(0, "page1.jpg"))
+
+        for ((nativeError, expectedProblem) in expectedProblems) {
+            val source = RarPageSource.open(
+                FakeRarArchiveSession(entries, failures = mapOf(0 to nativeError)),
+                cacheRoot,
+                "typed-error-$nativeError",
+            )
+            try {
+                source.openPage(0)
+                throw AssertionError("expected PublicationException for $nativeError")
+            } catch (e: PublicationException) {
+                assertEquals(expectedProblem, e.problem)
+                assertEquals(nativeError, (e.cause as RarExtractionException).error)
+            } finally {
+                source.close()
+            }
+        }
+    }
+
+    @Test
+    fun filesystemIOExceptionUsesTypedUnreadableContractAndRetainsCause() {
+        val failure = IOException("synthetic PFD/filesystem failure")
+        val entries = listOf(FakeRarArchiveSession.entry(0, "page1.jpg"))
+        val source = RarPageSource.open(
+            FakeRarArchiveSession(entries, throwables = mapOf(0 to failure)),
+            cacheRoot,
+            "filesystem-io",
+        )
+        try {
+            source.openPage(0)
+            throw AssertionError("expected PublicationException")
+        } catch (e: PublicationException) {
+            assertEquals(PublicationProblem.UNREADABLE, e.problem)
+            assertSame(failure, e.cause)
+        } finally {
+            source.close()
+        }
+    }
+
+    @Test
+    fun extractionCancellationIsNeverMappedAsOrdinaryFailure() {
+        val cancellation = CancellationException("synthetic cancellation")
+        val entries = listOf(FakeRarArchiveSession.entry(0, "page1.jpg"))
+        val source = RarPageSource.open(
+            FakeRarArchiveSession(entries, throwables = mapOf(0 to cancellation)),
+            cacheRoot,
+            "cancelled-extraction",
+        )
+        try {
+            source.openPage(0)
+            throw AssertionError("expected CancellationException")
+        } catch (e: CancellationException) {
+            assertSame(cancellation, e)
+        } finally {
+            source.close()
         }
     }
 

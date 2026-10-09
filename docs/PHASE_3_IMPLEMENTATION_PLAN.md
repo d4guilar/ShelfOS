@@ -12,14 +12,14 @@ ACCEPTED on `phase-3/3e-native-cbr`.** **3E-B (generic internal native RAR4/RAR5
 real open/enumerate/extract session on top of 3E-A, no product/reader integration) is
 COMPLETE and ACCEPTED on the same branch.** **3E-C (CBR container adapter —
 `RarPageSource` + a bounded on-disk extraction cache on top of 3E-B, no product/reader
-integration) is IMPLEMENTED on the same branch, pending review.** 3E-D and
+  integration) is IMPLEMENTED on the same branch; remediation is complete, pending fresh Codex High R2.** 3E-D and
 3E-E are **NOT STARTED**. 3F
 remains PLANNING ONLY. Phase 3 overall is **NOT complete**. See §22/§23 for what 3A
 landed, §24 for what 3B actually landed, §25 for what 3C actually landed (including the
 R1 and R2 remediation records), §26/§26a for what 3D and its R1 remediation landed,
 §26b for the R2 remediation (render-geometry state-independence + hysteresis,
 hinge-safe modal focus/accessibility) recorded below, §27 for what 3E-B actually landed,
-§28 for what 3E-C actually landed, and `docs/adr/0024-native-cbr-libarchive.md` plus
+  §28-§30 for what 3E-C and its remediation actually landed, and `docs/adr/0024-native-cbr-libarchive.md` plus
 `docs/VALIDATION.md` for what 3E-A/3E-B/3E-C actually landed.
 
 ## 1. Status / base
@@ -40,7 +40,8 @@ hinge-safe modal focus/accessibility) recorded below, §27 for what 3E-B actuall
   complete and merged to `main` (`#24`, `#25`, `#26`, `#27`). 3E-A (native CBR
   dependency foundation) is complete and accepted on `phase-3/3e-native-cbr`. 3E-B
   (generic native RAR engine) is complete and accepted on the same branch. 3E-C (CBR
-  container adapter + bounded cache) is implemented on that branch, pending review.
+  container adapter + bounded cache) is implemented on that branch; remediation is complete,
+  pending fresh Codex High R2.
   3E-D and 3E-E have not started. 3F remains planning only, and Phase 3 overall is not
   complete.
 
@@ -1437,15 +1438,11 @@ NOT implemented in this checkpoint — an honest limitation, not an oversight: n
 yet has the product context to know when a source key is genuinely retired; a caller may
 delete `cacheRoot/cbr/<namespace>` itself if it wishes.
 
-**Error mapping**: `NativeRarError.toPublicationProblem()` (internal, `core/reader/
-RarPageSource.kt`) maps the native engine's error categories onto the EXISTING
-`PublicationProblem` enum — `PROTECTED`, `UNSUPPORTED_FORMAT`, `CORRUPT` map directly;
-`NOT_SEEKABLE`/`IO`/`NATIVE_INTERNAL` all collapse to the existing `UNREADABLE` for now. No new
-`PublicationProblem`/`PublicationExceptionDetail` enum value was added (adding one would touch
-exhaustive UI `when`s this checkpoint does not touch, and risks requiring a new user-facing
-string), and no raw native error code or message ever crosses this mapping. The three-way
-`NOT_SEEKABLE`/`IO`/`NATIVE_INTERNAL` collapse is a real, flagged loss of distinction, left for
-whichever later slice (3E-D) first needs to tell them apart in product UX.
+**Error mapping (superseded by §30)**: the original checkpoint mapped `PROTECTED`,
+`UNSUPPORTED_FORMAT`, and `CORRUPT` directly but collapsed `NOT_SEEKABLE`/`IO`/`NATIVE_INTERNAL`
+to `UNREADABLE`. R1B corrects that boundary without UI strings or new public enums:
+`NOT_SEEKABLE` -> `NEEDS_COPY`, while typed causes preserve the `IO`/`NATIVE_INTERNAL`
+distinction through their canonical `UNREADABLE` problem.
 
 **Tests** (all pass; see `docs/VALIDATION.md`'s "PHASE 3E-C" entry for exact commands/counts):
 `RarExtractionCacheTest` (pure JVM, 10 tests) — first-extraction-once/cache-hit-zero,
@@ -1564,20 +1561,19 @@ subsequent normal-sized entry in the same namespace still works after a rejectio
 `RarPageSourceTest.declaredSizeOverTheLimitIsRejectedBeforeAnyExtractionIsAttempted` confirms the
 cheap declared-size precheck still runs before any extraction is attempted (both checks coexist).
 `LibarchiveRarNativeTest.extractEntryEnforcesHardByteCeilingDuringExtractionOnRealDevice` (real
-device/JNI evidence, not a fake) drives the REAL native engine against the real rar4-plain
+on-device/JNI evidence, not a fake) drives the REAL native engine against the real rar4-plain
 fixture's 21-byte `test.txt` entry with a tiny (not 128MiB) injectable limit: exactly-at-size
 succeeds, size-minus-one aborts with `TOO_LARGE` and never writes more than the ceiling, and the
-session remains usable for a subsequent legitimately-sized entry afterward — NOT YET RUN on a
-physical device as part of this remediation (no device/emulator was available in this environment);
-`assembleDebugAndroidTest` confirms it at least compiles and packages correctly.
+session remains usable for a subsequent legitimately-sized entry afterward. Administrator-retained
+evidence now records `LibarchiveRarNativeTest` **13/13 PASS**, including this case;
+`LibarchiveRarNativeLifecycleTest` also PASS, with no ShelfOS native crash signals. R1B does not
+rerun either native class because it changes no native production code.
 
-**Scope discipline**: this remediation pass intentionally did NOT touch — and defers to a separate,
-reserved Codex R1B pass — lease-release/pinning/deletion-accounting mechanics beyond what the two
-HIGH fixes above structurally required, user-actionable error-semantic preservation/mapping
-cleanup beyond reusing the existing `PublicationProblem.TOO_LARGE`, internal-visibility tightening
-of support classes, and any broader docs/evidence reconciliation beyond the two paragraphs this
-section and its "SUPERSEDED BY §29" callout above directly correct. No `PublicationFormat.CBR`, no
-product/import integration, and no Phase 3E-D work was added.
+**Scope at R1A completion**: this pass intentionally deferred lease-release/pinning/deletion-
+accounting mechanics, user-actionable error-semantic preservation, internal-visibility tightening,
+and broader evidence reconciliation to Codex R1B. Those four findings are now closed by §30 without
+reopening either HIGH fix. No `PublicationFormat.CBR`, product/import integration, or Phase 3E-D
+work was added.
 
 **Build/validation for this remediation**: `assembleDebug` (all three ABIs' native CMake
 configure+build succeeded; stripped `libshelfos_cbr.so`: arm64-v8a ~678KB, armeabi-v7a ~406KB,
@@ -1586,9 +1582,53 @@ all pass with zero findings in the touched files. Targeted JVM unit tests (`RarE
 10, `RarCacheCoordinatorTest` 8, `RarExtractionCacheCeilingTest` 3, `RarPageSourceTest` 16 — all
 pass, 0 failures) were run via `testDebugUnitTest` with explicit `--tests` filters; the full JVM
 suite and full connected/instrumented suite were NOT run, consistent with standing policy. Physical
-ARM hardware validation was NOT performed (no device/emulator available in this environment) —
-this is a real gap for the one new native-ceiling instrumented test specifically and is flagged,
-not silently assumed passing.
+ARM hardware validation was NOT performed in R1A. Later administrator-retained on-device evidence,
+recorded above and in `docs/VALIDATION.md`, closes the native-ceiling execution gap without changing
+R1A's original environment history.
+
+## 30. 3E-C R1B remediation record (cache lifecycle, typed errors, visibility, evidence)
+
+**Cache lifecycle/accounting**: `cacheDir/cbr` remains one process-local, root-scoped
+`RarCacheCoordinator` domain. Its production limits remain 256 MiB and 64 final entries across all
+namespaces, with first-use lazy discovery/accounting of existing finals. Stable source namespaces
+reuse finals across reopen; callers must change the source/revision key when source bytes change.
+Missing stable keys still receive random per-open namespaces whose payload remains globally
+accounted and eligible for the same deterministic LRU. Active leases may temporarily defer
+eviction, but releasing the last lease now immediately reruns global eviction. A failed filesystem
+deletion leaves its final in slot/byte accounting; eviction tries other eligible inactive
+candidates once and stops deterministically if no deletion can restore the bound. Stream creation
+after lease acquisition is exception-safe: failure releases the lease before propagating.
+
+**Hard extraction ceiling retained**: the known declared size still receives the cheap early
+precheck. `RarPageSource` passes `maxOutputBytes` to native extraction, where overflow-safe
+cumulative tracking rejects a chunk before writing it if the 128 MiB ceiling would be exceeded.
+The fixed 64 KiB transfer buffer is unchanged. `TOO_LARGE` remains typed, the partial temp is
+removed, and no final cache payload is published. No native production code changed in R1B.
+
+**Typed error boundary**: `PROTECTED`, `CORRUPT`, `UNSUPPORTED`, and `TOO_LARGE` keep their existing
+`PublicationProblem` meanings. `NOT_SEEKABLE` now maps to existing `NEEDS_COPY`. `IO` and
+`NATIVE_INTERNAL` use `UNREADABLE`, but the `PublicationException` retains the exact typed
+`RarExtractionException` cause, preserving the distinction for 3E-D without raw codes, string
+parsing, new public enums, or UI copy. Expected filesystem/PFD `IOException` maps into the same
+typed `UNREADABLE` contract with its cause retained; `SecurityException` maps to
+`PERMISSION_LOST`; `CancellationException` is rethrown unchanged.
+
+**Visibility**: `RarArchiveSession`, `NativeRarArchiveSession`, `RarExtractionException`,
+`RarExtractionCache`, `CachedExtraction`, and `RarCacheCoordinator` are `internal`; the
+coordinator's `Key` is private. Existing `PageSource` architecture remains accessible as before.
+
+**Evidence**: focused JVM tests pass: `RarCacheCoordinatorTest` 10/10,
+`RarExtractionCacheTest` 11/11, `RarExtractionCacheCeilingTest` 3/3, and `RarPageSourceTest`
+19/19. `RarPageSourceRenderInstrumentedTest` passes 3/3 on the API 24 emulator, followed by a
+zero-match native/JNI crash scan. Administrator-retained on-device evidence records
+`RarPageSourceRealSessionInstrumentedTest` 1/1, `LibarchiveRarNativeTest` 13/13 including the hard
+ceiling case, and `LibarchiveRarNativeLifecycleTest` PASS, also with no ShelfOS native crash signal.
+`assembleDebug`, `assembleDebugAndroidTest`, and `lintDebug` pass. Full JVM, full connected, and
+physical ARM were not run for R1B.
+
+**Status/scope**: 3E-A and 3E-B are complete/accepted. 3E-C is implemented, remediation complete,
+and pending fresh Codex High R2. 3E-D and 3E-E are not started; Phase 3 is not complete. No
+`PublicationFormat.CBR`, import/Room/factory/thumbnail/product wiring, or other 3E-D work was added.
 
 ## 2. Why Phase 3 is not green-field
 

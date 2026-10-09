@@ -91,13 +91,15 @@ import java.util.concurrent.atomic.AtomicLong
  * Deterministic LRU, bounded by BOTH [maxBytes] and [maxEntries], tie-broken by an injectable monotonic
  * [accessCounter] (never wall-clock time) -- spanning every namespace, exactly like [slots] itself. A [Slot]
  * with `activeReaders > 0` (an [acquire] whose returned handle has not yet been [release]d, across ANY client
- * sharing this coordinator) is NEVER evicted, even if that temporarily leaves the cache over budget.
+ * sharing this coordinator) is NEVER evicted, even if that temporarily leaves the cache over budget. Releasing
+ * its last reader reruns eviction immediately. A failed final-file deletion stays accounted; other inactive
+ * candidates are attempted in LRU order, with one deterministic pass when none can be removed.
  *
  * ## Locking / lock ordering
  *
- * [stateLock] guards only [slots]/[usedBytes]/[accessCounter]/[discovered] bookkeeping and is held ONLY for
- * short, allocation-free critical sections -- it is NEVER held across [extract] (native extraction, Bitmap
- * decode, or a long filesystem copy all happen OUTSIDE [stateLock]). One [Any] lock per [Key] (via [keyLocks],
+ * [stateLock] guards only [slots]/[usedBytes]/[accessCounter]/[discovered] bookkeeping and eviction; it is NEVER
+ * held across [extract] (native extraction, Bitmap decode, or a long filesystem copy all happen OUTSIDE
+ * [stateLock]). One [Any] lock per [Key] (via [keyLocks],
  * never one coarse cross-key lock) serializes two concurrent [acquire] calls for the SAME key so the second
  * caller observes the first caller's now-cached result rather than racing it into a redundant extraction or a
  * partially-overwritten final file; different keys may proceed concurrently at this layer. Lock ordering
@@ -108,15 +110,16 @@ import java.util.concurrent.atomic.AtomicLong
  * (coordinator lock -> session lock, never session lock -> coordinator lock) makes a deadlock between the two
  * structurally impossible, not merely untested.
  */
-class RarCacheCoordinator private constructor(
+internal class RarCacheCoordinator private constructor(
     private val root: File,
     private val maxBytes: Long,
     private val maxEntries: Int,
+    private val deleteFile: (File) -> Boolean = { it.delete() },
 ) {
     /** Cache entry identity: source namespace plus the RAR entry's own physical ordinal -- see the class doc's
      * "Namespace model" section for why namespace is part of identity but no longer a separate accounting
      * domain. */
-    data class Key(val namespace: String, val physicalIndex: Int)
+    private data class Key(val namespace: String, val physicalIndex: Int)
 
     private class Slot(val file: File, val bytes: Long, var lastAccess: Long, var activeReaders: Int)
 
@@ -197,7 +200,10 @@ class RarCacheCoordinator private constructor(
 
     private fun release(key: Key) {
         synchronized(stateLock) {
-            slots[key]?.let { it.activeReaders = (it.activeReaders - 1).coerceAtLeast(0) }
+            val slot = slots[key] ?: return
+            if (slot.activeReaders <= 0) return
+            slot.activeReaders--
+            if (slot.activeReaders == 0) evictLocked()
         }
     }
 
@@ -205,11 +211,20 @@ class RarCacheCoordinator private constructor(
      * section. */
     private fun evictLocked() {
         while (usedBytes > maxBytes || slots.size > maxEntries) {
-            val victim = slots.entries.filter { it.value.activeReaders == 0 }.minByOrNull { it.value.lastAccess }
-                ?: break // every remaining entry is actively referenced -- never evict one out from under a reader.
-            usedBytes -= victim.value.bytes
-            victim.value.file.delete()
-            slots.remove(victim.key)
+            val candidates = slots.entries
+                .filter { it.value.activeReaders == 0 }
+                .sortedBy { it.value.lastAccess }
+            var evicted = false
+            for (victim in candidates) {
+                if (!deleteFile(victim.value.file)) continue
+                usedBytes -= victim.value.bytes
+                slots.remove(victim.key)
+                evicted = true
+                break
+            }
+            // Every remaining entry is active or every eligible deletion failed. Keep failed deletions accounted
+            // and stop deterministically rather than retrying the same undeletable file forever.
+            if (!evicted) break
         }
     }
 
@@ -301,9 +316,10 @@ class RarCacheCoordinator private constructor(
             root: File,
             maxBytes: Long = DEFAULT_MAX_BYTES,
             maxEntries: Int = DEFAULT_MAX_ENTRIES,
+            deleteFile: (File) -> Boolean = { it.delete() },
         ): RarCacheCoordinator {
             root.mkdirs()
-            return RarCacheCoordinator(root, maxBytes, maxEntries)
+            return RarCacheCoordinator(root, maxBytes, maxEntries, deleteFile)
         }
 
         /**
