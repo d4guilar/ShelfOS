@@ -5,13 +5,28 @@ Status: **3A (rendering/fidelity foundation) COMPLETE and MERGED to `main`** (`#
 navigation) COMPLETE and MERGED to `main`** (`#25`, "feat: add Phase 3B page thumbnail
 navigation"). **3C (spreads + Manga pairing) COMPLETE and MERGED to `main`** (`#26`,
 "feat: add Phase 3C comic and manga spread reading"). **3D (adaptive/foldable comic
-spreads) IMPLEMENTED + R1/R2 REMEDIATION on `phase-3/3d-adaptive-foldable-spreads`,
-pending independent re-review (administrator/Codex R3). 3D is NOT merged.** 3E–3F
-remain PLANNING ONLY — no later slice has started. Phase 3 overall is **NOT complete**.
-See §22/§23 for what 3A landed, §24 for what 3B actually landed, §25 for what 3C
-actually landed (including the R1 and R2 remediation records), §26/§26a for what 3D
-and its R1 remediation landed, and §26b for the R2 remediation (render-geometry
-state-independence + hysteresis, hinge-safe modal focus/accessibility) recorded below.
+spreads) COMPLETE and MERGED to `main`** (`#27`, "feat: add Phase 3D adaptive foldable
+comic spreads"). **3E-A (native CBR dependency foundation — NDK/CMake plumbing,
+vendored libarchive, JNI smoke test; ZERO archive-reading logic) is COMPLETE and
+ACCEPTED on `phase-3/3e-native-cbr`.** **3E-B (generic internal native RAR4/RAR5 engine —
+real open/enumerate/extract session on top of 3E-A, no product/reader integration) is
+COMPLETE and ACCEPTED on the same branch.** **3E-C (CBR container adapter —
+`RarPageSource` + a bounded on-disk extraction cache on top of 3E-B, no product/reader
+  integration) is COMPLETE and ACCEPTED on the same branch (final Codex R2 PASS).** **3E-D (CBR product
+integration — `PublicationFormat.CBR` wired end to end through import, magic detection, metadata,
+category/Manga-RTL, `FixedReaderFactory` routing, spread/fold inheritance, progress/resume, and error
+mapping, on top of 3E-C, with no change to the accepted native/cache architecture) is COMPLETE and
+ACCEPTED on the same branch (including its R1A/R1B remediation).** **3E-E (final CBR-specific acceptance
+hardening) is IMPLEMENTED on the same branch; its R1A cache-coordinator remediation is complete; pending a
+fresh Codex High review** (see §33/§33a). 3F
+remains PLANNING ONLY. Phase 3 overall is **NOT complete**. See §22/§23 for what 3A
+landed, §24 for what 3B actually landed, §25 for what 3C actually landed (including the
+R1 and R2 remediation records), §26/§26a for what 3D and its R1 remediation landed,
+§26b for the R2 remediation (render-geometry state-independence + hysteresis,
+hinge-safe modal focus/accessibility) recorded below, §27 for what 3E-B actually landed,
+  §28-§30 for what 3E-C and its remediation actually landed, §31/§32 for what 3E-D actually landed, §33 for
+  3E-E's acceptance-hardening record, and
+`docs/adr/0024-native-cbr-libarchive.md` plus `docs/VALIDATION.md` for what 3E-A/3E-B/3E-C/3E-D actually landed.
 
 ## 1. Status / base
 
@@ -26,13 +41,16 @@ state-independence + hysteresis, hinge-safe modal focus/accessibility) recorded 
   same discipline level as the Phase 2 planning docs. It supersedes ad hoc CBR framing
   scattered across `docs/ROADMAP.md`, `docs/PRODUCT.md`, `docs/features/COMICS_MANGA.md`,
   and `docs/features/READER.md` (see §5).
-- §12/§13/§21 below authorized exactly one slice at a time. 3A (§22/§23), 3B (§24), and 3C
-  (§25, including its Codex R1/R2 remediation records) are complete and merged to `main`
-  (`#24`, `#25`, `#26`). 3D (adaptive/foldable comic spreads) is implemented on
-  `phase-3/3d-adaptive-foldable-spreads` — see §26/§26a for the original slice and the
-  R1 remediation, and §26b for the R2 remediation (this document's own most current
-  record of 3D's actual behavior) — pending independent re-review (administrator/Codex
-  R3); 3D has not merged. 3E (CBR) and 3F have not started.
+- §12/§13/§21 below authorized exactly one slice at a time. 3A (§22/§23), 3B (§24), 3C
+  (§25, including its Codex R1/R2 remediation records), and 3D (§26/§26a/§26b) are
+  complete and merged to `main` (`#24`, `#25`, `#26`, `#27`). 3E-A (native CBR
+  dependency foundation) is complete and accepted on `phase-3/3e-native-cbr`. 3E-B
+  (generic native RAR engine) is complete and accepted on the same branch. 3E-C (CBR
+  container adapter + bounded cache) is complete and accepted on that branch (final Codex R2
+  PASS). 3E-D (CBR product integration) is complete and accepted on that branch. 3E-E (CBR
+  acceptance hardening) is implemented on that branch, R1A remediation complete, pending a fresh Codex High
+  review. 3F remains
+  planning only, and Phase 3 overall is not complete.
 
 ## 22. 3A implementation record (landed)
 
@@ -1165,6 +1183,731 @@ no new persisted field, no manifest change. One localized content-description re
 across EN, ES, and PT-BR (`content_desc_hinge_safe_dialog` — spoken-only accessibility copy,
 never visible UI text). See `docs/VALIDATION.md`'s "PHASE 3D CODEX R2 REMEDIATION" entry for exact
 commands/results.
+
+## 27. 3E-B implementation record (generic internal native RAR engine)
+
+**Scope delivered**: real RAR4/RAR5 open/enumerate/extract through a new, generic,
+product-free native session (`NativeRarSession`, `app/src/main/java/com/d4guilar/shelfos/
+core/files/NativeRarSession.kt` + `app/src/main/cpp/shelfos_rar_session_jni.cpp`), built on
+top of 3E-A's accepted foundation (vendored libarchive 3.8.9, the `shelfos_cbr` JNI library,
+NDK/CMake plumbing) without reopening or modifying any of it. This checkpoint still does NOT
+add `PublicationFormat.CBR`, a `RarPageSource`, any page/image filtering, a cache, or any
+reader/product integration — see `docs/adr/0024-native-cbr-libarchive.md` and this section for
+exactly what is and is not in scope.
+
+**Session/handle model**: one native C++ `Session` struct per `NativeRarSession.open(fd)` call,
+addressed by an opaque `jlong` (a `reinterpret_cast` of the heap pointer — never meaningful
+outside the native file, never logged/persisted). There is no process-global "current archive"
+and no native handle-validity registry; `NativeRarSession` itself is the sole owner of the
+handle, enforcing atomic set/clear-on-close, idempotent `close()`, and rejecting post-close
+operations entirely in Kotlin before any native call — the native side's own defense is limited
+to a cheap `handle <= 0` sanity check, documented as not a substitute for that contract.
+
+**FD ownership (source)**: the caller transfers ownership of `fd` to
+`NativeRarSession.open(fd: Int)` and must first relinquish Java-level ownership via
+`ParcelFileDescriptor.detachFd()`. If the native backend is unavailable before JNI,
+`NativeRarSession.open()` closes the fd itself. Once native session initialization begins,
+ownership transitions into native `Session` handling; every success/failure path closes exactly
+once. No `dup()` is used anywhere — there is exactly one owned fd, restarted in place via
+`lseek(fd, 0, SEEK_SET)` whenever a fresh sequential pass is needed, so there is no shared-offset
+subtlety. The vendored `archive_read_open_fd.c` `file_close()` only frees its own internal buffer
+and never closes the fd, so ShelfOS remains responsible for that exactly-once cleanup.
+
+**Seek/restart (no cache)**: every operation that needs a specific entry's data — the metadata
+pass in `open()`, and each `extractEntry()` call — restarts a brand-new `archive_read` from
+`lseek(fd, 0, SEEK_SET)` and sequentially skips (`archive_read_data_skip`) to the target physical
+index. This applies equally to solid RAR5 (proven by `rar5SolidEnumeratesAllEntriesAndRestartBasedAccessSequenceWorks`'s
+non-sequential last→earlier→last-again access sequence). If the fd cannot be seeked at all
+(verified via a direct `lseek` probe: `ESPIPE` → `NOT_SEEKABLE`; `EBADF` and every other errno
+→ `IO`), `open()` fails with `NOT_SEEKABLE` rather than falling
+back to any managed-copy behavior — that policy mapping (e.g. to ShelfOS's existing NEEDS_COPY
+semantics) is explicitly deferred to a later slice.
+
+**Destination FD (extraction)**: `extractEntry(index, destinationFd)`'s destination is a
+BORROWED fd — the engine never closes it, on any path; the caller retains ownership.
+
+**Threading**: one archive_read object alive at a time per session, scoped to a single call.
+`NativeRarSession` synchronizes every public operation on its own per-instance lock (never a
+global/cross-archive lock); the native engine performs no internal synchronization and relies
+entirely on that contract.
+
+**Minimal native API** (8 JNI functions, all on `NativeRarSession`): `nativeOpen`, `nativeClose`,
+`nativeEntryCount`, `nativeEntryType`, `nativeEntryName`, `nativeEntryIsNameUtf8`,
+`nativeEntrySize`, `nativeExtractEntry`. No writing, no delete/rename/repack, no generic
+execute-command, no extract-all-to-directory, no shell/bsdtar invocation, and no
+arbitrary-destination-path extraction exist anywhere in this surface. `grep -c archive_write`
+against the new file returns 0.
+
+**Streaming/memory**: extraction streams through one fixed 64 KiB (`kStreamBufferSize`) native
+buffer into the destination fd — never a whole-entry or whole-archive allocation, and never
+sized from an archive-claimed entry size. `EINTR` on `write()` retries the same write; a
+zero-byte/no-progress write and every other `write()` failure (e.g. a closed/unwritable
+destination fd) are reported immediately as `IO`; a real partial write is handled by
+accumulating the written offset until the chunk is fully flushed. Session metadata allocation
+scales with enumerated entry count/name bytes and remains subject to 3E-C archive-policy limits.
+
+**Entry metadata/encoding**: `NativeRarEntry` exposes physical index, name, a confirmed-UTF-8
+flag, type (`REGULAR_FILE`/`DIRECTORY`/`OTHER`), and a nullable size (`null` = declared size
+unknown or distrusted, e.g. negative — distinct from a real 0-byte entry; a real entry size can
+never be negative, so native uses `-1` unambiguously as that sentinel across the JNI boundary).
+Names cross the JNI boundary as raw UTF-8 bytes (`jbyteArray`, not `NewStringUTF`/Modified-UTF-8)
+— `archive_entry_pathname_utf8()` is used natively whenever available (a correct conversion
+libarchive already performs); when it is not, the raw `archive_entry_pathname()` bytes are
+returned instead and Kotlin decodes them as ISO-8859-1 (every byte value is a valid code point —
+this path can never throw) as a documented, deliberately non-claiming-correctness fallback.
+Directory/symlink/other-special entries are never extractable (`extractEntry` on a non-regular
+entry returns `INVALID_ARGUMENT`); no link creation, no materializing special filesystem objects.
+
+**Error contract**: one `NativeRarError` enum (`INVALID_ARGUMENT`, `IO`, `NOT_SEEKABLE`,
+`CORRUPT`, `PROTECTED`, `UNSUPPORTED`, `NATIVE_INTERNAL`) — no raw libarchive numeric code and no
+`archive_error_string()` text ever crosses into Kotlin or any test assertion as product text
+(internal diagnostic/test-assertion use of libarchive's own codes stays entirely inside the C++
+file). `ARCHIVE_OK`/`ARCHIVE_WARN`/`ARCHIVE_EOF` are the only "proceed" results during header
+reads; `ARCHIVE_RETRY`/`ARCHIVE_FAILED`/`ARCHIVE_FATAL` all abort the current pass deterministically
+(no retry loop is implemented for any of them) after first checking
+`archive_read_has_encrypted_entries()` — this ordering is what lets a fully header-encrypted
+archive (which never yields a single successful header) still map to `PROTECTED` rather than
+`CORRUPT`/`UNSUPPORTED`, without ever requiring a successful entry list first. **No
+partial-success interpretation**: if ANY entry in the archive is encrypted (data and/or
+metadata), the WHOLE `open()` fails with `PROTECTED` — the real vendored encryption fixtures
+(see below) have some entries unencrypted and some encrypted, and this engine never exposes a
+session covering only the unencrypted subset.
+
+**Wrong-format detection**: with only RAR4/RAR5 registered, the engine combines libarchive's
+format-bid result with a position-preserving `pread()` of the pinned RAR signatures. Unrelated
+bytes and matching prefixes shorter than six bytes map to `UNSUPPORTED`. The six-byte common RAR
+marker is the minimum recognizable family prefix; once it matches, an early open/first-header
+failure maps to `CORRUPT`, including incomplete/complete RAR4/RAR5 signatures. This avoids
+treating meaningfully recognizable truncated RAR input as unrelated merely because libarchive
+reported `EILSEQ`/`EINVAL` before selecting a reader.
+Extension/magic-byte classification (`.cbr`/`.rar` filenames) is explicitly not this engine's
+job — it operates on fd bytes only.
+
+**Test matrix** (two instrumented classes, each run via its own separate Gradle invocation per
+this checkpoint's standing constraint — never a comma-separated class list):
+
+- `LibarchiveRarNativeTest` (format/extraction/encryption): RAR4 plain (`test_read_format_rar.rar.uu`,
+  5 entries verified by name/type against direct inspection of upstream
+  `libarchive/test/test_read_format_rar.c` — `test.txt`/`testlink`(symlink, `OTHER`, non-extractable)/
+  `testdir/test.txt`/`testdir`/`testemptydir` — with `test.txt` and `testdir/test.txt` both extracted
+  and compared byte-for-byte against the exact expected `"test text document\r\n"`); RAR5 compressed
+  (`test_read_format_rar5_compressed.rar.uu`, `test.bin`, 1200 bytes, extracted and verified against
+  the exact upstream `verify_data()` generator formula from `test_read_format_rar5.c`
+  — `val = max(0, k*k - 3*k + 1)` per little-endian int32 word, not just "bytes > 0"); RAR5 solid
+  (`test_read_format_rar5_solid.rar.uu`, 7 entries `test.bin`/`test1..6.bin` enumerated in order,
+  plus a last→earlier→last-again extraction sequence verified via CRC32 against the exact upstream
+  values from `test_read_format_rar5.c`'s `test_read_format_rar5_solid_skip_all_but_second`
+  (`test1.bin` = `0x7E13B2C6`) and `..._skip_all_but_last` (`test6.bin` = `0x36A448FF`), proving
+  restart-based non-sequential access); RAR4 and RAR5 encrypted fixtures both map to `PROTECTED`
+  (never `CORRUPT`, no crash); a synthetic non-RAR byte buffer maps to `UNSUPPORTED`; a RAR5 solid
+  fixture truncated to a 100-byte prefix (empirically chosen — see the test's own comment for the
+  bisection evidence across 16 cut points, since this fixture's full payload is only ~1050 bytes
+  and several naive cut points happened to still land on a valid entry boundary) maps to `CORRUPT`.
+- `LibarchiveRarNativeLifecycleTest` (FD/handle/lifecycle/failure): an unopened fd number maps to
+  `IO` with no open-fd-count growth (`/proc/self/fd` before/after); a source fd closed out from
+  under the contract (via `ParcelFileDescriptor.adoptFd(fd).close()`) maps to `IO`; normal close;
+  double close (harmless no-op); use-after-close (`entryCount` → 0, `entryAt` → null, `extractEntry`
+  → `INVALID_ARGUMENT`, all without touching native code again); a failed open due to wrong format
+  does not leak the source fd (`/proc/self/fd` count check); a destination fd closed before
+  extraction maps to `IO` while the session itself remains fully usable/closable afterward.
+
+Upstream ground truth (entry names/sizes/content/CRC32 values) for every fixture above was taken
+by directly fetching and reading the real upstream test sources at the exact pinned commit
+(`libarchive/test/test_read_format_rar.c`, `test_read_format_rar5.c`,
+`test_read_format_rar_encryption.c`) rather than assumed from memory or "bytes > 0" placeholder
+assertions. See `docs/VALIDATION.md`'s "PHASE 3E-B" entry for exact commands, counts, and results,
+including the truncation bisection evidence, the solid-RAR5 diagnostic timing note, ABI compile
+results, and native `.so` sizes.
+
+**What this slice deliberately does NOT do** (explicit 3E-C/D/E or later scope, consistent with
+AGENTS.md's "do not build yet" list and this checkpoint's own boundary): no `PublicationFormat.CBR`,
+no `RarPageSource`, no page/image filtering, `isPageImage`, `naturalCompare`, or `ComicInfo.xml`
+parsing, no Manga/RTL handling at this layer, no cache/LRU/cacheDir/page-cache/stale-session-cleanup
+logic of any kind, no reader UI or `LibraryItem`/import-routing/persistence change, no extension/
+magic-byte format classification, no passphrase/password support, no partial-archive recovery.
+
+## 28. 3E-C implementation record (CBR container adapter / bounded extraction cache)
+
+**Scope delivered**: the `RarPageSource` container adapter and a bounded on-disk extraction
+cache (`RarExtractionCache`) on top of 3E-B's accepted `NativeRarSession`, completing exactly
+the architecture goal stated for this checkpoint: **RAR native engine -> `RarPageSource` ->
+the existing `PageSource` contract -> the existing `ImagePageRenderer`** — the identical shape
+`ZipPageSource` already has for CBZ. This checkpoint still does NOT add
+`PublicationFormat.CBR`, any import routing, magic-byte classification, `FixedReaderFactory`
+routing, library category integration, Room/`LibraryEntity` changes, reader UI/Compose
+changes, localized user-facing error strings, or encrypted-archive password UI. No native
+C++ was touched or needed — 3E-B's JNI surface (`shelfos_rar_session_jni.cpp`,
+`NativeRarSession`) is consumed exactly as accepted.
+
+**Files added**: `core/files/RarArchiveSession.kt` (the `RarArchiveSession` interface +
+production `NativeRarArchiveSession` adapter + `RarExtractionException`),
+`core/files/RarExtractionCache.kt` (the bounded on-disk cache), `core/reader/RarPageSource.kt`
+(the container adapter + `NativeRarError.toPublicationProblem()` mapping). Two small,
+visibility-only edits to `core/reader/FixedReader.kt`: `PageSource` and `ImagePageRenderer`
+widened from file-private to `internal` so `RarPageSource` (a different file in the same
+package) can implement/use them — no behavior change to either.
+
+**`RarArchiveSession` seam (testability boundary)**: a narrow interface
+(`entryCount`/`entryAt`/`extractEntry(index, destination: File)`/`close`) expressed over a
+destination `File` rather than a raw fd, specifically so `RarPageSource`/`RarExtractionCache`'s
+own ordering/caching/safety-policy logic can be unit-tested in a plain JVM test
+(`FakeRarArchiveSession`, `app/src/test`) without a real multi-image RAR fixture — upstream's
+vendored `.uu` fixtures contain no comic-image sequence, and ShelfOS has (deliberately) no
+RAR-writing capability to construct one (AGENTS.md: no RAR-writer, no external unrar/rar CLI
+dependency). Production code satisfies the same interface via `NativeRarArchiveSession`, a
+thin adapter that opens a `ParcelFileDescriptor` over the destination file and delegates to
+the real `NativeRarSession.extractEntry(index, fd)` — adding zero new JNI operations. Honesty
+boundary, stated explicitly in both the interface's doc and every fake-based test: a test
+built on `FakeRarArchiveSession` proves this checkpoint's own logic, never real libarchive/RAR
+parsing correctness — that remains proven only by 3E-B's real instrumented tests
+(`LibarchiveRarNativeTest`/`LibarchiveRarNativeLifecycleTest`) plus this checkpoint's own
+`RarPageSourceRealSessionInstrumentedTest`, which drives the real native session end to end
+(open/enumerate/extract/close) against a real vendored fixture.
+
+**Entry model / physical ordinal vs. logical page**: `RarPageEntry(physicalIndex, name)` is
+the unit `RarPageSource.pages` holds; a logical page's cache/extraction identity is always its
+`physicalIndex`, never its display name. Filenames are decoded exactly as 3E-B's
+`NativeRarSession.entryAt` already does (UTF-8 primary via libarchive's
+`archive_entry_pathname_utf8()`, ISO-8859-1 best-effort fallback otherwise) — no new decoding
+logic was added. Image filtering reuses `isPageImage` unchanged; natural ordering reuses
+`naturalCompare` unchanged, tie-broken deterministically by physical ordinal when two names
+compare equal (duplicate filenames, or the same basename in different folders, therefore sort
+deterministically and extract to distinct, non-colliding cache entries). The safe-name check
+(`ArchivePolicy.safeName`) is applied to every entry (not just regular files, mirroring
+`ArchivePolicy.entries` for CBZ) before any entry can become a logical page or a `ComicInfo.xml`
+candidate — even though native extraction only ever writes to a caller-supplied destination
+file and cannot itself path-traverse.
+
+**Shared archive policy**: nothing needed to change in `ArchivePolicy.kt`. `ArchivePolicy.
+safeName`, `naturalCompare` (both already plain, format-independent string functions) and
+`isPageImage` (format-independent already) were reusable as-is; `RarPageSource` applies them
+to `RarArchiveSession`'s physical-entry model directly, and also reuses
+`ArchivePolicy.MAX_ENTRIES` (archive-entry-count ceiling) and `ArchivePolicy.MAX_IMAGE_BYTES`
+(per-page-image size ceiling) rather than inventing new policy numbers. `ZipPageSource`/
+`SeekableZip`/`ArchivePolicy` are therefore completely unmodified; CBZ's extraction mechanics
+(true random access) and RAR's (cache-backed, non-seekable) remain fully separate — no generic
+"ArchivePageSource" was introduced.
+
+**ComicInfo.xml**: identified and parsed by reusing `EmbeddedMetadataReader.parse`/
+`EmbeddedMetadataReader.comicInfo(document)` completely unchanged — no second XML parser.
+Multiple-`ComicInfo.xml` policy mirrors CBZ's own (previously undefined, now made explicit):
+the first physical entry whose name equals `"ComicInfo.xml"` case-insensitively, exactly as
+`EmbeddedMetadataReader.comicInfo(zip)` already selects for a ZIP container — never a
+subdirectory match, never a merge of several. `RarPageSource.comicInfo()` is exposed at the
+container level only; it is never counted as a logical page (page filtering already excludes
+it, since `isPageImage(".xml")` is false) and is not wired to `LibraryEntity`/import in any way.
+
+**SUPERSEDED BY §29 (3E-C R1A remediation) — read §29 first.** The cache-bound description below
+describes 3E-C's ORIGINAL, Codex-rejected architecture: each `RarExtractionCache` instance owned
+its own independent 256MiB/64-entry budget (so the real bound was per-instance/per-namespace, not
+global), on-disk files from an earlier process were never rediscovered on reopen despite the
+"cross-reopen reuse" framing below, and the per-entry ceiling was a true post-hoc check only.
+§29 records what Phase 3E-C R1A actually changed (a global `RarCacheCoordinator`, real lazy disk
+discovery, and a real mid-stream native extraction ceiling) and is the current, accurate record;
+this paragraph and the two below it are kept for historical/diff context only.
+
+**Cache (`RarExtractionCache`)**: root is caller-supplied (`RarPageSource.open`'s `cacheRoot`
+parameter); the actual cache directory is `cacheRoot/cbr/<UUID.nameUUIDFromBytes(sourceKeyOrRandom)>`
+— the caller's `sourceKey` string is hashed into a deterministic, filesystem-safe directory
+name rather than ever used as a raw path segment. When no `sourceKey` is supplied (3E-C has no
+product/import integration to derive a stable one from yet), a fresh per-call random namespace
+is used instead — correctness over cache persistence, exactly as required: a caller unable to
+supply a reliable stable identity sacrifices cross-reopen reuse rather than risk serving stale
+bytes under a reused key for a different archive. Entry key = physical ordinal; final filename
+= `"$physicalIndex.bin"` (never a raw entry name). Max bytes: 256MiB (deliberately far larger
+than `RenderMemoryPolicy.SESSION_BUDGET_BYTES`'s ~96MiB in-memory budget or
+`ThumbnailLoader.DEFAULT_BUDGET_BYTES`'s 16MiB, since a `cacheDir`-backed, OS-reclaimable disk
+artifact is not competing for the same scarce resource those two budgets protect; comfortably
+holds several full-resolution comic pages at the 128MiB-per-entry ceiling below). Max entries:
+64 (mirrors `ByteBudgetedLruCache.DEFAULT_MAX_ENTRIES`'s identical reasoning from 3B). Both are
+constructor-injectable (`RarPageSource.open`'s `maxCacheBytes`/`maxCacheEntries` parameters) so
+tests can force deterministic eviction with tiny limits. Per-entry byte ceiling reuses
+`ArchivePolicy.MAX_IMAGE_BYTES` (128MiB), enforced by measuring the real extracted file size
+*after* extraction completes — an honest, documented post-hoc check, not a true mid-stream
+abort (`RarArchiveSession.extractEntry`/`NativeRarSession.extractEntry` is one blocking native
+call with no interruption point; adding one would mean changing 3E-B's native C++, which this
+checkpoint does not do). Eviction: deterministic LRU, bounded by both byte and entry budgets,
+tie-broken by an injectable monotonic access counter (never wall-clock time); a slot with an
+active, unreleased reference is never evicted even if that leaves the cache temporarily over
+budget. Atomicity: extraction writes to a ShelfOS-generated temp sibling file, is verified
+(native success, file present, within the per-entry ceiling), then atomically renamed
+(`File.renameTo`, same-directory) to the final filename; any failure deletes the temp file and
+never produces/promotes a final file. Concurrency: one lock object per cache key (never a
+process-global archive lock) deduplicates concurrent `acquire` calls for the same key; 3E-C
+does not yet wire `RarPageSource` into any shared `FixedReaderViewModel`-style render mutex
+since it has no reader-UI caller yet — that discipline (mirroring how `ThumbnailLoader`'s
+decode already routes through the same mutex/session CBZ full-page reads use) is deferred to
+whichever later slice (3E-D) first calls this from the reader. Stale cleanup: a
+`RarExtractionCache` constructor lazily deletes any leftover `*.tmp-*` file under its own
+`root` only (never a wider scan), handling a process death mid-extraction from a previous run.
+Namespace cleanup (deleting an entire old source-key directory once it is known stale) is
+NOT implemented in this checkpoint — an honest limitation, not an oversight: nothing in 3E-C
+yet has the product context to know when a source key is genuinely retired; a caller may
+delete `cacheRoot/cbr/<namespace>` itself if it wishes.
+
+**Error mapping (superseded by §30)**: the original checkpoint mapped `PROTECTED`,
+`UNSUPPORTED_FORMAT`, and `CORRUPT` directly but collapsed `NOT_SEEKABLE`/`IO`/`NATIVE_INTERNAL`
+to `UNREADABLE`. R1B corrects that boundary without UI strings or new public enums:
+`NOT_SEEKABLE` -> `NEEDS_COPY`, while typed causes preserve the `IO`/`NATIVE_INTERNAL`
+distinction through their canonical `UNREADABLE` problem.
+
+**Tests** (all pass; see `docs/VALIDATION.md`'s "PHASE 3E-C" entry for exact commands/counts):
+`RarExtractionCacheTest` (pure JVM, 10 tests) — first-extraction-once/cache-hit-zero,
+bounds-then-full reuse, distinct/non-colliding keys, distinct namespaces, extraction-failure
+leaves no partial file + retry succeeds, stale-temp cleanup on construction, deterministic
+eviction by entry count and by byte budget, an actively-referenced entry is never evicted,
+an oversized entry fails cleanly. `RarPageSourceTest` (pure JVM, 15 tests, against
+`FakeRarArchiveSession`) — natural ordering matches CBZ, duplicate filenames at different
+ordinals never collide, unsafe names never become pages, non-image entries excluded, empty
+archive fails, first-materialization-once/cache-hit evidence, solid-style non-sequential access
+pattern (later page -> same page again [0 more] -> different page [+1] -> first page again
+[0 more]), `ComicInfo.xml` identified/parsed/excluded-from-pages, no-ComicInfo returns null,
+every `NativeRarError` category's mapping, extraction-failure-then-retry-succeeds, post-close
+throws, distinct source keys never collide even with identical ordinals, entry-count-over-limit
+fails, tiny injectable cache limits trigger deterministic eviction. `RarPageSourceRenderInstrumentedTest`
+(instrumented, 3 tests, against a local fake carrying real PNG bytes) — proves the actual
+`ImagePageRenderer.bounds`/`ImagePageRenderer.render` pipeline (real `BitmapFactory` decode)
+sees exactly one extraction across a bounds-then-full-decode pair, exactly two extractions
+across two distinct pages (with a third render of page 0 staying a cache hit), and a corrupt
+page never poisons its healthy sibling. `RarPageSourceRealSessionInstrumentedTest`
+(instrumented, 1 test) — drives `NativeRarArchiveSession` over the REAL `NativeRarSession`
+against a real vendored `.uu` fixture through a full open/enumerate/extract/close cycle and
+asserts the source `.rar` file's SHA-256 hash is unchanged before and after.
+
+**Build/validation**: `assembleDebug`, `assembleDebugAndroidTest`, and `lintDebug` all pass
+with zero findings in the new files. No native rebuild was needed or triggered (confirmed:
+`assembleDebug`'s CMake tasks ran only because of toolchain/ABI configuration, not because any
+`.cpp`/`.h` source changed). APK fixture hygiene: a quick `unzip -l` check of the production
+debug APK confirms no `.uu`, `.rar`, fixture, or owner-CBR content is present. Physical ARM
+hardware validation was NOT performed (not required for this checkpoint, no native change).
+Full JVM suite and full connected/instrumented regression were NOT run (reserved for Phase
+3F), consistent with standing policy; only this checkpoint's own targeted tests were run.
+
+**What this slice deliberately does NOT do** (explicit 3E-D/E or later scope): no
+`PublicationFormat.CBR`, no Room/`LibraryEntity` change, no import routing/magic-byte
+classification/`FixedReaderFactory` routing/library category integration, no reader UI/Compose
+change, no localized user-facing error strings, no encrypted-archive password UI, no shared
+render-mutex wiring to any reader ViewModel (deferred to whichever slice first calls
+`RarPageSource` from a reader), no namespace/cross-session cache garbage collection, no CBR
+acceptance-gate work from §17.
+
+## 29. 3E-C R1A remediation record (global cache coordinator + hard extraction ceiling)
+
+Codex High reviewed §28's 3E-C checkpoint and returned CHANGES REQUIRED on two HIGH findings; the
+rest of §28's architecture (RarPageSource/PageSource contract, physical-ordinal identity, natural
+sort, ComicInfo reuse, safe-name policy, native-engine reuse) was accepted as-is and is NOT
+redescribed here.
+
+**HIGH-1 (cache not globally bounded)**: the defect was real — each `RarExtractionCache` instance
+owned its own slots/bytes/locks, so the 256MiB/64-entry budget applied per instance/per-namespace,
+not to the whole `cacheDir/cbr` tree, and on-disk files from an earlier process were never
+rediscovered on reopen. Fix: `core/files/RarCacheCoordinator.kt` is now the ONE process-wide
+accounting/coordination owner for a given cache root (`context.cacheDir/cbr` in production),
+returned by `RarCacheCoordinator.getInstance(root, maxBytes, maxEntries)` — a canonical-path-keyed
+registry, never a single "current book" global, never one coarse lock held across I/O. Source
+namespace (the caller's hashed `sourceKey`, or a random fallback — unchanged contract) is still
+part of every cache entry's identity (`RarCacheCoordinator.Key(namespace, physicalIndex)`), it is
+simply no longer a separate accounting domain: byte/entry budgets and LRU eviction now span every
+namespace sharing a coordinator. On first `acquire()` (never in a constructor, never an always-on
+startup scan), the coordinator lazily walks exactly one level of subdirectories under its root,
+recognizes only the ShelfOS-generated `<namespace>/<index>.bin` layout it itself writes (deleting
+anything unrecognized, any non-directory entry directly under root, and any symlink resolving
+outside the root), and folds discovered finals into live accounting — this is what makes a reopen
+of the same `sourceKey` genuinely reuse an earlier materialization (proven by
+`RarCacheCoordinatorTest.aDiscoveredPriorFinalIsActuallyReusedOnRepeatRequestExtractionCountUnchanged`,
+not merely documented as before). `RarExtractionCache` is now a thin per-namespace facade over the
+shared coordinator (`RarExtractionCache(coordinator, namespace)`); `RarPageSource.open` obtains the
+coordinator via `getInstance` and wraps it in a facade for its own namespace. Ephemeral/random
+namespaces (no stable `sourceKey`) are accounted and evicted by the SAME global LRU as any other
+namespace — chosen policy (b) from the remediation brief, not namespace-close cleanup — so they can
+never sit on disk unaccounted, even though a long-lived ephemeral working set shares the same
+budget as stable sources (an accepted, documented tradeoff, not an oversight). Locking: unchanged
+in spirit from §28 — one lock per cache key (never one coarse global lock), a short `stateLock`
+for accounting only, never held across extraction/decode/copy I/O; the coordinator always acquires
+its own locks before calling into `extract()` (which may transitively acquire a `NativeRarSession`
+instance's own per-session lock), never the reverse, so a coordinator/session deadlock is
+structurally impossible, not merely untested. Tests: `RarCacheCoordinatorTest` (pure JVM, 8 tests)
+— global byte limit across two namespaces, global entry limit across two namespaces (both: a third
+namespace's insert evicts across namespace boundaries to stay within ONE global budget), a
+reopened coordinator lazily discovers a prior final and folds it into accounting, that discovered
+final is genuinely reused (extraction count unchanged), ephemeral-random-namespace payload stays
+bounded by the global budget (both in-memory accounting and actual on-disk footprint), `getInstance`
+returns the same shared instance for the same root, two independently constructed clients sharing
+one root/namespace/ordinal coordinate into exactly one materialization under real concurrency (a
+`CountDownLatch`-driven race, never a sleep), and an active lease in one client protects its entry
+from eviction pressure triggered by a different client (proven against a newer-but-inactive
+competing entry, so it is lease-aware, not just recency-LRU). `RarExtractionCacheTest`'s original
+10 per-namespace tests were adapted to the new constructor shape and still pass unchanged in
+substance.
+
+**HIGH-2 (no hard extraction-time byte ceiling)**: the defect was real — a known declared size was
+(and still is) prechecked before extraction, but an unknown/dishonestly-declared size let native
+extraction write unboundedly before a post-hoc length check rejected it. Fix: a narrow, surgical
+extension to the accepted 3E-B native API (never touching session ownership, FD ownership,
+restart architecture, the handle model, synchronization, or RAR/RAR5 registration) —
+`NativeRarSession.extractEntry(index, destinationFd, maxOutputBytes = Long.MAX_VALUE)` now threads
+a `jlong maxOutputBytes` into `shelfos_rar_session_jni.cpp`'s native write loop, which tracks a
+running `cumulative` byte count and checks `cumulative > maxOutputBytes - n` (subtraction, never
+`cumulative + n`, so there is no addition-overflow case) BEFORE writing each 64KiB-buffered chunk,
+aborting with a new `ErrorCode::TOO_LARGE`/`NativeRarError.TOO_LARGE` (ordinal 8) the moment a
+chunk would exceed the ceiling — never after. The fixed 64KiB transfer buffer, EINTR/partial-write/
+zero-byte-write handling are all unchanged; `maxOutputBytes <= 0` is rejected as `INVALID_ARGUMENT`
+(a caller/input error, distinct from a legitimate size violation). `RarArchiveSession.extractEntry`
+and `FakeRarArchiveSession` gained the same `maxBytes` parameter (default `Long.MAX_VALUE`, so every
+pre-existing call site compiles unchanged); `RarPageSource.extract()` is the one production caller
+that passes a real ceiling (`RarExtractionCache.MAX_ENTRY_BYTES`, i.e. `ArchivePolicy.MAX_IMAGE_BYTES`,
+128MiB). `NativeRarError.TOO_LARGE` maps onto the EXISTING `PublicationProblem.TOO_LARGE` (the same
+value CBZ's own oversized-page-image policy already reports) rather than collapsing into
+`UNREADABLE` or inventing a new enum value — no new `PublicationExceptionDetail`, no localized
+text. The old post-hoc temp-file-length check in `RarExtractionCache`/`RarCacheCoordinator` remains
+as defense in depth; it should now be structurally unreachable in practice since the native layer
+already enforces the same ceiling during streaming. Tests: `RarExtractionCacheCeilingTest` (pure
+JVM, 3 tests, against `FakeRarArchiveSession`'s simulated streamed abort) — exactly-at-the-limit
+succeeds, limit+1 is rejected with no leftover temp/final file and no accounting change, a
+subsequent normal-sized entry in the same namespace still works after a rejection.
+`RarPageSourceTest.declaredSizeOverTheLimitIsRejectedBeforeAnyExtractionIsAttempted` confirms the
+cheap declared-size precheck still runs before any extraction is attempted (both checks coexist).
+`LibarchiveRarNativeTest.extractEntryEnforcesHardByteCeilingDuringExtractionOnRealDevice` (real
+on-device/JNI evidence, not a fake) drives the REAL native engine against the real rar4-plain
+fixture's 21-byte `test.txt` entry with a tiny (not 128MiB) injectable limit: exactly-at-size
+succeeds, size-minus-one aborts with `TOO_LARGE` and never writes more than the ceiling, and the
+session remains usable for a subsequent legitimately-sized entry afterward. Administrator-retained
+evidence now records `LibarchiveRarNativeTest` **13/13 PASS**, including this case;
+`LibarchiveRarNativeLifecycleTest` also PASS, with no ShelfOS native crash signals. R1B does not
+rerun either native class because it changes no native production code.
+
+**Scope at R1A completion**: this pass intentionally deferred lease-release/pinning/deletion-
+accounting mechanics, user-actionable error-semantic preservation, internal-visibility tightening,
+and broader evidence reconciliation to Codex R1B. Those four findings are now closed by §30 without
+reopening either HIGH fix. No `PublicationFormat.CBR`, product/import integration, or Phase 3E-D
+work was added.
+
+**Build/validation for this remediation**: `assembleDebug` (all three ABIs' native CMake
+configure+build succeeded; stripped `libshelfos_cbr.so`: arm64-v8a ~678KB, armeabi-v7a ~406KB,
+x86_64 ~665KB — no x86, no standalone `libarchive.so`), `assembleDebugAndroidTest`, and `lintDebug`
+all pass with zero findings in the touched files. Targeted JVM unit tests (`RarExtractionCacheTest`
+10, `RarCacheCoordinatorTest` 8, `RarExtractionCacheCeilingTest` 3, `RarPageSourceTest` 16 — all
+pass, 0 failures) were run via `testDebugUnitTest` with explicit `--tests` filters; the full JVM
+suite and full connected/instrumented suite were NOT run, consistent with standing policy. Physical
+ARM hardware validation was NOT performed in R1A. Later administrator-retained on-device evidence,
+recorded above and in `docs/VALIDATION.md`, closes the native-ceiling execution gap without changing
+R1A's original environment history.
+
+## 30. 3E-C R1B remediation record (cache lifecycle, typed errors, visibility, evidence)
+
+**Cache lifecycle/accounting**: `cacheDir/cbr` remains one process-local, root-scoped
+`RarCacheCoordinator` domain. Its production limits remain 256 MiB and 64 final entries across all
+namespaces, with first-use lazy discovery/accounting of existing finals. Stable source namespaces
+reuse finals across reopen; callers must change the source/revision key when source bytes change.
+Missing stable keys still receive random per-open namespaces whose payload remains globally
+accounted and eligible for the same deterministic LRU. Active leases may temporarily defer
+eviction, but releasing the last lease now immediately reruns global eviction. A failed filesystem
+deletion leaves its final in slot/byte accounting; eviction tries other eligible inactive
+candidates once and stops deterministically if no deletion can restore the bound. Stream creation
+after lease acquisition is exception-safe: failure releases the lease before propagating.
+
+**Hard extraction ceiling retained**: the known declared size still receives the cheap early
+precheck. `RarPageSource` passes `maxOutputBytes` to native extraction, where overflow-safe
+cumulative tracking rejects a chunk before writing it if the 128 MiB ceiling would be exceeded.
+The fixed 64 KiB transfer buffer is unchanged. `TOO_LARGE` remains typed, the partial temp is
+removed, and no final cache payload is published. No native production code changed in R1B.
+
+**Typed error boundary**: `PROTECTED`, `CORRUPT`, `UNSUPPORTED`, and `TOO_LARGE` keep their existing
+`PublicationProblem` meanings. `NOT_SEEKABLE` now maps to existing `NEEDS_COPY`. `IO` and
+`NATIVE_INTERNAL` use `UNREADABLE`, but the `PublicationException` retains the exact typed
+`RarExtractionException` cause, preserving the distinction for 3E-D without raw codes, string
+parsing, new public enums, or UI copy. Expected filesystem/PFD `IOException` maps into the same
+typed `UNREADABLE` contract with its cause retained; `SecurityException` maps to
+`PERMISSION_LOST`; `CancellationException` is rethrown unchanged.
+
+**Visibility**: `RarArchiveSession`, `NativeRarArchiveSession`, `RarExtractionException`,
+`RarExtractionCache`, `CachedExtraction`, and `RarCacheCoordinator` are `internal`; the
+coordinator's `Key` is private. Existing `PageSource` architecture remains accessible as before.
+
+**Evidence**: focused JVM tests pass: `RarCacheCoordinatorTest` 10/10,
+`RarExtractionCacheTest` 11/11, `RarExtractionCacheCeilingTest` 3/3, and `RarPageSourceTest`
+19/19. `RarPageSourceRenderInstrumentedTest` passes 3/3 on the API 24 emulator, followed by a
+zero-match native/JNI crash scan. Administrator-retained on-device evidence records
+`RarPageSourceRealSessionInstrumentedTest` 1/1, `LibarchiveRarNativeTest` 13/13 including the hard
+ceiling case, and `LibarchiveRarNativeLifecycleTest` PASS, also with no ShelfOS native crash signal.
+`assembleDebug`, `assembleDebugAndroidTest`, and `lintDebug` pass. Full JVM, full connected, and
+physical ARM were not run for R1B.
+
+**Status/scope**: 3E-A, 3E-B and 3E-C are complete/accepted (3E-C's final Codex R2 PASS). 3E-D is
+implemented (see §31); 3E-E is not started; Phase 3 is not complete.
+
+## 31. 3E-D implementation record (CBR product integration)
+
+**Scope delivered**: `PublicationFormat.CBR` is added and wired end to end through the product, with
+the accepted 3E-A/B/C native/cache architecture left byte-for-byte unchanged (no native file touched; no
+change to `NativeRarSession`, `shelfos_rar_session_jni.cpp`, `RarCacheCoordinator`, or
+`RarExtractionCache`).
+
+- **Format/persistence**: `PublicationFormat.CBR` added to the domain enum
+  (`domain/library/LibraryItem.kt`). Every exhaustive `when (format)`/`when (item.format)` over
+  `PublicationFormat` was audited and updated: `core/reader/FixedReader.kt`'s `FixedReaderFactory.open`
+  (new `RarPages` route), `core/reader/ReaderPreferences.kt`'s `capabilities()`/`spreadCapable()`, and
+  `domain/importing/ImportPolicy.kt`'s `suggestedCategory()`. `format` is persisted as a plain Room
+  `String` column (`LibraryEntity.format`, read back via `PublicationFormat.valueOf`); adding the enum
+  value required no schema version bump and no migration, confirmed by a round-trip unit test
+  (`ImportPolicyTest.publicationFormatRoundTripsThroughItsStringPersistenceWithoutASchemaChange`).
+- **Magic detection**: `isRarMagic` (new, `core/files/RarArchiveSession.kt`) recognizes an exact
+  RAR4 (`52 61 72 21 1A 07 00`) or RAR5 (`52 61 72 21 1A 07 01 00`) prefix, independent of filename —
+  wired into `PublicationFiles.inspect`'s existing header-sniff `when` (alongside the existing `%PDF-`/
+  `PK` checks), never a second/duplicate detector. A short/partial prefix (1-6 bytes) is deliberately
+  rejected as import evidence (`RarMagicDetectionTest`, 6/6 JVM).
+- **Import routing**: `PublicationFiles.inspectRar` opens the source through the new
+  `openRarArchiveSession` helper (duplicates the descriptor's fd, exactly like `ArchivePolicy.open` does
+  for ZIP — the original descriptor is never consumed) and reuses `RarPageSource.open`'s existing
+  index/page-filter/safety policy unchanged (same `EMPTY_ARCHIVE`/`PROTECTED`/`TOO_LARGE`/etc as the real
+  reading route) to validate the container and read `ComicInfo.xml` via the existing
+  `EmbeddedMetadataReader`. No RAR-specific import subsystem, no source mutation, no repack; a rejected
+  import leaves no partial private copy (same transaction discipline CBZ/EPUB/PDF already have).
+  **Superseded by §32**: this originally imported `core.reader.RarPageSource` directly, a
+  `core.files → core.reader → core.files` layering inversion — §32's HIGH-1 fix moved the container
+  logic to `core.files`'s `RarContainer` so import-time inspection no longer depends on the reader layer.
+- **Source key**: `rarCacheSourceKey(id, byteSize)` (new, `domain/library/LibraryItem.kt`) is
+  `"$id:${byteSize ?: -1}"` — the item's own stable UUID plus its persisted byte size (the one
+  revision-sensitive signal already available; ShelfOS has no finer per-provider last-modified signal
+  today). Never derived from title/fileName. The SAME formula is used at import-time inspection
+  (`PublicationFiles.inspectRar`) and at the real reading route (`FixedReaderFactory`'s `RarPages`), and
+  both share the SAME cache root (`PublicationFiles.rarCacheRoot = context.cacheDir`), so
+  `RarCacheCoordinator.getInstance` resolves to the same singleton coordinator in both places — a page
+  materialized while inspecting a just-imported CBR can be reused the moment that title is first opened
+  to read.
+  **Superseded by §32**: Codex proved `byteSize` is NOT a trustworthy revision signal for a referenced
+  external SAF source (it is stale, import-time-persisted metadata, never refreshed on reopen) — §32's
+  HIGH-2 fix replaces this formula with a managed-vs-external-aware factory that returns `null`
+  (ephemeral cache namespace) for any source without a `LibraryItem.managedPath`.
+- **Metadata/ComicInfo**: `RarPageSource.comicInfo()` (unchanged, 3E-C) is reused as-is — the same
+  `EmbeddedMetadataReader.comicInfo(Document)` mapping CBZ already uses (title/series/number, writer,
+  `<Manga>YesAndRightToLeft</Manga>`). No second parser. A missing/unparsable `ComicInfo.xml` still
+  imports successfully via filename fallback, same as CBZ. A RAR container with zero safe
+  page-image-named entries fails `EMPTY_ARCHIVE`, proven with a real native-engine instrumented test
+  (`CbrProductIntegrationTest`) against the same non-image vendored upstream RAR fixture 3E-B/C already
+  use — never a silently "imported" zero-page comic.
+- **Category/Manga/RTL, reader capabilities, spreads**: `suggestedCategory`, `capabilities`, and
+  `spreadCapable` all treat `CBZ`/`CBR` identically (`format == PublicationFormat.CBZ || format ==
+  PublicationFormat.CBR`) — no CBR-only branch anywhere. RTL/spread/fold behavior is entirely inherited
+  through the shared `PageSource`/`ImagePageRenderer`/`SpreadModel`/`FixedReader` machinery; no
+  CBR-specific reader, spread, or fold code exists.
+- **Reader routing**: `core/reader/FixedReader.kt`'s new `RarPages` (private class, structurally
+  identical to the existing `ArchivePages`) is the only place `PublicationFormat.CBR` reaches a real
+  `FixedReader`: `openRarArchiveSession(descriptor)` → `RarPageSource.open(...)` → the same
+  `ImagePageRenderer`/`PageSource` contract CBZ and PDF already share. Created once per
+  `FixedReaderFactory.open` call (never recreated per page), closed exactly once by `RarPages.close()`;
+  `FixedReaderViewModel` already closes its one session only when the ViewModel is cleared, so no change
+  was needed there for correct lifecycle.
+- **Error mapping**: unchanged from 3E-C's `NativeRarError.toPublicationProblem()` (relocated,
+  unmodified in behavior, from `core.reader`'s `RarPageSource.kt` to `core.files`'s
+  `RarArchiveSession.kt` — purely a layering fix so `core.files`'s new `openRarArchiveSession` can use it
+  without a `core.files` → `core.reader` reverse dependency through the old location).
+  `PublicationProblem.messageRes()`/`importMessageRes()` already map every `PublicationProblem`
+  case-generically (not per-format), so CBR's `PROTECTED`/`CORRUPT`/`TOO_LARGE`/`NEEDS_COPY`/
+  `PERMISSION_LOST`/`UNREADABLE` all resolve to the SAME existing localized strings CBZ/EPUB/PDF already
+  use — no raw libarchive text, no new CBR-specific string, no password prompt. Only
+  `problem_unsupported_format_message` (EN/ES/PT-BR) was updated to also mention CBR, since CBR is now a
+  genuinely supported format.
+- **Import picker/cover**: the existing picker already launches with `arrayOf("*/*")` (no MIME
+  filtering) and format detection is magic-byte-driven — no picker change needed. ShelfOS Classic covers
+  are locally generated artwork keyed off the item's own id (`LibraryItem.coverColor`/`coverMotif`,
+  rendered by `PublicationCover`), never derived from a page image for ANY format — so "cover
+  generation" required zero CBR-specific work; this is recorded here because the brief for this
+  checkpoint asked for it explicitly, not because any change was made.
+
+**What this slice deliberately does NOT do**: no CBR-specific reader/zoom/spread/fold/thumbnail code; no
+native/C++ change; no Room migration; no RAR-writing/authoring tooling added to the repository; no
+broad Phase 3 regression re-run; no push/PR/Codex invocation; 3E-E not started.
+
+**Tests** (see `docs/VALIDATION.md`'s "PHASE 3E-D" entry for exact commands/counts): `ImportPolicyTest`
+12/12 (4 new CBR cases), `RarMagicDetectionTest` 6/6 (new), `RarPageSourceTest` 19/19 (unchanged
+behavior after the `toPublicationProblem()` relocation). `CbrProductIntegrationTest` (new,
+instrumented, real native engine, real vendored RAR fixtures, API 24 emulator) 3/3:
+zero-image-page CBR import fails `EMPTY_ARCHIVE` with source-hash equality preserved, `FixedReaderFactory`
+routes CBR through the real native engine (distinguishable from the ZIP/PDF paths by the specific
+problem reached), and both RAR4/RAR5 encrypted fixtures map to `PROTECTED` through the real import path.
+`assembleDebug`, `assembleDebugAndroidTest`, and `lintDebug` all pass. The owner's real local CBR fixture
+(not committed, not packaged) was used for a manual acceptance pass via a throwaway, never-committed
+instrumented test that was deleted immediately after one local run: import succeeded (format CBR,
+category Comics, ComicInfo-derived title), 151 pages, first/later-page render and a thumbnail render all
+succeeded, page geometry resolved, a progress-locator round trip to the last page succeeded, and the
+source file's SHA-256 was byte-identical before and after the full cycle. Full JVM, full connected
+regression, and physical ARM hardware were not run for 3E-D (none were in scope).
+
+## 32. 3E-D R1A implementation record (HIGH architecture remediation)
+
+Codex High reviewed §31's broad CBR product integration and returned CHANGES REQUIRED on exactly two
+HIGH findings; everything else in §31 was accepted and is unchanged. This record covers only those two
+fixes. The accepted 3E-A/B/C native/cache architecture (`NativeRarSession`,
+`shelfos_rar_session_jni.cpp`, `RarCacheCoordinator`, `RarExtractionCache`) remains byte-for-byte
+unchanged — no native file touched.
+
+**HIGH-1 (layering inversion, `core.files → core.reader`)**: §31's `PublicationFiles.inspectRar`
+imported and constructed `core.reader.RarPageSource` directly for import-time validation/ComicInfo
+inspection — but `RarPageSource` implements the reader-owned `PageSource` contract and depends on
+`core.files`'s RAR session/cache machinery, so this was a real `core.files → core.reader → core.files`
+cycle. Fix: a new lower-level abstraction, `RarContainer` (`core/files/RarContainer.kt`, `internal
+class`), now owns every format-independent, reusable piece of RAR container knowledge — session
+opening via `RarArchiveSession`, safe entry enumeration, `ArchivePolicy.MAX_ENTRIES` enforcement,
+`ArchivePolicy.safeName` validation, image-only filtering (`isPageImage`), natural logical ordering
+(`naturalCompare`) tie-broken by physical ordinal, `ComicInfo.xml` entry identification/extraction/
+parsing (reusing `EmbeddedMetadataReader` unchanged), empty-archive validation, and cached page
+materialization through `RarExtractionCache`/`RarCacheCoordinator`. `PublicationFiles.inspectRar` now
+opens a `RarContainer` directly and calls only `RarContainer.comicInfo()` — it no longer imports
+`core.reader` at all, and it never needs the `PageSource`/`ImagePageRenderer` surface merely to
+validate an import. `core.reader.RarPageSource` became a thin thirty-line `PageSource` adapter over
+`RarContainer`: `pageCount`/`openPage`/`close` all delegate straight through, and `comicInfo()` is kept
+as a pass-through method only so existing reader-side call sites/tests reading a CBR's embedded
+metadata through a `RarPageSource` instance keep working unchanged. Neither `PublicationFiles` nor
+`RarPageSource` independently enumerates/sorts/filters the archive any more — `RarContainer.index()` is
+the one place that logic lives. Verified: no `core.files` production file imports `core.reader` for the
+CBR path (`grep -rn "import com.d4guilar.shelfos.core.reader" core/files/` returns nothing). One
+unrelated pre-existing exception was found and deliberately left untouched (out of this fix's scope):
+`core/designsystem/FontImportMessages.kt` imports `core.reader` — unconnected to CBR/RAR and not part of
+this finding.
+
+**HIGH-2 (unsafe external-source cache identity)**: §31's `rarCacheSourceKey(id, byteSize) =
+"$id:${byteSize ?: -1}"` was proven unsafe for a referenced external SAF source: `LibraryItem.byteSize`
+is import-time-persisted metadata that is never refreshed on reopen, so if the underlying provider
+content changes behind a durable URI (same size OR different size), the persisted `byteSize` stays
+stale and the old key could collide with an earlier materialization of different bytes — most
+dangerously when the replacement happens to be the exact same size. Fix: `rarCacheSourceKey` now reads
+`LibraryItem.managedPath` — the only managed-vs-external distinction ShelfOS's data model actually has
+today (the same split `PublicationDetails` already surfaces to the user as "linked" vs "private copy").
+A non-null `managedPath` means a ShelfOS-owned private copy, written once at import
+(`PublicationFiles.copyToPrivateStorage`) and never mutated afterward — its bytes genuinely cannot
+change under the same `id`, so a stable key derived from `id` alone (`"managed:$id"`) is safe and
+preserves cross-reopen cache reuse. A null `managedPath` (a referenced external source) has no
+revision signal that is actually re-queried at open time — only the stale persisted `byteSize`, exactly
+the unsafe signal above — so the factory returns `null`, which `RarContainer.open` treats as "fresh
+ephemeral/random namespace for this open, never reused." `byteSize`/`title`/`fileName` are never
+consulted by the new factory. Import-time inspection (`PublicationFiles.inspectRar`) now always opens
+with `sourceKey = null` regardless of managed/external status — it never needs cross-reopen reuse. The
+random namespace prevents materialized import payload from being reused across reopen; closing that
+validation's `RarContainer` releases its session but does not delete cache files. Retained payload stays
+globally accounted within `RarCacheCoordinator`'s 256 MiB/64-entry bounds and ages out through ordinary
+deterministic LRU eviction. Import therefore never needs to decide persistence for a not-yet-committed
+item; only the reader-time route (`FixedReaderFactory`'s `RarPages`, via
+`LibraryItem.rarCacheSourceKey()`) ever uses a persistent key, and only for a managed copy. No Room
+schema change; no revision fingerprint added to persistence. Universal ephemeral use for external
+sources remains architecturally safe, not a regression.
+
+**Tests**: `ImportPolicyTest` gained
+`managedSourcesGetAStablePersistentKeyDerivedOnlyFromIdNeverFromByteSizeOrDisplayName` and
+`externalReferencedSourcesWithoutATrustworthyRefreshedRevisionAlwaysGetAnEphemeralNullKey` (replacing
+the now-obsolete byteSize-sensitivity test), proving: a managed source's key depends only on `id`
+(never byteSize/title/fileName); an external source's key is always `null`, including a simulated
+same-size-after-replacement case (the old key's most dangerous blind spot) and a changed-size case.
+`RarPageSourceTest` gained
+`nullSourceKeyNeverReusesCachedBytesAcrossReopensEvenWithIdenticalPhysicalOrdinals`, an
+integration-level proof against `FakeRarArchiveSession` that a `null` sourceKey never serves a stale
+cached page across simulated reopens of the same physical ordinal, with same-size and changed-size
+replacement content. `RarPageSourceTest` (20/20, including the new test), `ImportPolicyTest` (13/13),
+and `RarMagicDetectionTest` (6/6) all pass unchanged otherwise.
+`CbrProductIntegrationTest` (instrumented, real native engine, API 24 emulator) reran 3/3 PASS after
+the refactor, with no native crash signal observed in logcat.
+
+**Subsequent R1B closure**: archive-open failures now retain their typed `NativeRarError` through an
+internal `RarOpenException` cause without changing `PublicationProblem` mapping, and stale source KDoc
+now describes CBR's active shared-reader route truthfully.
+
+## 33. 3E-E implementation record (final CBR acceptance hardening)
+
+**Scope**: acceptance evidence for the accepted 3E-A/B/C/D CBR stack under hostile and edge conditions, plus
+one small isolated defect fix the checks exposed. No feature, no native/C++ change, no Room/schema change, no
+new dependency, no reader/cache/source-identity redesign. Exact commands/counts are in `docs/VALIDATION.md`'s
+"PHASE 3E-E" entry.
+
+**Defect fixed (small, isolated, `RarCacheCoordinator` only)**: a cached final that vanished from disk while
+ShelfOS was running (Android or the user clearing the app cache) was still treated as a cache hit. The reader
+got a handle to a missing file, which surfaced as `FileNotFoundException`, and that maps to
+`SOURCE_UNAVAILABLE`. That message is untrue, because the source is fine. Eviction could not fix it either:
+`File.delete()` on a missing file returns `false`, so the slot stayed accounted forever as a "failed
+deletion". The page stayed broken until the process died. Fix: (1) a hit whose final is no longer a file
+re-materializes under the same per-key lock. The replacement slot takes over the old slot's outstanding leases
+and replaces its bytes rather than adding to them. (2) Eviction reclaims accounting for a final that no longer
+exists. A genuine failed deletion (file still present) is still kept accounted, unchanged. Regression tests are
+in `RarAcceptanceHardeningTest`. Three of them fail against the pre-fix coordinator.
+
+**Acceptance evidence added**: `RarAcceptanceHardeningTest` (JVM, 27 cases) covers:
+
+- hostile names: absolute, Windows-drive, UNC and backslash traversal paths, all rejected before any
+  extraction with the session closed once; Unicode and odd-but-safe names; on disk only
+  `<uuid>/<ordinal>.bin` ever appears
+- entries that must be skipped: empty name, directory, symlink, `__MACOSX` and hidden entries
+- duplicate names, sorted deterministically by physical ordinal
+- duplicate `ComicInfo.xml` (the first root match wins); malformed, oversized and failing `ComicInfo.xml`
+  never blocks reading
+- the exact `MAX_ENTRIES` boundary, checked lazily (over-limit is rejected before any enumeration)
+- a declared size exactly at the limit; a dishonestly sized entry aborted by the ceiling (no final, no temp,
+  no accounting change, sibling still readable)
+- `SecurityException` at index and at extraction; cancellation at index
+- an interrupted extraction that throws mid-write
+- an unusable cache root, and a failed atomic publish/rename
+- physical on-disk payload equal to the accounting after cross-namespace pressure and after rediscovery
+- managed reopen reuse; repeated later/earlier/adjacent access; thumbnail-then-reader on the same page
+- idempotent close and post-close failure; publication switch
+- bounded 4-thread concurrent access (no deadlock); recreation restore; no stale external reuse
+
+`CbrProductIntegrationTest` gained three real-JNI cases:
+
+- malformed valid-magic archives (truncated RAR5, RAR4 signature-only, RAR5 signature-only) reach the native
+  engine and fail `CORRUPT` with a typed `RarOpenException` cause, through both import and the reader route;
+  the six-byte marker and random bytes fail `UNSUPPORTED_FORMAT`
+- native `NOT_SEEKABLE` becomes `NEEDS_COPY` at `openRarArchiveSession`, and the caller's descriptor stays
+  valid
+- 40 bounded open → materialize → cached re-read → close cycles plus failing reader-route opens with no
+  file-descriptor growth
+
+**NEEDS_COPY truthfulness**: a non-seekable source surfaces the existing actionable `NEEDS_COPY` problem
+(import pre-checks `lseek` before the native engine is reached). ShelfOS does not perform an automatic copy.
+The user re-imports as a private offline copy. No copy subsystem was built.
+
+**Corrupt-final guarantee (documented, not changed)**: ShelfOS publishes finals only by atomic temp→final rename
+after a successful, size-checked extraction, so ShelfOS itself never leaves a partial final. Finals carry no
+integrity metadata. Arbitrary external corruption of a private-cache final is detected only when the image is
+decoded, as a page `CORRUPT`/decode failure. No hashing was added.
+
+**Owner real-world fixture**: an owner-provided local real-world CBR fixture (not committed) passed a final
+local smoke through the real product path: import, render, thumbnail, fit, zoom, navigation, progress,
+recreation/resume, spread pairing, managed-copy reuse, an ephemeral namespace for external sources, file
+descriptors, memory and cache-disk sanity. Source SHA-256 before == after. See `docs/VALIDATION.md`.
+
+**Status**: 3E-A/B/C/D complete/accepted; 3E-E implemented, pending independent final review; Phase 3 NOT
+complete. Full JVM and full connected regression remain Phase 3F.
+
+## 33a. 3E-E R1A remediation record (cache coordinator bounds)
+
+Codex High's final 3E-E review returned CHANGES REQUIRED with three findings, all in `RarCacheCoordinator`.
+Everything else passed. The fix changes that one production file. Exact commands and counts are in
+`docs/VALIDATION.md`'s "PHASE 3E-E R1A" entry.
+
+- **Lock metadata is bounded.** Same-key materialization used a per-key lock map that was never trimmed.
+  Random per-open namespaces for external sources made it grow for the life of the process. It is replaced by a
+  fixed array of 64 stripe locks chosen with `Math.floorMod(key.hashCode(), 64)`. The same key always uses the
+  same stripe, so same-key serialization is unchanged. Colliding keys serialize their misses only. Cache hits
+  take only the state lock.
+- **Missing finals stop counting immediately.** When a slot exists but its final is no longer a file, the slot's
+  bytes and entry leave the accounting before re-materialization starts. This holds when the extraction
+  reports an error, throws, or fails to publish. Outstanding leases move to a zero-byte lease-only holder. A
+  later successful retry folds them into the new slot once. Otherwise the holder disappears with its last
+  release.
+- **Empty namespace directories are pruned safely.** A namespace directory is removed when the namespace has no
+  slot, no lease-only holder and no in-flight materialization. The check runs under the state lock, and the
+  materializing path registers as in-flight and creates its directory in the same state-lock section, so pruning
+  cannot race temp creation. The delete is non-recursive and only touches `<canonical root>/<namespace>`. It
+  runs after eviction, after a failed materialization, after a lease-only holder's last release, and during
+  lazy discovery. It never scans the whole root on access.
+
+Unchanged: the global 256 MiB / 64-entry limits. External sources keep ephemeral namespaces and managed copies
+keep `managed:<id>`. Also unchanged: lazy discovery, deterministic LRU, lease protection, atomic publish,
+failed deletions staying accounted, and the native output ceiling. Cache finals are still not hashed. Tests:
+new `RarCacheCoordinationBoundsTest` (11 cases, including a 1,600-key ephemeral churn test that asserts every
+coordinator container stays bounded). One `RarExtractionCacheTest` assertion was adjusted because the
+directory it listed is now pruned.
+
+**Status**: 3E-A/B/C/D complete/accepted; 3E-E implemented, R1A remediation complete, pending a fresh Codex
+High review; Phase 3 NOT complete. Full JVM, full connected and physical ARM validation remain Phase 3F.
 
 ## 2. Why Phase 3 is not green-field
 

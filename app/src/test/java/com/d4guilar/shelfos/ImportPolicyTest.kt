@@ -5,6 +5,8 @@ import com.d4guilar.shelfos.core.designsystem.UiMessage
 import com.d4guilar.shelfos.core.designsystem.messageRes
 import com.d4guilar.shelfos.core.designsystem.readerMessage
 import com.d4guilar.shelfos.core.files.EmbeddedMetadataReader
+import com.d4guilar.shelfos.core.reader.capabilities
+import com.d4guilar.shelfos.core.reader.spreadCapable
 import com.d4guilar.shelfos.domain.importing.*
 import com.d4guilar.shelfos.domain.library.*
 import org.junit.Assert.*
@@ -42,6 +44,73 @@ class ImportPolicyTest {
         assertEquals(MediaCategory.BOOK, suggestedCategory(PublicationFormat.PDF))
         assertEquals(MediaCategory.COMIC, suggestedCategory(PublicationFormat.CBZ))
         assertEquals(MediaCategory.MANGA, suggestedCategory(PublicationFormat.CBZ, rightToLeftManga = true))
+        // Phase 3E-D: CBR is a comic container exactly like CBZ -- same ComicInfo-driven Comics/Manga suggestion,
+        // never a CBR-only special case.
+        assertEquals(MediaCategory.COMIC, suggestedCategory(PublicationFormat.CBR))
+        assertEquals(MediaCategory.MANGA, suggestedCategory(PublicationFormat.CBR, rightToLeftManga = true))
+    }
+
+    @Test fun publicationFormatRoundTripsThroughItsStringPersistenceWithoutASchemaChange() {
+        // RoomLibraryRepository persists `format` as a plain String column (LibraryEntity.format) and recovers it
+        // via PublicationFormat.valueOf(...) -- adding PublicationFormat.CBR is purely an enum-value addition, so
+        // every value (old and new) must still round-trip through .name/.valueOf with no Room schema/migration
+        // involved at all.
+        PublicationFormat.entries.forEach { format -> assertEquals(format, PublicationFormat.valueOf(format.name)) }
+        assertEquals(PublicationFormat.CBR, PublicationFormat.valueOf("CBR"))
+    }
+
+    @Test fun cbrInheritsCbzsFixedLayoutReaderCapabilitiesAndSpreadEligibility() {
+        // Phase 3E-D: CBR must offer the identical reader capability surface CBZ already does -- no CBR-specific
+        // reader capability branch -- and the spread control is offered under the exact same format+category rule.
+        assertEquals(capabilities(PublicationFormat.CBZ), capabilities(PublicationFormat.CBR))
+        assertTrue(spreadCapable(PublicationFormat.CBR, MediaCategory.COMIC))
+        assertTrue(spreadCapable(PublicationFormat.CBR, MediaCategory.MANGA))
+        assertFalse(spreadCapable(PublicationFormat.CBR, MediaCategory.BOOK))
+        assertFalse(spreadCapable(PublicationFormat.CBR, MediaCategory.DOCUMENT))
+    }
+
+    // Phase 3E-D R1A (HIGH-2): the production RAR extraction-cache namespace key factory. The old
+    // "$id:$byteSize" key was proven unsafe for a referenced external SAF source, because LibraryItem.byteSize is
+    // import-time-persisted metadata that is never refreshed on reopen -- a changed-content source (same size OR
+    // different size) could collide with an earlier materialization of different bytes. The fixed policy: a
+    // managed (ShelfOS-owned, immutable private copy) source gets a stable key derived from id alone; every other
+    // source (no managedPath, i.e. a referenced external source with no trustworthy refreshed revision token)
+    // gets `null`, meaning "ephemeral/random namespace, never reused across reopens."
+
+    @Test fun managedSourcesGetAStablePersistentKeyDerivedOnlyFromIdNeverFromByteSizeOrDisplayName() {
+        val managed = LibraryItem("same-id", "Original Title", category = MediaCategory.COMIC, sourceUri = "content://a",
+            format = PublicationFormat.CBR, fileName = "a.cbr", byteSize = 100L, managedPath = "same-id.cbr")
+        assertEquals(rarCacheSourceKey("same-id", "same-id.cbr"), rarCacheSourceKey("same-id", "same-id.cbr"))
+        assertNotEquals(rarCacheSourceKey("abc", "abc.cbr"), rarCacheSourceKey("def", "def.cbr"))
+        // A cosmetic rename, or a byteSize change recorded for the SAME managed copy, must never change the key --
+        // the managed copy's identity (and therefore cache safety) rests entirely on its own immutable id.
+        val renamed = managed.copy(title = "A Completely Different Title", fileName = "renamed.cbr")
+        assertEquals(managed.rarCacheSourceKey(), renamed.rarCacheSourceKey())
+        val resized = managed.copy(byteSize = 999L)
+        assertEquals(managed.rarCacheSourceKey(), resized.rarCacheSourceKey())
+        assertNotNull(managed.rarCacheSourceKey())
+    }
+
+    @Test fun externalReferencedSourcesWithoutATrustworthyRefreshedRevisionAlwaysGetAnEphemeralNullKey() {
+        // No managedPath => a referenced external SAF source. ShelfOS has no revision signal for this that is
+        // actually re-queried at open time -- only the stale, persisted byteSize, which is exactly the signal
+        // proven unsafe. The factory must return null (ephemeral/random namespace) regardless of id/byteSize/
+        // title/fileName -- it must never fall back to using byteSize or any other unrefreshed persisted field.
+        assertNull(rarCacheSourceKey("abc", null))
+        val external = LibraryItem("same-id", "Original Title", category = MediaCategory.COMIC, sourceUri = "content://a",
+            format = PublicationFormat.CBR, fileName = "a.cbr", byteSize = 100L, managedPath = null)
+        assertNull(external.rarCacheSourceKey())
+        // Simulates the underlying provider content being replaced behind the SAME durable URI/id while the
+        // persisted byteSize happens to stay IDENTICAL -- the single most dangerous case for the old
+        // "$id:$byteSize" key, since that key would have been unchanged (and therefore unsafely reused) here.
+        val sameSizeAfterReplacement = external.copy()
+        assertNull(sameSizeAfterReplacement.rarCacheSourceKey())
+        // And the changed-size case: still null, never a key derived from byteSize at all.
+        val changedSizeAfterReplacement = external.copy(byteSize = 4096L)
+        assertNull(changedSizeAfterReplacement.rarCacheSourceKey())
+        // Unknown/unavailable size metadata must still fall back safely to ephemeral, never crash or default to
+        // some other persistent key.
+        assertNull(external.copy(byteSize = null).rarCacheSourceKey())
     }
 
     @Test fun repeatedSourcesAreIdempotentAndSimilarFilesOnlyWarn() {

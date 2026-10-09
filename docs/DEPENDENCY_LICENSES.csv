@@ -128,3 +128,4 @@ org.jspecify:jspecify:1.0.0,"The Apache License, Version 2.0",http://www.apache.
 org.readium.kotlin-toolkit:readium-navigator:3.4.0,BSD-3-Clause license,https://github.com/readium/kotlin-toolkit/blob/main/LICENSE
 org.readium.kotlin-toolkit:readium-shared:3.4.0,BSD-3-Clause license,https://github.com/readium/kotlin-toolkit/blob/main/LICENSE
 org.readium.kotlin-toolkit:readium-streamer:3.4.0,BSD-3-Clause license,https://github.com/readium/kotlin-toolkit/blob/main/LICENSE
+native/vendored:libarchive:3.8.9 (not a Maven artifact; see third_party/libarchive),2-clause BSD-style (see COPYING); RAR/RAR5 reader files under the same terms,https://github.com/libarchive/libarchive/blob/27cbc7827172698143e440801fc0ba39ccb4f1f5/COPYING

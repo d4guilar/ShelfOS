@@ -60,8 +60,8 @@ fun isPageImage(name: String) = name.substringAfterLast('.').lowercase() in page
 
 /** Automatic classification is only a suggestion; users correct it during review. */
 fun suggestedCategory(format: PublicationFormat, rightToLeftManga: Boolean = false) = when {
-    format == PublicationFormat.CBZ && rightToLeftManga -> MediaCategory.MANGA
-    format == PublicationFormat.CBZ -> MediaCategory.COMIC
+    (format == PublicationFormat.CBZ || format == PublicationFormat.CBR) && rightToLeftManga -> MediaCategory.MANGA
+    format == PublicationFormat.CBZ || format == PublicationFormat.CBR -> MediaCategory.COMIC
     else -> MediaCategory.BOOK
 }
 

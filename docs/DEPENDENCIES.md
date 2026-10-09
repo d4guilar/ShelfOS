@@ -1,5 +1,62 @@
 # Dependency review
 
+## Phase 3E-A native CBR dependency foundation (2026-10-07)
+
+**libarchive, vendored native source (not a Maven artifact)** — version 3.8.9,
+upstream tag `v3.8.9`, exact commit `27cbc7827172698143e440801fc0ba39ccb4f1f5`
+(`libarchive/libarchive` on GitHub). License: 2-clause BSD-style (see
+`third_party/libarchive/COPYING`); the two files ShelfOS actually needs,
+`archive_read_support_format_rar.c` and `archive_read_support_format_rar5.c`,
+carry the same 2-clause BSD header, with no UnRAR-derived-source notice, no
+UnRAR-License field-of-use clause, and no GPL/AGPL text anywhere consulted.
+Full evidence and reasoning: `docs/adr/0024-native-cbr-libarchive.md`.
+
+Purpose: CBR (RAR-container comics) is mandatory Phase 3 scope
+(`docs/PHASE_3_IMPLEMENTATION_PLAN.md`), and RAR is not a format ShelfOS can
+safely or practically reimplement itself (solid/sequential archives, RAR4 vs
+RAR5 structural differences, proprietary reference implementation). libarchive
+was selected over UnRAR-derived alternatives specifically to avoid the
+licensing risk AGENTS.md calls out for GPL/AGPL and field-of-use-restricted
+code.
+
+Why selected over Maven/AAR alternatives: no maintained, permissively-licensed
+Android RAR library exists as a conventional Maven dependency; libarchive is
+the standard, actively-maintained, permissively-licensed C implementation and
+is already Android-aware upstream (`contrib/android`, `if(ANDROID)` handling
+in its own CMakeLists.txt).
+
+Native/ABI impact: this is ShelfOS's first native/JNI dependency. It adds a
+CMake/NDK build step (NDK 28.2.13676358, CMake 3.31.6, pinned in
+`app/build.gradle.kts`) and one ShelfOS-owned shared library per built ABI
+(`arm64-v8a`, `armeabi-v7a`, `x86_64`; no `x86`). See `docs/VALIDATION.md`'s
+3E-A entry for measured per-ABI `.so` sizes and the debug APK size delta.
+
+Vendoring: full upstream source is not vendored — a reasoned subset under
+`third_party/libarchive/` (the `libarchive/` source directory minus its
+16&nbsp;MB all-formats `test/` fixture corpus, the top-level `CMakeLists.txt`,
+the `build/cmake` + `build/version` files it reads, `contrib/android`, and
+guard-only `CMakeLists.txt` stubs for `cat/`/`tar/`/`cpio/`/`unzip/`/`test/`
+subdirectories so upstream's own unconditional `add_subdirectory()` calls
+resolve while those tools stay fully disabled). **Source modifications: NONE.**
+`third_party/libarchive/COPYING` and every source file's original copyright
+header are preserved byte-for-byte as vendored. No build-time network fetch:
+the vendored tree is checked in and built entirely offline/locally by
+Gradle's CMake integration.
+
+Upstream test fixtures: five `.uu`-encoded RAR test archives from the same
+exact tagged commit are vendored test-only (not in any production source
+set) for a later (3E-B) slice to decode and exercise; see
+`docs/VALIDATION.md` for the exact list and paths. They are not referenced by
+any production code in this checkpoint and are confirmed absent from the
+built debug APK.
+
+Notice plan: a bundled "Open Source Licenses" / third-party-notices screen
+does not exist yet and is not built in this checkpoint. When it is built, it
+must surface `third_party/libarchive/COPYING` alongside the Maven dependency
+notices already tracked in `docs/DEPENDENCY_LICENSES.csv`. Until then, this
+file and the ADR are the source of truth for the native dependency's license
+terms.
+
 ## Phase 1 reader additions (2026-09-23)
 
 Readium navigator/streamer 3.4.0 (including shared): BSD-3-Clause, reviewed against

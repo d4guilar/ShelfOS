@@ -244,7 +244,7 @@
     <string name="problem_source_unavailable_message">The original file can\'t be reached. It may have been moved, deleted or disconnected. Your reading position and edits are kept.</string>
     <string name="problem_source_unavailable_import_message">The selected file is unavailable. Check that it still exists and try again.</string>
     <string name="problem_needs_copy_message">This provider can\'t offer durable, seekable access. ShelfOS needs a private offline copy.</string>
-    <string name="problem_unsupported_format_message">Choose a PDF, EPUB or CBZ publication.</string>
+    <string name="problem_unsupported_format_message">Choose a PDF, EPUB, CBZ or CBR publication.</string>
     <string name="problem_unsupported_layout_message">Fixed-layout EPUB reading is not supported in this build. PDF and CBZ fixed pages are supported.</string>
     <string name="problem_protected_message">This publication is password-protected or uses DRM. ShelfOS can\'t open protected publications.</string>
     <string name="problem_corrupt_message">This publication appears to be damaged or incomplete.</string>

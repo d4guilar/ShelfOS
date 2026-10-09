@@ -8,6 +8,7 @@ import android.os.ParcelFileDescriptor
 import com.d4guilar.shelfos.core.files.*
 import com.d4guilar.shelfos.domain.library.*
 import java.io.Closeable
+import java.io.File
 import java.io.InputStream
 import kotlin.math.floor
 import kotlin.math.sqrt
@@ -268,7 +269,7 @@ interface FixedReader : Closeable {
      * -- deliberately NOT a reading-resolution render. CBZ ([ArchivePages]) reuses the exact bounds-only
      * `BitmapFactory` decode pass [ImagePageRenderer] already performs before every full decode (no new decode
      * path); PDF ([PdfPages]) reads `PdfRenderer.Page.width`/`height`, which `PdfRenderer` already exposes without
-     * rasterizing. A future CBR [PageSource] adapter satisfies this the same way CBZ does today, through the same
+     * rasterizing. CBR's [RarPageSource] satisfies this the same way CBZ does, through the same
      * [ImagePageRenderer]-shared bounds pass -- no CBR-specific geometry method is needed. Returns `null` for an
      * out-of-range index or an undecodable page, rather than throwing -- callers (spread pairing) already treat
      * unknown geometry as "not landscape" (see [resolvePageGroups]), so a geometry failure degrades gracefully
@@ -289,6 +290,7 @@ open class FixedReaderFactory(private val files: PublicationFiles) {
             return when (item.format) {
                 PublicationFormat.PDF -> PdfPages(descriptor)
                 PublicationFormat.CBZ -> ArchivePages(descriptor)
+                PublicationFormat.CBR -> RarPages(descriptor, files.rarCacheRoot, item.rarCacheSourceKey())
                 PublicationFormat.EPUB -> throw PublicationException(PublicationProblem.UNSUPPORTED_FORMAT, PublicationExceptionDetail.USE_EPUB_READER_INSTEAD)
             }
         } catch (error: Throwable) { descriptor.close(); throw error }
@@ -315,21 +317,16 @@ private class PdfPages(descriptor: ParcelFileDescriptor) : FixedReader {
  * One page's bytes from a paged image-sequence container, independent of the container's archive format. A
  * container need not support random access to satisfy this contract: [openPage] is indexed by logical page
  * position, but whether (or how efficiently) an implementation serves pages out of order is entirely its own
- * concern. [ZipPageSource] is backed by true random access (`SeekableZip`'s positional reads); a future CBR
- * adapter over a "solid" RAR archive that cannot offer ZIP-style random access could instead serve this from a
- * one-time sequential index or a bounded extract-to-cache, without this interface -- or [ImagePageRenderer], which
- * is written only against it -- changing at all. This is the Phase 3A container/page-source boundary; no CBR
- * adapter exists yet (see `docs/PHASE_3_IMPLEMENTATION_PLAN.md` section 6/12).
+ * concern. [ZipPageSource] uses `SeekableZip` positional reads, while [RarPageSource] adapts the lower RAR
+ * container's bounded extraction cache. `PublicationFormat.CBR` reaches this shared image-sequence path through
+ * [FixedReaderFactory] and `RarPages`; no separate CBR reader contract exists.
  */
-private interface PageSource : Closeable {
+internal interface PageSource : Closeable {
     val pageCount: Int
     fun openPage(index: Int): InputStream
 }
 
-/** [PageSource] backed by `SeekableZip`'s true random access; today's only container implementation, and the
- * only one CBZ (a ZIP container) needs. Named for that backing container -- not `ArchivePageSource` -- since
- * "archive" is generic enough to misleadingly suggest it already covers a future non-ZIP (e.g. RAR/CBR) format;
- * it does not (Codex R1 finding 5). */
+/** [PageSource] backed by `SeekableZip` true random access for CBZ; RAR/CBR uses [RarPageSource] instead. */
 private class ZipPageSource(private val zip: SeekableZip, private val entries: List<SeekableZip.Entry>) : PageSource {
     override val pageCount get() = entries.size
     override fun openPage(index: Int): InputStream = zip.open(entries[index])
@@ -338,10 +335,10 @@ private class ZipPageSource(private val zip: SeekableZip, private val entries: L
 
 /**
  * Decodes one page image from any [PageSource] at a resolution driven by a [PageRenderRequest], bounded by the
- * same safety ceilings regardless of container format. Used by [ArchivePages] today; a future CBR [PageSource]
- * reuses this unchanged, rather than duplicating the bounds-then-sample decode policy per container format.
+ * same safety ceilings regardless of container format. [ArchivePages] and CBR's `RarPages` both reuse this
+ * unchanged rather than duplicating the bounds-then-sample decode policy per container.
  */
-private object ImagePageRenderer {
+internal object ImagePageRenderer {
     /** Bounds-only decode (no full-resolution allocation) -- the same `inJustDecodeBounds` pass [render] already
      * performs before every full decode, exposed standalone for [FixedReader.pageGeometry] (Phase 3C). Returns
      * `null` rather than throwing for an out-of-range index or an undecodable page. */
@@ -380,4 +377,31 @@ private class ArchivePages(private val descriptor: ParcelFileDescriptor) : Fixed
     override fun render(index: Int, request: PageRenderRequest): Bitmap = ImagePageRenderer.render(source, index, request)
     override fun pageGeometry(index: Int): PageGeometry? = ImagePageRenderer.bounds(source, index)
     override fun close() { try { zip.close() } finally { descriptor.close() } }
+}
+
+/**
+ * Phase 3E-D: CBR's product reading route -- the ONLY place `PublicationFormat.CBR` reaches a real [FixedReader].
+ * Structurally identical to [ArchivePages] above, just backed by [RarPageSource] (the accepted Phase 3E-C
+ * container adapter) instead of [ZipPageSource]: [openRarArchiveSession] opens the native RAR engine over a
+ * duplicate of [descriptor]'s fd (leaving [descriptor] itself owned by this class, exactly like
+ * [ArchivePolicy.open] for ZIP), [RarPageSource.open] indexes/filters/safety-checks it (throwing the same
+ * [PublicationProblem]s CBZ's own [ArchivePolicy.pages] throws for an equivalent empty/oversized/unsafe archive),
+ * and every page render/geometry lookup goes through the SAME [ImagePageRenderer] CBZ and PDF already share --
+ * no CBR-specific decode, zoom, spread or fold code exists anywhere in this class. [cacheRoot]/[sourceKey] are
+ * threaded straight to [RarPageSource.open] unchanged; see [com.d4guilar.shelfos.domain.library.rarCacheSourceKey]
+ * for what [sourceKey] is actually derived from -- a `null` [sourceKey] (Phase 3E-D R1A HIGH-2: any source without
+ * a [com.d4guilar.shelfos.domain.library.LibraryItem.managedPath], i.e. not a ShelfOS-owned immutable private
+ * copy) is a deliberate, safe choice meaning "ephemeral/random cache namespace, never reused across reopens of
+ * this source" -- it is NOT a bug or a missing value. The underlying native session and its extraction cache
+ * handle are owned exclusively by [source] (created once here, when [FixedReaderFactory.open] is called -- never
+ * recreated per page) and released exactly once by [close] -- never across a ViewModel recreation, which always
+ * calls [FixedReaderFactory.open] again from scratch (see [com.d4guilar.shelfos.feature.reader.FixedReaderViewModel]
+ * 's class doc: "the session is closed when this ViewModel is cleared").
+ */
+private class RarPages(private val descriptor: ParcelFileDescriptor, cacheRoot: File, sourceKey: String?) : FixedReader {
+    private val source: PageSource = RarPageSource.open(openRarArchiveSession(descriptor), cacheRoot, sourceKey)
+    override val pageCount get() = source.pageCount
+    override fun render(index: Int, request: PageRenderRequest): Bitmap = ImagePageRenderer.render(source, index, request)
+    override fun pageGeometry(index: Int): PageGeometry? = ImagePageRenderer.bounds(source, index)
+    override fun close() { try { source.close() } finally { descriptor.close() } }
 }

@@ -128,7 +128,7 @@ data class ReaderCapabilities(val typography: Boolean, val fit: Boolean, val zoo
 /** Overload kept for EPUB (no fixed-layout/spread concept at all). */
 fun capabilities(format: PublicationFormat) = when (format) {
     PublicationFormat.EPUB -> ReaderCapabilities(typography = true, fit = false, zoom = false)
-    PublicationFormat.PDF, PublicationFormat.CBZ -> ReaderCapabilities(typography = false, fit = true, zoom = true)
+    PublicationFormat.PDF, PublicationFormat.CBZ, PublicationFormat.CBR -> ReaderCapabilities(typography = false, fit = true, zoom = true)
 }
 
 /**
@@ -140,7 +140,7 @@ fun capabilities(format: PublicationFormat, category: MediaCategory): ReaderCapa
     capabilities(format).copy(spread = spreadCapable(format, category))
 
 fun spreadCapable(format: PublicationFormat, category: MediaCategory): Boolean =
-    (format == PublicationFormat.PDF || format == PublicationFormat.CBZ) &&
+    (format == PublicationFormat.PDF || format == PublicationFormat.CBZ || format == PublicationFormat.CBR) &&
         (category == MediaCategory.COMIC || category == MediaCategory.MANGA)
 
 /** Versioned fixed-layout locator: a stable index into the stored page sequence. */
