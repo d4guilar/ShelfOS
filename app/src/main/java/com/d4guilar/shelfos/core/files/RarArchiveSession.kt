@@ -2,6 +2,8 @@
 package com.d4guilar.shelfos.core.files
 
 import android.os.ParcelFileDescriptor
+import com.d4guilar.shelfos.domain.library.PublicationException
+import com.d4guilar.shelfos.domain.library.PublicationProblem
 import java.io.File
 import java.io.IOException
 
@@ -75,3 +77,62 @@ internal class NativeRarArchiveSession(private val session: NativeRarSession) : 
  * model. Never thrown across any UI-facing boundary directly.
  */
 internal class RarExtractionException(val error: NativeRarError) : IOException(error.name)
+
+/**
+ * Internal-only, UI/localization-free mapping of [NativeRarError] onto ShelfOS's existing
+ * [PublicationProblem] model -- never a raw native code, never a new [PublicationProblem]/
+ * `PublicationExceptionDetail` value (both are UI-mapped elsewhere by exhaustive `when`s this checkpoint
+ * deliberately does not touch), and never surfaced as localized text from this checkpoint.
+ * [NativeRarError.NOT_SEEKABLE] maps to the existing actionable [PublicationProblem.NEEDS_COPY]. [NativeRarError.
+ * IO] and [NativeRarError.NATIVE_INTERNAL] both use [PublicationProblem.UNREADABLE], while a thrown
+ * [PublicationException] retains the originating typed cause (e.g. [RarExtractionException]) so callers can still
+ * distinguish source/cache I/O from an internal native/program failure without string parsing or raw codes.
+ * [NativeRarError.TOO_LARGE] reuses the existing [PublicationProblem.TOO_LARGE] -- the SAME problem CBZ's own
+ * oversized-page-image policy ([ArchivePolicy]) already reports -- rather than collapsing into
+ * [PublicationProblem.UNREADABLE] or inventing a new value.
+ *
+ * Moved here (Phase 3E-D) from `core.reader`'s `RarPageSource.kt`, where it originated in 3E-C: this mapping is
+ * purely about [NativeRarError] (a `core.files` type), and 3E-D's own [openRarArchiveSession] below (also
+ * `core.files`, used directly from `PublicationFiles`' import-time magic/metadata inspection) needs it too --
+ * living next to [NativeRarError] avoids a `core.files` -> `core.reader` reverse dependency that importing it from
+ * its old location would otherwise create. No behavior change from the 3E-C version.
+ */
+internal fun NativeRarError.toPublicationProblem(): PublicationProblem = when (this) {
+    NativeRarError.PROTECTED -> PublicationProblem.PROTECTED
+    NativeRarError.UNSUPPORTED -> PublicationProblem.UNSUPPORTED_FORMAT
+    NativeRarError.CORRUPT, NativeRarError.INVALID_ARGUMENT -> PublicationProblem.CORRUPT
+    NativeRarError.TOO_LARGE -> PublicationProblem.TOO_LARGE
+    NativeRarError.NOT_SEEKABLE -> PublicationProblem.NEEDS_COPY
+    NativeRarError.IO, NativeRarError.NATIVE_INTERNAL -> PublicationProblem.UNREADABLE
+}
+
+/**
+ * Phase 3E-D: opens a production [RarArchiveSession] over [descriptor] for product code (import-time
+ * inspection in [PublicationFiles], and the reading-session route in `core.reader.FixedReader`'s `RarPages`).
+ * Transfers ownership of a DUPLICATE of [descriptor]'s fd to the native engine -- mirroring exactly how
+ * [ArchivePolicy.open] hands `SeekableZip` a duplicate for CBZ -- so [descriptor] itself is left open and still
+ * owned by the caller on every path, success or failure. A whole-archive open failure (including every entry
+ * being encrypted, or a non-seekable source) is mapped immediately onto [PublicationException] via
+ * [toPublicationProblem], never left as a raw [NativeRarError] for product code to interpret itself.
+ */
+internal fun openRarArchiveSession(descriptor: ParcelFileDescriptor): RarArchiveSession {
+    val fd = ParcelFileDescriptor.dup(descriptor.fileDescriptor).detachFd()
+    return when (val opened = NativeRarSession.open(fd)) {
+        is NativeRarResult.Success -> NativeRarArchiveSession(opened.value)
+        is NativeRarResult.Failure -> throw PublicationException(opened.error.toPublicationProblem())
+    }
+}
+
+/** RAR4/RAR5 magic signatures (see `docs/PHASE_3_IMPLEMENTATION_PLAN.md`'s 3E-D record): a full, exact prefix
+ * match is import-format evidence regardless of filename; a short/partial prefix (1-6 bytes, e.g. a truncated
+ * download) is deliberately NOT treated as valid evidence here -- that is a 3E-B-level damaged-archive
+ * classification concern for AFTER import, never an import-detection one. RAR5's magic shares its first six bytes
+ * with RAR4's but diverges at the 7th, so checking either exact-length prefix independently can never
+ * misclassify one as the other. */
+private val RAR4_MAGIC = byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00)
+private val RAR5_MAGIC = byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00)
+
+/** True only when [head] (with [count] valid leading bytes) contains a COMPLETE RAR4 or RAR5 magic prefix. */
+internal fun isRarMagic(head: ByteArray, count: Int): Boolean =
+    (count >= RAR4_MAGIC.size && head.copyOf(RAR4_MAGIC.size).contentEquals(RAR4_MAGIC)) ||
+        (count >= RAR5_MAGIC.size && head.copyOf(RAR5_MAGIC.size).contentEquals(RAR5_MAGIC))

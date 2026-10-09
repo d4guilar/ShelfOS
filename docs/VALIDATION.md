@@ -1,5 +1,122 @@
 # Validation
 
+## PHASE 3E-D — CBR PRODUCT INTEGRATION (2026-10-08)
+
+Status: **IMPLEMENTED locally; pending review.** 3E-A/3E-B/3E-C are complete/accepted (3E-C's final
+Codex R2 PASS). 3E-E not started; Phase 3 overall not complete. Branch: `phase-3/3e-native-cbr`.
+No native file changed; no change to `NativeRarSession`, `shelfos_rar_session_jni.cpp`,
+`RarCacheCoordinator`, or `RarExtractionCache`. See `docs/PHASE_3_IMPLEMENTATION_PLAN.md`'s §31 for
+the full narrative record; this entry is the exact evidence/commands summary.
+
+**PublicationFormat.CBR**: added to `domain/library/LibraryItem.kt`. Exhaustive `when`s updated:
+`core/reader/FixedReader.kt` (`FixedReaderFactory.open`), `core/reader/ReaderPreferences.kt`
+(`capabilities()`, `spreadCapable()`), `domain/importing/ImportPolicy.kt` (`suggestedCategory()`).
+Persisted as a plain Room `String` column (`LibraryEntity.format`); Room schema change: **NONE**;
+migration required: **NONE** (confirmed by `PublicationFormat.entries.forEach { ... valueOf ... }`
+round-trip assertion).
+
+**Magic detection**: `isRarMagic` (new, `core/files/RarArchiveSession.kt`): exact RAR4
+(`52 61 72 21 1A 07 00`) / RAR5 (`52 61 72 21 1A 07 01 00`) prefix match, filename-independent.
+Wired into `PublicationFiles.inspect`'s existing header-sniff `when`. Short/partial (1-6 byte) prefix
+is rejected as evidence. `.cbr`-named non-RAR bytes fall through to the existing
+`UNSUPPORTED_FORMAT` path (no filename-driven acceptance exists anywhere in the detector).
+
+**Import routing**: `PublicationFiles.inspectRar` → `openRarArchiveSession` (new helper, duplicates
+the descriptor's fd, mirrors `ArchivePolicy.open` for ZIP; original descriptor never consumed) →
+`RarPageSource.open` (unchanged 3E-C policy: index/filter/safety-check, `ComicInfo.xml` read via the
+existing `EmbeddedMetadataReader`). Source mutation: **NO**. Conversion/repack: **NONE**. A rejected
+import leaves no partial private copy (same transaction discipline as CBZ/EPUB/PDF).
+
+**Source key**: `rarCacheSourceKey(id, byteSize) = "$id:${byteSize ?: -1}"` (new,
+`domain/library/LibraryItem.kt`) — the item's own stable id plus its persisted byte size; never
+derived from title/fileName/display name. Same formula and same cache root
+(`PublicationFiles.rarCacheRoot = context.cacheDir`) used at import-time inspection and at the real
+`FixedReaderFactory` reading route, so `RarCacheCoordinator.getInstance` resolves to the same
+singleton coordinator both times (reopen-reuse for an unchanged source; a changed byte size yields a
+different key).
+
+**Metadata/ComicInfo**: `RarPageSource.comicInfo()` (unchanged) reuses the existing
+`EmbeddedMetadataReader.comicInfo(Document)` mapping (title/series/number/writer/Manga-RTL flag) —
+no second parser. Missing/unparsable `ComicInfo.xml` still imports via filename fallback. Zero
+safe page-image-named entries → `EMPTY_ARCHIVE` (proven with the real native engine against the
+vendored non-image upstream RAR fixture, see test evidence below) — never a silent zero-page import.
+
+**Category/Manga/RTL/spreads**: `suggestedCategory`/`capabilities`/`spreadCapable` treat
+`CBZ`/`CBR` identically; no CBR-only branch. RTL/spread/fold behavior is entirely inherited through
+the shared `PageSource`/`ImagePageRenderer`/`SpreadModel`/`FixedReader` machinery.
+
+**Reader routing**: new `RarPages` (private, `core/reader/FixedReader.kt`), structurally identical to
+`ArchivePages`: `openRarArchiveSession` → `RarPageSource.open` → the same `ImagePageRenderer`/
+`PageSource` contract CBZ/PDF already share. Created once per `FixedReaderFactory.open`, closed once
+by `RarPages.close()`; `FixedReaderViewModel` already closes its one session only on `onCleared()`.
+
+**Error mapping**: `NativeRarError.toPublicationProblem()` relocated unmodified from
+`core.reader`'s `RarPageSource.kt` to `core.files`'s `RarArchiveSession.kt` (layering fix only — lets
+the new `core.files` `openRarArchiveSession` use it without a `core.files` → `core.reader` reverse
+dependency through the old location). `PublicationProblem.messageRes()`/`importMessageRes()` already
+map every case generically (not per-format): PROTECTED/CORRUPT/TOO_LARGE/NEEDS_COPY/
+PERMISSION_LOST/UNREADABLE for CBR all resolve to the SAME existing localized EN/ES/PT-BR strings
+CBZ/EPUB/PDF already use — no raw libarchive text, no password prompt, no new CBR-specific string.
+Only `problem_unsupported_format_message` (EN/ES/PT-BR) was updated to also name CBR.
+
+**Import UI/picker/cover**: picker already launches `arrayOf("*/*")` (no MIME filtering) — unchanged.
+Cover art is locally generated per-id artwork (`PublicationCover`/`LibraryItem.coverColor`/
+`coverMotif`), never derived from a page image for any format — zero CBR-specific change needed.
+
+**Targeted JVM tests** (`./gradlew testDebugUnitTest --tests "com.d4guilar.shelfos.ImportPolicyTest" --tests "com.d4guilar.shelfos.core.files.RarMagicDetectionTest" --tests "com.d4guilar.shelfos.core.reader.RarPageSourceTest"`):
+`ImportPolicyTest` 12/12 (4 new CBR cases: category suggestion, format persistence round trip,
+capability/spread parity, cache-source-key stability), `RarMagicDetectionTest` 6/6 (new),
+`RarPageSourceTest` 19/19 (unchanged behavior after the error-mapping relocation). Total: 37/37, 0
+failures.
+
+**Targeted instrumented tests** (API 24 emulator, `shelfos-api24(AVD)`, run via
+`./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.CbrProductIntegrationTest`):
+`CbrProductIntegrationTest` 3/3 — `realRarMagicIsDetectedAsCbrAndAZeroImagePageArchiveFailsTruthfullyLikeAnEquivalentEmptyCbz`,
+`fixedReaderFactoryRoutesCbrThroughTheRealNativeEngineNeverThroughTheZipOrPdfPaths`,
+`passwordProtectedRar4AndRar5BothMapToProtectedThroughTheRealImportPath` — all against the REAL
+accepted native engine and the already-vendored upstream `.uu` RAR fixtures (`test_read_format_rar.rar.uu`,
+`test_read_format_rar4_encrypted.rar.uu`, `test_read_format_rar5_encrypted.rar.uu`); no new RAR-writing
+tooling added. 0 failures, 0 errors.
+
+**Native/cache regression**: production native files unchanged (confirmed by `git diff --stat`
+showing no `.cpp`/`.h`/CMake changes); `RarCacheCoordinator`/`RarExtractionCache` architecture
+unchanged (not touched by this diff); no targeted native/cache regression re-run performed (not
+needed — nothing in that layer changed).
+
+**Build gates**: `assembleDebug` PASS, `assembleDebugAndroidTest` PASS, `lintDebug` PASS (no new
+lint errors; build succeeded).
+
+**APK/fixture hygiene**: confirmed no `.uu`, decoded `.rar`, owner's real `.cbr`, or owner-extracted
+pages are committed or packaged — `git diff --cached` scanned for the owner's fixture filename/path
+and for `archive_write`/RAR-writer code: clean. The only RAR test bytes anywhere are the pre-existing,
+already-accepted vendored `.uu` fixtures under `app/src/androidTest/assets/libarchive_fixtures/`.
+
+**Owner's real local CBR fixture** (owner-provided local real-world CBR fixture, not committed, not
+packaged): used for one local manual acceptance pass via a throwaway instrumented test
+(`OwnerCbrManualAcceptanceThrowaway`, written, run once via `adb shell am instrument` against a
+manually installed debug/androidTest APK pair, then deleted immediately — never part of any commit).
+Results: import succeeded (format CBR, category Comics, a title sourced from embedded
+`ComicInfo.xml`, `titleOrigin=embedded`); page count 151; first-page render succeeded (994x1528);
+last-page (index 150) render succeeded (1200x1017); a thumbnail-sized render succeeded (124x191);
+page geometry resolved (1988x3056); a progress-locator round trip to the last page restored the exact
+same logical page; source SHA-256 before and after the full import/open/render/close cycle was
+**byte-identical** (confirmed equal, value not retained in this doc per hygiene policy); the source
+file itself was not modified. All device-side copies of the fixture (app cache, `/data/local/tmp`) and
+the throwaway test file were deleted after the run; the test app/test package were uninstalled.
+
+**Native crash**: NONE observed across any targeted JVM, instrumented, or owner-fixture run.
+
+**Physical ARM hardware**: NOT PERFORMED. The x86_64 API 24 emulator (`shelfos-api24(AVD)`) was used
+for all instrumented evidence above, including the owner-fixture manual pass.
+
+**Full JVM / full connected regression**: NOT RUN (out of scope for this checkpoint; only the targeted
+classes above were run).
+
+**Documentation**: `docs/PHASE_3_IMPLEMENTATION_PLAN.md` (§31 added; status line updated) and this
+file updated. No other canonical doc (`PRODUCT.md`/`ARCHITECTURE.md`/`COMICS_MANGA.md`/`READER.md`)
+required a change: none of their existing statements became factually false by CBR becoming a working
+format at this checkpoint.
+
 ## PHASE 3E-C R1B — CACHE LIFECYCLE / ERROR SEMANTICS REMEDIATION (2026-10-08)
 
 Status: **COMPLETE locally; pending fresh Codex High R2.** Branch:

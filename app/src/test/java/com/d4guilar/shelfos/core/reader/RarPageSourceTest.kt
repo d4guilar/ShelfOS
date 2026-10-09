@@ -6,6 +6,7 @@ import com.d4guilar.shelfos.core.files.NativeRarEntryType
 import com.d4guilar.shelfos.core.files.NativeRarError
 import com.d4guilar.shelfos.core.files.RarExtractionException
 import com.d4guilar.shelfos.core.files.RarExtractionCache
+import com.d4guilar.shelfos.core.files.toPublicationProblem
 import com.d4guilar.shelfos.domain.library.PublicationException
 import com.d4guilar.shelfos.domain.library.PublicationProblem
 import java.io.File

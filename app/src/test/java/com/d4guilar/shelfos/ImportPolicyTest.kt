@@ -5,6 +5,8 @@ import com.d4guilar.shelfos.core.designsystem.UiMessage
 import com.d4guilar.shelfos.core.designsystem.messageRes
 import com.d4guilar.shelfos.core.designsystem.readerMessage
 import com.d4guilar.shelfos.core.files.EmbeddedMetadataReader
+import com.d4guilar.shelfos.core.reader.capabilities
+import com.d4guilar.shelfos.core.reader.spreadCapable
 import com.d4guilar.shelfos.domain.importing.*
 import com.d4guilar.shelfos.domain.library.*
 import org.junit.Assert.*
@@ -42,6 +44,42 @@ class ImportPolicyTest {
         assertEquals(MediaCategory.BOOK, suggestedCategory(PublicationFormat.PDF))
         assertEquals(MediaCategory.COMIC, suggestedCategory(PublicationFormat.CBZ))
         assertEquals(MediaCategory.MANGA, suggestedCategory(PublicationFormat.CBZ, rightToLeftManga = true))
+        // Phase 3E-D: CBR is a comic container exactly like CBZ -- same ComicInfo-driven Comics/Manga suggestion,
+        // never a CBR-only special case.
+        assertEquals(MediaCategory.COMIC, suggestedCategory(PublicationFormat.CBR))
+        assertEquals(MediaCategory.MANGA, suggestedCategory(PublicationFormat.CBR, rightToLeftManga = true))
+    }
+
+    @Test fun publicationFormatRoundTripsThroughItsStringPersistenceWithoutASchemaChange() {
+        // RoomLibraryRepository persists `format` as a plain String column (LibraryEntity.format) and recovers it
+        // via PublicationFormat.valueOf(...) -- adding PublicationFormat.CBR is purely an enum-value addition, so
+        // every value (old and new) must still round-trip through .name/.valueOf with no Room schema/migration
+        // involved at all.
+        PublicationFormat.entries.forEach { format -> assertEquals(format, PublicationFormat.valueOf(format.name)) }
+        assertEquals(PublicationFormat.CBR, PublicationFormat.valueOf("CBR"))
+    }
+
+    @Test fun cbrInheritsCbzsFixedLayoutReaderCapabilitiesAndSpreadEligibility() {
+        // Phase 3E-D: CBR must offer the identical reader capability surface CBZ already does -- no CBR-specific
+        // reader capability branch -- and the spread control is offered under the exact same format+category rule.
+        assertEquals(capabilities(PublicationFormat.CBZ), capabilities(PublicationFormat.CBR))
+        assertTrue(spreadCapable(PublicationFormat.CBR, MediaCategory.COMIC))
+        assertTrue(spreadCapable(PublicationFormat.CBR, MediaCategory.MANGA))
+        assertFalse(spreadCapable(PublicationFormat.CBR, MediaCategory.BOOK))
+        assertFalse(spreadCapable(PublicationFormat.CBR, MediaCategory.DOCUMENT))
+    }
+
+    @Test fun rarCacheSourceKeyIsStableForTheSameIdentityAndSensitiveToARevisionChangeNeverToDisplayNameAlone() {
+        // Phase 3E-D: the production RAR extraction-cache namespace key must be derived only from the item's own
+        // stable id and its persisted byte size (the one revision signal already available) -- never from its
+        // mutable, user-editable title/fileName, so a cosmetic rename can never change (or collide) a cache key.
+        assertEquals(rarCacheSourceKey("abc", 100L), rarCacheSourceKey("abc", 100L))
+        assertNotEquals(rarCacheSourceKey("abc", 100L), rarCacheSourceKey("abc", 200L))
+        assertNotEquals(rarCacheSourceKey("abc", 100L), rarCacheSourceKey("def", 100L))
+        val a = LibraryItem("same-id", "Original Title", category = MediaCategory.COMIC, sourceUri = "content://a",
+            format = PublicationFormat.CBR, fileName = "a.cbr", byteSize = 100L)
+        val renamed = a.copy(title = "A Completely Different Title", fileName = "renamed.cbr")
+        assertEquals(a.rarCacheSourceKey(), renamed.rarCacheSourceKey())
     }
 
     @Test fun repeatedSourcesAreIdempotentAndSimilarFilesOnlyWarn() {

@@ -6,12 +6,12 @@ import com.d4guilar.shelfos.core.files.CachedExtraction
 import com.d4guilar.shelfos.core.files.EmbeddedMetadata
 import com.d4guilar.shelfos.core.files.EmbeddedMetadataReader
 import com.d4guilar.shelfos.core.files.NativeRarEntryType
-import com.d4guilar.shelfos.core.files.NativeRarError
 import com.d4guilar.shelfos.core.files.RarArchiveSession
 import com.d4guilar.shelfos.core.files.RarCacheCoordinator
 import com.d4guilar.shelfos.core.files.RarExtractionCache
 import com.d4guilar.shelfos.core.files.RarExtractionException
 import com.d4guilar.shelfos.core.files.naturalCompare
+import com.d4guilar.shelfos.core.files.toPublicationProblem
 import com.d4guilar.shelfos.domain.importing.isPageImage
 import com.d4guilar.shelfos.domain.library.PublicationException
 import com.d4guilar.shelfos.domain.library.PublicationExceptionDetail
@@ -226,28 +226,4 @@ internal class RarPageSource private constructor(
             return Index(sortedPages.map { RarPageEntry(it.physicalIndex, it.name) }, comicInfo)
         }
     }
-}
-
-/**
- * Internal-only, UI/localization-free mapping of [NativeRarError] onto ShelfOS's existing
- * [PublicationProblem] model -- never a raw native code, never a new [PublicationProblem]/
- * [PublicationExceptionDetail] value (both are UI-mapped elsewhere by exhaustive `when`s this checkpoint
- * deliberately does not touch), and never surfaced as localized text from this checkpoint. [NativeRarError.
- * NOT_SEEKABLE] maps to the existing actionable [PublicationProblem.NEEDS_COPY]. [NativeRarError.IO] and
- * [NativeRarError.NATIVE_INTERNAL] both use [PublicationProblem.UNREADABLE], while the thrown
- * [PublicationException] retains the originating typed [RarExtractionException] as its cause so 3E-D can still
- * distinguish source/cache I/O from an internal native/program failure without string parsing or raw codes.
- * [NativeRarError.TOO_LARGE] (Phase 3E-C R1A, HIGH-2's hard extraction-time ceiling) reuses the existing
- * [PublicationProblem.TOO_LARGE] -- the SAME problem CBZ's own oversized-page-image policy
- * ([com.d4guilar.shelfos.core.files.ArchivePolicy]) already reports -- rather than collapsing into
- * [PublicationProblem.UNREADABLE] or inventing a new value; a narrower [PublicationExceptionDetail] for this
- * specific RAR-streamed-ceiling case is left to the reserved error-mapping-cleanup pass.
- */
-internal fun NativeRarError.toPublicationProblem(): PublicationProblem = when (this) {
-    NativeRarError.PROTECTED -> PublicationProblem.PROTECTED
-    NativeRarError.UNSUPPORTED -> PublicationProblem.UNSUPPORTED_FORMAT
-    NativeRarError.CORRUPT, NativeRarError.INVALID_ARGUMENT -> PublicationProblem.CORRUPT
-    NativeRarError.TOO_LARGE -> PublicationProblem.TOO_LARGE
-    NativeRarError.NOT_SEEKABLE -> PublicationProblem.NEEDS_COPY
-    NativeRarError.IO, NativeRarError.NATIVE_INTERNAL -> PublicationProblem.UNREADABLE
 }

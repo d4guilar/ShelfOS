@@ -8,6 +8,7 @@ import android.os.ParcelFileDescriptor
 import com.d4guilar.shelfos.core.files.*
 import com.d4guilar.shelfos.domain.library.*
 import java.io.Closeable
+import java.io.File
 import java.io.InputStream
 import kotlin.math.floor
 import kotlin.math.sqrt
@@ -289,6 +290,7 @@ open class FixedReaderFactory(private val files: PublicationFiles) {
             return when (item.format) {
                 PublicationFormat.PDF -> PdfPages(descriptor)
                 PublicationFormat.CBZ -> ArchivePages(descriptor)
+                PublicationFormat.CBR -> RarPages(descriptor, files.rarCacheRoot, item.rarCacheSourceKey())
                 PublicationFormat.EPUB -> throw PublicationException(PublicationProblem.UNSUPPORTED_FORMAT, PublicationExceptionDetail.USE_EPUB_READER_INSTEAD)
             }
         } catch (error: Throwable) { descriptor.close(); throw error }
@@ -383,4 +385,28 @@ private class ArchivePages(private val descriptor: ParcelFileDescriptor) : Fixed
     override fun render(index: Int, request: PageRenderRequest): Bitmap = ImagePageRenderer.render(source, index, request)
     override fun pageGeometry(index: Int): PageGeometry? = ImagePageRenderer.bounds(source, index)
     override fun close() { try { zip.close() } finally { descriptor.close() } }
+}
+
+/**
+ * Phase 3E-D: CBR's product reading route -- the ONLY place `PublicationFormat.CBR` reaches a real [FixedReader].
+ * Structurally identical to [ArchivePages] above, just backed by [RarPageSource] (the accepted Phase 3E-C
+ * container adapter) instead of [ZipPageSource]: [openRarArchiveSession] opens the native RAR engine over a
+ * duplicate of [descriptor]'s fd (leaving [descriptor] itself owned by this class, exactly like
+ * [ArchivePolicy.open] for ZIP), [RarPageSource.open] indexes/filters/safety-checks it (throwing the same
+ * [PublicationProblem]s CBZ's own [ArchivePolicy.pages] throws for an equivalent empty/oversized/unsafe archive),
+ * and every page render/geometry lookup goes through the SAME [ImagePageRenderer] CBZ and PDF already share --
+ * no CBR-specific decode, zoom, spread or fold code exists anywhere in this class. [cacheRoot]/[sourceKey] are
+ * threaded straight to [RarPageSource.open] unchanged; see [com.d4guilar.shelfos.domain.library.rarCacheSourceKey]
+ * for what [sourceKey] is actually derived from. The underlying native session and its extraction cache handle are
+ * owned exclusively by [source] (created once here, when [FixedReaderFactory.open] is called -- never recreated
+ * per page) and released exactly once by [close] -- never across a ViewModel recreation, which always calls
+ * [FixedReaderFactory.open] again from scratch (see [com.d4guilar.shelfos.feature.reader.FixedReaderViewModel]'s
+ * class doc: "the session is closed when this ViewModel is cleared").
+ */
+private class RarPages(private val descriptor: ParcelFileDescriptor, cacheRoot: File, sourceKey: String) : FixedReader {
+    private val source: PageSource = RarPageSource.open(openRarArchiveSession(descriptor), cacheRoot, sourceKey)
+    override val pageCount get() = source.pageCount
+    override fun render(index: Int, request: PageRenderRequest): Bitmap = ImagePageRenderer.render(source, index, request)
+    override fun pageGeometry(index: Int): PageGeometry? = ImagePageRenderer.bounds(source, index)
+    override fun close() { try { source.close() } finally { descriptor.close() } }
 }

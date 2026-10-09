@@ -241,7 +241,7 @@
     <string name="problem_source_unavailable_message">No se puede acceder al archivo original. Puede que se haya movido, eliminado o desconectado. Tu posición de lectura y tus cambios se conservan.</string>
     <string name="problem_source_unavailable_import_message">El archivo seleccionado no está disponible. Comprueba que todavía existe e inténtalo de nuevo.</string>
     <string name="problem_needs_copy_message">Este proveedor no puede ofrecer acceso duradero con acceso aleatorio. ShelfOS necesita una copia privada sin conexión.</string>
-    <string name="problem_unsupported_format_message">Elige una publicación PDF, EPUB o CBZ.</string>
+    <string name="problem_unsupported_format_message">Elige una publicación PDF, EPUB, CBZ o CBR.</string>
     <string name="problem_unsupported_layout_message">La lectura de EPUB de maquetación fija no es compatible en esta versión. Las páginas fijas de PDF y CBZ sí son compatibles.</string>
     <string name="problem_protected_message">Esta publicación está protegida con contraseña o usa DRM. ShelfOS no puede abrir publicaciones protegidas.</string>
     <string name="problem_corrupt_message">Esta publicación parece estar dañada o incompleta.</string>
