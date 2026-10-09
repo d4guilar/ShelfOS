@@ -177,6 +177,7 @@ class RarPageSourceTest {
             NativeRarError.NOT_SEEKABLE to PublicationProblem.UNREADABLE,
             NativeRarError.IO to PublicationProblem.UNREADABLE,
             NativeRarError.NATIVE_INTERNAL to PublicationProblem.UNREADABLE,
+            NativeRarError.TOO_LARGE to PublicationProblem.TOO_LARGE,
         )
         for ((native, expected) in cases) {
             assertEquals(expected, native.toPublicationProblem())
@@ -231,6 +232,32 @@ class RarPageSourceTest {
         assertEquals(1, sourceA.openPage(0).use { it.readBytes() }[0].toInt())
         assertEquals(2, sourceB.openPage(0).use { it.readBytes() }[0].toInt())
         sourceA.close(); sourceB.close()
+    }
+
+    @Test
+    fun declaredSizeOverTheLimitIsRejectedBeforeAnyExtractionIsAttempted() {
+        // Phase 3E-C R1A (HIGH-2): the cheap declared-size precheck in index() must still reject an entry whose
+        // KNOWN declared size already exceeds the policy limit, before any extraction (and therefore before the
+        // new streamed hard ceiling) is ever reached.
+        val entries = listOf(
+            FakeRarArchiveSession.entry(
+                0,
+                "page1.jpg",
+                size = com.d4guilar.shelfos.core.files.ArchivePolicy.MAX_IMAGE_BYTES + 1,
+            ),
+        )
+        val fake = FakeRarArchiveSession(entries)
+        try {
+            RarPageSource.open(fake, cacheRoot, "declared-too-large")
+            throw AssertionError("expected TOO_LARGE")
+        } catch (e: PublicationException) {
+            assertEquals(PublicationProblem.TOO_LARGE, e.problem)
+        }
+        assertEquals(
+            "the declared-size precheck must reject before any extraction is ever attempted",
+            0,
+            fake.extractionCount,
+        )
     }
 
     @Test

@@ -8,6 +8,7 @@ import com.d4guilar.shelfos.core.files.EmbeddedMetadataReader
 import com.d4guilar.shelfos.core.files.NativeRarEntryType
 import com.d4guilar.shelfos.core.files.NativeRarError
 import com.d4guilar.shelfos.core.files.RarArchiveSession
+import com.d4guilar.shelfos.core.files.RarCacheCoordinator
 import com.d4guilar.shelfos.core.files.RarExtractionCache
 import com.d4guilar.shelfos.core.files.RarExtractionException
 import com.d4guilar.shelfos.core.files.naturalCompare
@@ -116,7 +117,12 @@ internal class RarPageSource private constructor(
     }
 
     private fun extract(physicalIndex: Int): CachedExtraction = try {
-        cache.acquire(physicalIndex) { destination -> session.extractEntry(physicalIndex, destination) }
+        cache.acquire(physicalIndex) { destination ->
+            // Phase 3E-C R1A (HIGH-2): a known-honest declared size is already precchecked in index() before an
+            // entry ever becomes a logical page; this ceiling additionally bounds the unknown/dishonestly-sized
+            // case DURING extraction itself, never only after the fact.
+            session.extractEntry(physicalIndex, destination, RarExtractionCache.MAX_ENTRY_BYTES)
+        }
     } catch (e: RarExtractionException) {
         throw PublicationException(e.error.toPublicationProblem())
     }
@@ -145,14 +151,18 @@ internal class RarPageSource private constructor(
          * reach the filesystem unsanitized. When [sourceKey] is null, this falls back to a fresh per-call random
          * namespace: correctness over cache persistence, exactly as the brief requires -- a caller that cannot
          * supply a reliable stable identity sacrifices cross-reopen cache reuse rather than risk serving stale
-         * bytes under a reused key for a different archive.
+         * bytes under a reused key for a different archive. Either way, [maxCacheBytes]/[maxCacheEntries] are no
+         * longer this one source's own private budget (Phase 3E-C R1A): [cacheRoot]/`cbr` is shared, process-wide,
+         * global coordination/accounting domain spanning every namespace ever opened against it -- see
+         * [RarCacheCoordinator]'s class doc for the full architecture, including why a reopen of the SAME
+         * [sourceKey] can now genuinely reuse an earlier materialization rather than merely claim to.
          */
         fun open(
             session: RarArchiveSession,
             cacheRoot: File,
             sourceKey: String?,
-            maxCacheBytes: Long = RarExtractionCache.DEFAULT_MAX_BYTES,
-            maxCacheEntries: Int = RarExtractionCache.DEFAULT_MAX_ENTRIES,
+            maxCacheBytes: Long = RarCacheCoordinator.DEFAULT_MAX_BYTES,
+            maxCacheEntries: Int = RarCacheCoordinator.DEFAULT_MAX_ENTRIES,
         ): RarPageSource {
             val index = try {
                 index(session)
@@ -160,9 +170,11 @@ internal class RarPageSource private constructor(
                 session.close()
                 throw e
             }
-            val namespace = sourceKey ?: UUID.randomUUID().toString()
-            val root = File(cacheRoot, "cbr/" + UUID.nameUUIDFromBytes(namespace.toByteArray(Charsets.UTF_8)))
-            val cache = RarExtractionCache(root, maxCacheBytes, maxCacheEntries)
+            val namespace = sourceKey?.let { UUID.nameUUIDFromBytes(it.toByteArray(Charsets.UTF_8)).toString() }
+                ?: UUID.randomUUID().toString()
+            val coordinatorRoot = File(cacheRoot, "cbr")
+            val coordinator = RarCacheCoordinator.getInstance(coordinatorRoot, maxCacheBytes, maxCacheEntries)
+            val cache = RarExtractionCache(coordinator, namespace)
             return RarPageSource(session, cache, index.pages, index.comicInfo)
         }
 
@@ -215,10 +227,16 @@ internal class RarPageSource private constructor(
  * [PublicationProblem.UNREADABLE] for now -- a real loss of the three-way distinction the native layer itself
  * still makes (see `NativeRarSession`'s doc), explicitly flagged here for whichever later slice (3E-D) first
  * needs to tell them apart in product UX, rather than inventing a new enum entry speculatively today.
+ * [NativeRarError.TOO_LARGE] (Phase 3E-C R1A, HIGH-2's hard extraction-time ceiling) reuses the existing
+ * [PublicationProblem.TOO_LARGE] -- the SAME problem CBZ's own oversized-page-image policy
+ * ([com.d4guilar.shelfos.core.files.ArchivePolicy]) already reports -- rather than collapsing into
+ * [PublicationProblem.UNREADABLE] or inventing a new value; a narrower [PublicationExceptionDetail] for this
+ * specific RAR-streamed-ceiling case is left to the reserved error-mapping-cleanup pass.
  */
 internal fun NativeRarError.toPublicationProblem(): PublicationProblem = when (this) {
     NativeRarError.PROTECTED -> PublicationProblem.PROTECTED
     NativeRarError.UNSUPPORTED -> PublicationProblem.UNSUPPORTED_FORMAT
     NativeRarError.CORRUPT, NativeRarError.INVALID_ARGUMENT -> PublicationProblem.CORRUPT
+    NativeRarError.TOO_LARGE -> PublicationProblem.TOO_LARGE
     NativeRarError.NOT_SEEKABLE, NativeRarError.IO, NativeRarError.NATIVE_INTERNAL -> PublicationProblem.UNREADABLE
 }

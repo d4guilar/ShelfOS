@@ -29,12 +29,19 @@ class FakeRarArchiveSession(
     override val entryCount: Int get() = entryList.size
     override fun entryAt(index: Int): NativeRarEntry? = entryList.getOrNull(index)
 
-    override fun extractEntry(index: Int, destination: File): NativeRarError? {
+    override fun extractEntry(index: Int, destination: File, maxBytes: Long): NativeRarError? {
         extractionCount++
         extractedIndices += index
         partialBytesBeforeFailure[index]?.let { destination.writeBytes(it) }
         failures[index]?.let { return it }
         val bytes = content[index] ?: return NativeRarError.INVALID_ARGUMENT
+        // Simulates the real native engine's streamed hard ceiling (Phase 3E-C R1A, HIGH-2): writes only up to
+        // maxBytes and reports TOO_LARGE rather than writing the full (dishonestly-sized-relative-to-the-cap)
+        // payload and rejecting it afterward -- never a post-hoc check.
+        if (bytes.size.toLong() > maxBytes) {
+            destination.writeBytes(bytes.copyOf(maxBytes.toInt()))
+            return NativeRarError.TOO_LARGE
+        }
         destination.writeBytes(bytes)
         return null
     }

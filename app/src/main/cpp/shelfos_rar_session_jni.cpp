@@ -81,6 +81,10 @@ enum class ErrorCode : jint {
     PROTECTED = 5,
     UNSUPPORTED = 6,
     NATIVE_INTERNAL = 7,
+    // Phase 3E-C R1A (HIGH-2): the extracted entry's actual byte stream exceeded the caller-supplied
+    // maxOutputBytes ceiling and extraction was aborted BEFORE writing the chunk that would have exceeded it
+    // -- never a post-hoc rejection. See extractEntry()'s `maxOutputBytes` parameter below.
+    TOO_LARGE = 8,
 };
 
 // Bounded streaming buffer for extraction. Fixed size, never derived from
@@ -366,8 +370,30 @@ ErrorCode collectEntries(int fd, std::vector<EntryMeta>* out) {
 // buffer. `destFd` is a BORROWED descriptor: this function never closes it,
 // on any path - the caller retains ownership. The archive pathname is
 // never used as an output path; writes always go to the caller-supplied fd.
-ErrorCode extractEntry(int fd, const std::vector<EntryMeta>& entries, int index, int destFd) {
+//
+// `maxOutputBytes` (Phase 3E-C R1A, HIGH-2) is a hard ceiling on the number of
+// bytes this call may write to `destFd`, enforced DURING streaming rather
+// than checked after the fact: before writing any given chunk, the running
+// `cumulative` byte count is compared against the ceiling using subtraction
+// (`cumulative > maxOutputBytes - n`), never addition, so there is no
+// cumulative+n overflow to reason about. The moment a chunk would push the
+// total past `maxOutputBytes`, extraction aborts immediately with
+// ErrorCode::TOO_LARGE WITHOUT writing that chunk at all - the destination
+// file therefore never grows past exactly the bytes already fully written
+// before the aborted chunk (always <= maxOutputBytes). An entry whose real
+// size lands EXACTLY on maxOutputBytes succeeds normally. `maxOutputBytes`
+// itself is never used to size any allocation - the streaming buffer below
+// remains the same fixed 64 KiB `kStreamBufferSize` regardless of the
+// ceiling's value.
+ErrorCode extractEntry(int fd, const std::vector<EntryMeta>& entries, int index, int destFd,
+                        int64_t maxOutputBytes) {
     if (index < 0 || static_cast<size_t>(index) >= entries.size()) {
+        return ErrorCode::INVALID_ARGUMENT;
+    }
+    if (maxOutputBytes <= 0) {
+        // Caller/input-validation problem (a non-positive ceiling can never be satisfied by any real
+        // extraction), never archive content's fault - distinct from ErrorCode::TOO_LARGE, which means a real
+        // payload exceeded a legitimate positive ceiling.
         return ErrorCode::INVALID_ARGUMENT;
     }
     if (entries[static_cast<size_t>(index)].type != 0) {
@@ -415,6 +441,7 @@ ErrorCode extractEntry(int fd, const std::vector<EntryMeta>& entries, int index,
     }
 
     std::vector<uint8_t> buffer(kStreamBufferSize);  // fixed size, never entry-size-derived.
+    int64_t cumulative = 0;
     for (;;) {
         la_ssize_t n = archive_read_data(a, buffer.data(), buffer.size());
         if (n < 0) {
@@ -422,6 +449,12 @@ ErrorCode extractEntry(int fd, const std::vector<EntryMeta>& entries, int index,
         }
         if (n == 0) {
             break;  // EOF for this entry.
+        }
+
+        // Hard ceiling check BEFORE writing this chunk (subtraction form: never
+        // `cumulative + n`, so there is no addition-overflow case to guard against).
+        if (cumulative > maxOutputBytes - static_cast<int64_t>(n)) {
+            return ErrorCode::TOO_LARGE;
         }
 
         size_t written = 0;
@@ -438,6 +471,7 @@ ErrorCode extractEntry(int fd, const std::vector<EntryMeta>& entries, int index,
             }
             written += static_cast<size_t>(w);  // Handle a real partial write.
         }
+        cumulative += static_cast<int64_t>(n);
     }
 
     return ErrorCode::OK;
@@ -600,7 +634,8 @@ Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeEntryName(
 
 extern "C" JNIEXPORT jint JNICALL
 Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeExtractEntry(
-        JNIEnv* /*env*/, jclass /*clazz*/, jlong handle, jint index, jint destFd) {
+        JNIEnv* /*env*/, jclass /*clazz*/, jlong handle, jint index, jint destFd,
+        jlong maxOutputBytes) {
     try {
         if (handle <= 0) {
             return static_cast<jint>(ErrorCode::INVALID_ARGUMENT);
@@ -608,8 +643,12 @@ Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeExtractEntry(
         if (destFd < 0) {
             return static_cast<jint>(ErrorCode::INVALID_ARGUMENT);
         }
+        if (maxOutputBytes <= 0) {
+            return static_cast<jint>(ErrorCode::INVALID_ARGUMENT);
+        }
         auto* session = reinterpret_cast<Session*>(handle);
-        ErrorCode err = extractEntry(session->fd, session->entries, index, destFd);
+        ErrorCode err = extractEntry(session->fd, session->entries, index, destFd,
+                                      static_cast<int64_t>(maxOutputBytes));
         return static_cast<jint>(err);
     } catch (...) {
         return static_cast<jint>(ErrorCode::NATIVE_INTERNAL);

@@ -1,5 +1,94 @@
 # Validation
 
+## PHASE 3E-C R1A — GLOBAL CACHE COORDINATOR + HARD EXTRACTION CEILING (2026-10-08)
+
+Status: **COMPLETE locally.** Branch: `phase-3/3e-native-cbr`; pre-remediation HEAD `8ca4960`
+("feat: add Phase 3E CBR container adapter and bounded extraction cache", the §28/below 3E-C
+checkpoint). Codex High reviewed §28's 3E-C and returned CHANGES REQUIRED on two HIGH findings;
+this pass fixes exactly those two and nothing else — see
+`docs/PHASE_3_IMPLEMENTATION_PLAN.md`'s new §29 for the full architecture record and the explicit
+list of lower-cost findings intentionally left for a separate, reserved Codex R1B pass. The 3E-C
+entry immediately below this one describes the ORIGINAL (now partially superseded) architecture;
+its "Cache" claims about a 256MiB/64-entry bound and cross-reopen reuse were real defects this
+pass fixes, not merely documentation errors — see §29's "SUPERSEDED BY §29" callout in the plan
+doc for the precise correction.
+
+**HIGH-1 fix (cache not globally bounded)**: `core/files/RarCacheCoordinator.kt` (new) is now the
+one process-wide accounting/coordination owner per cache root, shared by every
+`RarExtractionCache`/`RarPageSource` instance targeting the same root via
+`RarCacheCoordinator.getInstance(root, maxBytes, maxEntries)`. Byte/entry budgets and LRU eviction
+now span every source namespace sharing a root (previously per-instance/per-namespace). Lazy,
+first-use-triggered disk discovery folds pre-existing ShelfOS-generated finals into accounting, so
+a reopen of the same `sourceKey` now genuinely reuses an earlier materialization. `core/files/
+RarExtractionCache.kt` is now a thin per-namespace facade over the coordinator.
+
+**HIGH-2 fix (no hard extraction-time byte ceiling)**: a narrow extension to the accepted 3E-B
+native API — `NativeRarSession.extractEntry(index, destinationFd, maxOutputBytes)` — threads a
+caller-supplied ceiling into `shelfos_rar_session_jni.cpp`'s native write loop, which now aborts
+with a new `NativeRarError.TOO_LARGE` the moment a chunk would exceed it, DURING streaming, never
+only after the full payload is written. `RarPageSource` passes `RarExtractionCache.MAX_ENTRY_BYTES`
+(128MiB, unchanged) as this ceiling in production. Session ownership, FD ownership, restart
+architecture, the handle model, synchronization, and RAR/RAR5 registration were all left untouched.
+
+**Targeted unit tests (exact commands/counts)**:
+
+```sh
+./gradlew.bat testDebugUnitTest --tests "com.d4guilar.shelfos.core.files.RarExtractionCacheTest" --tests "com.d4guilar.shelfos.core.files.RarCacheCoordinatorTest" --tests "com.d4guilar.shelfos.core.files.RarExtractionCacheCeilingTest" --tests "com.d4guilar.shelfos.core.reader.RarPageSourceTest"
+```
+
+Result: **BUILD SUCCESSFUL**. `RarExtractionCacheTest`: **10 tests, 0 failures, 0 errors, 0
+skipped** (adapted to the new per-namespace-facade constructor shape; same behavioral coverage as
+before). `RarCacheCoordinatorTest` (new): **8 tests, 0 failures, 0 errors, 0 skipped** — global
+byte limit across namespaces, global entry limit across namespaces, lazy cross-reopen disk
+discovery, discovered-final reuse with extraction count unchanged, ephemeral-namespace payload
+boundedness, `getInstance` singleton sharing, two-client same-key concurrent-dedup (latch-driven,
+no sleep), active-lease eviction protection across clients. `RarExtractionCacheCeilingTest` (new):
+**3 tests, 0 failures, 0 errors, 0 skipped** — exact-limit succeeds, limit+1 rejected with no
+leftover file/accounting change, subsequent normal entry still works after a rejection.
+`RarPageSourceTest`: **16 tests, 0 failures, 0 errors, 0 skipped** (15 original + 1 new
+declared-size-precheck-still-works test; the existing error-mapping test was extended with the new
+`TOO_LARGE` case).
+
+**Targeted instrumented tests**: `LibarchiveRarNativeTest` gained
+`extractEntryEnforcesHardByteCeilingDuringExtractionOnRealDevice` (real native engine, tiny
+injectable limit against the real rar4-plain fixture's 21-byte entry — never a 128MiB payload).
+Verified to **compile and package** via `assembleDebugAndroidTest` (below). **NOT executed on a
+device/emulator**: no connected Android device or running emulator was available in this
+environment (`adb devices` unavailable). This is flagged honestly as **NOT RUN (environment)**,
+not fabricated — the one genuine evidence gap this remediation leaves behind, specifically for the
+new native-ceiling test; all pre-existing instrumented tests this pass did not touch remain exactly
+as previously validated.
+
+**Build**: `./gradlew.bat assembleDebug` -> **BUILD SUCCESSFUL**; native C++ changed
+(`shelfos_rar_session_jni.cpp`), so all 3 ABIs' CMake configure+build genuinely re-ran and
+produced fresh binaries this time (not merely incremental bookkeeping). Stripped
+`libshelfos_cbr.so` sizes: arm64-v8a 678520 bytes, armeabi-v7a 406208 bytes, x86_64 665392 bytes
+(no x86 ABI, no standalone `libarchive.so` — unchanged policy). `./gradlew.bat
+assembleDebugAndroidTest` -> **BUILD SUCCESSFUL** (required one fix: a local
+`FakeRarArchiveSession` in `RarPageSourceRenderInstrumentedTest.kt` needed its `extractEntry`
+override updated to the new 3-parameter signature). `./gradlew.bat lintDebug` -> **BUILD
+SUCCESSFUL**, zero findings against any touched file.
+
+**ABI**: native rebuild WAS needed and triggered (see sizes above) — `shelfos_rar_session_jni.cpp`
+changed for HIGH-2's streaming ceiling.
+
+**Physical ARM**: **NOT PERFORMED** (no device/emulator available in this environment — see the
+instrumented-test note above).
+
+**Full JVM**: **NOT RUN** (reserved for Phase 3F; standing policy). **Full connected**: **NOT RUN**
+(reserved for Phase 3F; standing policy).
+
+**Scope discipline**: `PublicationFormat.CBR` **NOT ADDED**; no product/import integration added;
+Phase 3E-D **NOT started**. The four lower-cost findings from the same Codex review (lease-
+release/pinning/deletion-accounting mechanics beyond what the two HIGH fixes structurally
+required, user-actionable error-semantic preservation/mapping cleanup, internal-visibility
+tightening of support classes, and broader docs/evidence reconciliation) were intentionally left
+for the reserved Codex R1B pass — see §29 of the plan doc for the exact list.
+
+**Documentation**: `docs/PHASE_3_IMPLEMENTATION_PLAN.md` (new §29, plus a "SUPERSEDED BY §29"
+callout inline in §28's Cache paragraph correcting its now-inaccurate global-bound and
+cross-reopen-reuse claims) and this entry. No other canonical doc was touched.
+
 ## PHASE 3E-C — CBR CONTAINER ADAPTER / BOUNDED EXTRACTION CACHE (2026-10-08)
 
 Status: **IMPLEMENTED locally; pending review.** Branch: `phase-3/3e-native-cbr`;

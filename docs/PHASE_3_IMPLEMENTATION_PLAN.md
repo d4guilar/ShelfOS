@@ -1389,6 +1389,15 @@ subdirectory match, never a merge of several. `RarPageSource.comicInfo()` is exp
 container level only; it is never counted as a logical page (page filtering already excludes
 it, since `isPageImage(".xml")` is false) and is not wired to `LibraryEntity`/import in any way.
 
+**SUPERSEDED BY §29 (3E-C R1A remediation) — read §29 first.** The cache-bound description below
+describes 3E-C's ORIGINAL, Codex-rejected architecture: each `RarExtractionCache` instance owned
+its own independent 256MiB/64-entry budget (so the real bound was per-instance/per-namespace, not
+global), on-disk files from an earlier process were never rediscovered on reopen despite the
+"cross-reopen reuse" framing below, and the per-entry ceiling was a true post-hoc check only.
+§29 records what Phase 3E-C R1A actually changed (a global `RarCacheCoordinator`, real lazy disk
+discovery, and a real mid-stream native extraction ceiling) and is the current, accurate record;
+this paragraph and the two below it are kept for historical/diff context only.
+
 **Cache (`RarExtractionCache`)**: root is caller-supplied (`RarPageSource.open`'s `cacheRoot`
 parameter); the actual cache directory is `cacheRoot/cbr/<UUID.nameUUIDFromBytes(sourceKeyOrRandom)>`
 — the caller's `sourceKey` string is hashed into a deterministic, filesystem-safe directory
@@ -1477,6 +1486,109 @@ change, no localized user-facing error strings, no encrypted-archive password UI
 render-mutex wiring to any reader ViewModel (deferred to whichever slice first calls
 `RarPageSource` from a reader), no namespace/cross-session cache garbage collection, no CBR
 acceptance-gate work from §17.
+
+## 29. 3E-C R1A remediation record (global cache coordinator + hard extraction ceiling)
+
+Codex High reviewed §28's 3E-C checkpoint and returned CHANGES REQUIRED on two HIGH findings; the
+rest of §28's architecture (RarPageSource/PageSource contract, physical-ordinal identity, natural
+sort, ComicInfo reuse, safe-name policy, native-engine reuse) was accepted as-is and is NOT
+redescribed here.
+
+**HIGH-1 (cache not globally bounded)**: the defect was real — each `RarExtractionCache` instance
+owned its own slots/bytes/locks, so the 256MiB/64-entry budget applied per instance/per-namespace,
+not to the whole `cacheDir/cbr` tree, and on-disk files from an earlier process were never
+rediscovered on reopen. Fix: `core/files/RarCacheCoordinator.kt` is now the ONE process-wide
+accounting/coordination owner for a given cache root (`context.cacheDir/cbr` in production),
+returned by `RarCacheCoordinator.getInstance(root, maxBytes, maxEntries)` — a canonical-path-keyed
+registry, never a single "current book" global, never one coarse lock held across I/O. Source
+namespace (the caller's hashed `sourceKey`, or a random fallback — unchanged contract) is still
+part of every cache entry's identity (`RarCacheCoordinator.Key(namespace, physicalIndex)`), it is
+simply no longer a separate accounting domain: byte/entry budgets and LRU eviction now span every
+namespace sharing a coordinator. On first `acquire()` (never in a constructor, never an always-on
+startup scan), the coordinator lazily walks exactly one level of subdirectories under its root,
+recognizes only the ShelfOS-generated `<namespace>/<index>.bin` layout it itself writes (deleting
+anything unrecognized, any non-directory entry directly under root, and any symlink resolving
+outside the root), and folds discovered finals into live accounting — this is what makes a reopen
+of the same `sourceKey` genuinely reuse an earlier materialization (proven by
+`RarCacheCoordinatorTest.aDiscoveredPriorFinalIsActuallyReusedOnRepeatRequestExtractionCountUnchanged`,
+not merely documented as before). `RarExtractionCache` is now a thin per-namespace facade over the
+shared coordinator (`RarExtractionCache(coordinator, namespace)`); `RarPageSource.open` obtains the
+coordinator via `getInstance` and wraps it in a facade for its own namespace. Ephemeral/random
+namespaces (no stable `sourceKey`) are accounted and evicted by the SAME global LRU as any other
+namespace — chosen policy (b) from the remediation brief, not namespace-close cleanup — so they can
+never sit on disk unaccounted, even though a long-lived ephemeral working set shares the same
+budget as stable sources (an accepted, documented tradeoff, not an oversight). Locking: unchanged
+in spirit from §28 — one lock per cache key (never one coarse global lock), a short `stateLock`
+for accounting only, never held across extraction/decode/copy I/O; the coordinator always acquires
+its own locks before calling into `extract()` (which may transitively acquire a `NativeRarSession`
+instance's own per-session lock), never the reverse, so a coordinator/session deadlock is
+structurally impossible, not merely untested. Tests: `RarCacheCoordinatorTest` (pure JVM, 8 tests)
+— global byte limit across two namespaces, global entry limit across two namespaces (both: a third
+namespace's insert evicts across namespace boundaries to stay within ONE global budget), a
+reopened coordinator lazily discovers a prior final and folds it into accounting, that discovered
+final is genuinely reused (extraction count unchanged), ephemeral-random-namespace payload stays
+bounded by the global budget (both in-memory accounting and actual on-disk footprint), `getInstance`
+returns the same shared instance for the same root, two independently constructed clients sharing
+one root/namespace/ordinal coordinate into exactly one materialization under real concurrency (a
+`CountDownLatch`-driven race, never a sleep), and an active lease in one client protects its entry
+from eviction pressure triggered by a different client (proven against a newer-but-inactive
+competing entry, so it is lease-aware, not just recency-LRU). `RarExtractionCacheTest`'s original
+10 per-namespace tests were adapted to the new constructor shape and still pass unchanged in
+substance.
+
+**HIGH-2 (no hard extraction-time byte ceiling)**: the defect was real — a known declared size was
+(and still is) prechecked before extraction, but an unknown/dishonestly-declared size let native
+extraction write unboundedly before a post-hoc length check rejected it. Fix: a narrow, surgical
+extension to the accepted 3E-B native API (never touching session ownership, FD ownership,
+restart architecture, the handle model, synchronization, or RAR/RAR5 registration) —
+`NativeRarSession.extractEntry(index, destinationFd, maxOutputBytes = Long.MAX_VALUE)` now threads
+a `jlong maxOutputBytes` into `shelfos_rar_session_jni.cpp`'s native write loop, which tracks a
+running `cumulative` byte count and checks `cumulative > maxOutputBytes - n` (subtraction, never
+`cumulative + n`, so there is no addition-overflow case) BEFORE writing each 64KiB-buffered chunk,
+aborting with a new `ErrorCode::TOO_LARGE`/`NativeRarError.TOO_LARGE` (ordinal 8) the moment a
+chunk would exceed the ceiling — never after. The fixed 64KiB transfer buffer, EINTR/partial-write/
+zero-byte-write handling are all unchanged; `maxOutputBytes <= 0` is rejected as `INVALID_ARGUMENT`
+(a caller/input error, distinct from a legitimate size violation). `RarArchiveSession.extractEntry`
+and `FakeRarArchiveSession` gained the same `maxBytes` parameter (default `Long.MAX_VALUE`, so every
+pre-existing call site compiles unchanged); `RarPageSource.extract()` is the one production caller
+that passes a real ceiling (`RarExtractionCache.MAX_ENTRY_BYTES`, i.e. `ArchivePolicy.MAX_IMAGE_BYTES`,
+128MiB). `NativeRarError.TOO_LARGE` maps onto the EXISTING `PublicationProblem.TOO_LARGE` (the same
+value CBZ's own oversized-page-image policy already reports) rather than collapsing into
+`UNREADABLE` or inventing a new enum value — no new `PublicationExceptionDetail`, no localized
+text. The old post-hoc temp-file-length check in `RarExtractionCache`/`RarCacheCoordinator` remains
+as defense in depth; it should now be structurally unreachable in practice since the native layer
+already enforces the same ceiling during streaming. Tests: `RarExtractionCacheCeilingTest` (pure
+JVM, 3 tests, against `FakeRarArchiveSession`'s simulated streamed abort) — exactly-at-the-limit
+succeeds, limit+1 is rejected with no leftover temp/final file and no accounting change, a
+subsequent normal-sized entry in the same namespace still works after a rejection.
+`RarPageSourceTest.declaredSizeOverTheLimitIsRejectedBeforeAnyExtractionIsAttempted` confirms the
+cheap declared-size precheck still runs before any extraction is attempted (both checks coexist).
+`LibarchiveRarNativeTest.extractEntryEnforcesHardByteCeilingDuringExtractionOnRealDevice` (real
+device/JNI evidence, not a fake) drives the REAL native engine against the real rar4-plain
+fixture's 21-byte `test.txt` entry with a tiny (not 128MiB) injectable limit: exactly-at-size
+succeeds, size-minus-one aborts with `TOO_LARGE` and never writes more than the ceiling, and the
+session remains usable for a subsequent legitimately-sized entry afterward — NOT YET RUN on a
+physical device as part of this remediation (no device/emulator was available in this environment);
+`assembleDebugAndroidTest` confirms it at least compiles and packages correctly.
+
+**Scope discipline**: this remediation pass intentionally did NOT touch — and defers to a separate,
+reserved Codex R1B pass — lease-release/pinning/deletion-accounting mechanics beyond what the two
+HIGH fixes above structurally required, user-actionable error-semantic preservation/mapping
+cleanup beyond reusing the existing `PublicationProblem.TOO_LARGE`, internal-visibility tightening
+of support classes, and any broader docs/evidence reconciliation beyond the two paragraphs this
+section and its "SUPERSEDED BY §29" callout above directly correct. No `PublicationFormat.CBR`, no
+product/import integration, and no Phase 3E-D work was added.
+
+**Build/validation for this remediation**: `assembleDebug` (all three ABIs' native CMake
+configure+build succeeded; stripped `libshelfos_cbr.so`: arm64-v8a ~678KB, armeabi-v7a ~406KB,
+x86_64 ~665KB — no x86, no standalone `libarchive.so`), `assembleDebugAndroidTest`, and `lintDebug`
+all pass with zero findings in the touched files. Targeted JVM unit tests (`RarExtractionCacheTest`
+10, `RarCacheCoordinatorTest` 8, `RarExtractionCacheCeilingTest` 3, `RarPageSourceTest` 16 — all
+pass, 0 failures) were run via `testDebugUnitTest` with explicit `--tests` filters; the full JVM
+suite and full connected/instrumented suite were NOT run, consistent with standing policy. Physical
+ARM hardware validation was NOT performed (no device/emulator available in this environment) —
+this is a real gap for the one new native-ceiling instrumented test specifically and is flagged,
+not silently assumed passing.
 
 ## 2. Why Phase 3 is not green-field
 

@@ -307,6 +307,64 @@ class LibarchiveRarNativeTest {
     }
 
     @Test
+    fun extractEntryEnforcesHardByteCeilingDuringExtractionOnRealDevice() {
+        // Phase 3E-C R1A (HIGH-2): real JNI/device evidence that the ACTUAL native write loop enforces a hard
+        // maxOutputBytes ceiling DURING streaming, never only after the fact -- using a tiny (few-byte)
+        // injectable limit, never a 128MiB payload. entry 0 ("test.txt") is the real rar4-plain fixture's known
+        // 21-byte text entry.
+        val archive = RarFixtures.decodeFixtureToTempFile(
+            "test_read_format_rar.rar.uu",
+            "rar4-ceiling-${System.nanoTime()}.rar",
+        )
+        tempFiles.add(archive)
+        val fd = RarFixtures.detachedReadFd(archive)
+        val result = NativeRarSession.open(fd)
+        assertTrue("expected open() to succeed, got: $result", result is NativeRarResult.Success)
+        val session = (result as NativeRarResult.Success).value
+        try {
+            val fullBytes = extractToBytes(session, 0)
+            val exactLimit = fullBytes.size.toLong()
+            assertTrue("fixture precondition: entry 0 must be non-empty", exactLimit > 0)
+
+            // Exactly at the real payload's size must succeed.
+            val exactOutFile = tempFile("ceiling-exact-${System.nanoTime()}.bin")
+            val exactPfd = ParcelFileDescriptor.open(
+                exactOutFile,
+                ParcelFileDescriptor.MODE_READ_WRITE or ParcelFileDescriptor.MODE_CREATE or
+                    ParcelFileDescriptor.MODE_TRUNCATE,
+            )
+            val exactError = session.extractEntry(0, exactPfd.fd, exactLimit)
+            exactPfd.close()
+            assertNull("extraction exactly at the ceiling must succeed", exactError)
+            assertEquals(exactLimit, exactOutFile.length())
+
+            // One byte below the real payload's size must abort DURING extraction (not after) with TOO_LARGE,
+            // and must never write more than the ceiling to the destination.
+            val tooSmallLimit = exactLimit - 1
+            val smallOutFile = tempFile("ceiling-too-small-${System.nanoTime()}.bin")
+            val smallPfd = ParcelFileDescriptor.open(
+                smallOutFile,
+                ParcelFileDescriptor.MODE_READ_WRITE or ParcelFileDescriptor.MODE_CREATE or
+                    ParcelFileDescriptor.MODE_TRUNCATE,
+            )
+            val smallError = session.extractEntry(0, smallPfd.fd, tooSmallLimit)
+            smallPfd.close()
+            assertEquals(NativeRarError.TOO_LARGE, smallError)
+            assertTrue(
+                "an aborted extraction must never write more bytes than the ceiling",
+                smallOutFile.length() <= tooSmallLimit,
+            )
+
+            // The session must remain usable afterward: a different, legitimately-sized entry still extracts
+            // correctly.
+            val expectedContent = "test text document\r\n".toByteArray(Charsets.US_ASCII)
+            assertArrayEquals(expectedContent, extractToBytes(session, 2))
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
     fun truncatedArchiveMapsToCorruptDeterministicallyWithoutCrashing() {
         val archive = RarFixtures.decodeFixtureToTempFile(
             "test_read_format_rar5_solid.rar.uu",

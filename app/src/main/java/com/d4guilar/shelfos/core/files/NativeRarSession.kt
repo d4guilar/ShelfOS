@@ -141,12 +141,22 @@ class NativeRarSession private constructor(initialHandle: Long) {
      * [NativeRarEntryType.REGULAR_FILE] entries can be extracted; any
      * other entry (directory/other-special) or an out-of-range index
      * fails with [NativeRarError.INVALID_ARGUMENT].
+     *
+     * [maxOutputBytes] (Phase 3E-C R1A, HIGH-2) is a hard ceiling on the number of bytes the native engine may
+     * write to [destinationFd], enforced WHILE streaming rather than after the fact: the native write loop
+     * aborts with [NativeRarError.TOO_LARGE] before writing any chunk that would push the output past this
+     * ceiling, never after. Defaults to [Long.MAX_VALUE] (no ceiling) so existing callers that only care about
+     * [NativeRarSession]'s other lifecycle/extraction contracts are unaffected; `RarPageSource` is the one
+     * production caller that supplies a real, policy-driven ceiling (`RarExtractionCache.MAX_ENTRY_BYTES`). A
+     * non-positive value is a caller/input error, not a legitimate size violation, and fails with
+     * [NativeRarError.INVALID_ARGUMENT] instead.
      */
-    fun extractEntry(index: Int, destinationFd: Int): NativeRarError? = synchronized(lock) {
-        if (closed) return NativeRarError.INVALID_ARGUMENT
-        val code = nativeExtractEntry(handle, index, destinationFd)
-        return if (code == 0) null else NativeRarError.fromCode(code)
-    }
+    fun extractEntry(index: Int, destinationFd: Int, maxOutputBytes: Long = Long.MAX_VALUE): NativeRarError? =
+        synchronized(lock) {
+            if (closed) return NativeRarError.INVALID_ARGUMENT
+            val code = nativeExtractEntry(handle, index, destinationFd, maxOutputBytes)
+            return if (code == 0) null else NativeRarError.fromCode(code)
+        }
 
     /**
      * Closes this session, releasing the native handle and the owned
@@ -224,6 +234,7 @@ class NativeRarSession private constructor(initialHandle: Long) {
             handle: Long,
             index: Int,
             destFd: Int,
+            maxOutputBytes: Long,
         ): Int
     }
 }
@@ -264,6 +275,13 @@ enum class NativeRarError {
     /** An unexpected internal failure (allocation failure, invariant violation, etc.). */
     NATIVE_INTERNAL,
 
+    /** Phase 3E-C R1A (HIGH-2): the entry's actual byte stream exceeded a caller-supplied `maxOutputBytes`
+     * ceiling (see [extractEntry]) and extraction was aborted DURING streaming, before writing the chunk that
+     * would have exceeded it -- never a post-hoc rejection after the full payload was already written. Distinct
+     * from [INVALID_ARGUMENT]: this means a real, otherwise-valid entry's content was simply too large for the
+     * ceiling the caller asked for, not a malformed call. */
+    TOO_LARGE,
+
     ;
 
     companion object {
@@ -275,6 +293,7 @@ enum class NativeRarError {
             4 -> CORRUPT
             5 -> PROTECTED
             6 -> UNSUPPORTED
+            8 -> TOO_LARGE
             else -> NATIVE_INTERNAL
         }
     }

@@ -31,9 +31,10 @@ interface RarArchiveSession {
      * Extracts physical entry [index]'s bytes into [destination] (a plain file this call creates/overwrites --
      * never a path derived from untrusted archive content). Returns `null` on success, or the failure category
      * otherwise -- mirrors [NativeRarSession.extractEntry]'s contract exactly, just File-shaped instead of
-     * fd-shaped.
+     * fd-shaped, including its [maxBytes] hard streaming ceiling (see that method's doc; defaults to no
+     * ceiling so existing callers are unaffected).
      */
-    fun extractEntry(index: Int, destination: File): NativeRarError?
+    fun extractEntry(index: Int, destination: File, maxBytes: Long = Long.MAX_VALUE): NativeRarError?
 
     /** Releases the underlying session exactly once; idempotent, mirroring [NativeRarSession.close]. */
     fun close()
@@ -51,14 +52,14 @@ class NativeRarArchiveSession(private val session: NativeRarSession) : RarArchiv
 
     /** Opens [destination] itself for this one call (never reuses or shares a caller fd) -- [RarExtractionCache]
      * always calls this with a fresh, ShelfOS-generated temp file, so there is never a pre-existing fd to borrow. */
-    override fun extractEntry(index: Int, destination: File): NativeRarError? {
+    override fun extractEntry(index: Int, destination: File, maxBytes: Long): NativeRarError? {
         val pfd = ParcelFileDescriptor.open(
             destination,
             ParcelFileDescriptor.MODE_READ_WRITE or ParcelFileDescriptor.MODE_CREATE or
                 ParcelFileDescriptor.MODE_TRUNCATE,
         )
         return try {
-            session.extractEntry(index, pfd.fd)
+            session.extractEntry(index, pfd.fd, maxBytes)
         } finally {
             pfd.close()
         }

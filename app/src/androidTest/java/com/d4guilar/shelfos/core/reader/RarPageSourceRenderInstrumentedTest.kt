@@ -50,7 +50,7 @@ class RarPageSourceRenderInstrumentedTest {
             private set
         override val entryCount get() = entries.size
         override fun entryAt(index: Int) = entries.getOrNull(index)
-        override fun extractEntry(index: Int, destination: File): NativeRarError? {
+        override fun extractEntry(index: Int, destination: File, maxBytes: Long): NativeRarError? {
             extractionCount++
             val bytes = content[index] ?: return NativeRarError.INVALID_ARGUMENT
             destination.writeBytes(bytes)

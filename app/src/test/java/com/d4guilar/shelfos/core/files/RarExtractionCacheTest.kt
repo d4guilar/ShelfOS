@@ -11,8 +11,12 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * Phase 3E-C: pure-JVM proof of [RarExtractionCache]'s atomicity, concurrency-dedup, eviction, and stale-cleanup
- * contract -- entirely independent of any real archive or Android runtime (see [FakeRarArchiveSession]'s doc).
+ * Phase 3E-C: pure-JVM proof of [RarExtractionCache]'s per-namespace atomicity, concurrency-dedup,
+ * eviction, and stale-cleanup contract -- entirely independent of any real archive or Android runtime (see
+ * [FakeRarArchiveSession]'s doc). As of Phase 3E-C R1A, [RarExtractionCache] is a thin namespace-scoped facade
+ * over [RarCacheCoordinator], which actually owns accounting/eviction/discovery; the new GLOBAL (cross-
+ * namespace, cross-reopen) contract these per-instance tests cannot exercise is proven separately by
+ * [RarCacheCoordinatorTest].
  */
 class RarExtractionCacheTest {
     private lateinit var root: File
@@ -29,9 +33,18 @@ class RarExtractionCacheTest {
 
     private fun bytesOf(length: Int, seed: Int): ByteArray = ByteArray(length) { ((it + seed) % 256).toByte() }
 
+    private fun cacheFor(
+        namespace: String,
+        maxBytes: Long = RarCacheCoordinator.DEFAULT_MAX_BYTES,
+        maxEntries: Int = RarCacheCoordinator.DEFAULT_MAX_ENTRIES,
+    ): RarExtractionCache {
+        val coordinator = RarCacheCoordinator.getInstance(root, maxBytes, maxEntries)
+        return RarExtractionCache(coordinator, namespace)
+    }
+
     @Test
     fun firstAcquireExtractsExactlyOnceAndCacheHitExtractsZeroMore() {
-        val cache = RarExtractionCache(root)
+        val cache = cacheFor("ns")
         var calls = 0
         val extract: (File) -> NativeRarError? = { dest -> calls++; dest.writeBytes(bytesOf(16, 1)); null }
 
@@ -50,7 +63,7 @@ class RarExtractionCacheTest {
     fun boundsThenFullDecodeOfTheSamePageReusesOneMaterialization() {
         // Mirrors ImagePageRenderer's bounds-pass-then-full-decode call pattern: two openPage-equivalent calls
         // for the SAME logical page must cost exactly one native extraction.
-        val cache = RarExtractionCache(root)
+        val cache = cacheFor("ns")
         var calls = 0
         val extract: (File) -> NativeRarError? = { dest -> calls++; dest.writeBytes(bytesOf(8, 7)); null }
 
@@ -63,7 +76,7 @@ class RarExtractionCacheTest {
 
     @Test
     fun distinctPhysicalEntriesProduceDistinctNonCollidingCacheEntries() {
-        val cache = RarExtractionCache(root)
+        val cache = cacheFor("ns")
         val a = cache.acquire(0) { it.writeBytes(bytesOf(4, 1)); null }
         val b = cache.acquire(1) { it.writeBytes(bytesOf(4, 2)); null }
         assertFalse(a.file == b.file)
@@ -74,10 +87,10 @@ class RarExtractionCacheTest {
 
     @Test
     fun differentSourceNamespacesDoNotCollideEvenWithIdenticalOrdinals() {
-        val rootA = File(root, "a").apply { mkdirs() }
-        val rootB = File(root, "b").apply { mkdirs() }
-        val cacheA = RarExtractionCache(rootA)
-        val cacheB = RarExtractionCache(rootB)
+        // Both namespaces now deliberately share ONE coordinator/root (the Phase 3E-C R1A global-cache model):
+        // namespace is still part of cache-entry identity, it is simply no longer a separate accounting domain.
+        val cacheA = cacheFor("a")
+        val cacheB = cacheFor("b")
 
         val a = cacheA.acquire(0) { it.writeBytes(bytesOf(4, 11)); null }
         val b = cacheB.acquire(0) { it.writeBytes(bytesOf(4, 22)); null }
@@ -88,7 +101,7 @@ class RarExtractionCacheTest {
 
     @Test
     fun extractionFailureNeverLeavesAPartialFileMasqueradingAsACacheHitAndRetrySucceeds() {
-        val cache = RarExtractionCache(root)
+        val cache = cacheFor("ns")
         var attempt = 0
         val error: Throwable = assertThrowsRarExtraction {
             cache.acquire(5) { dest ->
@@ -99,7 +112,7 @@ class RarExtractionCacheTest {
         }
         assertTrue(error is RarExtractionException)
         assertEquals(NativeRarError.IO, (error as RarExtractionException).error)
-        assertFalse("no .bin/.tmp- leftovers after a failed extraction", root.listFiles()!!.any { it.isFile })
+        assertFalse("no .bin/.tmp- leftovers after a failed extraction", File(root, "ns").listFiles()!!.any { it.isFile })
         assertFalse(cache.containsForTest(5))
 
         val retried = cache.acquire(5) { dest -> attempt++; dest.writeBytes(bytesOf(10, 2)); null }
@@ -109,17 +122,20 @@ class RarExtractionCacheTest {
     }
 
     @Test
-    fun staleTempFilesFromAnAbandonedProcessAreCleanedUpOnConstruction() {
-        File(root, "7.tmp-123-1").writeBytes(byteArrayOf(1, 2, 3))
-        File(root, "8.bin").writeBytes(byteArrayOf(9)) // a legitimate final file must survive
-        RarExtractionCache(root) // construction triggers lazy stale-temp cleanup
-        assertFalse(File(root, "7.tmp-123-1").exists())
-        assertTrue(File(root, "8.bin").exists())
+    fun staleTempFilesFromAnAbandonedProcessAreCleanedUpOnFirstUse() {
+        val namespaceDir = File(root, "ns").apply { mkdirs() }
+        File(namespaceDir, "7.tmp-123-1").writeBytes(byteArrayOf(1, 2, 3))
+        File(namespaceDir, "8.bin").writeBytes(byteArrayOf(9)) // a legitimate final file must survive
+        val cache = cacheFor("ns") // first acquire() on a fresh coordinator triggers lazy discovery/cleanup
+        cache.acquire(9) { it.writeBytes(byteArrayOf(1)); null }.release() // forces ensureDiscovered()
+        assertFalse(File(namespaceDir, "7.tmp-123-1").exists())
+        assertTrue(File(namespaceDir, "8.bin").exists())
+        assertTrue("a discovered legitimate final must be folded into accounting", cache.containsForTest(8))
     }
 
     @Test
     fun evictsDeterministicallyByEntryCount() {
-        val cache = RarExtractionCache(root, maxBytes = Long.MAX_VALUE, maxEntries = 2)
+        val cache = cacheFor("ns", maxBytes = Long.MAX_VALUE, maxEntries = 2)
         val a = cache.acquire(1) { it.writeBytes(bytesOf(4, 1)); null }.also { it.release() }
         val b = cache.acquire(2) { it.writeBytes(bytesOf(4, 2)); null }.also { it.release() }
         assertEquals(2, cache.entryCountForTest)
@@ -132,7 +148,7 @@ class RarExtractionCacheTest {
 
     @Test
     fun evictsDeterministicallyByByteBudget() {
-        val cache = RarExtractionCache(root, maxBytes = 20, maxEntries = 100)
+        val cache = cacheFor("ns", maxBytes = 20, maxEntries = 100)
         cache.acquire(1) { it.writeBytes(bytesOf(10, 1)); null }.release()
         cache.acquire(2) { it.writeBytes(bytesOf(10, 2)); null }.release()
         assertEquals(20, cache.usedBytesForTest)
@@ -144,7 +160,7 @@ class RarExtractionCacheTest {
 
     @Test
     fun anActivelyReferencedEntryIsNeverEvicted() {
-        val cache = RarExtractionCache(root, maxBytes = Long.MAX_VALUE, maxEntries = 1)
+        val cache = cacheFor("ns", maxBytes = Long.MAX_VALUE, maxEntries = 1)
         val held = cache.acquire(1) { it.writeBytes(bytesOf(4, 1)); null } // never released -- stays "active"
         cache.acquire(2) { it.writeBytes(bytesOf(4, 2)); null }.release()
         // maxEntries=1 would normally evict key 1, but it is still actively referenced.
@@ -154,7 +170,7 @@ class RarExtractionCacheTest {
 
     @Test
     fun entryExceedingTheMaxSizeFailsAndLeavesNoCacheEntry() {
-        val cache = RarExtractionCache(root, maxBytes = Long.MAX_VALUE, maxEntries = 10)
+        val cache = cacheFor("ns", maxBytes = Long.MAX_VALUE, maxEntries = 10)
         val oversized = RarExtractionCache.MAX_ENTRY_BYTES + 1
         val error = assertThrowsRarExtraction {
             cache.acquire(1) { dest ->
