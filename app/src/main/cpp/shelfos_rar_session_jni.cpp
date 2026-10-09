@@ -87,6 +87,22 @@ enum class ErrorCode : jint {
     TOO_LARGE = 8,
 };
 
+// nativeOpen's failure channel uses exactly -1..-kMaxEncodedError. Phase 3F
+// (physical ARM acceptance): any OTHER non-zero jlong is a session handle,
+// INCLUDING a negative one. On arm64 Android 11+ heap pointers carry a tag in
+// the top byte (Top-Byte Ignore, e.g. 0xB4...), so a real Session* is
+// routinely negative as a signed 64-bit value. The previous `handle <= 0`
+// guards treated every such handle as an error: every successful open was
+// reported as NATIVE_INTERNAL and its Session (fd + entry list) leaked. A
+// user-space pointer can never fall in [-kMaxEncodedError, 0].
+constexpr jlong kMaxEncodedError = 64;
+static_assert(static_cast<jlong>(ErrorCode::TOO_LARGE) < kMaxEncodedError,
+              "every ErrorCode must fit in nativeOpen's failure range");
+
+inline bool isSessionHandle(jlong handle) {
+    return handle != 0 && !(handle < 0 && handle >= -kMaxEncodedError);
+}
+
 // Bounded streaming buffer for extraction. Fixed size, never derived from
 // archive-claimed entry size (hostile input: a malicious/corrupt archive
 // entry's declared size must never size a native allocation).
@@ -505,12 +521,12 @@ Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeOpen(
             return -static_cast<jlong>(err);
         }
 
-        // A real heap pointer is never 0 and (on every Android ABI's
-        // address space) never large enough to look negative as a signed
-        // 64-bit value, so this is unambiguous against the negative error
-        // encoding above. release() hands fd/entry ownership to the opaque
-        // handle now returned to Kotlin; nativeClose() is the only
-        // remaining path that may destroy this Session.
+        // A real heap pointer is never 0 and never inside the small
+        // -1..-kMaxEncodedError failure range, so it is unambiguous against
+        // the error encoding above even when pointer tagging makes it
+        // negative (see isSessionHandle). release() hands fd/entry ownership
+        // to the opaque handle now returned to Kotlin; nativeClose() is the
+        // only remaining path that may destroy this Session.
         return reinterpret_cast<jlong>(session.release());
     } catch (...) {
         // No C++ exception may cross the JNI boundary (e.g. std::bad_alloc
@@ -536,7 +552,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeClose(
         JNIEnv* /*env*/, jclass /*clazz*/, jlong handle) {
     try {
-        if (handle <= 0) {
+        if (!isSessionHandle(handle)) {
             return;
         }
         auto* session = reinterpret_cast<Session*>(handle);
@@ -551,7 +567,7 @@ Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeClose(
 extern "C" JNIEXPORT jint JNICALL
 Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeEntryCount(
         JNIEnv* /*env*/, jclass /*clazz*/, jlong handle) {
-    if (handle <= 0) {
+    if (!isSessionHandle(handle)) {
         return -1;
     }
     auto* session = reinterpret_cast<Session*>(handle);
@@ -564,7 +580,7 @@ Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeEntryCount(
 extern "C" JNIEXPORT jint JNICALL
 Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeEntryType(
         JNIEnv* /*env*/, jclass /*clazz*/, jlong handle, jint index) {
-    if (handle <= 0) {
+    if (!isSessionHandle(handle)) {
         return -1;
     }
     auto* session = reinterpret_cast<Session*>(handle);
@@ -577,7 +593,7 @@ Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeEntryType(
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeEntrySize(
         JNIEnv* /*env*/, jclass /*clazz*/, jlong handle, jint index) {
-    if (handle <= 0) {
+    if (!isSessionHandle(handle)) {
         return -1;
     }
     auto* session = reinterpret_cast<Session*>(handle);
@@ -590,7 +606,7 @@ Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeEntrySize(
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeEntryIsNameUtf8(
         JNIEnv* /*env*/, jclass /*clazz*/, jlong handle, jint index) {
-    if (handle <= 0) {
+    if (!isSessionHandle(handle)) {
         return JNI_FALSE;
     }
     auto* session = reinterpret_cast<Session*>(handle);
@@ -604,7 +620,7 @@ extern "C" JNIEXPORT jbyteArray JNICALL
 Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeEntryName(
         JNIEnv* env, jclass /*clazz*/, jlong handle, jint index) {
     try {
-        if (handle <= 0) {
+        if (!isSessionHandle(handle)) {
             return env->NewByteArray(0);
         }
         auto* session = reinterpret_cast<Session*>(handle);
@@ -637,7 +653,7 @@ Java_com_d4guilar_shelfos_core_files_NativeRarSession_nativeExtractEntry(
         JNIEnv* /*env*/, jclass /*clazz*/, jlong handle, jint index, jint destFd,
         jlong maxOutputBytes) {
     try {
-        if (handle <= 0) {
+        if (!isSessionHandle(handle)) {
             return static_cast<jint>(ErrorCode::INVALID_ARGUMENT);
         }
         if (destFd < 0) {

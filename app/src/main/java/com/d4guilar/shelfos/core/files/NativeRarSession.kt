@@ -216,10 +216,9 @@ class NativeRarSession private constructor(initialHandle: Long) {
                 return NativeRarResult.Failure(NativeRarError.NATIVE_INTERNAL)
             }
             val handle = nativeOpen(fd)
-            return if (handle > 0) {
-                NativeRarResult.Success(NativeRarSession(handle))
-            } else {
-                NativeRarResult.Failure(NativeRarError.fromCode((-handle).toInt()))
+            return when (val failure = nativeOpenFailure(handle)) {
+                null -> NativeRarResult.Success(NativeRarSession(handle))
+                else -> NativeRarResult.Failure(failure)
             }
         }
 
@@ -315,3 +314,20 @@ data class NativeRarEntry(
     /** Null means "unknown declared size" (distinct from a real 0-byte entry). */
     val size: Long?,
 )
+
+/** Mirrors `kMaxEncodedError` in shelfos_rar_session_jni.cpp: `nativeOpen` reports failure as exactly -1..-this. */
+internal const val NATIVE_OPEN_MAX_ENCODED_ERROR = 64L
+
+/**
+ * Phase 3F (physical ARM acceptance): decodes `nativeOpen`'s result. Returns null when [handle] is a session
+ * handle, otherwise the failure it encodes. Only -1..-[NATIVE_OPEN_MAX_ENCODED_ERROR] are failures; any other
+ * non-zero value is a handle, including a NEGATIVE one. On arm64 Android 11+ heap pointers carry a tag in the top
+ * byte (e.g. 0xB4...), so a real native pointer is routinely negative as a Long. The old `handle > 0` test
+ * reported every successful open on such devices as NATIVE_INTERNAL and leaked the native session. Zero is never
+ * a handle.
+ */
+internal fun nativeOpenFailure(handle: Long): NativeRarError? = when {
+    handle == 0L -> NativeRarError.NATIVE_INTERNAL
+    handle < 0L && handle >= -NATIVE_OPEN_MAX_ENCODED_ERROR -> NativeRarError.fromCode((-handle).toInt())
+    else -> null
+}

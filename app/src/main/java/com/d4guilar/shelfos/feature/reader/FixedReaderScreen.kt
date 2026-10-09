@@ -91,6 +91,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
     var topFocused by remember { mutableStateOf(false) }
     var bottomFocused by remember { mutableStateOf(false) }
     var controlFocusRequests by remember { mutableIntStateOf(0) }
+    var pageFocusRestoreRequests by remember { mutableIntStateOf(0) }
     // Fit-mode change is folded into the same page-change reset key (Phase 2D.1): switching Fit Page <-> Fit
     // Width while zoomed/panned would otherwise keep a transform computed for the old fit's content geometry.
     val fitWidth = state.preferences.fit == FitMode.WIDTH
@@ -155,8 +156,16 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
     // explicit request here to that SAME stable target, rather than racing a specific trigger button through
     // several frames of a disposal-driven reassignment it cannot reliably outlast, is simpler and strictly
     // satisfies "focus must never simply disappear, even if not the exact originating control."
-    fun dismissAppearance() { appearance = false; runCatching { pageFocus.requestFocus() } }
-    fun dismissThumbnails() { thumbnails = false; runCatching { pageFocus.requestFocus() } }
+    //
+    // Phase 3F: for the hinge-safe overlay the inline request alone is not enough. It runs while the background
+    // is still `canFocus = false` (the modal flag only clears on the next composition), so Compose refuses it and
+    // focus lands wherever its own reassignment chooses -- nowhere on API 33, the Library button on API 24 in
+    // keyboard mode -- leaving D-pad/gamepad input with no reader target. The counter re-requests focus after that
+    // composition, but ONLY under a fold split (see the LaunchedEffect after `chromePane`). The ordinary platform
+    // dialog path keeps exactly its accepted inline-only behavior: deferring there too made
+    // FixedReaderTransformBoundsTest hang on the API 24 emulator.
+    fun dismissAppearance() { appearance = false; runCatching { pageFocus.requestFocus() }; pageFocusRestoreRequests++ }
+    fun dismissThumbnails() { thumbnails = false; runCatching { pageFocus.requestFocus() }; pageFocusRestoreRequests++ }
 
     LaunchedEffect(Unit) { pageFocus.requestFocus() }
     LaunchedEffect(controlFocusRequests) { if (controlFocusRequests > 0) runCatching { firstControl.requestFocus() } }
@@ -182,6 +191,9 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
     // (not a wrapper) of this screen's own background content: (1) the root-level Back/gamepad-B/page-command
     // interception below, and (2) the background Column's own conditional focus/accessibility suppression.
     val hingeSafeModalOpen = chromePane != null && ((appearance && item != null) || (thumbnails && state.count > 0))
+    LaunchedEffect(pageFocusRestoreRequests) {
+        if (pageFocusRestoreRequests > 0 && chromePane != null) runCatching { pageFocus.requestFocus() }
+    }
     // The ONE pane active content renders into for every case EXCEPT a vertical-split spread (which needs two
     // independently-positioned panes -- see foldSpreadPanes below): FLAT's whole bounds, HORIZONTAL_SPLIT's
     // chosen safe pane (reusing the existing flat 3C single/spread rendering unchanged, just confined to that
@@ -314,7 +326,12 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
         // above); an ordinary Modifier.fillMaxWidth() otherwise -- byte-for-byte the pre-3D behavior.
         val topChromeModifier = chromePane?.let { pane -> with(screenDensity) { Modifier.offset(x = pane.left.toDp()).width(pane.width.toDp()) } }
             ?: Modifier.fillMaxWidth()
-        if (controls) Row(topChromeModifier.onFocusChanged { topFocused = it.hasFocus }.horizontalScroll(rememberScrollState()),
+        // Phase 3F: horizontalScroll is itself a focus target, and Compose stops resolving focusProperties at the
+        // nearest ancestor focus target, so the Column-level `canFocus = false` above never reached these buttons.
+        // In keyboard/D-pad (non-touch) mode they stayed focusable behind an open hinge-safe modal. The same block
+        // is therefore re-applied inside the scroll container; it is a no-op whenever no hinge-safe modal is open.
+        if (controls) Row(topChromeModifier.onFocusChanged { topFocused = it.hasFocus }.horizontalScroll(rememberScrollState())
+            .then(if (hingeSafeModalOpen) Modifier.focusProperties { canFocus = false } else Modifier),
             verticalAlignment = Alignment.CenterVertically) {
             TextButton(onBack, Modifier.focusRequester(firstControl).testTag("reader_library")) { Text(stringResource(R.string.nav_library)) }
             TextButton({ appearance = true }, Modifier.testTag("reader_appearance"), enabled = item != null) { Text(stringResource(R.string.action_appearance)) }

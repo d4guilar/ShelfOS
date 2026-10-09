@@ -1,32 +1,15 @@
 # Phase 3 Implementation Plan — Comics and Manga
 
-Status: **3A (rendering/fidelity foundation) COMPLETE and MERGED to `main`** (`#24`,
-"feat: establish Phase 3A fixed-page rendering foundation"). **3B (page thumbnails/
-navigation) COMPLETE and MERGED to `main`** (`#25`, "feat: add Phase 3B page thumbnail
-navigation"). **3C (spreads + Manga pairing) COMPLETE and MERGED to `main`** (`#26`,
-"feat: add Phase 3C comic and manga spread reading"). **3D (adaptive/foldable comic
-spreads) COMPLETE and MERGED to `main`** (`#27`, "feat: add Phase 3D adaptive foldable
-comic spreads"). **3E-A (native CBR dependency foundation — NDK/CMake plumbing,
-vendored libarchive, JNI smoke test; ZERO archive-reading logic) is COMPLETE and
-ACCEPTED on `phase-3/3e-native-cbr`.** **3E-B (generic internal native RAR4/RAR5 engine —
-real open/enumerate/extract session on top of 3E-A, no product/reader integration) is
-COMPLETE and ACCEPTED on the same branch.** **3E-C (CBR container adapter —
-`RarPageSource` + a bounded on-disk extraction cache on top of 3E-B, no product/reader
-  integration) is COMPLETE and ACCEPTED on the same branch (final Codex R2 PASS).** **3E-D (CBR product
-integration — `PublicationFormat.CBR` wired end to end through import, magic detection, metadata,
-category/Manga-RTL, `FixedReaderFactory` routing, spread/fold inheritance, progress/resume, and error
-mapping, on top of 3E-C, with no change to the accepted native/cache architecture) is COMPLETE and
-ACCEPTED on the same branch (including its R1A/R1B remediation).** **3E-E (final CBR-specific acceptance
-hardening) is IMPLEMENTED on the same branch; its R1A cache-coordinator remediation is complete; pending a
-fresh Codex High review** (see §33/§33a). 3F
-remains PLANNING ONLY. Phase 3 overall is **NOT complete**. See §22/§23 for what 3A
-landed, §24 for what 3B actually landed, §25 for what 3C actually landed (including the
-R1 and R2 remediation records), §26/§26a for what 3D and its R1 remediation landed,
-§26b for the R2 remediation (render-geometry state-independence + hysteresis,
-hinge-safe modal focus/accessibility) recorded below, §27 for what 3E-B actually landed,
-  §28-§30 for what 3E-C and its remediation actually landed, §31/§32 for what 3E-D actually landed, §33 for
-  3E-E's acceptance-hardening record, and
-`docs/adr/0024-native-cbr-libarchive.md` plus `docs/VALIDATION.md` for what 3E-A/3E-B/3E-C/3E-D actually landed.
+Status: **3A (rendering/fidelity foundation) COMPLETE and MERGED to `main`** (`#24`). **3B (page
+thumbnails/navigation) COMPLETE and MERGED** (`#25`). **3C (spreads + Manga pairing) COMPLETE and MERGED**
+(`#26`). **3D (adaptive/foldable comic spreads) COMPLETE and MERGED** (`#27`). **3E (native CBR: 3E-A
+dependency foundation, 3E-B native RAR engine, 3E-C container adapter and bounded cache, 3E-D product
+integration, 3E-E acceptance hardening, including every remediation round) COMPLETE, accepted and MERGED to
+`main`** (`#28`, "feat: add native CBR reading support"). **3F (final accumulated technical acceptance) is
+IMPLEMENTED on `phase-3/3f-final-acceptance`; technical validation is complete; it is pending independent Codex
+review and the owner's Samsung tablet UAT** (see §34). Phase 3 overall is **NOT complete**. See §22/§23 for
+what 3A landed, §24 for 3B, §25 for 3C (including its R1/R2 records), §26/§26a/§26b for 3D, §27-§33a for 3E,
+§34 for 3F, and `docs/adr/0024-native-cbr-libarchive.md` plus `docs/VALIDATION.md` for the evidence.
 
 ## 1. Status / base
 
@@ -42,15 +25,9 @@ hinge-safe modal focus/accessibility) recorded below, §27 for what 3E-B actuall
   scattered across `docs/ROADMAP.md`, `docs/PRODUCT.md`, `docs/features/COMICS_MANGA.md`,
   and `docs/features/READER.md` (see §5).
 - §12/§13/§21 below authorized exactly one slice at a time. 3A (§22/§23), 3B (§24), 3C
-  (§25, including its Codex R1/R2 remediation records), and 3D (§26/§26a/§26b) are
-  complete and merged to `main` (`#24`, `#25`, `#26`, `#27`). 3E-A (native CBR
-  dependency foundation) is complete and accepted on `phase-3/3e-native-cbr`. 3E-B
-  (generic native RAR engine) is complete and accepted on the same branch. 3E-C (CBR
-  container adapter + bounded cache) is complete and accepted on that branch (final Codex R2
-  PASS). 3E-D (CBR product integration) is complete and accepted on that branch. 3E-E (CBR
-  acceptance hardening) is implemented on that branch, R1A remediation complete, pending a fresh Codex High
-  review. 3F remains
-  planning only, and Phase 3 overall is not complete.
+  (§25, including its Codex R1/R2 remediation records), 3D (§26/§26a/§26b) and 3E (§27-§33a) are
+  complete and merged to `main` (`#24`-`#28`). 3F (§34) is implemented with technical validation
+  complete, pending independent Codex review and owner Samsung UAT. Phase 3 overall is not complete.
 
 ## 22. 3A implementation record (landed)
 
@@ -1908,6 +1885,69 @@ directory it listed is now pruned.
 
 **Status**: 3E-A/B/C/D complete/accepted; 3E-E implemented, R1A remediation complete, pending a fresh Codex
 High review; Phase 3 NOT complete. Full JVM, full connected and physical ARM validation remain Phase 3F.
+
+## 34. 3F implementation record (final accumulated technical acceptance)
+
+**Scope**: the closure slice from §12. It proves that 3A fixed-page rendering, 3B thumbnails, 3C spreads/Manga RTL,
+3D foldables and 3E native CBR work together, and closes the physical-ARM acceptance that 3E deferred. It is not
+a feature slice. Branch `phase-3/3f-final-acceptance` from `main` @ `af323ce` (#28). Exact commands, counts and
+device evidence are in `docs/VALIDATION.md`'s "PHASE 3F" entry.
+
+**Devices**: `emulator-5554` (`shelfos-api24`, x86_64, API 24) for the broad connected regression; Retroid Pocket 5
+(`d8f7f1b6`, arm64-v8a, Android 13 / API 33) for physical ARM acceptance. The RP5 is not a foldable. Foldable
+behavior is covered only by the existing fold tests and emulator geometry; no foldable hardware was used.
+
+**Defects found and fixed (four, each narrow, each with a focused regression)**:
+
+1. **CBR could not open any archive on physical arm64 Android 11+ (BLOCKER, 3E)**. On arm64 Android 11+, heap
+   pointers carry a tag in the top byte, so a real native session pointer is negative as a `jlong`. `nativeOpen`
+   returned errors as negative ordinals and Kotlin treated only `handle > 0` as success. Every successful open
+   was therefore reported as `NATIVE_INTERNAL` (shown as "could not be imported"), and the native session (its
+   fd and entry list) leaked, because every native accessor also rejected `handle <= 0`. The x86_64 emulator
+   never showed this, and 3E had no physical-ARM run. Fix: errors are exactly `-1..-64`; any other non-zero value
+   is a handle. One `isSessionHandle()` check replaces the seven `handle <= 0` guards, and a pure Kotlin
+   `nativeOpenFailure()` decoder replaces the `handle > 0` test. Native ownership, extraction, the cache and the
+   error categories are unchanged. Regression: `NativeOpenHandleDecodingTest` (JVM). On the RP5,
+   `LibarchiveRarNativeTest` went from 9/13 to 13/13, and the real-world CBR now imports through SAF.
+2. **ShelfOS crashed natively after a damaged PDF on Android 7.0/7.1 (pre-existing, Phase 1 PDF path)**. On
+   API 24/25, when the platform `PdfRenderer` fails to open a document, it has already undone its pdfium
+   init-count increment. The half-built object still holds the descriptor, so its finalizer decrements the count a
+   second time. The count goes negative, the next open skips `FPDF_InitLibrary`, and the process dies with SIGSEGV
+   in `libpdfium.so`. The full connected suite hit this in `LibraryPersistenceTest`, and older tombstones show the
+   same signature from 3C. Fix, in the single `openPdf` choke point and only on API < 26: after such a failure,
+   open one never-closed `PdfRenderer` over a tiny valid in-process PDF. All of them share one read-only
+   descriptor. This pre-pays the finalizer's extra decrement. Regression: `PdfFailedOpenFinalizationTest`. It
+   crashes deterministically with SIGSEGV before the fix and passes after it.
+3. **Hinge-safe modal focus (3D)**. Dismissing Appearance/Pages under a fold requested reader focus while the
+   background was still `canFocus = false`, so the request was refused. Focus then landed nowhere (RP5) or on the
+   Library button (API 24, keyboard mode), and D-pad/gamepad input lost its target. Separately, the top chrome
+   row's `horizontalScroll` is a focus target, which stops `focusProperties` resolution, so its buttons stayed
+   focusable behind the modal in keyboard mode. Fix: dismissal keeps the original inline request and also
+   re-requests reader focus in a `LaunchedEffect` after recomposition, **only while a fold split is active**. The
+   same focus block is applied inside the scroll container. A first version deferred the request on every
+   dismissal. It made `FixedReaderTransformBoundsTest` hang on the API 24 emulator after Appearance → Fit Width.
+   Bisection proved this: that class passed 15/15 with only `FixedReaderScreen.kt` reverted. The ordinary platform
+   dialog path is therefore back to its accepted behavior. Regression: `FixedReaderHingeSafeModalTest` now pins
+   keyboard (non-touch) mode itself. Before Android 10, touch mode is device-global, which is why its results had
+   depended on earlier input. It now fails 4/7 on the RP5 before the fix and passes 7/7 on both devices after it.
+4. **Stale format copy after 3E**. The empty-library hint, the About text and the fixed-layout message still
+   listed only "PDF, EPUB or CBZ" in EN/ES/PT-BR. Fixed in all three locales. Regression:
+   `SupportedFormatCopyTest` ties the copy to `PublicationFormat.entries`.
+
+**Classified, not fixed**: the three EPUB managed-font tests fail on the API 24 AOSP emulator's non-updatable
+WebView 52 (2016) and pass 3/3 on the RP5's WebView 109. This is ENVIRONMENT and pre-existing (Phase 2B.4).
+Emulator system_server watchdog deaths and graphics stalls during long full runs are ENVIRONMENT. AGP also
+reported one install failure as BUILD SUCCESSFUL with zero tests; that is an infrastructure trap and is recorded.
+
+**Architecture**: unchanged. Still local-first and offline. Sources are still immutable; owner fixtures hashed
+before == after on both host and device. The `PageSource` abstraction, the shared `ImagePageRenderer`/
+`FixedReader`, the single `{"version":1,"page":N}` progress model, the CBR container-adapter path and the global
+bounded CBR cache are unchanged. No dependency, Room/schema, minSdk or cloud change.
+
+**Status**: 3A-3E complete and merged. 3F implemented; technical validation complete; pending independent Codex
+review and the owner's Samsung tablet UAT (requires Android 7.0 / API 24+). Phase 3 is **NOT complete**. Final
+Phase 3 documentation reconciliation has not started. Known stale planning wording in `docs/features/READER.md`,
+`docs/features/IMPORT.md` and `docs/features/COMICS_MANGA.md` (CBR described as future) is left for that pass.
 
 ## 2. Why Phase 3 is not green-field
 

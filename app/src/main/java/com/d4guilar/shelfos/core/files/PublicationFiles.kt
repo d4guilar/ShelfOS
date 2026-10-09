@@ -27,11 +27,54 @@ data class PrivateCopyUsage(val count: Int, val bytes: Long)
 fun openPdf(descriptor: ParcelFileDescriptor): PdfRenderer = try {
     PdfRenderer(descriptor)
 } catch (_: SecurityException) {
+    LegacyPdfiumBalance.afterFailedNativeOpen()
     descriptor.close(); throw PublicationException(PublicationProblem.PROTECTED)
 } catch (_: IllegalArgumentException) {
+    // Thrown by the seekability check before the platform object takes the descriptor: no balance needed.
     descriptor.close(); throw PublicationException(PublicationProblem.NEEDS_COPY)
 } catch (_: IOException) {
+    LegacyPdfiumBalance.afterFailedNativeOpen()
     descriptor.close(); throw PublicationException(PublicationProblem.CORRUPT)
+}
+
+/**
+ * Android 7.0/7.1 (API 24/25) platform bug workaround. When `PdfRenderer`'s native open fails (corrupt or protected
+ * PDF), the platform already undoes its pdfium init-count increment, but the half-constructed `PdfRenderer` has
+ * already stored the descriptor, so its finalizer later runs `nativeClose` and decrements the count a second time.
+ * The count goes negative, the next open skips `FPDF_InitLibrary`, and the process dies with SIGSEGV inside
+ * `libpdfium.so`. Android 8.0+ reworked this and is unaffected.
+ *
+ * For each such failure this opens one extra `PdfRenderer` over a tiny valid in-process PDF and never closes it,
+ * pre-paying the finalizer's extra decrement so the count can never drop below the number of live documents. All
+ * balances share one read-only descriptor (pdfium reads with `pread`), and each holds only a parsed one-page
+ * document. User publications are never touched.
+ */
+private object LegacyPdfiumBalance {
+    private val balances = mutableListOf<PdfRenderer>()
+    private var shared: ParcelFileDescriptor? = null
+
+    fun afterFailedNativeOpen() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) return
+        synchronized(this) {
+            runCatching {
+                val input = shared ?: createInput().also { shared = it }
+                // PdfRenderer closes the descriptor it is given only on close(), which a balance never reaches.
+                balances += PdfRenderer(input)
+            }
+        }
+    }
+
+    private fun createInput(): ParcelFileDescriptor {
+        val file = File.createTempFile("shelfos-pdfium-balance", ".pdf")
+        try {
+            val document = android.graphics.pdf.PdfDocument()
+            try {
+                document.finishPage(document.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(1, 1, 1).create()))
+                file.outputStream().use(document::writeTo)
+            } finally { document.close() }
+            return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+        } finally { file.delete() }
+    }
 }
 
 /** [root] holds private offline copies; tests pass an isolated directory. */

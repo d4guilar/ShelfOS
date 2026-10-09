@@ -29,7 +29,7 @@
     <string name="section_continue_reading">Continue Reading</string>
     <string name="continue_reading_empty">Your reading will appear here once you open a publication.</string>
     <string name="library_loading">Loading your library…</string>
-    <string name="library_empty_start">Your library starts here. Add a PDF, EPUB or CBZ using Add file.</string>
+    <string name="library_empty_start">Your library starts here. Add a PDF, EPUB, CBZ or CBR using Add file.</string>
     <string name="library_empty_filtered">No publications in this view yet.</string>
     <string name="label_unavailable">Unavailable</string>
     <string name="library_update_title">Library update</string>
@@ -117,7 +117,7 @@
     <string name="settings_delete_copies_title">Delete unused private copies?</string>
     <string name="settings_delete_copies_body">This deletes %1$s (%2$s) that no publication in your library uses. Your original files and your library are not affected.</string>
     <string name="settings_about_title">ShelfOS · Early development</string>
-    <string name="settings_about_body">A local-first personal library for files you own. Add PDF, EPUB and CBZ publications with Add file; they stay where they are. Nothing is uploaded and no account is needed.</string>
+    <string name="settings_about_body">A local-first personal library for files you own. Add PDF, EPUB, CBZ and CBR publications with Add file; they stay where they are. Nothing is uploaded and no account is needed.</string>
     <string name="settings_keyboard_help">Keyboard: Tab or arrow keys to move, Enter to select, Ctrl+F to search. In a reader: arrows, Page Up/Down or Space to turn pages, Menu for controls, Escape to go back. Gamepad: D-pad to move, A to select, B to go back, L1/R1 to turn pages.</string>
     <string name="settings_language_title">Language</string>
     <string name="settings_language_description">Choose ShelfOS\'s interface language. This never changes the language of your publications.</string>
@@ -245,7 +245,7 @@
     <string name="problem_source_unavailable_import_message">The selected file is unavailable. Check that it still exists and try again.</string>
     <string name="problem_needs_copy_message">This provider can\'t offer durable, seekable access. ShelfOS needs a private offline copy.</string>
     <string name="problem_unsupported_format_message">Choose a PDF, EPUB, CBZ or CBR publication.</string>
-    <string name="problem_unsupported_layout_message">Fixed-layout EPUB reading is not supported in this build. PDF and CBZ fixed pages are supported.</string>
+    <string name="problem_unsupported_layout_message">Fixed-layout EPUB reading is not supported in this build. PDF, CBZ and CBR fixed pages are supported.</string>
     <string name="problem_protected_message">This publication is password-protected or uses DRM. ShelfOS can\'t open protected publications.</string>
     <string name="problem_corrupt_message">This publication appears to be damaged or incomplete.</string>
     <string name="problem_empty_archive_message">The archive contains no supported image pages.</string>

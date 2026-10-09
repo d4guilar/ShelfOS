@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.After
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
@@ -61,7 +62,15 @@ class FixedReaderHingeSafeModalTest {
     private val scopes = mutableListOf<CoroutineScope>()
     private val stores = mutableListOf<ViewModelStore>()
 
+    /** Phase 3F: pins keyboard/D-pad (non-touch) mode. Before Android 10 touch mode is device-global, so these
+     * results used to depend on whichever test or adb command last sent input; the full connected suite left the
+     * API 24 emulator in non-touch mode and exposed two real defects (focus restoration refused while the
+     * background was still blocked, and top-chrome buttons left focusable behind the modal). Non-touch mode is
+     * where those defects show and where D-pad/gamepad users actually are. */
+    @Before fun keyboardMode() { InstrumentationRegistry.getInstrumentation().setInTouchMode(false) }
+
     @After fun tearDown() {
+        InstrumentationRegistry.getInstrumentation().setInTouchMode(true)
         stores.forEach { it.clear() }
         scopes.forEach { it.cancel() }
     }
