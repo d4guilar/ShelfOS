@@ -189,24 +189,74 @@ class FixedReaderSpreadViewModelTest {
         assertEquals(listOf(1), vm.state.value.slots.map { it.page })
     }
 
-    // ---- AUTO: narrow -> single, wide -> spread, and resize never changes the logical page ----
+    // ---- AUTO: one source page at a time at EVERY width; resize never changes page or grouping ----
 
-    @Test fun autoResolvesToSingleOnANarrowViewportAndToSpreadOnAWideOne() {
+    @Test fun autoShowsOneSourcePageAtATimeOnNarrowAndWideViewportsAndResizeNeverChangesThePage() {
         val item = cbzFixture("auto-resize.cbz", listOf(portrait, portrait, portrait, portrait, portrait), spreadMode = SpreadMode.AUTO)
         val vm = viewModel(item)
-        vm.updateViewport(ReaderRenderGeometry.flat(400, 800, 400)) // narrow: below AUTO_SPREAD_MIN_WIDTH_DP
+        vm.updateViewport(ReaderRenderGeometry.flat(400, 800, 400))
         awaitSettled(vm, targetPage = 0)
+        assertEquals(listOf(0), vm.state.value.slots.map { it.page })
         vm.turn(1)
         awaitSettled(vm, targetPage = 1)
-        assertEquals(listOf(1), vm.state.value.slots.map { it.page }) // narrow -> single
+        assertEquals(listOf(1), vm.state.value.slots.map { it.page })
 
-        vm.updateViewport(ReaderRenderGeometry.flat(1600, 800, 1600)) // wide: at/above the threshold -> should reconcile to a spread
-        awaitUntil { vm.state.value.slots.map { it.page } == listOf(1, 2) }
-        assertEquals(1, vm.state.value.page) // logical page never changed by the resize-driven reconciliation
+        vm.updateViewport(ReaderRenderGeometry.flat(1600, 800, 1600)) // wide: historical AUTO paired [1,2] here
+        Thread.sleep(400)
+        assertEquals(listOf(1), vm.state.value.slots.map { it.page }) // still one source page
+        assertEquals(1, vm.state.value.page)
+        vm.turn(1)
+        awaitSettled(vm, targetPage = 2)
+        assertEquals(listOf(2), vm.state.value.slots.map { it.page }) // N+1, not a pair jump to 3
+        vm.turn(-1)
+        awaitSettled(vm, targetPage = 1)
+        assertEquals(listOf(1), vm.state.value.slots.map { it.page })
+    }
 
-        vm.updateViewport(ReaderRenderGeometry.flat(400, 800, 400)) // back to narrow -> single again
-        awaitUntil { vm.state.value.slots.map { it.page } == listOf(1) }
-        assertEquals(1, vm.state.value.page) // still unchanged throughout every resize
+    @Test fun autoPortraitWidePortraitOnAWideViewportDisplaysAndPersistsEachSourcePage() {
+        val item = cbzFixture("auto-wide.cbz", listOf(portrait, portrait, landscape, portrait, portrait), spreadMode = SpreadMode.AUTO)
+        val (vm, repository) = viewModelWithRepository(item)
+        vm.updateViewport(ReaderRenderGeometry.flat(2000, 1000, 2000))
+        awaitSettled(vm, targetPage = 0)
+        assertEquals(listOf(0), vm.state.value.slots.map { it.page })
+        for (expected in 1..4) {
+            vm.turn(1)
+            awaitSettled(vm, targetPage = expected)
+            assertEquals(listOf(expected), vm.state.value.slots.map { it.page }) // wide page 2 alone; 3 and 4 not paired
+        }
+        assertEquals(4, vm.state.value.page)
+        assertFalse(vm.hasNext())
+        for (expected in 3 downTo 0) {
+            vm.turn(-1)
+            awaitSettled(vm, targetPage = expected)
+            assertEquals(listOf(expected), vm.state.value.slots.map { it.page })
+        }
+        // Progress is the actual displayed source page (same locator shape, no fork).
+        // (the writer may coalesce intermediate pages; the final page must be the one persisted, as a plain page locator)
+        awaitUntil { repository.recordedReadings.lastOrNull()?.locator == pageLocator(0) }
+    }
+
+    @Test fun autoRtlMangaAdvancesOneLogicalSourcePageAtATime() {
+        val item = cbzFixture("auto-rtl.cbz", listOf(portrait, portrait, landscape, portrait), category = MediaCategory.MANGA, spreadMode = SpreadMode.AUTO)
+        val vm = viewModel(item)
+        vm.updateViewport(ReaderRenderGeometry.flat(2000, 1000, 2000))
+        awaitSettled(vm, targetPage = 0)
+        for (expected in 1..3) {
+            vm.turn(1)
+            awaitSettled(vm, targetPage = expected)
+            assertEquals(listOf(expected), vm.state.value.slots.map { it.page })
+        }
+    }
+
+    @Test fun autoOnAWideViewportTurnsStraightToTheNextSourcePage() {
+        val item = cbzFixture("auto-switch.cbz", listOf(portrait, portrait, portrait, portrait, portrait), spreadMode = SpreadMode.AUTO)
+        val vm = viewModel(item)
+        vm.updateViewport(ReaderRenderGeometry.flat(2000, 1000, 2000))
+        awaitSettled(vm, targetPage = 0)
+        vm.turn(1); vm.turn(1)
+        awaitSettled(vm, targetPage = 2)
+        assertEquals(listOf(2), vm.state.value.slots.map { it.page })
+        assertEquals(2, vm.state.value.page)
     }
 
     // ---- Landscape page handling: a wide page forces solo even in explicit SPREAD mode ----

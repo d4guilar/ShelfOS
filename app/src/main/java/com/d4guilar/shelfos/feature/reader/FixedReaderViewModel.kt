@@ -201,8 +201,8 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
         return when (val mode = spreadMode()) {
             SpreadMode.SINGLE -> false
             SpreadMode.SPREAD -> if (fold != null) fold.bothPanesUsable else resolveSpreadActive(mode, currentWidthDp())
-            SpreadMode.AUTO -> if (fold != null) verticalFoldSpreadEligibleForAuto(fold.leftDp, fold.rightDp)
-                else resolveSpreadActive(mode, currentWidthDp())
+            // AUTO = one source page at a time (a wide source page is shown whole); never pairs by width.
+            SpreadMode.AUTO -> false
         }
     }
 
@@ -290,13 +290,16 @@ class FixedReaderViewModel(private val id: String, private val repository: Libra
      */
     fun hasNext(): Boolean {
         val page = _state.value.page
-        return nextPage(canonicalGroups, page, spreadActive(), ::isLandscapeAtForNavigation) != page
+        val target = nextPage(canonicalGroups, page, spreadActive(), ::isLandscapeAtForNavigation)
+        // Single-page stepping is unclamped page + 1; a target past the last page is not a real next unit.
+        return target != page && target < _state.value.count
     }
 
     /** See [hasNext]; symmetric backward semantic enablement. */
     fun hasPrevious(): Boolean {
         val page = _state.value.page
-        return previousPage(canonicalGroups, page, spreadActive(), ::isLandscapeAtForNavigation) != page
+        val target = previousPage(canonicalGroups, page, spreadActive(), ::isLandscapeAtForNavigation)
+        return target != page && target >= 0
     }
 
     fun showPage(index: Int) {

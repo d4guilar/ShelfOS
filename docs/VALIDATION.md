@@ -1,5 +1,44 @@
 # Validation
 
+## SAMSUNG UAT REMEDIATION (2026-10-09)
+
+Status: Phase 3 is **NOT complete**. Owner hands-on UAT on a Samsung Galaxy Tab A (SM-T580, Android 8.1 / API 27)
+produced two findings, remediated here; the **final Samsung recheck is still pending**.
+
+**Owner UAT results (recorded)**: old-device performance **PASS** (content loads easily; fullscreen reader with
+controls hidden is excellent; comfortable as a dedicated reader). CBR physical owner UAT **PASS** (an owner-provided
+real-world CBR imports and reads correctly).
+
+**Finding 1 -- AUTO semantics.** Previous rule (`resolveSpreadActive`, `SpreadModel.kt`; fold-aware variant
+`verticalFoldSpreadEligibleForAuto` consulted from `FixedReaderViewModel.spreadActive()`): AUTO activated paired
+presentation whenever the viewport was >= `AUTO_SPREAD_MIN_WIDTH_DP` (600dp), so ordinary portrait pages were
+paired `[1,2],[3,4]`. New contract: SINGLE = one source page; SPREAD = explicit pairing (unchanged: page 0 solo,
+wide pages solo, LTR/RTL, group navigation); **AUTO = one source page at a time at every width**, a wide/landscape
+source page is shown whole as one full-spread page (`PageGeometry.isFullSpreadSource`, the same 1.05 aspect rule as
+`isLandscape`), next/previous moves one source page (portrait N -> wide N+1 -> portrait N+2), persisted locator
+unchanged (`{"version":1,"page":N}` = the displayed source page), RTL follows existing logical direction, fold
+architecture untouched. Stored AUTO preferences stay AUTO. No string change needed (labels are neutral).
+`hasNext()/hasPrevious()` now also bound the unclamped single-step target to `0 until count` so Next is disabled
+on the last page in single-page presentation. Tests: `SpreadModelTest` (48), `ReaderPreferencesSpreadTest` (13),
+`FoldLayoutTest` (29) JVM; on emulator-5554 (API 24) `FixedReaderSpreadViewModelTest` (14),
+`FixedReaderFoldRenderRequestTest` (4), `FixedReaderSpreadUiTest` (11), `FixedReaderFoldableUiTest` (9), all green.
+Changed tests: `autoIsInactiveBelowThresholdAndActiveAtOrAboveIt` and `autoResolvesToSingleOnANarrowViewport...`
+asserted the old pairing; replaced by the new AUTO contract. `continuousFoldPaneWidthChanges...` used AUTO as its
+pairing mode and now uses explicit SPREAD (decision flip = a collapsed pane). The old rule fails the new portrait
+assertions (AUTO at 1400dp previously returned active and produced pair `[1,2]`).
+
+**Finding 2 -- launcher icon.** Root cause: `android:icon` pointed at `@drawable/ic_shelf`, the 32dp in-app
+glyph vector (dark glyph, transparent), not a launcher icon: no adaptive icon, no mipmaps; launchers rasterize and
+upscale it on a backing plate. Fix (same approved mark/path, no redesign): adaptive icon
+`mipmap-anydpi-v26/ic_launcher.xml` (dark `#111111` background, white mark foreground scaled into the safe zone,
+monochrome layer) plus a vector legacy fallback for API 24-25 (`mipmap-anydpi/ic_launcher.xml`); manifest now uses
+`@mipmap/ic_launcher`. APK inspection (`aapt2 dump badging`, `unzip -l`) shows the adaptive icon for API 26+ and
+`mipmap-anydpi-v21` legacy vector. The API 24 emulator launcher renders the legacy icon crisply; the adaptive path
+(API 26+) was not visually verified on a device. **The owner must visually recheck on the Samsung launcher.**
+
+**Not done / pending**: final Samsung recheck (AUTO behavior and icon); independent Codex review; Phase 3 final
+reconciliation. Future UX note (not implemented): remote-metadata skeleton placeholders.
+
 ## PHASE 3F — FINAL ACCUMULATED TECHNICAL ACCEPTANCE (2026-10-09)
 
 Status: 3A–3E **COMPLETE/accepted/merged** (`#24`–`#28`). 3F **IMPLEMENTED; technical validation complete;

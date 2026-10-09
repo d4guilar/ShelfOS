@@ -2734,3 +2734,26 @@ most expensive to redo later if skipped or rushed. CBR (3E) should not be starte
 3A lands, both because of the shared-abstraction reason above and because its dependency
 review (§20.1) will independently take real calendar time regardless of engineering
 readiness.
+
+## 35. Samsung owner-UAT remediation (post-3F)
+
+Owner UAT on a Samsung Galaxy Tab A (SM-T580, API 27): old-device performance PASS; CBR physical UAT PASS
+(owner-provided real-world CBR). Two findings were remediated; the **final Samsung recheck is pending** and Phase 3
+is still **NOT complete**.
+
+**AUTO contract (supersedes the AUTO width policy in §9/§25/§26 and the 3D fold-aware AUTO pairing)**: AUTO is
+publication-aware single-page reading. It never pairs two source pages because the viewport is wide
+(`resolveSpreadActive(AUTO, _) == false`; `FixedReaderViewModel.spreadActive()` AUTO -> false). A wide/landscape
+source page (`PageGeometry.isFullSpreadSource`, same 1.05 aspect rule as `isLandscape`) is displayed whole as a
+single full-spread page and stays one logical page; Next/Previous move one source page. SINGLE is unchanged; SPREAD
+remains the explicit paired mode (page 0 solo, wide solo, RTL mirroring, group navigation). Locator format and
+progress are unchanged (`{"version":1,"page":N}` = displayed source page); no preference migration (stored AUTO
+keeps the new meaning). Fold safe-pane rendering is unchanged. `verticalFoldSpreadEligibleForAuto` and
+`AUTO_SPREAD_MIN_WIDTH_DP` remain only as legacy helpers, no longer deciding presentation.
+
+**Launcher icon**: the manifest referenced the 32dp in-app glyph vector as `android:icon`. Replaced by an adaptive
+icon (dark tile, white approved mark, monochrome layer) with a vector legacy fallback for API 24-25; artwork
+unchanged. Owner visual recheck on the Samsung launcher pending.
+
+**Future UX (not implemented)**: skeleton placeholders while remote metadata resolves (no metadata/network work
+here).

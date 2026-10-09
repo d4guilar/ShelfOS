@@ -4,8 +4,10 @@ package com.d4guilar.shelfos.core.reader
 /**
  * Phase 3C: the user-facing comic/manga spread presentation preference. Persisted per-title only (see
  * [ReaderPreferences.spreadMode] and its "never global" handling in [appearanceUpdate]) -- this is a
- * presentation choice like [ReadingDirection] override, not a shared default. [AUTO] lets the window decide
- * (see [resolveSpreadActive]); [SINGLE] and [SPREAD] are explicit overrides that take priority over the window.
+ * presentation choice like [ReadingDirection] override, not a shared default. [AUTO] is publication-aware
+ * single-page reading (one source page at a time; a wide source page is shown whole as a full spread -- see
+ * [PageGeometry.isFullSpreadSource]); [SINGLE] is exactly one source page; [SPREAD] is the explicit user-requested
+ * paired-page mode (see [resolveSpreadActive]).
  *
  * Never persisted as anything beyond this preference layer: no derived spread index, no "which pair is active"
  * state, no synthetic page identity. See [resolvePageGroups] for how a mode turns into the actual visible
@@ -46,6 +48,13 @@ data class PageGeometry(val width: Int, val height: Int) {
      */
     val isLandscape: Boolean get() = isUsable &&
         width.toDouble() / height.toDouble() > LANDSCAPE_ASPECT_THRESHOLD
+
+    /**
+     * AUTO's "full spread" recognition: a single wide/landscape source page IS the spread (the common digital-comic
+     * case of a true double-page composition stored as one image). Deliberately the SAME definition as
+     * [isLandscape] -- one deterministic aspect rule, no second heuristic and no content analysis.
+     */
+    val isFullSpreadSource: Boolean get() = isLandscape
 
     companion object {
         /**
@@ -135,27 +144,24 @@ fun resolveGroups(canonical: List<PageGroup>, spreadActive: Boolean, geometryOf:
 fun groupContaining(groups: List<PageGroup>, page: Int): PageGroup? = groups.find { page in it }
 
 /**
- * AUTO's window-size decision: whether the current viewport is wide enough to show a two-page spread legibly.
- * Width-only (dp, density-independent), never device-model/posture-aware -- hinge/fold intelligence is explicit
- * 3D scope, not this function's job (see `docs/design/FOLDABLES.md`, AGENTS.md rule 18).
+ * Whether paired-page presentation is active for [mode]. Only an explicit [SpreadMode.SPREAD] pairs two source
+ * pages. [SpreadMode.SINGLE] and [SpreadMode.AUTO] both present exactly one source page at a time: AUTO never
+ * synthesizes a pair from two portrait pages merely because the viewport is wide (most digital comics are read
+ * one page at a time, and true double-page compositions already exist as ONE wide source image, which is simply
+ * shown whole as that single page -- see [PageGeometry.isFullSpreadSource]). [viewportWidthDp] is retained for
+ * API stability and is no longer consulted. Hinge/fold geometry is independent of this decision.
  */
+@Suppress("UNUSED_PARAMETER")
 fun resolveSpreadActive(mode: SpreadMode, viewportWidthDp: Int): Boolean = when (mode) {
     SpreadMode.SINGLE -> false
     SpreadMode.SPREAD -> true
-    SpreadMode.AUTO -> viewportWidthDp >= AUTO_SPREAD_MIN_WIDTH_DP
+    SpreadMode.AUTO -> false
 }
 
 /**
- * Named, documented AUTO width threshold (dp): the minimum viewport width AUTO requires before it shows a
- * two-page spread instead of a single page. No canonical window-size-class primitive exists yet elsewhere in
- * ShelfOS (verified by inspection before adding this), so this is a new, narrowly-scoped, independently-testable
- * constant rather than a new dependency. Chosen comfortably above a typical single-pane phone-portrait width
- * (~400dp) and below Android's own conventional "two-pane-capable" breakpoint (600dp expanded / 840dp large, per
- * Android's published window-size-class guidance) is deliberately NOT reused wholesale here, because two legible
- * comic/manga pages side by side (not just "two panes of arbitrary UI") need real width -- 600dp is chosen as the
- * conservative point above which two pages at a readable width are plausible on an ordinary unfolded tablet/
- * large-phone-landscape window, while staying well below any foldable-hinge-specific reasoning (explicit 3D
- * scope; this function only ever sees ordinary window width, never posture).
+ * Legacy pre-UAT AUTO width threshold (dp). AUTO no longer pairs pages by width (see [resolveSpreadActive]); the
+ * constant remains only as the default floor of [verticalFoldSpreadEligibleForAuto], which is no longer used to
+ * decide presentation.
  */
 const val AUTO_SPREAD_MIN_WIDTH_DP = 600
 
