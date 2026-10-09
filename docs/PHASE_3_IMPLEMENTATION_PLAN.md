@@ -1914,10 +1914,23 @@ behavior is covered only by the existing fold tests and emulator geometry; no fo
    init-count increment. The half-built object still holds the descriptor, so its finalizer decrements the count a
    second time. The count goes negative, the next open skips `FPDF_InitLibrary`, and the process dies with SIGSEGV
    in `libpdfium.so`. The full connected suite hit this in `LibraryPersistenceTest`, and older tombstones show the
-   same signature from 3C. Fix, in the single `openPdf` choke point and only on API < 26: after such a failure,
-   open one never-closed `PdfRenderer` over a tiny valid in-process PDF. All of them share one read-only
-   descriptor. This pre-pays the finalizer's extra decrement. Regression: `PdfFailedOpenFinalizationTest`. It
-   crashes deterministically with SIGSEGV before the fix and passes after it.
+   same signature from 3C. The first 3F fix (R0) opened one never-closed balance `PdfRenderer` per failure. Codex
+   High review (R1) rejected it: it retained one live native document per failed open (unbounded for the process
+   lifetime), and it compensated after the failed constructor, so correctness raced the platform finalizer.
+   **R1 fix (structural, bounded, finalizer-independent):** on API < 26 only, `openPdf` first asks pdfium to accept
+   the document through the same private static natives the platform constructor uses (`nativeCreate`, then
+   `nativeClose` at once; net init-count change zero) and constructs a `PdfRenderer` only if that succeeds. A
+   document pdfium rejects therefore never produces a finalizable half-built `PdfRenderer`, so there is no extra
+   decrement and nothing to pay back. Retained state is the three cached reflection handles, constant. No extra
+   file, descriptor or temp file is created. If the natives cannot be resolved, the open fails closed with the
+   existing `UNREADABLE` problem. Residual: a file that changes between the probe and the constructor could still
+   reach the platform failure path. The API gate is the pure `usesLegacyPdfiumProbe(sdk)` (`sdk < 26`), so API 26+
+   keeps the plain `PdfRenderer` path. Android 7.0 has no Java-level PDF lock (native mutex on the count only);
+   Android 7.1 serializes with `PdfRenderer.sPdfiumLock`, which the probe shares. Regression:
+   `PdfFailedOpenFinalizationTest` (5 tests: truthful errors, valid/fail/valid sequences with real Bitmap renders,
+   finalization interleaved on a concurrent thread, a live document surviving failures finalized afterwards, and 40
+   repeated failures with a descriptor and cache-file check) plus the JVM `LegacyPdfGateTest`. Status: PDF
+   remediation complete; fresh Codex High R2 and Samsung UAT pending; Phase 3 is NOT complete.
 3. **Hinge-safe modal focus (3D)**. Dismissing Appearance/Pages under a fold requested reader focus while the
    background was still `canFocus = false`, so the request was refused. Focus then landed nowhere (RP5) or on the
    Library button (API 24, keyboard mode), and D-pad/gamepad input lost its target. Separately, the top chrome

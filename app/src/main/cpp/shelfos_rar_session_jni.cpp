@@ -38,8 +38,10 @@
 // responsible (per its own doc comment) for atomic set/clear-on-close,
 // idempotent close, and rejecting post-close operations BEFORE calling into
 // native code. This file trusts that contract and only defends against
-// obviously-invalid handles (<= 0) as a cheap sanity check, not as a
-// substitute for it.
+// invalid handles as a cheap sanity check, not as a substitute for it. Zero
+// is invalid/internal; -1..-kMaxEncodedError are reserved native error
+// sentinels; every other non-zero jlong is an opaque valid handle, including
+// signed-negative tagged arm64 pointers (see isSessionHandle below).
 //
 // THREADING: one archive_read object is ever alive at a time per Session,
 // scoped to a single call (open's metadata pass, or one extractEntry call).

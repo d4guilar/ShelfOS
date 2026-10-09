@@ -41,10 +41,34 @@ devices: <one device>` and the per-device result XML. Targeted classes ran one p
    - Root cause, confirmed against the Android 7.x framework source: the native open failure already undoes the
      pdfium init count, but the half-built `PdfRenderer` keeps `mInput`. Its finalizer then decrements again, the
      count goes negative, and the next open skips `FPDF_InitLibrary`. Android 8.0+ reworked this.
-   - Fix: on API < 26, `openPdf` opens one never-closed balance `PdfRenderer` per such failure, over a tiny valid
-     in-process PDF that shares one descriptor.
-   - Regression: `PdfFailedOpenFinalizationTest`. Before the fix it crashes deterministically with the same
-     SIGSEGV; after it, 1/1 on both devices.
+   - Fix (R0, superseded): on API < 26, `openPdf` opened one never-closed balance `PdfRenderer` per such failure.
+     Codex High R1 found it unbounded (one live native document per failed open) and dependent on finalizer
+     timing (compensation ran after the failed constructor).
+   - Platform evidence for R1 (AOSP sources): Android 7.0 `nativeCreate` does init-count `++`, and on failure
+     `--` and throws; the constructor has already stored `mInput`, so the finalizer runs `doClose()`, which calls
+     `nativeClose(0)` and decrements again (`initializeLibraryIfNeeded` skips `FPDF_InitLibrary` only when the count
+     is nonzero, `destroyLibraryIfNeeded` destroys at exactly zero). Android 7.1 differs only by a Java-level
+     `sPdfiumLock`. Invariant: the count must equal the number of live documents. A bounded counter anchor cannot
+     work: every failed open costs one decrement forever, so holding the count needs one live document per
+     failure. The only structural cure is never to create a finalizable failed `PdfRenderer`.
+   - Reproduction on the API 24 emulator with a direct `PdfRenderer` constructor (a throwaway test, not
+     committed): failed open, finalization, then a valid open gave `Fatal signal 11 (SIGSEGV) fault addr 0x10` in
+     `CPDF_Document::CPDF_Document` via `FPDF_LoadCustomDocument`.
+   - R1 fix: on API < 26, probe with `nativeCreate`/`nativeClose` before constructing; reject without ever creating
+     the `PdfRenderer`. Retained state: 3 reflection handles, constant. API 26+ is unchanged.
+   - R1 evidence, final code, one class per invocation: `PdfFailedOpenFinalizationTest` **5/5 on emulator-5554
+     (API 24) and 5/5 on the RP5 (API 33)**. Every valid step creates a Bitmap, opens a page, calls
+     `Page.render`, and checks drawn pixels. Corrupt maps to CORRUPT and a tiny synthetic RC4 PDF with a user
+     password maps to PROTECTED. 40 failures left the descriptor count unchanged (API 24: 41 before and after;
+     RP5: 76 and 75) and created no cache files. `SyntheticLargePdfAcceptanceTest` 1/1 and
+     `MalformedFixedReaderResilienceTest` 4/4 also pass on API 24. Crash scan after each API 24 run: 0
+     SIGSEGV/SIGABRT/Fatal signal/JNI DETECTED ERROR. JVM `LegacyPdfGateTest` 1/1 (24/25 legacy, 26+ not).
+   - API 25 was not run (no device image available); its path was verified from source (same natives, shared
+     `sPdfiumLock`) and the gate test. Full JVM and full connected suites were not rerun for this remediation.
+   - Build gates after R1: assembleDebug, assembleDebugAndroidTest, lintDebug (the private-API reflection is
+     suppressed with a justification, since it runs only on API 24/25), bundleDebug: BUILD SUCCESSFUL.
+   - Also corrected: the CBR JNI transport header comment no longer says handles `<= 0` are invalid (comment only).
+   - Status: PDF remediation complete. Fresh Codex High R2 and Samsung UAT are pending; Phase 3 is NOT complete.
 3. **Hinge-safe modal focus (3D)**.
    - Evidence: `FixedReaderHingeSafeModalTest` 4/7 on the API 24 emulator in keyboard mode and in the full run.
      The same code had passed 7/7 there at 3D R2. A detached worktree at `12b4fb7` failed identically, so this is
@@ -84,7 +108,7 @@ devices: <one device>` and the per-device result XML. Targeted classes ran one p
     justified by that diagnosis.
   - Final per-class results on final code: TransformBounds 15/15, HingeSafeModal 7/7, ViewModelLifecycle 2/2,
     FoldDescriptorMapper 9/9, InputModality 10/10, LibraryPersistence 10/10, ManagedFontRepository 1/1,
-    MalformedFixedReaderResilience 4/4, NavigationSmoke 28/28, PdfFailedOpenFinalization 1/1,
+    MalformedFixedReaderResilience 4/4, NavigationSmoke 28/28, PdfFailedOpenFinalization 1/1 (R0; 5/5 after R1),
     ReaderDialogFoldSafety 4/4, ReaderPreferencesSpread 7/7, ReaderState 3/3, RoomPersistence 1/1,
     SyntheticLargePdf 1/1, SyntheticLoad 1/1, ThumbnailLoader 6/6, ThumbnailNavigationUi 7/7, FoldableUi 9/9,
     FoldRenderGeometryUi 3/3, SpreadUi 11/11, Recreation 7/7, and the six native/CBR classes (below).
