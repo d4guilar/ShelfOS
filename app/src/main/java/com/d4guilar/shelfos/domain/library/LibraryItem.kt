@@ -27,9 +27,10 @@ data class LibraryItem(
 /**
  * Phase 3E-D R1A (HIGH-2): the ONE production factory deciding whether a persistent RAR extraction-cache
  * namespace key is safe for this item, or whether the caller must fall back to an ephemeral/random namespace (see
- * `RarContainer.open`'s "cache namespace / source-key model" doc). Every CBR cache-namespace decision -- import,
- * reader, thumbnail -- MUST go through this function (or [LibraryItem.rarCacheSourceKey]) rather than deriving a
- * key independently, so no caller can make a divergent unsafe decision on its own.
+ * `RarContainer.open`'s "cache namespace / source-key model" doc). Product reopen paths such as reader and
+ * thumbnail MUST use this function (or [LibraryItem.rarCacheSourceKey]) rather than derive a key independently.
+ * Import-time CBR inspection is the documented exception: it passes `null` unconditionally because inspection
+ * deliberately uses a fresh ephemeral namespace and never needs cross-reopen reuse.
  *
  * ## Why the old `"$id:$byteSize"` key was unsafe
  *

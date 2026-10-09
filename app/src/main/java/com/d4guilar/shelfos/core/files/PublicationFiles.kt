@@ -195,7 +195,7 @@ class PublicationFiles(
      * detector/parser), indexed and page-filtered by [RarContainer.open] (throwing [PublicationProblem.
      * EMPTY_ARCHIVE]/[PublicationProblem.PROTECTED]/etc exactly as that shared policy already does for the real
      * reading-session route), then closed again immediately -- import-time inspection never keeps a session or
-     * extracted pages alive past this call. [RarContainer.comicInfo] reuses the exact same `ComicInfo.xml` mapping
+     * cache lease alive past this call. [RarContainer.comicInfo] reuses the exact same `ComicInfo.xml` mapping
      * CBZ's own [EmbeddedMetadataReader.comicInfo] already produces (best-effort; a missing/unparsable
      * `ComicInfo.xml` still imports successfully via filename/fallback evidence, same as CBZ).
      *
@@ -204,11 +204,11 @@ class PublicationFiles(
      * its `ComicInfo.xml` needs none of [RarContainer]'s page-extraction/[PageSource] surface.
      *
      * Always opened with a `null` [RarContainer.open] `sourceKey` -- i.e. an ephemeral, per-call cache namespace
-     * (Phase 3E-D R1A HIGH-2). Import-time inspection never needs cross-reopen cache reuse (a page materialized
-     * here is simply discarded when [source] closes below), so it never needs to decide whether a persistent key
-     * would be safe for this not-yet-committed item -- that decision belongs entirely to the reader-time route
-     * (see [com.d4guilar.shelfos.domain.library.rarCacheSourceKey]'s doc), which only ever runs after the item (and
-     * its [LibraryItem.managedPath]) is already durably decided.
+     * (Phase 3E-D R1A HIGH-2). Its random namespace prevents reuse across reopen; closing the container releases
+     * the session but does not delete materialized files. Retained payload stays within [RarCacheCoordinator]'s
+     * global 256 MiB/64-entry bounds and is reclaimed by ordinary deterministic LRU eviction. Persistence decisions
+     * remain entirely with the reader-time route (see
+     * [com.d4guilar.shelfos.domain.library.rarCacheSourceKey]), after [LibraryItem.managedPath] is durably decided.
      */
     private fun inspectRar(descriptor: ParcelFileDescriptor): Pair<PublicationFormat, EmbeddedMetadata> {
         val session = openRarArchiveSession(descriptor)

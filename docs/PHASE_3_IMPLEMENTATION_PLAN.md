@@ -1778,13 +1778,15 @@ revision signal that is actually re-queried at open time — only the stale pers
 the unsafe signal above — so the factory returns `null`, which `RarContainer.open` treats as "fresh
 ephemeral/random namespace for this open, never reused." `byteSize`/`title`/`fileName` are never
 consulted by the new factory. Import-time inspection (`PublicationFiles.inspectRar`) now always opens
-with `sourceKey = null` regardless of managed/external status — it never needs cross-reopen reuse (a
-page materialized while validating an import is simply discarded when that validation's `RarContainer`
-closes), so it never needs to decide persistence for a not-yet-committed item; only the reader-time
-route (`FixedReaderFactory`'s `RarPages`, via `LibraryItem.rarCacheSourceKey()`) ever uses a persistent
-key, and only for a managed copy. No Room schema change; no revision fingerprint added to persistence.
-The already-accepted `RarCacheCoordinator` continues to bound ephemeral payload globally, so universal
-ephemeral use for external sources is architecturally safe, not a regression.
+with `sourceKey = null` regardless of managed/external status — it never needs cross-reopen reuse. The
+random namespace prevents materialized import payload from being reused across reopen; closing that
+validation's `RarContainer` releases its session but does not delete cache files. Retained payload stays
+globally accounted within `RarCacheCoordinator`'s 256 MiB/64-entry bounds and ages out through ordinary
+deterministic LRU eviction. Import therefore never needs to decide persistence for a not-yet-committed
+item; only the reader-time route (`FixedReaderFactory`'s `RarPages`, via
+`LibraryItem.rarCacheSourceKey()`) ever uses a persistent key, and only for a managed copy. No Room
+schema change; no revision fingerprint added to persistence. Universal ephemeral use for external
+sources remains architecturally safe, not a regression.
 
 **Tests**: `ImportPolicyTest` gained
 `managedSourcesGetAStablePersistentKeyDerivedOnlyFromIdNeverFromByteSizeOrDisplayName` and
