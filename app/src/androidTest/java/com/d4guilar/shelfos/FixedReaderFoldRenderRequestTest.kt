@@ -328,9 +328,9 @@ class FixedReaderFoldRenderRequestTest {
         val counts = ConcurrentHashMap<Int, Int>()
         val big = 3000 to 4000
         val item = cbzFixture("fold-render-storm", listOf(big, big, big, big, big)).let {
-            // AUTO (not explicit SPREAD) is the mode whose single/spread DECISION this test is about.
+            // Explicit SPREAD (AUTO no longer pairs, post-UAT): the fold-pane decision under test is bothPanesUsable.
             LibraryItem(it.id, it.title, it.creator, it.category, it.sourceUri, it.format, it.fileName, it.byteSize,
-                managedPath = it.managedPath, preferences = ReaderPreferences(fit = FitMode.PAGE, spreadMode = SpreadMode.AUTO).json())
+                managedPath = it.managedPath, preferences = ReaderPreferences(fit = FitMode.PAGE, spreadMode = SpreadMode.SPREAD).json())
         }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scopes += it }
         val store = ViewModelStore().also { stores += it }
@@ -381,8 +381,9 @@ class FixedReaderFoldRenderRequestTest {
         // visible group, must never be decoded again), not merely that one slot ends up visible.
         val countsBeforeFlip1 = counts[1] ?: 0
         val countsBeforeFlip2 = counts[2] ?: 0
-        vm.updateViewport(verticalSpreadGeometry(100, 3000, 100, 3000, 50f, 50f),
-            FoldPaneWidths(leftPx = 100, rightPx = 100, leftDp = 50f, rightDp = 50f))
+        // A collapsed pane (width 0) makes bothPanesUsable false -> the explicit-SPREAD decision flips to solo.
+        vm.updateViewport(verticalSpreadGeometry(100, 3000, 0, 3000, 50f, 0f),
+            FoldPaneWidths(leftPx = 100, rightPx = 0, leftDp = 50f, rightDp = 0f))
         val deadline = System.currentTimeMillis() + 10_000
         while (System.currentTimeMillis() < deadline && vm.state.value.slots.size != 1) Thread.sleep(25)
         assertEquals("the genuine AUTO flip to SINGLE must actually re-render (never silently suppressed)",

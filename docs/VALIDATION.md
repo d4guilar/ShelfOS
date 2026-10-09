@@ -1,5 +1,240 @@
 # Validation
 
+## SAMSUNG UAT REMEDIATION (2026-10-09)
+
+Status: Phase 3 is **NOT complete**. Owner hands-on UAT on a Samsung Galaxy Tab A (SM-T580, Android 8.1 / API 27)
+produced two findings, remediated here; the **final Samsung recheck is still pending**.
+
+**Owner UAT results (recorded)**: old-device performance **PASS** (content loads easily; fullscreen reader with
+controls hidden is excellent; comfortable as a dedicated reader). CBR physical owner UAT **PASS** (an owner-provided
+real-world CBR imports and reads correctly).
+
+**Finding 1 -- AUTO semantics.** Previous rule (`resolveSpreadActive`, `SpreadModel.kt`; fold-aware variant
+`verticalFoldSpreadEligibleForAuto` consulted from `FixedReaderViewModel.spreadActive()`): AUTO activated paired
+presentation whenever the viewport was >= `AUTO_SPREAD_MIN_WIDTH_DP` (600dp), so ordinary portrait pages were
+paired `[1,2],[3,4]`. New contract: SINGLE = one source page; SPREAD = explicit pairing (unchanged: page 0 solo,
+wide pages solo, LTR/RTL, group navigation); **AUTO = one source page at a time at every width**, a wide/landscape
+source page is shown whole as one full-spread page (`PageGeometry.isFullSpreadSource`, the same 1.05 aspect rule as
+`isLandscape`), next/previous moves one source page (portrait N -> wide N+1 -> portrait N+2), persisted locator
+unchanged (`{"version":1,"page":N}` = the displayed source page), RTL follows existing logical direction, fold
+architecture untouched. Stored AUTO preferences stay AUTO. No string change needed (labels are neutral).
+`hasNext()/hasPrevious()` now also bound the unclamped single-step target to `0 until count` so Next is disabled
+on the last page in single-page presentation. Tests: `SpreadModelTest` (48), `ReaderPreferencesSpreadTest` (13),
+`FoldLayoutTest` (29) JVM; on emulator-5554 (API 24) `FixedReaderSpreadViewModelTest` (14),
+`FixedReaderFoldRenderRequestTest` (4), `FixedReaderSpreadUiTest` (11), `FixedReaderFoldableUiTest` (9), all green.
+Changed tests: `autoIsInactiveBelowThresholdAndActiveAtOrAboveIt` and `autoResolvesToSingleOnANarrowViewport...`
+asserted the old pairing; replaced by the new AUTO contract. `continuousFoldPaneWidthChanges...` used AUTO as its
+pairing mode and now uses explicit SPREAD (decision flip = a collapsed pane). The old rule fails the new portrait
+assertions (AUTO at 1400dp previously returned active and produced pair `[1,2]`).
+
+**Finding 2 -- launcher icon.** Root cause: `android:icon` pointed at `@drawable/ic_shelf`, the 32dp in-app
+glyph vector (dark glyph, transparent), not a launcher icon: no adaptive icon, no mipmaps; launchers rasterize and
+upscale it on a backing plate. Fix (same approved mark/path, no redesign): adaptive icon
+`mipmap-anydpi-v26/ic_launcher.xml` (dark `#111111` background, white mark foreground scaled into the safe zone,
+monochrome layer) plus a vector legacy fallback for API 24-25 (`mipmap-anydpi/ic_launcher.xml`); manifest now uses
+`@mipmap/ic_launcher`. APK inspection (`aapt2 dump badging`, `unzip -l`) shows the adaptive icon for API 26+ and
+`mipmap-anydpi-v21` legacy vector. The API 24 emulator launcher renders the legacy icon crisply; the adaptive path
+(API 26+) was not visually verified on a device. **The owner must visually recheck on the Samsung launcher.**
+
+**Not done / pending**: final Samsung recheck (AUTO behavior and icon); independent Codex review; Phase 3 final
+reconciliation. Future UX note (not implemented): remote-metadata skeleton placeholders.
+
+## PHASE 3F — FINAL ACCUMULATED TECHNICAL ACCEPTANCE (2026-10-09)
+
+Status: 3A–3E **COMPLETE/accepted/merged** (`#24`–`#28`). 3F **IMPLEMENTED; technical validation complete;
+pending independent Codex review and owner Samsung tablet UAT**. Phase 3 overall is **NOT complete**. Branch
+`phase-3/3f-final-acceptance`, base `main` @ `af323ce`. Narrative and defect detail:
+`docs/PHASE_3_IMPLEMENTATION_PLAN.md` §34.
+
+**Environment**: JDK 17.0.12, Gradle 9.6.0, AGP 9.4.1, NDK 28.2.13676358. Devices:
+
+- `emulator-5554`: `shelfos-api24` AVD, x86_64, API 24, AOSP WebView 52.0.2743.100.
+- `d8f7f1b6`: Retroid Pocket 5, arm64-v8a, Android 13 / API 33, WebView 109.0.5414.123. Not a foldable.
+
+**Device selection**: `ANDROID_SERIAL=<serial>` on the Gradle invocation, confirmed per run by `Running tests on
+devices: <one device>` and the per-device result XML. Targeted classes ran one per invocation
+(`-Pandroid.testInstrumentationRunnerArguments.class=<FQN>`), because of the known comma quirk.
+
+### Defects found (evidence captured before each change)
+
+1. **CBR fails on physical arm64 Android 11+ (BLOCKER; 3E)**.
+   - Evidence: real-UI import of the owner-provided local real-world CBR fixture (not committed) on the RP5 →
+     "could not be imported" (`UNREADABLE`). A throwaway driver showed `RarOpenException(NATIVE_INTERNAL)` from
+     `openRarArchiveSession`, through both the FUSE path and an app-private copy.
+   - `LibarchiveRarNativeTest` on the RP5 before the fix: **9/13**. Every valid open failed with
+     `Failure(NATIVE_INTERNAL)`; the malformed/protected cases passed. 0 crash markers.
+   - Root cause: on arm64 Android 11+, tagged heap pointers (top byte `0xB4…`) are negative as a `jlong`.
+     `nativeOpen` encoded errors as negative values and Kotlin accepted only `handle > 0`. The native `Session`
+     (fd + entries) also leaked, because every native accessor and `nativeClose` returned early on
+     `handle <= 0`.
+   - Fix: only `-1..-64` are errors. A native `isSessionHandle()` replaces the seven `handle <= 0` guards, and a
+     Kotlin `nativeOpenFailure()` decoder replaces the `> 0` test. Ownership, extraction, the cache and the error
+     categories are unchanged.
+   - Regression: `NativeOpenHandleDecodingTest` (JVM, 2/2).
+   - After the fix, RP5: `LibarchiveRarNativeTest` **13/13**; the owner CBR imports through SAF and reads.
+2. **Native SIGSEGV after a damaged PDF on API 24/25 (pre-existing, Phase 1)**.
+   - Evidence: the first full connected run aborted at 165 executed tests. Inside
+     `LibraryPersistenceTest#nonSeekableProviderCopies…`, the ShelfOS process died with
+     `Fatal signal 11 (SIGSEGV) fault addr 0x10` in `libpdfium.so CPDF_Document::CPDF_Document`, called from
+     `PdfRenderer.nativeCreate`. Tombstones from 2026-10-05 have the identical signature.
+   - Root cause, confirmed against the Android 7.x framework source: the native open failure already undoes the
+     pdfium init count, but the half-built `PdfRenderer` keeps `mInput`. Its finalizer then decrements again, the
+     count goes negative, and the next open skips `FPDF_InitLibrary`. Android 8.0+ reworked this.
+   - Fix (R0, superseded): on API < 26, `openPdf` opened one never-closed balance `PdfRenderer` per such failure.
+     Codex High R1 found it unbounded (one live native document per failed open) and dependent on finalizer
+     timing (compensation ran after the failed constructor).
+   - Platform evidence for R1 (AOSP sources): Android 7.0 `nativeCreate` does init-count `++`, and on failure
+     `--` and throws; the constructor has already stored `mInput`, so the finalizer runs `doClose()`, which calls
+     `nativeClose(0)` and decrements again (`initializeLibraryIfNeeded` skips `FPDF_InitLibrary` only when the count
+     is nonzero, `destroyLibraryIfNeeded` destroys at exactly zero). Android 7.1 differs only by a Java-level
+     `sPdfiumLock`. Invariant: the count must equal the number of live documents. A bounded counter anchor cannot
+     work: every failed open costs one decrement forever, so holding the count needs one live document per
+     failure. The only structural cure is never to create a finalizable failed `PdfRenderer`.
+   - Reproduction on the API 24 emulator with a direct `PdfRenderer` constructor (a throwaway test, not
+     committed): failed open, finalization, then a valid open gave `Fatal signal 11 (SIGSEGV) fault addr 0x10` in
+     `CPDF_Document::CPDF_Document` via `FPDF_LoadCustomDocument`.
+   - R1 fix: on API < 26, probe with `nativeCreate`/`nativeClose` before constructing; reject without ever creating
+     the `PdfRenderer`. Retained state: 3 reflection handles, constant. API 26+ is unchanged.
+   - R1 evidence, final code, one class per invocation: `PdfFailedOpenFinalizationTest` **5/5 on emulator-5554
+     (API 24) and 5/5 on the RP5 (API 33)**. Every valid step creates a Bitmap, opens a page, calls
+     `Page.render`, and checks drawn pixels. Corrupt maps to CORRUPT and a tiny synthetic RC4 PDF with a user
+     password maps to PROTECTED. 40 failures left the descriptor count unchanged (API 24: 41 before and after;
+     RP5: 76 and 75) and created no cache files. `SyntheticLargePdfAcceptanceTest` 1/1 and
+     `MalformedFixedReaderResilienceTest` 4/4 also pass on API 24. Crash scan after each API 24 run: 0
+     SIGSEGV/SIGABRT/Fatal signal/JNI DETECTED ERROR. JVM `LegacyPdfGateTest` 1/1 (24/25 legacy, 26+ not).
+   - API 25 was not run (no device image available); its path was verified from source (same natives, shared
+     `sPdfiumLock`) and the gate test. Full JVM and full connected suites were not rerun for this remediation.
+   - Codex R2 finding (MEDIUM): the lock lookup turned a missing field into a private monitor on every legacy SDK,
+     which is wrong on API 25 (its framework serializes with `sPdfiumLock`). Fix: a pure SDK-aware decision
+     (`resolveLegacyPdfiumLock`, the same code production uses). API 24 missing field remains an intentional private
+     monitor fallback; API 25 now requires the actual framework lock, and an absent, inaccessible, null or unusable
+     lock fails closed with `UNREADABLE` before the native preflight or any `PdfRenderer` is reached. API 26+ is
+     unchanged. JVM `LegacyPdfiumLockResolutionTest` 9/9 and `LegacyPdfGateTest` 1/1. API 24 emulator
+     `PdfFailedOpenFinalizationTest` 5/5 after the change, crash scan clean. API 25 runtime was NOT executed (source
+     contract only). Independent review and Samsung UAT are pending; Phase 3 is NOT complete.
+   - Build gates after R1: assembleDebug, assembleDebugAndroidTest, lintDebug (the private-API reflection is
+     suppressed with a justification, since it runs only on API 24/25), bundleDebug: BUILD SUCCESSFUL.
+   - Also corrected: the CBR JNI transport header comment no longer says handles `<= 0` are invalid (comment only).
+   - Status: PDF remediation complete. Fresh Codex High R2 and Samsung UAT are pending; Phase 3 is NOT complete.
+3. **Hinge-safe modal focus (3D)**.
+   - Evidence: `FixedReaderHingeSafeModalTest` 4/7 on the API 24 emulator in keyboard mode and in the full run.
+     The same code had passed 7/7 there at 3D R2. A detached worktree at `12b4fb7` failed identically, so this is
+     not a 3E regression. On the RP5 it failed 2/7 (focus restoration).
+   - Root causes: the dismissal focus request ran while the background was still `canFocus = false`, so it was
+     refused. Separately, the top chrome row's `horizontalScroll` focus target blocked the Column's
+     `focusProperties`.
+   - Fix: keep the inline request and add a post-recomposition re-request **only under a fold split**; apply the
+     focus block inside the scroll container.
+   - A first version deferred the request on every dismissal. It made `FixedReaderTransformBoundsTest` hang on
+     the emulator (stuck in `Espresso.onIdle`). Bisection: that class passed **15/15** with production changes
+     reverted, and **15/15** with only `FixedReaderScreen.kt` reverted. The fix was rescoped, and the class now
+     passes **15/15**.
+   - Regression: the test now pins non-touch mode (`setInTouchMode(false)`). Without the screen fix it fails
+     4/7 on the RP5 and 2/7 on the emulator; with it, 7/7 on both.
+4. **Stale format copy (3E)**.
+   - Evidence: the RP5 empty library showed "Add a PDF, EPUB or CBZ".
+   - Fix: three strings (empty library, About, fixed-layout message) now include CBR, in EN/ES/PT-BR.
+   - Regression: `SupportedFormatCopyTest` (JVM). It fails against the old strings and passes now.
+
+### Executed
+
+- **Full JVM**: `./gradlew.bat :app:testDebugUnitTest`.
+  - Baseline (unmodified `af323ce`): **476 tests, 476 passed, 0 failed, 0 skipped**, 35 classes, 44 s.
+  - Final code, inside the gate run below: **479 / 479**, 0 failed, 0 skipped, 37 classes.
+- **Full connected, emulator only** (`ANDROID_SERIAL=emulator-5554 ./gradlew.bat :app:connectedDebugAndroidTest`):
+  - Run 1, baseline: aborted after 165 executed by defect 2 (8 failures: 3 EPUB font, 4 hinge-modal, 1 crash).
+  - Run 2: aborted after 122 executed. The system_server watchdog killed system_server (`DeadSystemException`;
+    ENVIRONMENT). The emulator was cold-restarted.
+  - Run 3: AGP install failed (`INSTALL_FAILED_ALREADY_EXISTS`) yet reported **BUILD SUCCESSFUL with 0 tests**.
+    This is an infrastructure trap; check XML counts.
+  - Run 4: 39 executed, then `EpubManagedFontProofTest` hung on WebView 52 until an adb restart ended it.
+  - Run 5 (`notClass=…EpubManagedFontProofTest`): **124 executed, 121 passed**. The 3 non-passes were the 2
+    EPUB-font ENVIRONMENT failures and the `FixedReaderTransformBoundsTest` hang, later attributed to the first
+    version of defect 3.
+  - The remaining portion ran class by class. A second system_server watchdog death forced a second cold restart,
+    justified by that diagnosis.
+  - Final per-class results on final code: TransformBounds 15/15, HingeSafeModal 7/7, ViewModelLifecycle 2/2,
+    FoldDescriptorMapper 9/9, InputModality 10/10, LibraryPersistence 10/10, ManagedFontRepository 1/1,
+    MalformedFixedReaderResilience 4/4, NavigationSmoke 28/28, PdfFailedOpenFinalization 1/1 (R0; 5/5 after R1),
+    ReaderDialogFoldSafety 4/4, ReaderPreferencesSpread 7/7, ReaderState 3/3, RoomPersistence 1/1,
+    SyntheticLargePdf 1/1, SyntheticLoad 1/1, ThumbnailLoader 6/6, ThumbnailNavigationUi 7/7, FoldableUi 9/9,
+    FoldRenderGeometryUi 3/3, SpreadUi 11/11, Recreation 7/7, and the six native/CBR classes (below).
+  - Every class in the inventory executed after the native, PDF and copy fixes. Classes that ran only in run 5
+    (A–F, e.g. FoldRenderRequest 4/4, SpreadViewModel 11/11, RenderRequest 20/20, the EPUB classes and
+    CbrProductIntegration) ran with the first version of the defect 3 fix, which changed only dialog-dismissal
+    focus. The classes that render `FixedReaderScreen` dialogs were rerun after the final rescoping. The only
+    non-passing classes are
+    `EpubManagedFontLiveSwitchTest` (0/2) and `EpubManagedFontProofTest` (0/1, sometimes hangs) on the emulator
+    WebView 52: ENVIRONMENT, pre-existing. On the RP5 (WebView 109) they pass **2/2 and 1/1**.
+  - No single uninterrupted full-suite pass was achieved on this AVD today. The coverage above is the union of
+    runs 5 and the class runs.
+- **Native/CBR, final code, both devices, one class per invocation, crash scan of `logcat -b all` after each**:
+  `LibarchiveNativeSmokeTest` 3/3, `LibarchiveRarNativeLifecycleTest` 9/9, `LibarchiveRarNativeTest` 13/13,
+  `RarPageSourceRealSessionInstrumentedTest` 1/1, `RarPageSourceRenderInstrumentedTest` 3/3,
+  `CbrProductIntegrationTest` 6/6, `PdfFailedOpenFinalizationTest` 1/1. That is **36/36 on emulator-5554 and
+  36/36 on the RP5**, with **0** SIGSEGV/SIGABRT/Fatal signal/JNI DETECTED ERROR/FORTIFY markers.
+- **Build gates**: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest
+  :app:bundleDebug`: BUILD SUCCESSFUL. CMake built arm64-v8a, armeabi-v7a and x86_64. Lint: 0 errors and 21
+  warnings, all pre-existing categories. CI Room schema check (`git status --porcelain -- app/schemas`): clean.
+  No release signing.
+- **Packaging** (`unzip -l`):
+  - APK and AAB contain `libshelfos_cbr.so` for arm64-v8a 678,792 B, armeabi-v7a 406,352 B and x86_64
+    665,632 B.
+  - No `lib/x86`, no standalone `libarchive.so`, no `.uu`/`.rar`/`.cbr`/`.cbz`, no owner content, no throwaway
+    classes.
+  - The androidTest APK holds only the five vendored `.uu` fixtures.
+  - The `.so` exports libarchive's generic `archive_virtual.c` `archive_write_*` dispatch stubs. There is no
+    format or disk writer; this is unchanged since 3E-A (CMake unchanged).
+
+### RP5 physical acceptance (arm64)
+
+- **Setup**: `getprop` → sdk 33, abi arm64-v8a, model Retroid Pocket 5. The prior Phase-2 debug install was
+  replaced, which was the intentional clean-install strategy; AGP connected runs uninstall the app anyway.
+- **Owner real CBR** (owner-provided local real-world CBR fixture, not committed). It was staged temporarily on
+  the device and driven by a throwaway instrumented driver that was never committed and has been deleted.
+  - Import: CBR / Comics, embedded title.
+  - 151 pages; first, middle, later, near-last and last pages render (994x1528).
+  - Timings: first uncached page 87 ms, repeat 58 ms, thumbnail 102 ms. Fit Width and spread-slot render.
+  - SPREAD gives 94 groups (57 pairs; page 0 solo; wide pages 1–4 solo). SINGLE gives 151 solo groups. AUTO is
+    single at 480 dp and spread at 853 dp.
+  - Keys: managed copies keyed `managed:`; external ephemeral.
+  - 15 open/render/close cycles: FD 77 → 77; PSS ≈ 131 MB (flat).
+  - Cache: 64 finals / 82 MB, 0 temps, generated names only.
+  - Source and managed copy hash-equal.
+- **Real UI on RP5** (SAF reference import, D-pad/R1/L1):
+  - AUTO landscape pairs (5,6) at logical page 6; thumbnails, a thumbnail jump to 39, and zoom (shared transform
+    across the spread).
+  - Appearance → SINGLE + Fit Width; Home/return.
+  - Real process death (`am kill`) restored page 39 with the same preferences.
+  - Publication switch CBR → PDF → CBR; the Continue Reading card resumed at the saved page.
+  - CBZ import with spreads and progress. PDF open, navigation, thumbnails and progress.
+  - Rotation was not exercised: the setting did not rotate the activity on this device.
+  - Manga RTL: not claimed. The fixture's metadata does not declare it.
+- **Memory**: `dumpsys meminfo com.d4guilar.shelfos` TOTAL PSS ≈ 127 MB fresh, 125 MB after open, 199 MB at a
+  spread, 176 MB after 40 rapid turns, 196 MB after reopen, 226 MB with a large CBZ spread open. No OOM, no
+  monotonic runaway.
+- **FDs**: `/proc/<pid>/fd` via run-as stayed at 132–134 across the session.
+- **Cache after the session**: 62 finals / 77 MB across 5 namespaces, 0 temps, 0 non-generated names.
+- **Native crash scan**: 0 markers for every RP5 test run and the whole UI session.
+- **Source immutability**: the host owner files' SHA-256 values were the same before and after. The device
+  copies were the same before and after.
+- **Cleanup**: temporary copies removed (`/data/local/tmp`, `/sdcard/Download`), app data cleared, test APK
+  uninstalled, `MANAGE_EXTERNAL_STORAGE` appop reset to default. No ShelfOS package is installed now.
+  `accelerometer_rotation`/`user_rotation` were set to 0 during testing; the original values were not recorded.
+
+### Other gates
+
+- **Localization**: EN/ES/PT-BR have identical key sets (236 strings + 3 plurals each). No new hard-coded UI
+  strings.
+- **Accessibility**: page-unavailable, previous/next, slider and thumbnail cells carry content descriptions;
+  thumbnail cells are 96 dp wide; hinge-safe overlays expose `paneTitle`. TalkBack: not performed.
+- **Foldable**: no hardware foldable was used. Coverage is from the existing fold tests on the emulator
+  (FoldableUi 9/9, FoldRenderGeometryUi 3/3, ReaderDialogFoldSafety 4/4, HingeSafeModal 7/7,
+  FoldDescriptorMapper 9/9 on final code; FoldRenderRequest 4/4 in run 5).
+
+**Not performed**: Samsung tablet UAT (owner, later; requires Android 7.0 / API 24+), TalkBack, hardware
+foldable, release signing, Codex review.
+
 ## PHASE 3E-E R1A — CBR CACHE COORDINATOR REMEDIATION (2026-10-08)
 
 Status: 3E-A/3E-B/3E-C/3E-D **COMPLETE/accepted**. 3E-E **IMPLEMENTED; R1A remediation complete; pending a

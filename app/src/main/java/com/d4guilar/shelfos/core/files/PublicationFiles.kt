@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos.core.files
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.graphics.pdf.PdfRenderer
@@ -18,6 +19,8 @@ import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
+import java.lang.reflect.InvocationTargetException
+import java.lang.reflect.Method
 import java.util.UUID
 
 /** Unreferenced private copies that only an explicit cleanup may delete. */
@@ -25,13 +28,119 @@ data class PrivateCopyUsage(val count: Int, val bytes: Long)
 
 /** Takes ownership of [descriptor]; protected, damaged and non-seekable documents map to explicit problems. */
 fun openPdf(descriptor: ParcelFileDescriptor): PdfRenderer = try {
+    if (usesLegacyPdfiumProbe(Build.VERSION.SDK_INT)) LegacyPdfiumProbe.requireOpenable(descriptor)
     PdfRenderer(descriptor)
+} catch (e: PublicationException) {
+    // Setup failure from the legacy probe (it is an IOException, so it must be matched before CORRUPT below).
+    descriptor.close(); throw e
 } catch (_: SecurityException) {
     descriptor.close(); throw PublicationException(PublicationProblem.PROTECTED)
 } catch (_: IllegalArgumentException) {
     descriptor.close(); throw PublicationException(PublicationProblem.NEEDS_COPY)
 } catch (_: IOException) {
     descriptor.close(); throw PublicationException(PublicationProblem.CORRUPT)
+}
+
+/** Android 7.0/7.1 (API 24/25) only; API 26+ keeps the plain `PdfRenderer` path. */
+internal fun usesLegacyPdfiumProbe(sdkInt: Int): Boolean = sdkInt < Build.VERSION_CODES.O
+
+/** Outcome of reflecting the framework's `PdfRenderer.sPdfiumLock`. */
+internal sealed interface PlatformLockLookup {
+    /** The field exists; [value] may still be null or unusable. */
+    data class Found(val value: Any?) : PlatformLockLookup
+    data object Absent : PlatformLockLookup
+    data object Inaccessible : PlatformLockLookup
+}
+
+internal sealed interface LockResolution {
+    data class Monitor(val monitor: Any, val isFrameworkLock: Boolean) : LockResolution
+    data object SetupFailure : LockResolution
+}
+
+/**
+ * Chooses the monitor the legacy probe synchronizes on. API 24 (AOSP 7.0) has no Java `sPdfiumLock`, so a missing
+ * field there is expected and a private monitor is used. API 25 (AOSP 7.1) has it and its constructor and natives
+ * synchronize on it, so on API 25 the real framework lock is mandatory: any absent, inaccessible, null or unusable
+ * value is a setup failure (fail closed, no unrelated fallback monitor). Source contract only; API 25 has not been
+ * executed on a device.
+ */
+internal fun resolveLegacyPdfiumLock(sdkInt: Int, lookup: PlatformLockLookup): LockResolution {
+    val framework = (lookup as? PlatformLockLookup.Found)?.value?.takeIf { isUsableMonitor(it) }
+    return when {
+        framework != null -> LockResolution.Monitor(framework, isFrameworkLock = true)
+        sdkInt < Build.VERSION_CODES.N_MR1 && lookup == PlatformLockLookup.Absent -> LockResolution.Monitor(Any(), isFrameworkLock = false)
+        else -> LockResolution.SetupFailure
+    }
+}
+
+private fun isUsableMonitor(value: Any): Boolean =
+    value !is Number && value !is Boolean && value !is Char && value !is CharSequence
+
+/**
+ * Android 7.0/7.1 platform bug guard. pdfium's process-wide init count is bumped by `PdfRenderer.nativeCreate`
+ * and dropped by `nativeClose`. A `PdfRenderer` whose `nativeCreate` fails (corrupt or protected PDF) has already
+ * stored its descriptor, so the failed, half-built object is still finalized later; its finalizer calls
+ * `nativeClose(0)`, decrementing the count a second time. The count goes negative, the next open skips
+ * `FPDF_InitLibrary`, and the process dies with SIGSEGV inside `libpdfium.so`.
+ *
+ * The fix is structural: a `PdfRenderer` is never constructed unless pdfium has just accepted the document. The
+ * probe calls the same private static natives the constructor uses, under the same lock, and closes the
+ * document straight away (net count change zero). A document pdfium rejects therefore never produces a
+ * finalizable `PdfRenderer`, so nothing can run later and correctness does not depend on finalizer timing. The
+ * probe keeps no state beyond the cached reflected method handles (three objects, process-wide, constant), opens
+ * no extra file and writes nothing; the user's publication is only read. If the platform natives cannot be
+ * resolved the open fails closed with an explicit [PublicationProblem.UNREADABLE] instead of risking the crash.
+ * Residual: a file that changes between the probe and the constructor (microseconds apart) could still reach the
+ * platform failure path.
+ */
+// The reflection below is reachable only on API 24/25 (see usesLegacyPdfiumProbe), where no private-API restriction
+// exists; lint's API 37 warning concerns platforms this code never runs on.
+@SuppressLint("SoonBlockedPrivateApi")
+internal object LegacyPdfiumProbe {
+    private class Natives(val create: Method, val close: Method, val lock: Any)
+
+    private val natives: Natives? by lazy {
+        try {
+            val create = PdfRenderer::class.java.getDeclaredMethod("nativeCreate", Int::class.javaPrimitiveType, Long::class.javaPrimitiveType)
+            val close = PdfRenderer::class.java.getDeclaredMethod("nativeClose", Long::class.javaPrimitiveType)
+            create.isAccessible = true; close.isAccessible = true
+            when (val lock = resolveLegacyPdfiumLock(Build.VERSION.SDK_INT, lookUpPlatformLock())) {
+                is LockResolution.Monitor -> Natives(create, close, lock.monitor)
+                LockResolution.SetupFailure -> null
+            }
+        } catch (_: ReflectiveOperationException) { null } catch (_: SecurityException) { null }
+    }
+
+    /**
+     * Android 7.1 serializes every native PDF call with the static `PdfRenderer.sPdfiumLock`; the probe must use
+     * the same monitor (see [resolveLegacyPdfiumLock]). Android 7.0 has no Java-level lock (only a native mutex
+     * around the init count). Every lookup problem is reported as an outcome, never swallowed into a fallback.
+     */
+    private fun lookUpPlatformLock(): PlatformLockLookup = try {
+        PlatformLockLookup.Found(PdfRenderer::class.java.getDeclaredField("sPdfiumLock").apply { isAccessible = true }.get(null))
+    } catch (_: NoSuchFieldException) { PlatformLockLookup.Absent
+    } catch (_: ReflectiveOperationException) { PlatformLockLookup.Inaccessible
+    } catch (_: SecurityException) { PlatformLockLookup.Inaccessible
+    } catch (_: RuntimeException) { PlatformLockLookup.Inaccessible }
+
+    /** Throws the same [SecurityException], [IOException] or [IllegalArgumentException] the constructor would. */
+    fun requireOpenable(descriptor: ParcelFileDescriptor) {
+        val natives = natives ?: throw PublicationException(PublicationProblem.UNREADABLE)
+        val size = try {
+            Os.lseek(descriptor.fileDescriptor, 0, OsConstants.SEEK_SET)
+            Os.fstat(descriptor.fileDescriptor).st_size
+        } catch (_: ErrnoException) { throw IllegalArgumentException("file descriptor not seekable") }
+        synchronized(natives.lock) {
+            val document = try {
+                natives.create.invoke(null, descriptor.fd, size) as Long
+            } catch (e: InvocationTargetException) { throw e.targetException } catch (_: IllegalAccessException) {
+                throw PublicationException(PublicationProblem.UNREADABLE)
+            }
+            try { natives.close.invoke(null, document) } catch (_: ReflectiveOperationException) {
+                throw PublicationException(PublicationProblem.UNREADABLE)
+            }
+        }
+    }
 }
 
 /** [root] holds private offline copies; tests pass an isolated directory. */

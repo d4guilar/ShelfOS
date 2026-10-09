@@ -144,10 +144,68 @@ class SpreadModelTest {
         assertTrue(resolveSpreadActive(SpreadMode.SPREAD, viewportWidthDp = 100))
     }
 
-    @Test fun autoIsInactiveBelowThresholdAndActiveAtOrAboveIt() {
-        assertFalse(resolveSpreadActive(SpreadMode.AUTO, AUTO_SPREAD_MIN_WIDTH_DP - 1))
-        assertTrue(resolveSpreadActive(SpreadMode.AUTO, AUTO_SPREAD_MIN_WIDTH_DP))
-        assertTrue(resolveSpreadActive(SpreadMode.AUTO, AUTO_SPREAD_MIN_WIDTH_DP + 400))
+    // Post-UAT AUTO contract: AUTO is single-source-page reading regardless of width. The historical rule was
+    // `viewportWidthDp >= AUTO_SPREAD_MIN_WIDTH_DP` (600), under which AUTO at 600/1000/1400dp returned true and
+    // paired portrait pages [1,2],[3,4]; the assertions below (and autoPortraitPagesAreEachTheirOwnGroup) fail
+    // against that rule.
+    @Test fun autoNeverActivatesPairingAtAnyWidth() {
+        listOf(100, AUTO_SPREAD_MIN_WIDTH_DP - 1, AUTO_SPREAD_MIN_WIDTH_DP, 1000, 2000).forEach {
+            assertFalse("AUTO must not pair at ${it}dp", resolveSpreadActive(SpreadMode.AUTO, it))
+        }
+    }
+
+    private val portraitGeo = PageGeometry(600, 900)
+    private val wideGeo = PageGeometry(1800, 900)
+
+    private fun autoGroups(pageCount: Int, geometry: Map<Int, PageGeometry>) =
+        resolvePageGroups(pageCount, resolveSpreadActive(SpreadMode.AUTO, 1400)) { geometry[it] }
+
+    @Test fun autoPortraitPagesAreEachTheirOwnGroup() {
+        val groups = autoGroups(5, (0..4).associateWith { portraitGeo })
+        assertEquals((0..4).map { PageGroup(listOf(it)) }, groups)
+        assertTrue(groups.none { it.isSpread })
+    }
+
+    @Test fun autoWideSourcePageIsOneSoloFullSpreadAndNeverPairedWithNeighbours() {
+        assertTrue(wideGeo.isFullSpreadSource)
+        assertFalse(portraitGeo.isFullSpreadSource)
+        val geo = mapOf(0 to portraitGeo, 1 to portraitGeo, 2 to wideGeo, 3 to portraitGeo, 4 to portraitGeo)
+        val groups = autoGroups(5, geo)
+        assertEquals((0..4).map { PageGroup(listOf(it)) }, groups)
+    }
+
+    @Test fun autoPortraitWidePortraitNavigatesOneSourcePageAtATimeBothWays() {
+        val geo = mapOf(0 to portraitGeo, 1 to portraitGeo, 2 to wideGeo, 3 to portraitGeo, 4 to portraitGeo)
+        val canonical = canonicalPageGroups(5)
+        val landscapeAt = { p: Int -> geo.getValue(p).isLandscape }
+        val active = resolveSpreadActive(SpreadMode.AUTO, 1400)
+        assertEquals(listOf(1, 2, 3, 4), (0..3).map { nextPage(canonical, it, active, landscapeAt) })
+        assertEquals(listOf(0, 1, 2, 3), (1..4).map { previousPage(canonical, it, active, landscapeAt) })
+        (0..4).forEach { assertEquals(listOf(it), resolveCurrentGroup(canonical, it, active, landscapeAt).pages) }
+    }
+
+    @Test fun autoRtlIsStillOneLogicalPageAtATimeAndSoloPlacementIsDirectionNeutral() {
+        val groups = autoGroups(4, (0..3).associateWith { portraitGeo })
+        assertTrue(groups.all { it.pages.size == 1 })
+        groups.forEach { assertEquals(it.pages, it.physicalOrder(rightToLeft = true)) }
+        // Logical next/previous is direction-independent; RTL only mirrors the physical page-turn gesture mapping.
+        assertEquals(1, nextLogicalPage(groups, 0))
+        assertEquals(0, previousLogicalPage(groups, 1))
+    }
+
+    @Test fun explicitSpreadStillPairsPortraitsKeepsCoverSoloAndWideSolo() {
+        val active = resolveSpreadActive(SpreadMode.SPREAD, 100)
+        val geo = mapOf(0 to portraitGeo, 1 to portraitGeo, 2 to portraitGeo, 3 to wideGeo, 4 to portraitGeo, 5 to portraitGeo, 6 to portraitGeo)
+        val groups = resolvePageGroups(7, active) { geo[it] }
+        assertEquals(listOf(PageGroup(listOf(0)), PageGroup(listOf(1, 2)), PageGroup(listOf(3)), PageGroup(listOf(4)),
+            PageGroup(listOf(5, 6))), groups)
+        assertEquals(3, nextLogicalPage(groups, 1))
+        assertEquals(listOf(2, 1), groups[1].physicalOrder(rightToLeft = true))
+    }
+
+    @Test fun explicitSingleKeepsEveryPageSolo() {
+        val groups = resolvePageGroups(4, resolveSpreadActive(SpreadMode.SINGLE, 2000)) { portraitGeo }
+        assertEquals((0..3).map { PageGroup(listOf(it)) }, groups)
     }
 
     // ---- nextLogicalPage / previousLogicalPage: semantic group-to-group navigation ----

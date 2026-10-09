@@ -29,7 +29,7 @@
     <string name="section_continue_reading">Continuar leyendo</string>
     <string name="continue_reading_empty">Tu lectura aparecerá aquí en cuanto abras una publicación.</string>
     <string name="library_loading">Cargando tu biblioteca…</string>
-    <string name="library_empty_start">Tu biblioteca empieza aquí. Añade un PDF, EPUB o CBZ con Añadir archivo.</string>
+    <string name="library_empty_start">Tu biblioteca empieza aquí. Añade un PDF, EPUB, CBZ o CBR con Añadir archivo.</string>
     <string name="library_empty_filtered">Todavía no hay publicaciones en esta vista.</string>
     <string name="label_unavailable">No disponible</string>
     <string name="library_update_title">Actualización de la biblioteca</string>
@@ -117,7 +117,7 @@
     <string name="settings_delete_copies_title">¿Eliminar copias privadas sin usar?</string>
     <string name="settings_delete_copies_body">Esto elimina %1$s (%2$s) que ninguna publicación de tu biblioteca usa. Tus archivos originales y tu biblioteca no se ven afectados.</string>
     <string name="settings_about_title">ShelfOS · Desarrollo temprano</string>
-    <string name="settings_about_body">Una biblioteca personal local para los archivos que ya tienes. Añade publicaciones PDF, EPUB y CBZ con Añadir archivo; se quedan donde están. No se sube nada y no se necesita cuenta.</string>
+    <string name="settings_about_body">Una biblioteca personal local para los archivos que ya tienes. Añade publicaciones PDF, EPUB, CBZ y CBR con Añadir archivo; se quedan donde están. No se sube nada y no se necesita cuenta.</string>
     <string name="settings_keyboard_help">Teclado: Tab o flechas para moverte, Intro para seleccionar, Ctrl+F para buscar. En un lector: flechas, Re Pág/Av Pág o Espacio para pasar página, Menú para los controles, Escape para volver. Mando: D-pad para moverte, A para seleccionar, B para volver, L1/R1 para pasar página.</string>
     <string name="settings_language_title">Idioma</string>
     <string name="settings_language_description">Elige el idioma de la interfaz de ShelfOS. Esto nunca cambia el idioma de tus publicaciones.</string>
@@ -242,7 +242,7 @@
     <string name="problem_source_unavailable_import_message">El archivo seleccionado no está disponible. Comprueba que todavía existe e inténtalo de nuevo.</string>
     <string name="problem_needs_copy_message">Este proveedor no puede ofrecer acceso duradero con acceso aleatorio. ShelfOS necesita una copia privada sin conexión.</string>
     <string name="problem_unsupported_format_message">Elige una publicación PDF, EPUB, CBZ o CBR.</string>
-    <string name="problem_unsupported_layout_message">La lectura de EPUB de maquetación fija no es compatible en esta versión. Las páginas fijas de PDF y CBZ sí son compatibles.</string>
+    <string name="problem_unsupported_layout_message">La lectura de EPUB de maquetación fija no es compatible en esta versión. Las páginas fijas de PDF, CBZ y CBR sí son compatibles.</string>
     <string name="problem_protected_message">Esta publicación está protegida con contraseña o usa DRM. ShelfOS no puede abrir publicaciones protegidas.</string>
     <string name="problem_corrupt_message">Esta publicación parece estar dañada o incompleta.</string>
     <string name="problem_empty_archive_message">El archivo comprimido no contiene páginas de imagen compatibles.</string>
