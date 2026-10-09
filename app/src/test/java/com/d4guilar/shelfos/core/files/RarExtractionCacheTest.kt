@@ -113,7 +113,11 @@ class RarExtractionCacheTest {
         }
         assertTrue(error is RarExtractionException)
         assertEquals(NativeRarError.IO, (error as RarExtractionException).error)
-        assertFalse("no .bin/.tmp- leftovers after a failed extraction", File(root, "ns").listFiles()!!.any { it.isFile })
+        // Phase 3E-E R1A: the now-empty namespace directory may itself be pruned after the failure.
+        assertFalse(
+            "no .bin/.tmp- leftovers after a failed extraction",
+            (File(root, "ns").listFiles() ?: emptyArray()).any { it.isFile },
+        )
         assertFalse(cache.containsForTest(5))
 
         val retried = cache.acquire(5) { dest -> attempt++; dest.writeBytes(bytesOf(10, 2)); null }

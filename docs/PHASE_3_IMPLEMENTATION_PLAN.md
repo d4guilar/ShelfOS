@@ -17,7 +17,8 @@ integration — `PublicationFormat.CBR` wired end to end through import, magic d
 category/Manga-RTL, `FixedReaderFactory` routing, spread/fold inheritance, progress/resume, and error
 mapping, on top of 3E-C, with no change to the accepted native/cache architecture) is COMPLETE and
 ACCEPTED on the same branch (including its R1A/R1B remediation).** **3E-E (final CBR-specific acceptance
-hardening) is IMPLEMENTED on the same branch; pending independent final review** (see §33). 3F
+hardening) is IMPLEMENTED on the same branch; its R1A cache-coordinator remediation is complete; pending a
+fresh Codex High review** (see §33/§33a). 3F
 remains PLANNING ONLY. Phase 3 overall is **NOT complete**. See §22/§23 for what 3A
 landed, §24 for what 3B actually landed, §25 for what 3C actually landed (including the
 R1 and R2 remediation records), §26/§26a for what 3D and its R1 remediation landed,
@@ -47,7 +48,8 @@ hinge-safe modal focus/accessibility) recorded below, §27 for what 3E-B actuall
   (generic native RAR engine) is complete and accepted on the same branch. 3E-C (CBR
   container adapter + bounded cache) is complete and accepted on that branch (final Codex R2
   PASS). 3E-D (CBR product integration) is complete and accepted on that branch. 3E-E (CBR
-  acceptance hardening) is implemented on that branch; pending independent final review. 3F remains
+  acceptance hardening) is implemented on that branch, R1A remediation complete, pending a fresh Codex High
+  review. 3F remains
   planning only, and Phase 3 overall is not complete.
 
 ## 22. 3A implementation record (landed)
@@ -1873,6 +1875,39 @@ descriptors, memory and cache-disk sanity. Source SHA-256 before == after. See `
 
 **Status**: 3E-A/B/C/D complete/accepted; 3E-E implemented, pending independent final review; Phase 3 NOT
 complete. Full JVM and full connected regression remain Phase 3F.
+
+## 33a. 3E-E R1A remediation record (cache coordinator bounds)
+
+Codex High's final 3E-E review returned CHANGES REQUIRED with three findings, all in `RarCacheCoordinator`.
+Everything else passed. The fix changes that one production file. Exact commands and counts are in
+`docs/VALIDATION.md`'s "PHASE 3E-E R1A" entry.
+
+- **Lock metadata is bounded.** Same-key materialization used a per-key lock map that was never trimmed.
+  Random per-open namespaces for external sources made it grow for the life of the process. It is replaced by a
+  fixed array of 64 stripe locks chosen with `Math.floorMod(key.hashCode(), 64)`. The same key always uses the
+  same stripe, so same-key serialization is unchanged. Colliding keys serialize their misses only. Cache hits
+  take only the state lock.
+- **Missing finals stop counting immediately.** When a slot exists but its final is no longer a file, the slot's
+  bytes and entry leave the accounting before re-materialization starts. This holds when the extraction
+  reports an error, throws, or fails to publish. Outstanding leases move to a zero-byte lease-only holder. A
+  later successful retry folds them into the new slot once. Otherwise the holder disappears with its last
+  release.
+- **Empty namespace directories are pruned safely.** A namespace directory is removed when the namespace has no
+  slot, no lease-only holder and no in-flight materialization. The check runs under the state lock, and the
+  materializing path registers as in-flight and creates its directory in the same state-lock section, so pruning
+  cannot race temp creation. The delete is non-recursive and only touches `<canonical root>/<namespace>`. It
+  runs after eviction, after a failed materialization, after a lease-only holder's last release, and during
+  lazy discovery. It never scans the whole root on access.
+
+Unchanged: the global 256 MiB / 64-entry limits. External sources keep ephemeral namespaces and managed copies
+keep `managed:<id>`. Also unchanged: lazy discovery, deterministic LRU, lease protection, atomic publish,
+failed deletions staying accounted, and the native output ceiling. Cache finals are still not hashed. Tests:
+new `RarCacheCoordinationBoundsTest` (11 cases, including a 1,600-key ephemeral churn test that asserts every
+coordinator container stays bounded). One `RarExtractionCacheTest` assertion was adjusted because the
+directory it listed is now pruned.
+
+**Status**: 3E-A/B/C/D complete/accepted; 3E-E implemented, R1A remediation complete, pending a fresh Codex
+High review; Phase 3 NOT complete. Full JVM, full connected and physical ARM validation remain Phase 3F.
 
 ## 2. Why Phase 3 is not green-field
 

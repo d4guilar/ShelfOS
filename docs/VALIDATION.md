@@ -1,8 +1,80 @@
 # Validation
 
+## PHASE 3E-E R1A — CBR CACHE COORDINATOR REMEDIATION (2026-10-08)
+
+Status: 3E-A/3E-B/3E-C/3E-D **COMPLETE/accepted**. 3E-E **IMPLEMENTED; R1A remediation complete; pending a
+fresh Codex High review**. Phase 3 overall is **NOT complete**. Branch: `phase-3/3e-native-cbr`; base
+`08fc911`. Narrative: `docs/PHASE_3_IMPLEMENTATION_PLAN.md` §33a.
+
+Codex High's final 3E-E review returned CHANGES REQUIRED with three findings, all in
+`core/files/RarCacheCoordinator.kt`. Everything else passed. Production change: that file only.
+
+- **Finding 1 (HIGH), unbounded lock metadata**. Before: one lock object per `(namespace, physicalIndex)` in a
+  map that was never trimmed. External CBR sources get a random namespace per open, so the map grew for the
+  life of the process even though disk finals were capped at 64. Now: a fixed array of 64 stripe locks. A key
+  picks its stripe with `Math.floorMod(hashCode, 64)`. There is no per-key lock map. The same key always uses
+  the same stripe, so same-key materialization is still serialized. Two different keys on the same stripe
+  serialize their misses. A cache hit takes only the state lock and never waits on a stripe.
+- **Finding 2 (MEDIUM), phantom bytes after a failed re-materialization**. Before: a slot whose final had
+  vanished was reconciled only when re-materialization succeeded. Now: as soon as the coordinator sees that
+  the slot exists but the final is not a file, it removes the slot's bytes and entry from the accounting. This
+  happens before extraction, so it holds when extraction reports an error, throws, or fails to publish.
+  Outstanding leases move to a lease-only holder with zero bytes. It is not an entry and is never an eviction
+  candidate. A later successful retry folds those leases into the new slot once. Otherwise the holder is
+  removed when its last lease is released.
+- **Finding 3 (MEDIUM), empty namespace directories**. Before: eviction deleted finals but left
+  `cacheDir/cbr/<namespace>/` behind. Now: a namespace directory is removed, under the state lock, when that
+  namespace has no slot, no lease-only holder and no in-flight materialization. The delete is non-recursive.
+  Only a directory whose canonical path is exactly `<canonical root>/<namespace>` is touched. Triggers: eviction
+  of a final, cleanup after a failed materialization, release of a lease-only holder's last lease, and empty
+  directories found by lazy discovery. A materialization registers as in-flight and creates its directory
+  inside one state-lock section, so a prune cannot delete the directory before the temp file is created.
+- **Unchanged**: the global limits (256 MiB / 64 entries); the source-key policy (external sources stay
+  ephemeral, managed copies use `managed:<id>`); lazy discovery; deterministic LRU; lease protection;
+  atomic temp→final publish; failed deletions stay accounted; eviction on release; the native output ceiling;
+  the successful missing-final re-materialization from `08fc911`. No native, reader, Room/schema or
+  dependency change. Cache finals are still not hashed.
+
+**Executed now — targeted JVM** (`./gradlew.bat :app:testDebugUnitTest --tests "com.d4guilar.shelfos.core.files.RarCacheCoordinationBoundsTest" --tests "com.d4guilar.shelfos.core.files.RarCacheCoordinatorTest" --tests "com.d4guilar.shelfos.core.files.RarExtractionCacheTest" --tests "com.d4guilar.shelfos.core.files.RarAcceptanceHardeningTest"`; the XML reports were checked for fresh timestamps and the new class):
+
+| Class | Result |
+|---|---|
+| `RarCacheCoordinationBoundsTest` (new) | 11/11 |
+| `RarCacheCoordinatorTest` | 10/10 |
+| `RarExtractionCacheTest` | 11/11 |
+| `RarAcceptanceHardeningTest` | 27/27 |
+| **Total** | **59/59, 0 failures** |
+
+`RarCacheCoordinationBoundsTest` covers:
+
+- stripe mapping is deterministic and in range, including negative hashes
+- 400 ephemeral namespaces × 4 ordinals: every instance-level map, collection or array in the coordinator stays
+  at or under max(64 stripes, maxEntries) for the whole run. 1,600 distinct keys would overflow any per-key map.
+- 120 ephemeral `RarContainer` opens: finals and namespace directories stay bounded
+- a vanished final stops counting immediately when re-materialization reports an error, throws, or fails to
+  publish (rename)
+- an inherited lease on a vanished final: zero accounted bytes, lease still valid, never targeted by eviction,
+  the release succeeds, and a later retry succeeds
+- a later successful retry adds its bytes and entry exactly once
+- pruning after eviction keeps live directories
+- an in-flight namespace is not pruned by concurrent eviction (latch-driven, no sleeps)
+- lazy discovery prunes empty stale directories, keeps valid finals and stays inside the root. The symlink
+  sub-case runs only where the host allows creating symlinks. This Windows host denies it, so that sub-case
+  was skipped here; the rest of the test ran.
+
+One existing assertion in `RarExtractionCacheTest` was adjusted: it listed a namespace directory that is now
+pruned after the failure. The assertion is otherwise unchanged.
+
+**Build gates executed now**: `./gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
+:app:bundleDebug` — BUILD SUCCESSFUL. No packaging topology change.
+
+**Not run**: connected tests (pure-Kotlin coordinator change; accepted `CbrProductIntegrationTest` 6/6 and
+native evidence below are retained). The PSS evidence below stands. The new churn test covers the
+unique-key churn case that evidence did not exercise. Full JVM, full connected and physical ARM remain Phase 3F.
+
 ## PHASE 3E-E — FINAL CBR ACCEPTANCE HARDENING (2026-10-08)
 
-Status: **IMPLEMENTED locally; pending independent final review.** 3E-A/3E-B/3E-C/3E-D are
+Status: **IMPLEMENTED locally; R1A coordinator remediation recorded above; pending fresh review.** 3E-A/3E-B/3E-C/3E-D are
 COMPLETE/accepted (3E-D including its R1A/R1B remediation). Phase 3 overall is **NOT complete**. Branch:
 `phase-3/3e-native-cbr`; base (3E-D accepted HEAD) `63f2eab`. Narrative: `docs/PHASE_3_IMPLEMENTATION_PLAN.md`
 §33.

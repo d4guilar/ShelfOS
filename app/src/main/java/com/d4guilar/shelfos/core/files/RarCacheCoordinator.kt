@@ -101,20 +101,58 @@ import java.util.concurrent.atomic.AtomicLong
  * its accounting is reclaimed on eviction, and a later [acquire] of that key re-materializes it instead of
  * returning a handle to a missing file (Phase 3E-E).
  *
+ * ## Missing finals (Phase 3E-E R1A)
+ *
+ * The moment [acquire] observes that a key's [Slot] exists but its final is no longer a file, that slot is
+ * removed from [slots] and its bytes from [usedBytes] -- BEFORE any re-materialization is attempted, so the
+ * phantom payload stops counting toward the byte and entry budgets even if re-materialization then fails,
+ * throws, or is never retried. Outstanding leases on the vanished slot are carried in [leaseOnly], a
+ * lease-only holder that accounts zero bytes, is never an entry, and is never an eviction candidate. A later
+ * successful materialization of the same key folds those leases into its new slot exactly once; otherwise the
+ * holder is removed when its last lease is released. [leaseOnly] is therefore bounded by outstanding handles,
+ * never by history.
+ *
+ * ## Empty namespace directories (Phase 3E-E R1A)
+ *
+ * Eviction deletes finals, and ephemeral (per-open random) namespaces are never requested again, so without
+ * pruning `cbr/<namespace>/` directories would accumulate forever. [pruneNamespaceIfIdleLocked] removes a
+ * namespace directory only when, under [stateLock], that namespace has no [slots] entry, no [leaseOnly]
+ * holder, and no in-flight materialization ([inFlight]). It uses a non-recursive [File.delete], so a
+ * non-empty directory (e.g. a final whose deletion failed) is never removed, and only a directory whose
+ * canonical path is exactly `<canonical root>/<namespace>` (never a symlink, never outside [root]). Pruning is
+ * incremental: after eviction removes a final, after a failed materialization's temp cleanup, after a
+ * lease-only holder's last release, and for empty directories met by lazy discovery. There is no per-access
+ * root scan. [inFlight] holds one counter per namespace with an active materialization and drops it at zero,
+ * so it is bounded by concurrent activity, not by history.
+ *
  * ## Locking / lock ordering
  *
- * [stateLock] guards only [slots]/[usedBytes]/[accessCounter]/[discovered] bookkeeping and eviction; it is NEVER
- * held across [extract] (native extraction, Bitmap decode, or a long filesystem copy all happen OUTSIDE
- * [stateLock]). One [Any] lock per [Key] (via [keyLocks],
- * never one coarse cross-key lock) serializes two concurrent [acquire] calls for the SAME key so the second
- * caller observes the first caller's now-cached result rather than racing it into a redundant extraction or a
- * partially-overwritten final file; different keys may proceed concurrently at this layer. Lock ordering
- * relative to [NativeRarSession]'s own per-session monitor: this coordinator always acquires a key lock (and,
- * briefly, [stateLock]) BEFORE ever calling into [extract] (which may, transitively, acquire a
- * [NativeRarSession] instance's own lock) -- never the reverse, and [stateLock] is never held while [extract]
- * runs. [NativeRarSession] never calls back into this coordinator. That one-directional dependency
- * (coordinator lock -> session lock, never session lock -> coordinator lock) makes a deadlock between the two
- * structurally impossible, not merely untested.
+ * [stateLock] guards [slots]/[leaseOnly]/[inFlight]/[usedBytes]/[accessCounter]/[discovered] bookkeeping,
+ * eviction and namespace-directory pruning; it is NEVER held across [extract] (native extraction, Bitmap
+ * decode, or a long filesystem copy all happen OUTSIDE [stateLock]).
+ *
+ * Same-key materialization is serialized by a FIXED array of [LOCK_STRIPE_COUNT] stripe locks ([lockStripes]),
+ * selected deterministically from the key's hash with [Math.floorMod] (never a per-key lock map, which grew
+ * without bound under ephemeral-namespace churn before Phase 3E-E R1A). The same key always maps to the same
+ * stripe, so a second concurrent [acquire] of that key observes the first caller's published result rather
+ * than racing it into a redundant extraction or a partially overwritten final. Two different keys that collide
+ * on a stripe merely serialize their materializations; a cache hit takes only [stateLock] and never waits on a
+ * stripe. A stripe is held only for one key's miss path (re-check, temp extraction, rename, publish), never for
+ * Bitmap decode.
+ *
+ * Directory creation versus pruning: the materializing path increments [inFlight] for its namespace AND
+ * creates the namespace directory inside the same [stateLock] section, and only decrements [inFlight] (on
+ * publish, or in the failure path before attempting a prune) under [stateLock] again. A prune decision is made
+ * under [stateLock] and refuses any namespace with an [inFlight] counter, so "pruner observes empty ->
+ * materializer creates temp in it -> pruner deletes it" cannot interleave.
+ *
+ * Order: stripe lock -> [stateLock], never the reverse; no path takes two stripes. Relative to
+ * [NativeRarSession]'s own per-session monitor: this coordinator always acquires a stripe (and, briefly,
+ * [stateLock]) BEFORE ever calling into [extract] (which may, transitively, acquire a [NativeRarSession]
+ * instance's own lock) -- never the reverse, and [stateLock] is never held while [extract] runs.
+ * [NativeRarSession] never calls back into this coordinator. That one-directional dependency (coordinator lock
+ * -> session lock, never session lock -> coordinator lock) makes a deadlock between the two structurally
+ * impossible, not merely untested.
  */
 internal class RarCacheCoordinator private constructor(
     private val root: File,
@@ -131,9 +169,17 @@ internal class RarCacheCoordinator private constructor(
 
     private val stateLock = Any()
     private val slots = HashMap<Key, Slot>()
+
+    /** Lease-only holders for keys whose final vanished: outstanding lease count, zero accounted bytes, never an
+     * entry. Guarded by [stateLock]; see the class doc's "Missing finals" section. */
+    private val leaseOnly = HashMap<Key, Int>()
+
+    /** Namespace -> number of in-flight materializations; an entry is removed when it reaches zero. Guarded by
+     * [stateLock]; see the class doc's "Empty namespace directories" section. */
+    private val inFlight = HashMap<String, Int>()
     private var accessCounter = 0L
     private var usedBytes = 0L
-    private val keyLocks = ConcurrentHashMap<Key, Any>()
+    private val lockStripes = Array(LOCK_STRIPE_COUNT) { Any() }
     private val tempFileSequence = AtomicLong(0L)
 
     @Volatile private var discovered = false
@@ -151,74 +197,154 @@ internal class RarCacheCoordinator private constructor(
     fun acquire(namespace: String, physicalIndex: Int, extract: (File) -> NativeRarError?): CachedExtraction {
         ensureDiscovered()
         val key = Key(namespace, physicalIndex)
-        val keyLock = keyLocks.computeIfAbsent(key) { Any() }
-        synchronized(keyLock) {
+        // Fast path: a hit needs only stateLock, never a stripe, so a slow materialization of a colliding key
+        // can never delay an already-published page.
+        synchronized(stateLock) { leaseExistingLocked(key)?.let { return it } }
+
+        synchronized(lockStripes[stripeIndex(key)]) {
+            val namespaceDir: File
             synchronized(stateLock) {
-                slots[key]?.let { slot ->
-                    // Phase 3E-E: a final can vanish underneath accounting (Android or the user clearing the app
-                    // cache while ShelfOS runs). Never hand out a handle to a missing file -- fall through and
-                    // re-materialize under this same key lock; the replacement slot below inherits this slot's
-                    // outstanding leases and replaces (never double-counts) its bytes.
-                    if (slot.file.isFile) {
-                        slot.activeReaders++
-                        slot.lastAccess = ++accessCounter
-                        return CachedExtraction(slot.file) { release(key) }
+                // Re-check under the stripe: another caller may have published this key meanwhile.
+                leaseExistingLocked(key)?.let { return it }
+                // Register in-flight work and create the directory in ONE stateLock section, so a concurrent
+                // prune (which also runs under stateLock and refuses in-flight namespaces) can never delete the
+                // directory between its creation and this caller's temp file.
+                // (mkdirs first: if it ever threw, no in-flight count would be left behind.)
+                namespaceDir = File(root, namespace).apply { mkdirs() }
+                inFlight[namespace] = (inFlight[namespace] ?: 0) + 1
+            }
+
+            var published = false
+            try {
+                val finalFile = File(namespaceDir, "$physicalIndex.bin")
+                val tempFile = File(
+                    namespaceDir,
+                    "$physicalIndex.tmp-${System.nanoTime()}-${tempFileSequence.incrementAndGet()}",
+                )
+                val error = try {
+                    extract(tempFile)
+                } catch (t: Throwable) {
+                    tempFile.delete()
+                    throw t
+                }
+                if (error != null) {
+                    tempFile.delete()
+                    throw RarExtractionException(error)
+                }
+                if (!tempFile.isFile) {
+                    tempFile.delete()
+                    throw RarExtractionException(NativeRarError.NATIVE_INTERNAL)
+                }
+                val bytes = tempFile.length()
+                if (bytes > RarExtractionCache.MAX_ENTRY_BYTES) {
+                    tempFile.delete()
+                    throw RarExtractionException(NativeRarError.INVALID_ARGUMENT)
+                }
+                // Defensive: a stale final file (e.g. from a corrupted prior cache generation) must never be
+                // trusted merely because a rename target with this name exists. No slot references this path
+                // (a vanished slot was already reconciled away above), so this never deletes an active final.
+                finalFile.delete()
+                if (!tempFile.renameTo(finalFile)) {
+                    tempFile.delete()
+                    throw RarExtractionException(NativeRarError.IO)
+                }
+
+                synchronized(stateLock) {
+                    // Leases inherited from a vanished final of this key are folded in exactly once.
+                    var readers = (leaseOnly.remove(key) ?: 0) + 1
+                    // Defensive only: under this stripe nothing else can publish this key, and a vanished slot was
+                    // reconciled before extraction, so a previous slot is not expected. Never double-count it.
+                    slots.remove(key)?.let { previous ->
+                        usedBytes -= previous.bytes
+                        readers += previous.activeReaders
+                    }
+                    slots[key] = Slot(finalFile, bytes, ++accessCounter, readers)
+                    usedBytes += bytes
+                    endInFlightLocked(namespace)
+                    published = true
+                    evictLocked()
+                }
+                return CachedExtraction(finalFile) { release(key) }
+            } finally {
+                if (!published) {
+                    synchronized(stateLock) {
+                        endInFlightLocked(namespace)
+                        pruneNamespaceIfIdleLocked(namespace)
                     }
                 }
             }
-
-            val namespaceDir = File(root, namespace).apply { mkdirs() }
-            val finalFile = File(namespaceDir, "$physicalIndex.bin")
-            val tempFile = File(
-                namespaceDir,
-                "$physicalIndex.tmp-${System.nanoTime()}-${tempFileSequence.incrementAndGet()}",
-            )
-            val error = try {
-                extract(tempFile)
-            } catch (t: Throwable) {
-                tempFile.delete()
-                throw t
-            }
-            if (error != null) {
-                tempFile.delete()
-                throw RarExtractionException(error)
-            }
-            if (!tempFile.isFile) {
-                tempFile.delete()
-                throw RarExtractionException(NativeRarError.NATIVE_INTERNAL)
-            }
-            val bytes = tempFile.length()
-            if (bytes > RarExtractionCache.MAX_ENTRY_BYTES) {
-                tempFile.delete()
-                throw RarExtractionException(NativeRarError.INVALID_ARGUMENT)
-            }
-            // Defensive: a stale final file (e.g. from a corrupted prior cache generation) must never be trusted
-            // merely because a rename target with this name exists.
-            finalFile.delete()
-            if (!tempFile.renameTo(finalFile)) {
-                tempFile.delete()
-                throw RarExtractionException(NativeRarError.IO)
-            }
-
-            synchronized(stateLock) {
-                val previous = slots[key] // non-null only when re-materializing a vanished final (see above)
-                if (previous != null) usedBytes -= previous.bytes
-                val slot = Slot(finalFile, bytes, ++accessCounter, activeReaders = (previous?.activeReaders ?: 0) + 1)
-                slots[key] = slot
-                usedBytes += bytes
-                evictLocked()
-            }
-            return CachedExtraction(finalFile) { release(key) }
         }
+    }
+
+    /**
+     * Must be called with [stateLock] held. Leases and returns [key]'s published final when it is still a file.
+     * When the slot exists but its final vanished (Android or the user clearing the app cache while ShelfOS
+     * runs), reconciles immediately -- the slot stops counting toward [usedBytes] and the entry count, and its
+     * outstanding leases move to [leaseOnly] -- and returns null so the caller re-materializes. See the class
+     * doc's "Missing finals" section.
+     */
+    private fun leaseExistingLocked(key: Key): CachedExtraction? {
+        val slot = slots[key] ?: return null
+        if (slot.file.isFile) {
+            slot.activeReaders++
+            slot.lastAccess = ++accessCounter
+            return CachedExtraction(slot.file) { release(key) }
+        }
+        slots.remove(key)
+        usedBytes -= slot.bytes
+        if (slot.activeReaders > 0) leaseOnly[key] = (leaseOnly[key] ?: 0) + slot.activeReaders
+        return null
+    }
+
+    /** Must be called with [stateLock] held. */
+    private fun endInFlightLocked(namespace: String) {
+        val count = inFlight[namespace] ?: return
+        if (count <= 1) inFlight.remove(namespace) else inFlight[namespace] = count - 1
     }
 
     private fun release(key: Key) {
         synchronized(stateLock) {
-            val slot = slots[key] ?: return
-            if (slot.activeReaders <= 0) return
-            slot.activeReaders--
-            if (slot.activeReaders == 0) evictLocked()
+            val slot = slots[key]
+            if (slot != null) {
+                if (slot.activeReaders <= 0) return
+                slot.activeReaders--
+                if (slot.activeReaders == 0) evictLocked()
+                return
+            }
+            // A lease on a final that vanished and has not (yet) been re-materialized.
+            val held = leaseOnly[key] ?: return
+            if (held <= 1) {
+                leaseOnly.remove(key)
+                pruneNamespaceIfIdleLocked(key.namespace)
+            } else {
+                leaseOnly[key] = held - 1
+            }
         }
+    }
+
+    private fun stripeIndex(key: Key): Int = Math.floorMod(key.hashCode(), lockStripes.size)
+
+    /**
+     * Must be called with [stateLock] held. Removes `root/<namespace>` when the namespace has no slot, no
+     * lease-only holder and no in-flight materialization -- see the class doc's "Empty namespace directories"
+     * section. Non-recursive: a non-empty directory is left alone. Only a directory whose canonical path is
+     * exactly `<canonical root>/<namespace>` is touched, so a symlink or an unexpected path is never deleted.
+     */
+    private fun pruneNamespaceIfIdleLocked(namespace: String) {
+        if (inFlight.containsKey(namespace)) return
+        if (slots.keys.any { it.namespace == namespace }) return
+        if (leaseOnly.keys.any { it.namespace == namespace }) return
+        val rootCanonical = runCatching { root.canonicalFile }.getOrNull() ?: return
+        val dir = File(root, namespace)
+        if (!isOwnedNamespaceDir(dir, rootCanonical)) return
+        runCatching { dir.delete() }
+    }
+
+    /** True only for an existing, real (non-symlink) directory directly under the canonical [root]. */
+    private fun isOwnedNamespaceDir(dir: File, rootCanonical: File): Boolean {
+        if (!dir.isDirectory) return false
+        val canonical = runCatching { dir.canonicalFile }.getOrNull() ?: return false
+        return canonical.parentFile == rootCanonical && canonical == File(rootCanonical, dir.name)
     }
 
     /** Must be called with [stateLock] held. Spans every namespace's entries -- see the class doc's "Eviction"
@@ -235,6 +361,7 @@ internal class RarCacheCoordinator private constructor(
                 if (!deleteFile(victim.value.file) && victim.value.file.exists()) continue
                 usedBytes -= victim.value.bytes
                 slots.remove(victim.key)
+                pruneNamespaceIfIdleLocked(victim.key.namespace)
                 evicted = true
                 break
             }
@@ -268,6 +395,7 @@ internal class RarCacheCoordinator private constructor(
             }
             val namespace = entry.name
             val files = entry.listFiles() ?: continue
+            var foundFinal = false
             for (file in files) {
                 if (!isWithinRoot(file, rootCanonical)) continue
                 if (!file.isFile) continue
@@ -286,7 +414,12 @@ internal class RarCacheCoordinator private constructor(
                 val bytes = file.length()
                 slots[Key(namespace, index)] = Slot(file, bytes, ++accessCounter, activeReaders = 0)
                 usedBytes += bytes
+                foundFinal = true
             }
+            // Phase 3E-E R1A: an empty stale namespace directory (e.g. an old ephemeral namespace) is pruned here.
+            // Discovery runs before any materialization can register as in-flight, and the delete is
+            // non-recursive, so anything still inside (an unexpected subdirectory) keeps the directory.
+            if (!foundFinal && isOwnedNamespaceDir(entry, rootCanonical)) runCatching { entry.delete() }
         }
         evictLocked() // discovered total may already exceed budget on a fresh process.
     }
@@ -303,10 +436,22 @@ internal class RarCacheCoordinator private constructor(
     internal val usedBytesForTest: Long get() = synchronized(stateLock) { usedBytes }
     internal fun containsForTest(namespace: String, key: Int): Boolean =
         synchronized(stateLock) { slots.containsKey(Key(namespace, key)) }
-    internal fun activeReadersForTest(namespace: String, key: Int): Int =
-        synchronized(stateLock) { slots[Key(namespace, key)]?.activeReaders ?: 0 }
+    /** Outstanding leases on the key, whether on its published slot or on a lease-only holder for a vanished
+     * final. */
+    internal fun activeReadersForTest(namespace: String, key: Int): Int = synchronized(stateLock) {
+        val k = Key(namespace, key)
+        slots[k]?.activeReaders ?: leaseOnly[k] ?: 0
+    }
+    internal fun leaseOnlyCountForTest(): Int = synchronized(stateLock) { leaseOnly.size }
+    internal fun inFlightNamespaceCountForTest(): Int = synchronized(stateLock) { inFlight.size }
+    internal fun liveNamespacesForTest(): Set<String> = synchronized(stateLock) { slots.keys.mapTo(HashSet()) { it.namespace } }
+    internal val lockStripeCountForTest: Int get() = lockStripes.size
+    internal fun stripeIndexForTest(namespace: String, key: Int): Int = stripeIndex(Key(namespace, key))
 
     companion object {
+        /** Fixed number of same-key materialization stripe locks; see the class doc's "Locking" section. */
+        internal const val LOCK_STRIPE_COUNT: Int = 64
+
         private val TEMP_NAME = Regex("""-?\d+\.tmp-.*""")
         private val FINAL_NAME = Regex("""(-?\d+)\.bin""")
 
