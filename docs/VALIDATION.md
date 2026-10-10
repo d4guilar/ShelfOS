@@ -31,8 +31,8 @@ parse-only Readium locator validation, Room-generated `4.json`.
 emulator screen was asleep (`mAwake=false` in `dumpsys window`), so `ActivityScenario` paused/stopped the Activity. After waking
 the screen the same class passed 9/9 with no code change. This is an environment condition, not a ShelfOS defect.
 
-**Migration evidence** (`AnnotationMigrationTest`, real raw-SQL v3 file matching `3.json`; 3 items EPUB/PDF/CBZ, reading
-state and preferences per item, 8 bookmarks incl. NULL and empty labels, a 3-way progress+createdAt tie broken by id, an
+**Migration evidence** (`AnnotationMigrationTest`, real raw-SQL v3 file matching `3.json`; 4 items EPUB/PDF/CBZ/CBR, reading
+state and preferences per item, 9 bookmarks incl. NULL and empty labels, a 3-way progress+createdAt tie broken by id, an
 earlier-createdAt same-progress row, a quoted/unicode Readium locator and fixed-page locators): every bookmark id present as
 `BOOKMARK`, locator byte-identical, progress/title (NULL stays NULL)/createdAt preserved, `updatedAt == createdAt`, format
 `READIUM_LOCATOR_1` for EPUB and `FIXED_PAGE_1` otherwise, `orderKey` NULL, legacy `bookmark` rows still present, every other

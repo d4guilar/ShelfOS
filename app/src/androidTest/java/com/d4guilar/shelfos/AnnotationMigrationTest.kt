@@ -30,9 +30,10 @@ class AnnotationMigrationTest {
     private val epubLocatorC = """{ "href" : "ch3.xhtml", "type":"application/xhtml+xml" }"""
     private val pdfLocator = """{"version":1,"page":3}"""
     private val cbzLocator = """{"version":1,"page":0}"""
+    private val cbrLocator = """{"version":1,"page":7}"""
     private val neverValidated = AnnotationLocatorValidator { _, _ -> true }
 
-    private val items = listOf("item-epub" to "EPUB", "item-pdf" to "PDF", "item-cbz" to "CBZ")
+    private val items = listOf("item-epub" to "EPUB", "item-pdf" to "PDF", "item-cbz" to "CBZ", "item-cbr" to "CBR")
     private val bookmarks = listOf(
         V3Bookmark("b-c", "item-epub", epubLocatorA, 50, "Keep this", 1_000),
         V3Bookmark("b-a", "item-epub", epubLocatorB, 50, null, 1_000),         // ties b-c on progress and createdAt
@@ -42,6 +43,7 @@ class AnnotationMigrationTest {
         V3Bookmark("p-1", "item-pdf", pdfLocator, 30, "Page four", 2_000),
         V3Bookmark("p-2", "item-pdf", """{"version":1,"page":0}""", 0, null, 2_000),
         V3Bookmark("z-1", "item-cbz", cbzLocator, 99, null, 3_000),
+        V3Bookmark("r-1", "item-cbr", cbrLocator, 70, "Page eight", 4_000),
     )
 
     @Test fun realV3DatabaseMigratesEveryBookmarkLosslesslyAndKeepsLegacyAndOtherTables() = runBlocking<Unit> {
@@ -108,6 +110,7 @@ class AnnotationMigrationTest {
             }
             assertEquals(listOf("p-2", "p-1"), compat.bookmarks("item-pdf").first().map { it.id })
             assertEquals(listOf("z-1"), compat.bookmarks("item-cbz").first().map { it.id })
+            assertEquals(listOf("r-1"), compat.bookmarks("item-cbr").first().map { it.id })
             // Bookmarks written after migration go only to the canonical table.
             compat.addBookmark("item-epub", """{"href":"new.xhtml"}""", 77, null)
             sql.query("SELECT COUNT(*) FROM annotation").use { it.moveToFirst(); assertEquals(bookmarks.size + 1, it.getInt(0)) }

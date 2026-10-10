@@ -68,7 +68,11 @@ abstract class ShelfDatabase : RoomDatabase() {
                 val source = db.scalar("SELECT COUNT(*) FROM bookmark")
                 val copied = db.scalar("SELECT COUNT(*) FROM annotation")
                 check(source == copied) { "MIGRATION_3_4: copied $copied of $source bookmarks" }
-                val diverged = db.scalar("SELECT COUNT(*) FROM bookmark b WHERE NOT EXISTS (SELECT 1 FROM annotation a WHERE a.id = b.id AND a.libraryItemId = b.itemId AND a.kind = 'BOOKMARK' AND a.locatorJson = b.locator AND a.progressSnapshot = b.progress AND a.title IS b.label AND a.createdAt = b.createdAt AND a.updatedAt = b.createdAt)")
+                val diverged = db.scalar("SELECT COUNT(*) FROM bookmark b JOIN library_item li ON li.id = b.itemId " +
+                    "WHERE NOT EXISTS (SELECT 1 FROM annotation a WHERE a.id = b.id AND a.libraryItemId = b.itemId " +
+                    "AND a.kind = 'BOOKMARK' AND a.locatorFormat = CASE WHEN li.format = 'EPUB' THEN 'READIUM_LOCATOR_1' ELSE 'FIXED_PAGE_1' END " +
+                    "AND a.locatorJson = b.locator AND a.progressSnapshot = b.progress AND a.orderKey IS NULL AND a.title IS b.label " +
+                    "AND a.selectedText IS NULL AND a.body IS NULL AND a.styleKey IS NULL AND a.createdAt = b.createdAt AND a.updatedAt = b.createdAt)")
                 check(diverged == 0L) { "MIGRATION_3_4: $diverged migrated bookmark(s) differ from their source row" }
             }
 
