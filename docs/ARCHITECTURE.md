@@ -719,7 +719,10 @@ Publication identity ≠ Local source location
 The architecture must stay capable of recognizing the same logical publication on a
 different device with a different local URI. Possible future tools are stable logical IDs,
 fingerprints/hashes and source records separate from publication records; do not implement
-them merely for hypothetical sync while the current architecture does not need them.
+them merely for hypothetical sync while the current architecture does not need them. The
+future removal → re-import recognition and history-restoration requirement is recorded in
+[Library Sources](features/LIBRARY_SOURCES.md#publication-identity-across-removal-and-re-import-future);
+publication identity remains distinct from metadata matching.
 
 ### Do not synchronize the raw Room database
 

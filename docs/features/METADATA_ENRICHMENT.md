@@ -16,6 +16,11 @@ Optional means never required, not opt-in: when enrichment is implemented, ordin
 users should receive good default background enrichment without configuring providers,
 keys or accounts.
 
+Metadata matching is also distinct from publication identity: resemblance alone must
+never prove that two imports are the same publication, even though enrichment and
+future identity evidence may share candidate-resolution concepts. See
+[publication identity across removal and re-import](LIBRARY_SOURCES.md#publication-identity-across-removal-and-re-import-future).
+
 ### Beautiful by default
 
 An accepted product goal is that importing a recognizable publication leaves the library
