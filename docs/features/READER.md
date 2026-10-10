@@ -18,7 +18,8 @@ whole); SPREAD is the explicit pairing mode. CBR/RAR archives are read natively
 and directly through the shared image-sequence pipeline with no conversion and no
 source mutation (see `docs/adr/0024-native-cbr-libarchive.md`). The sections below
 describe the shared target behavior; remaining gaps (annotations, Adapted PDF,
-later formats) stay future work.
+later formats) stay future work. Note: bookmarks are implemented for EPUB only; PDF/CBZ/CBR
+page bookmarks are Phase 4 work (see `docs/PHASE_4_IMPLEMENTATION_PLAN.md`).
 
 ## Shared goals
 

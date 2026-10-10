@@ -1,5 +1,16 @@
 # Documentation Changelog
 
+## Phase 4 planning recorded (2026-10-10)
+
+- Added `docs/PHASE_4_IMPLEMENTATION_PLAN.md` (Notes and Knowledge Layer: repository audit,
+  slices 4A-4F, schema/migration strategy, Readium 3.4.0 API findings and the bounded 4B spike,
+  fixed-layout rules, Notes hub, export, validation and UAT strategy, stop conditions) and
+  `docs/adr/0025-annotation-anchor-and-knowledge-model.md` (Proposed).
+- `docs/ROADMAP.md`, `docs/features/ANNOTATIONS.md` and `docs/features/READER.md`: pointers to the
+  plan/ADR and a correction that bookmarks exist for EPUB only (the shipped `bookmark` table cascades
+  from the LibraryItem; the removal dialog does not yet disclose that).
+- Planning only: no production code, tests, Room schema, Gradle/build configuration or dependencies changed.
+
 ## Phase 3 reader documentation reconciled (2026-10-09)
 
 - Reconciled documentation with the completed, owner-UAT-accepted Phase 3 reader work (merged to `main` as
