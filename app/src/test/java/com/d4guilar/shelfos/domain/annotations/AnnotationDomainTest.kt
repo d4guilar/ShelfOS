@@ -83,4 +83,34 @@ class AnnotationDomainTest {
         )
         for (json in bad) assertNull("should reject: $json", FixedPageLocator.parse(json))
     }
+
+    // ---- Phase 4B size caps ----
+
+    @Test fun locatorOverSixtyFourKibIsRejectedAtTheRepositoryRulesBoundary() {
+        val atCap = "x".repeat(AnnotationLimits.MAX_LOCATOR_BYTES - 2)
+        AnnotationRules.validate(draft(AnnotationKind.BOOKMARK, locator = """{"$atCap"""), acceptAll)   // opaque: exactly at the cap is fine
+        assertTrue(rejects(draft(AnnotationKind.BOOKMARK, locator = "x".repeat(AnnotationLimits.MAX_LOCATOR_BYTES + 1))))
+        // The cap counts UTF-8 bytes, so 3-byte characters hit it first.
+        assertTrue(rejects(draft(AnnotationKind.BOOKMARK, locator = "€".repeat(AnnotationLimits.MAX_LOCATOR_BYTES / 3 + 1))))
+    }
+
+    @Test fun noteBodyOverTwentyThousandCharactersIsRejectedNeverTruncated() {
+        AnnotationRules.validate(draft(AnnotationKind.NOTE, body = "n".repeat(AnnotationLimits.MAX_BODY)), acceptAll)
+        assertTrue(rejects(draft(AnnotationKind.NOTE, body = "n".repeat(AnnotationLimits.MAX_BODY + 1))))
+        // A highlight's optional body obeys the same cap, and an edit is validated identically.
+        assertTrue(rejects(draft(AnnotationKind.HIGHLIGHT, style = "amber", body = "n".repeat(AnnotationLimits.MAX_BODY + 1))))
+        val edit = runCatching { AnnotationRules.validateContent(AnnotationKind.NOTE, LocatorFormat.READIUM_LOCATOR_1, "sel", "n".repeat(AnnotationLimits.MAX_BODY + 1), null) }
+        assertTrue(edit.exceptionOrNull() is InvalidAnnotationException)
+    }
+
+    @Test fun selectedTextOverTwoThousandUnitsIsRejected() {
+        AnnotationRules.validate(draft(AnnotationKind.HIGHLIGHT, style = "amber", selected = "s".repeat(AnnotationLimits.MAX_SELECTED_TEXT)), acceptAll)
+        assertTrue(rejects(draft(AnnotationKind.HIGHLIGHT, style = "amber", selected = "s".repeat(AnnotationLimits.MAX_SELECTED_TEXT + 1))))
+    }
+
+    @Test fun blankNoteBodyIsStillRejectedAndPositionNotesCarryNoSelectedText() {
+        assertTrue(rejects(draft(AnnotationKind.NOTE, body = "  \t ")))
+        AnnotationRules.validate(draft(AnnotationKind.NOTE, selected = null, body = "a position note"), acceptAll)
+        AnnotationRules.validate(draft(AnnotationKind.NOTE, selected = "quote", body = "a selection note"), acceptAll)
+    }
 }

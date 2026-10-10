@@ -212,11 +212,14 @@ class EpubSession internal constructor(internal val publication: Publication,
      * source at all until something actually renders with that `font-family`, so declaring the rest without
      * preload does not load them, it only makes them *selectable* without a navigator rebuild.
      */
-    fun fragmentFactory(locator: String?, preferences: ReaderPreferences, dark: Boolean, category: MediaCategory): FragmentFactory {
+    fun fragmentFactory(locator: String?, preferences: ReaderPreferences, dark: Boolean, category: MediaCategory,
+        selectionActionModeCallback: android.view.ActionMode.Callback? = null): FragmentFactory {
         val fonts = liveManagedFonts()
         val selectedFamilyId = preferences.effectiveFontFamilyId()
         val configuration = EpubNavigatorFragment.Configuration {
             shouldApplyInsetsPadding = false
+            // Phase 4B: only set when inline annotations are supported; null keeps the platform's selection menu.
+            selectionActionModeCallback?.let { this.selectionActionModeCallback = it }
             fonts.forEach { font ->
                 addFontFamilyDeclaration(FontFamily(font.cssFamily), listOf(FontFamily.SERIF)) {
                     addFontFace {
@@ -263,6 +266,42 @@ class EpubSession internal constructor(internal val publication: Publication,
     suspend fun epubPositions(): List<EpubPosition> = epubPositionsCache ?: toEpubPositions(
         publication.positions().map { locator -> RawEpubPosition(locator.href.toString(), locator.locations.position, locator.locations.progression) }
     ).also { epubPositionsCache = it }
+    /**
+     * The sanitized markup Readium itself is served for [href] (the same [sanitizeEpubHtml] transform), for stale-anchor
+     * verification. Never reads or writes the source file's bytes beyond the normal publication read. Null when the
+     * resource is missing or unreadable.
+     */
+    internal suspend fun sanitizedMarkup(href: String): ResourceMarkup? {
+        val url = Url(href)?.removeFragment() ?: return null
+        val resource = publication.get(url) ?: return null
+        return try {
+            val bytes = resource.read().getOrNull() ?: return null
+            val extension = url.toString().substringBefore('?').substringAfterLast('.').lowercase()
+            ResourceMarkup(String(bytes, Charsets.UTF_8), isXmlContentDocument(publication.linkWithHref(url)?.mediaType, extension))
+        } finally { resource.close() }
+    }
+
+    /** Stale-anchor verifier over this session's sanitized rendition; its text cache lives as long as the session. */
+    val anchorVerifier: EpubAnchorVerifier by lazy { EpubAnchorVerifier(::sanitizedMarkup) }
+
+    private var resourceRangesCache: Map<String, ClosedFloatingPointRange<Double>>? = null
+
+    /**
+     * The book-level total-progression span (0..1) a resource covers, derived from Readium's position catalog; used only
+     * to turn an in-resource text offset into a sort hint. Null when unknown. Computes (and caches) the catalog on first use.
+     */
+    suspend fun resourceRange(href: String): ClosedFloatingPointRange<Double>? {
+        resourceRangesCache?.let { return it[href] }
+        val located = runCatching { publication.positions() }.getOrDefault(emptyList())
+        val starts = linkedMapOf<String, Double>()
+        located.forEach { l -> val total = l.locations.totalProgression ?: return@forEach; starts.putIfAbsent(l.href.toString(), total) }
+        val ordered = starts.entries.toList()
+        val ranges = HashMap<String, ClosedFloatingPointRange<Double>>()
+        ordered.forEachIndexed { i, (resource, start) -> ranges[resource] = start..(ordered.getOrNull(i + 1)?.value ?: 1.0) }
+        resourceRangesCache = ranges
+        return ranges[href]
+    }
+
     override fun close() = publication.close()
 }
 

@@ -200,4 +200,43 @@ class AnnotationRepositoryTest {
         assertEquals(LocatorFormat.READIUM_LOCATOR_1, saved.locatorFormat); assertEquals(AnnotationKind.BOOKMARK, saved.kind)
         assertEquals(saved.createdAt, saved.updatedAt)
     }
+
+    // ---- Phase 4B: EPUB highlight and note behavior on the repository ----
+
+    @Test fun highlightWithAnOptionalBodyStaysAHighlightAndStyleAndBodyAreEditable() = runBlocking<Unit> {
+        val h = repo.create(draft(kind = AnnotationKind.HIGHLIGHT, selected = "a passage", style = "amber", progress = 30))
+        assertNull(h.body)
+        val withBody = repo.update(h.id, AnnotationEdit(h.title, h.selectedText, "why I highlighted it", "blue"))!!
+        assertEquals(AnnotationKind.HIGHLIGHT, withBody.kind)
+        assertEquals("blue", withBody.styleKey); assertEquals("why I highlighted it", withBody.body); assertEquals("a passage", withBody.selectedText)
+        val cleared = repo.update(h.id, AnnotationEdit(h.title, h.selectedText, null, "blue"))!!
+        assertEquals(AnnotationKind.HIGHLIGHT, cleared.kind); assertNull(cleared.body)
+        assertTrue("a highlight needs a style", runCatching { repo.update(h.id, AnnotationEdit(null, "a passage", null, null)) }.exceptionOrNull() is InvalidAnnotationException)
+        assertEquals("blue", repo.get(h.id)!!.styleKey)
+    }
+
+    @Test fun selectionNoteAndPositionNoteRulesAndCaps() = runBlocking<Unit> {
+        val selection = repo.create(draft(kind = AnnotationKind.NOTE, selected = "quoted", body = "about it"))
+        val position = repo.create(draft(kind = AnnotationKind.NOTE, selected = null, body = "here", locator = """{"href":"p.xhtml"}"""))
+        assertEquals("quoted", selection.selectedText); assertNull(position.selectedText)
+        assertTrue(runCatching { repo.create(draft(kind = AnnotationKind.NOTE, body = "  ")) }.exceptionOrNull() is InvalidAnnotationException)
+        assertTrue(runCatching { repo.update(selection.id, AnnotationEdit(null, "quoted", "", null)) }.exceptionOrNull() is InvalidAnnotationException)
+        // Caps: 20,000-character body accepted exactly, one more rejected (never truncated); 64 KiB locator; 2,000-unit excerpt.
+        assertEquals(AnnotationLimits.MAX_BODY, repo.create(draft(kind = AnnotationKind.NOTE, body = "n".repeat(AnnotationLimits.MAX_BODY), locator = """{"href":"cap.xhtml"}""")).body!!.length)
+        assertTrue(runCatching { repo.create(draft(kind = AnnotationKind.NOTE, body = "n".repeat(AnnotationLimits.MAX_BODY + 1))) }.exceptionOrNull() is InvalidAnnotationException)
+        assertTrue(runCatching { repo.create(draft(locator = """{"href":"${"x".repeat(AnnotationLimits.MAX_LOCATOR_BYTES)}"}""")) }.exceptionOrNull() is InvalidAnnotationException)
+        assertTrue(runCatching { repo.create(draft(kind = AnnotationKind.HIGHLIGHT, style = "amber", selected = "s".repeat(AnnotationLimits.MAX_SELECTED_TEXT + 1))) }.exceptionOrNull() is InvalidAnnotationException)
+    }
+
+    @Test fun perPublicationListMixesKindsInReadingOrderByOrderKeyAndNeverLeaksAcrossItems() = runBlocking<Unit> {
+        val late = repo.create(draft(kind = AnnotationKind.HIGHLIGHT, selected = "late", style = "green", orderKey = 0.50, progress = 50, locator = """{"href":"l.xhtml"}"""))
+        val early = repo.create(draft(kind = AnnotationKind.NOTE, selected = "early", body = "n", orderKey = 0.10, progress = 10, locator = """{"href":"e.xhtml"}"""))
+        val mark = repo.create(draft(kind = AnnotationKind.BOOKMARK, progress = 30, locator = """{"href":"b.xhtml"}"""))   // no orderKey: falls back to progress / 100
+        repo.create(draft(item = pdf, kind = AnnotationKind.BOOKMARK, format = LocatorFormat.FIXED_PAGE_1, locator = """{"version":1,"page":2}"""))
+        assertEquals(listOf(early.id, mark.id, late.id), list(epub).annotations.map { it.id })
+        assertEquals(listOf(late.id), list(epub, setOf(AnnotationKind.HIGHLIGHT)).annotations.map { it.id })
+        assertEquals(3, list(epub).annotations.size)
+        // Deleting through the same repository removes exactly that row, whatever its kind.
+        assertTrue(repo.delete(late.id)); assertEquals(listOf(early.id, mark.id), list(epub).annotations.map { it.id })
+    }
 }

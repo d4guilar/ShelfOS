@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.view.ActionMode
 import android.view.KeyEvent
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -13,6 +14,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -57,7 +59,9 @@ import com.d4guilar.shelfos.core.designsystem.toUiMessage
 import com.d4guilar.shelfos.core.input.*
 import com.d4guilar.shelfos.core.reader.*
 import com.d4guilar.shelfos.core.theme.*
+import com.d4guilar.shelfos.domain.annotations.AnnotationKind
 import com.d4guilar.shelfos.domain.library.*
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** Below this TOC size, a filter field adds a control without saving meaningful scanning effort. */
@@ -78,6 +82,31 @@ open class EpubActivity : AppCompatActivity() {
     /** Debug/test hosts can replace only the reader factory; release uses the application container. */
     protected open fun createEpubReaderFactory(container: com.d4guilar.shelfos.AppContainer): EpubReaderFactory = container.epubs
 
+    /**
+     * Debug/test hosts can simulate a different WebView (for example a legacy one) to exercise the capability gate;
+     * release always reads the real, platform-reported WebView.
+     */
+    protected open fun createWebViewInfoProvider(): WebViewInfoProvider = SystemWebViewInfoProvider
+
+    /** The text-selection (or any) ActionMode currently shown over the reader, tracked from the framework callbacks. */
+    private var activeActionMode: ActionMode? = null
+    override fun onActionModeStarted(mode: ActionMode) { activeActionMode = mode; super.onActionModeStarted(mode) }
+    override fun onActionModeFinished(mode: ActionMode) { if (activeActionMode === mode) activeActionMode = null; super.onActionModeFinished(mode) }
+
+    /**
+     * Back precedence layer 1 (ADR-0023, Phase 4B clarification): an active text selection is a transient layer above
+     * reader chrome. Returns true when it dismissed one, so the caller stays in the reader and leaves chrome alone.
+     */
+    private fun dismissSelectionLayer(controller: EpubController): Boolean {
+        val mode = activeActionMode
+        val bridgeHadSelection = controller.annotations.dismissSelection()
+        if (mode == null) return bridgeHadSelection
+        controller.annotations.clearSelection()
+        mode.finish()
+        activeActionMode = null
+        return true
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         restoreEpubNavigatorAsPlaceholder()
         super.onCreate(savedInstanceState)
@@ -87,24 +116,28 @@ open class EpubActivity : AppCompatActivity() {
         val container = (application as ShelfApplication).container
         // Resolve once without retaining this Activity in the configuration-surviving ViewModel.
         val searchCursorOpener = createSearchCursorOpener()
+        // The real WebView decides whether inline annotations are offered (never the Android API level).
+        val inlineSupport = InlineAnnotationCapability.evaluate(runCatching { createWebViewInfoProvider().current(this) }.getOrNull())
         setContent {
             val vm: EpubReaderViewModel = viewModel(factory = viewModelFactory { initializer {
-                EpubReaderViewModel(itemId, container.library, container.bookmarks, createEpubReaderFactory(container),
+                EpubReaderViewModel(itemId, container.library, container.bookmarks, container.annotations, createEpubReaderFactory(container),
                     container.backgroundScope, searchCursorOpener)
             } })
             val theme by container.themes.theme.collectAsStateWithLifecycle(initialValue = null as ThemeId?)
             // Wait for the saved theme instead of flashing Classic first.
-            theme?.let { ShelfTheme(it) { EpubReaderContent(vm, container) } }
+            theme?.let { ShelfTheme(it) { EpubReaderContent(vm, container, inlineSupport) } }
         }
     }
 
     @OptIn(ExperimentalLayoutApi::class)
     @Composable
-    private fun EpubReaderContent(vm: EpubReaderViewModel, container: AppContainer) {
+    private fun EpubReaderContent(vm: EpubReaderViewModel, container: AppContainer, inlineSupport: InlineAnnotationSupport) {
         val state by vm.state.collectAsStateWithLifecycle()
         val searchState by vm.searchState.collectAsStateWithLifecycle()
         val tokens = LocalShelfTokens.current
-        val controller = remember { EpubController() }
+        val controller = remember { EpubController().also { it.annotations.inlineSupported = inlineSupport.offersInlineAnnotations } }
+        val selectionLabels = SelectionMenuLabels(stringResource(R.string.selection_action_highlight),
+            stringResource(R.string.selection_action_add_note), stringResource(R.string.selection_action_copy))
         // Semantics lambdas below run outside composition, so these localized strings are resolved here.
         val controlsShownDescription = stringResource(R.string.content_desc_controls_shown)
         val controlsHiddenDescription = stringResource(R.string.content_desc_controls_hidden)
@@ -131,6 +164,9 @@ open class EpubActivity : AppCompatActivity() {
         var appearance by rememberSaveable { mutableStateOf(false) }
         var chapters by rememberSaveable { mutableStateOf(false) }
         var bookmarks by rememberSaveable { mutableStateOf(false) }
+        var annotationList by rememberSaveable { mutableStateOf(false) }
+        var annotationOpenFailed by rememberSaveable { mutableStateOf(false) }
+        var deleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
         var search by rememberSaveable { mutableStateOf(false) }
         var searchQuery by rememberSaveable { mutableStateOf("") }
         var fontImportError by rememberSaveable(stateSaver = UiMessageSaver) { mutableStateOf<UiMessage?>(null) }
@@ -179,8 +215,38 @@ open class EpubActivity : AppCompatActivity() {
         val previousHint = InputHints.hint(ShelfCommand.PREVIOUS_PAGE, modality, rtl)
         val nextHint = InputHints.hint(ShelfCommand.NEXT_PAGE, modality, rtl)
         val backHint = InputHints.hint(ShelfCommand.BACK, modality, rtl)
-        // Back never leaves the reader from hidden chrome: it reveals controls first, then a second Back exits.
-        fun backPress() { if (controls) finish() else { controls = true; controlFocusRequests++ } }
+        // Back priority (ADR-0023 + Phase 4B clarification): (1) an active text selection is dismissed; (2) a transient
+        // dialog dismisses itself in its own window; (3) hidden chrome is revealed; (4) visible chrome leaves the reader.
+        fun backPress() {
+            if (dismissSelectionLayer(controller)) return
+            if (controls) finish() else { controls = true; controlFocusRequests++ }
+        }
+        val annotationScope = rememberCoroutineScope()
+        // Marks are drawn only for selection-backed annotations whose text was verified in the current rendition.
+        val marks = remember(state.annotations, state.anchors) {
+            state.annotations.filter { state.anchors[it.id] == AnchorStatus.PLACEABLE }.mapNotNull { it.toMarkOrNull() }
+        }
+        SideEffect {
+            controller.annotations.menuLabels = selectionLabels
+            controller.annotations.onSelectionAction = { action ->
+                lifecycleScope.launch {
+                    val read = controller.annotations.readSelection()
+                    when (action) {
+                        EpubSelectionAction.HIGHLIGHT -> read?.let(vm::createHighlight)
+                        EpubSelectionAction.ADD_NOTE -> read?.let(vm::beginSelectionNote)
+                        EpubSelectionAction.COPY -> read?.highlight?.let { controller.annotations.copyToClipboard(this@EpubActivity, it) }
+                    }
+                    controller.annotations.clearSelection()
+                }
+            }
+            // Returning true consumes the tap, so opening the editor never also toggles reader chrome.
+            controller.annotations.onMarkActivated = { annotationId ->
+                val known = vm.state.value.annotations.any { it.id == annotationId }
+                if (known) vm.openEditor(AnnotationEditorTarget.Existing(annotationId))
+                known
+            }
+        }
+        LaunchedEffect(state.notice) { if (state.notice != null) { delay(6_000); vm.dismissNotice() } }
         fun closeSearch() { search = false; searchQuery = ""; vm.clearSearch() }
 
         // A configuration change disposes this Activity composition while retaining its ViewModel. Closing here
@@ -207,7 +273,7 @@ open class EpubActivity : AppCompatActivity() {
                             ShelfCommand.PREVIOUS_PAGE -> controller.previous()
                             ShelfCommand.OPEN_MENU -> if (controls) controls = false else { controls = true; controlFocusRequests++ }
                             ShelfCommand.SEARCH -> { controls = true; search = true }
-                            else -> if (search) closeSearch() else backPress()
+                            else -> if (dismissSelectionLayer(controller)) Unit else if (search) closeSearch() else backPress()
                         }
                         true
                     }
@@ -231,6 +297,7 @@ open class EpubActivity : AppCompatActivity() {
                     }
                     TextButton({ chapters = true }, enabled = session != null) { Text(stringResource(R.string.action_chapters)) }
                     TextButton({ bookmarks = true }, enabled = session != null) { Text(stringResource(R.string.action_bookmarks)) }
+                    TextButton({ annotationOpenFailed = false; annotationList = true }, enabled = session != null, modifier = Modifier.testTag("epub_notes")) { Text(stringResource(R.string.action_notes)) }
                     TextButton({ search = true }, enabled = session != null) { Text(stringResource(R.string.nav_search)) }
                     TextButton({ appearance = true }, enabled = session != null) { Text(stringResource(R.string.action_appearance)) }
                 }
@@ -247,7 +314,8 @@ open class EpubActivity : AppCompatActivity() {
                                 }
                             },
                         onCenterTap = { modality = InputModality.TOUCH; controls = !controls },
-                        onLocation = { locator, progress -> vm.location(locator, progress); currentLocatorJson = locator })
+                        onLocation = { locator, progress -> vm.location(locator, progress); currentLocatorJson = locator },
+                        marks = marks)
                 } else Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     val error = state.error
                     if (error == null) CircularProgressIndicator()
@@ -256,6 +324,7 @@ open class EpubActivity : AppCompatActivity() {
                         TextButton({ finish() }) { Text(stringResource(R.string.action_back_to_library)) }
                     }
                 }
+                state.notice?.let { Text(it.resolve(), Modifier.padding(8.dp).clickable { vm.dismissNotice() }.testTag("annotation_notice")) }
                 if (session != null) {
                     state.error?.let { Text(it.resolve(), Modifier.padding(8.dp)) }
                     // Page controls follow the reading direction: in right-to-left reading, Next sits on the left.
@@ -433,6 +502,42 @@ open class EpubActivity : AppCompatActivity() {
                     }
                 }
             }, confirmButton = { TextButton({ bookmarks = false }) { Text(stringResource(R.string.action_close)) } })
+        }
+        if (annotationList && session != null) {
+            AnnotationListDialog(state.annotations, state.anchors, { session.presentBookmark(it.locatorJson, it.progressSnapshot, state.epubPositions) },
+                inlineSupport, canAddHere = currentLocatorJson != null, openFailed = annotationOpenFailed,
+                onAddHere = { currentLocatorJson?.let { annotationList = false; vm.beginPositionNote(it) } },
+                onJump = { annotation ->
+                    annotationOpenFailed = false
+                    annotationScope.launch {
+                        if (controller.jumpTo(annotation.locatorJson) == JumpResult.ARRIVED) annotationList = false else annotationOpenFailed = true
+                    }
+                },
+                onEdit = { annotationList = false; vm.openEditor(AnnotationEditorTarget.Existing(it.id)) },
+                onDelete = { if (it.kind == AnnotationKind.BOOKMARK) vm.deleteAnnotation(it.id) else deleteTarget = it.id },
+                onClose = { annotationList = false })
+        }
+        when (val editor = state.editor) {
+            null -> Unit
+            is AnnotationEditorTarget.NewSelectionNote -> AnnotationEditorDialog("new-selection-note", stringResource(R.string.annotation_editor_new_note),
+                editor.draft.selectedText, "", null, styleEditable = false, bodyRequired = true,
+                onSave = { body, _ -> vm.saveNewNote(editor, body) }, onDelete = null, onCancel = vm::closeEditor)
+            is AnnotationEditorTarget.NewPositionNote -> AnnotationEditorDialog("new-position-note", stringResource(R.string.annotation_editor_new_note),
+                null, "", null, styleEditable = false, bodyRequired = true,
+                onSave = { body, _ -> vm.saveNewNote(editor, body) }, onDelete = null, onCancel = vm::closeEditor)
+            is AnnotationEditorTarget.Existing -> {
+                val annotation = state.annotations.firstOrNull { it.id == editor.id }
+                if (annotation == null || annotation.kind == AnnotationKind.BOOKMARK) LaunchedEffect(editor) { vm.closeEditor() }
+                else AnnotationEditorDialog("edit-${annotation.id}",
+                    stringResource(if (annotation.kind == AnnotationKind.HIGHLIGHT) R.string.annotation_editor_highlight else R.string.annotation_editor_note),
+                    annotation.selectedText, annotation.body.orEmpty(), annotation.styleKey?.takeIf { AnnotationStyles.isKnown(it) } ?: AnnotationStyles.DEFAULT,
+                    styleEditable = annotation.kind == AnnotationKind.HIGHLIGHT, bodyRequired = annotation.kind == AnnotationKind.NOTE,
+                    onSave = { body, style -> vm.updateAnnotation(annotation.id, style, body) },
+                    onDelete = { deleteTarget = annotation.id }, onCancel = vm::closeEditor)
+            }
+        }
+        deleteTarget?.let { id ->
+            AnnotationDeleteConfirmDialog(onConfirm = { deleteTarget = null; vm.deleteAnnotation(id) }, onCancel = { deleteTarget = null })
         }
     }
 

@@ -209,6 +209,17 @@ object OriginalFixtures {
             file.name, file.length(), managedPath = file.path,
             preferences = com.d4guilar.shelfos.core.reader.ReaderPreferences(fit = fit, spreadMode = spreadMode).json())
     }
+    /**
+     * Phase 4B annotation fixture (synthetic, license-clean): see [com.d4guilar.shelfos.debug.SyntheticAnnotationEpub], the
+     * single generator shared with the debug-only manual UAT harness. [variant] simulates changed content under an identical
+     * item id (`SHIFTED`, `FORMKEPT`, `MISSING`) or a large book (`LARGE`, 2,040 tokens in four chapters).
+     */
+    const val ANNOTATION_ITEM_ID = "test-epub-annotations"
+    fun epubAnnotations(context: Context, variant: String = "BASE", preferences: String? = null): LibraryItem {
+        val file = File(context.filesDir, "publications/test-annotations-$variant.epub")
+        com.d4guilar.shelfos.debug.SyntheticAnnotationEpub.write(file, variant)
+        return item(file, ANNOTATION_ITEM_ID, PublicationFormat.EPUB).let { if (preferences != null) it.copy(preferences = preferences) else it }
+    }
     private fun item(file: File, id: String, format: PublicationFormat) = LibraryItem(id, "Original ${format.name} fixture", "ShelfOS test",
         MediaCategory.BOOK, "test:$id", format, file.name, file.length(), managedPath = file.path)
 }

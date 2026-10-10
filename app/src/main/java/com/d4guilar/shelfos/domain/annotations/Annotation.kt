@@ -72,12 +72,23 @@ class DefaultAnnotationLocatorValidator(private val readiumLocator: (String) -> 
     }
 }
 
+/** Size caps for annotation content (Phase 4B, plan section 6.1). Text is counted in UTF-16 code units. */
+object AnnotationLimits {
+    /** A serialized locator larger than this (UTF-8 bytes) is rejected, never truncated. */
+    const val MAX_LOCATOR_BYTES = 64 * 1024
+    /** Normalized selected-text copy; produced by cutting on a code-point boundary, so stored text never exceeds it. */
+    const val MAX_SELECTED_TEXT = 2_000
+    /** User-authored body (note text, optional highlight body). Rejected, never silently truncated. */
+    const val MAX_BODY = 20_000
+}
+
 /** Kind invariants, enforced at the repository boundary on every write. The schema itself stays permissive. */
 object AnnotationRules {
     fun validate(draft: AnnotationDraft, validator: AnnotationLocatorValidator?) {
         validateContent(draft.kind, draft.locatorFormat, draft.selectedText, draft.body, draft.styleKey)
         if (draft.libraryItemId.isBlank()) fail("libraryItemId must not be blank")
         if (draft.locatorJson.isBlank()) fail("locatorJson must not be blank")
+        if (utf8Length(draft.locatorJson) > AnnotationLimits.MAX_LOCATOR_BYTES) fail("locatorJson exceeds ${AnnotationLimits.MAX_LOCATOR_BYTES} bytes")
         if (draft.progressSnapshot !in 0..100) fail("progressSnapshot must be within 0..100")
         if (draft.orderKey != null && !draft.orderKey.isFinite()) fail("orderKey must be finite")
         if (validator != null && !validator.isValid(draft.locatorFormat, draft.locatorJson)) fail("malformed ${draft.locatorFormat} locator")
@@ -85,6 +96,8 @@ object AnnotationRules {
 
     /** Content-only checks, shared by create and edit. */
     fun validateContent(kind: AnnotationKind, format: LocatorFormat, selectedText: String?, body: String?, styleKey: String?) {
+        if (selectedText != null && selectedText.length > AnnotationLimits.MAX_SELECTED_TEXT) fail("selectedText exceeds ${AnnotationLimits.MAX_SELECTED_TEXT} characters")
+        if (body != null && body.length > AnnotationLimits.MAX_BODY) fail("body exceeds ${AnnotationLimits.MAX_BODY} characters")
         when (kind) {
             AnnotationKind.BOOKMARK -> if (selectedText != null || body != null || styleKey != null)
                 fail("a BOOKMARK carries no selectedText, body or styleKey")
@@ -97,6 +110,21 @@ object AnnotationRules {
                 if (format == LocatorFormat.FIXED_PAGE_1 && selectedText != null) fail("a fixed-page NOTE carries no selectedText")
             }
         }
+    }
+
+    private fun utf8Length(text: String): Int {
+        var bytes = 0; var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            when {
+                c.code < 0x80 -> bytes += 1
+                c.code < 0x800 -> bytes += 2
+                Character.isHighSurrogate(c) && i + 1 < text.length && Character.isLowSurrogate(text[i + 1]) -> { bytes += 4; i++ }
+                else -> bytes += 3
+            }
+            i++
+        }
+        return bytes
     }
 
     private fun fail(message: String): Nothing = throw InvalidAnnotationException(message)

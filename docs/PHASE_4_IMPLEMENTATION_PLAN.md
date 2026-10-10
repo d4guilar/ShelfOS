@@ -1,7 +1,7 @@
 # Phase 4 Implementation Plan — Notes and Knowledge Layer
 
-Status: **Phase 4A (Annotation foundation) is IMPLEMENTED LOCALLY and pending independent review (see the 4A
-implementation record in section 13.1 and `docs/VALIDATION.md`); Phase 4 as a whole is NOT complete and 4B-4F have not
+Status: **Phase 4A (Annotation foundation) is merged; Phase 4B (EPUB highlights and notes) is IMPLEMENTED LOCALLY, validated on the RP5 and the API 24 emulator, and
+pending Samsung manual UAT and independent review (see the 4B implementation record in section 13.2 and `docs/VALIDATION.md`); Phase 4 as a whole is NOT complete and 4C-4F have not
 started.** The rest of this document is the original planning text (2026-10-10, [ADR-0025](adr/0025-annotation-anchor-and-knowledge-model.md),
 Proposed). Each slice still needs explicit administrator authorization, exactly as Phase 3's slices did
 (`docs/PHASE_3_IMPLEMENTATION_PLAN.md` §12/§21). 4A added the schema, migration and removal policy described below; the
@@ -795,6 +795,35 @@ Implemented on `phase-4/4a-annotation-foundation` (from `main` @ `b2ce163`); evi
 - **Acceptance:** §9.5 go criteria; highlights/notes survive reopen, recreation and process death; edits/deletes persist; jump lands on text; no source mutation; a keyboard/controller path to create a position note exists.
 - **Risks:** §9.4 (WebView 52, scale, interaction conflicts, selection accessibility, sanitizer coupling).
 - **Codex High review: yes** — reader lifecycle, persistence, WebView interaction; the spike result itself should get an administrator go/no-go before the full slice proceeds.
+
+#### 4B implementation record (2026-10-10; local, pending Samsung manual UAT and independent review)
+
+Implemented on `phase-4/4b-epub-highlights-notes` (from `main` @ `de2f2f2`); evidence in `docs/VALIDATION.md` ("PHASE 4B - EPUB HIGHLIGHTS AND NOTES", which also
+carries the spike entry). ADR-0025 is unchanged and none of its decisions was contradicted. Phase 4 as a whole is NOT complete; 4C-4F have not started.
+
+- **Spike: CONDITIONAL GO (accepted direction).** Real long-press selection, lossless Locator JSON, exact decoration rendering (paginated and scroll), restoration after recreation, navigator rebuild,
+  repagination and process death, decoration activation, 500 decorations without jank on the RP5 (WebView 109). Four conditions were found and are all resolved in this slice: (1) deterministic two-stage jump,
+  (2) stale-anchor protection, (3) Back/selection precedence, (4) WebView capability gate.
+- **Stale-anchor mitigation (section 9.4 risk closed for EPUB).** `core.reader.EpubAnchorVerifier` verifies a stored `text.before/highlight/after` against the same SANITIZED rendition ShelfOS exposes to Readium
+  (whitespace- and invisible-character-insensitive, otherwise exact) before drawing; PLACEABLE / UNPLACED / MALFORMED; unplaced annotations are never drawn, deleted or rewritten and are listed with a localized
+  "text location unavailable" state. Cached per resource for the session. A sanitizer change that alters visible text is potentially anchor-affecting (regression tests named in VALIDATION.md).
+- **Deterministic jump.** `EpubController.jumpTo`: exact persisted locator, `go`, await the navigator reaching the target resource, the same locator once more; bounded, cancellation-safe; 30/30 on the RP5 (a single `go` missed 6/30 in the same test).
+- **Back/selection precedence.** ADR-0023 "Phase 4B clarification": selection, then dialog, then reveal chrome, then exit; same for Back, Escape and gamepad B.
+- **WebView capability.** Offered only when the real WebView's Chromium major version is >= 69 (highest platform version Readium 3.4.0's unpolyfilled script statically requires; 52 measured failing, 109 measured passing, between untested).
+  Unsupported/unknown: no inline Highlight or selection notes, no decorations; bookmarks and position notes remain; localized explanation. API 24 emulator (WebView 52) validated.
+- **Added:** `core/reader/{EpubAnnotationBridge,EpubAnnotationModel,AnnotationPalette,EpubAnchorVerifier,InlineAnnotationCapability}.kt`, `EpubController.jumpTo`, decoration/selection wiring in `EpubSurface`, `EpubSession.sanitizedMarkup/anchorVerifier/resourceRange`,
+  `feature/reader/EpubAnnotationUi.kt` (Notes list, editor, delete confirmation), annotation state in `EpubReaderViewModel`, a "Notes" entry in the reader controls, `AnnotationLimits` (caps enforced in `AnnotationRules`), strings EN/ES/PT-BR.
+  Debug-only (`src/debug`): `SyntheticAnnotationEpub` (also the androidTest fixture), `UatLauncherActivity` + `UatStressActivity` (manual UAT harness, kept: it is debug-source-set only and `UatHarnessTest` exercises it),
+  `EpubLegacyWebViewTestActivity` (legacy-WebView simulation for instrumentation).
+- **Deviations from this plan (all deliberate; none changes ADR-0025):**
+  1. The existing Bookmarks dialog and `BookmarkRepository` compatibility adapter are kept as they are (zero bookmark regression risk); the new in-reader "Notes" dialog lists all three kinds, and bookmark rows there delete directly like before.
+  2. `orderKey` is derived for selection annotations from the verified text offset within the resource and Readium's position catalog (`resourceRange`), and for position notes from the live total progression; bookmarks keep a null `orderKey`.
+  3. Selection notes draw a neutral underline and carry no `styleKey`; only HIGHLIGHT has a palette style.
+  4. Readium replaces the platform selection menu with ours when the callback is set, so the toolbar offers Highlight, Add note and Copy (no Select all/share) on supported WebViews; unsupported WebViews keep the platform menu.
+  5. The selection is cleared when the note editor opens (the draft is already captured), not after Save; Cancel creates nothing. The unsaved draft survives rotation (ViewModel) but not process death.
+  6. A new HIGHLIGHT whose text cannot be verified against the rendition is refused with a message instead of being stored unplaceable; a note on such a selection is also refused (it could never be drawn).
+  7. Search results and the legacy Bookmarks dialog still use the single `goTo`; only the Notes list uses the deterministic `jumpTo`.
+- **Remaining for 4B acceptance:** Samsung SM-T580 manual UAT (pre-merge); independent review.
 
 ### 13.3 4C — Fixed-layout notes and bookmark polish
 

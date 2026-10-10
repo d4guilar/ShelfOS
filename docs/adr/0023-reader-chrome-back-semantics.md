@@ -75,3 +75,20 @@ already used for the library cover-expansion transition.
 - Touch gestures remain outside the `ShelfCommand`/`InputMapper` semantic layer
   (screen-specific `pointerInput` handling); unifying touch into that layer is
   out of scope for this ADR and remains open for a later increment.
+
+## Phase 4B clarification (2026-10-10)
+
+An active text selection (the platform selection ActionMode over EPUB text) is a transient layer ABOVE chrome semantics.
+Back priority, identical for system Back, Escape and gamepad B (all reach the single reader `backPress()` path):
+
+1. An active text selection is dismissed (selection cleared, ActionMode finished); the reader stays open and chrome is left
+   exactly as it was.
+2. A transient ShelfOS dialog or sheet dismisses itself (its own window, as before).
+3. Chrome hidden: Back reveals chrome.
+4. Chrome visible: Back leaves the reader.
+
+Rule 3 and 4 are unchanged. Before this clarification the reader consumed Back first, so with chrome visible the first Back
+left the reader (and destroyed the selection with it) and with chrome hidden it revealed chrome while the selection stayed
+active (spike evidence, `docs/VALIDATION.md`). There is no Back trap: with nothing selected the original two-press contract
+holds. The selection is tracked from the framework's `Activity.onActionModeStarted/Finished`, so it also applies on
+WebViews where inline annotations are unavailable and the platform's own selection menu is shown.

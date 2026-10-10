@@ -221,6 +221,58 @@
     <string name="content_desc_bookmark_row">Bookmark, %1$s</string>
     <string name="content_desc_bookmark_delete">Delete bookmark, %1$s</string>
 
+    <!-- Notes, highlights and the in-reader annotation list (Phase 4B) -->
+    <string name="action_notes">Notes</string>
+    <string name="action_save">Save</string>
+    <string name="annotations_title">Notes and highlights</string>
+    <string name="annotations_filter_all">All</string>
+    <string name="annotations_filter_notes">Notes</string>
+    <string name="annotations_filter_highlights">Highlights</string>
+    <string name="annotations_filter_bookmarks">Bookmarks</string>
+    <plurals name="annotations_count">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
+    <string name="annotations_empty">No notes, highlights or bookmarks yet.</string>
+    <string name="annotations_empty_filtered">Nothing in this view.</string>
+    <string name="annotation_add_note_here">Add note at current position</string>
+    <string name="annotation_kind_highlight">Highlight</string>
+    <string name="annotation_kind_note">Note</string>
+    <string name="annotation_kind_note_position">Note at position</string>
+    <string name="annotation_kind_bookmark">Bookmark</string>
+    <string name="annotation_style_amber">Amber</string>
+    <string name="annotation_style_green">Green</string>
+    <string name="annotation_style_blue">Blue</string>
+    <string name="annotation_style_rose">Rose</string>
+    <string name="annotation_style_unknown">Unknown color</string>
+    <string name="annotation_location_unavailable">Text location unavailable</string>
+    <string name="annotation_open_failed">This location could not be opened. You can still edit or delete it.</string>
+    <string name="annotation_inline_unavailable">Inline text annotations require a newer compatible Android System WebView. Bookmarks and notes at a position still work.</string>
+    <string name="content_desc_annotation_row">%1$s, %2$s</string>
+    <string name="content_desc_annotation_edit">Edit %1$s</string>
+    <string name="content_desc_annotation_delete">Delete %1$s</string>
+    <string name="annotation_editor_new_note">New note</string>
+    <string name="annotation_editor_note">Edit note</string>
+    <string name="annotation_editor_highlight">Edit highlight</string>
+    <string name="annotation_note_label">Note</string>
+    <string name="annotation_highlight_note_label">Note (optional)</string>
+    <string name="annotation_style_label">Highlight color</string>
+    <string name="annotation_style_selected">%1$s, selected</string>
+    <string name="annotation_note_counter">%1$d of %2$d characters</string>
+    <string name="annotation_delete_confirm_title">Delete this item?</string>
+    <string name="annotation_delete_confirm_body">It will be removed from this publication. The book file is not changed.</string>
+    <string name="selection_action_highlight">Highlight</string>
+    <string name="selection_action_add_note">Add note</string>
+    <string name="selection_action_copy">Copy</string>
+    <string name="annotation_selection_no_text">There is no readable text in this selection.</string>
+    <string name="annotation_selection_too_large">This selection is too large to save.</string>
+    <string name="annotation_selection_unanchorable">This passage cannot be saved reliably. Try selecting a shorter passage.</string>
+    <string name="annotation_save_failed">This could not be saved.</string>
+    <string name="annotation_update_failed">This could not be updated.</string>
+    <string name="annotation_delete_failed">This could not be deleted.</string>
+    <string name="annotation_note_empty">Write something to save a note.</string>
+    <string name="annotation_note_too_long">Notes can be up to %1$d characters.</string>
+
     <!-- Appearance dialog -->
     <string name="appearance_dialog_title">Reading appearance</string>
     <string name="appearance_presentation">Presentation</string>

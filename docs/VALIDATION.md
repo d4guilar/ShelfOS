@@ -1,5 +1,287 @@
 # Validation
 
+## PHASE 4B — EPUB HIGHLIGHTS AND NOTES (2026-10-10)
+
+Status: **implemented locally; automated validation complete on the RP5 (WebView 109) and the API 24 emulator (WebView 52);
+Samsung SM-T580 acceptance is PENDING MANUAL UAT (see below). Pending independent review (Codex High) and administrator
+triage. Not merged. Phase 4 is NOT complete: 4C (fixed-layout notes), 4D (Notes hub), 4E (export) and 4F (acceptance) have not
+started.** Branch `phase-4/4b-epub-highlights-notes` from `main` @ `de2f2f2c45ca708c70601a3d1d96a82b4db38171`. No Room change
+(schema v4, `app/schemas` untouched), no dependency or Readium change, no ShelfOS-owned JavaScript, no publication mutation.
+`docs/features/EPUB.md` does not exist in this repository (EPUB behavior is documented in `docs/features/READER.md`).
+
+**Spike verdict carried forward.** The earlier bounded spike (recorded below, "PHASE 4B — READIUM ANNOTATION SPIKE"; the spike
+branch was never pushed and its code was not carried over wholesale) was a CONDITIONAL GO with four production conditions. All four are
+resolved in this slice, each with a regression test:
+
+| Spike condition | Resolution | Evidence |
+| --- | --- | --- |
+| 1. A single `goTo` is unreliable in paginated mode (5-6 of 10) | `EpubController.jumpTo`: parse the exact persisted locator, `go`, await `currentLocator` reaching the target resource (bounded, cancellation-safe, no sleep), issue the same locator once more. `progressSnapshot` never navigates. | `EpubAnnotationsTest.jumpingToAnAnnotationIsDeterministicInPaginatedMode_thirtyRepeatedJumps`: **30/30** on the RP5 with the two-stage jump. The same test with the second `go` temporarily removed (experiment, reverted) **missed 6 of 30** (`jump 3 to quillfeather1x20, 7 to 2x1, 8 to 1x20, 13 to 1x1, 23 to 1x20, 30 to 1x20`), so the test discriminates. |
+| 2. Readium silently approximates a stale locator onto the wrong text | ShelfOS-owned stale-anchor verification against the same sanitized rendition (below). Unverifiable annotations are not drawn, not deleted and not rewritten. | `AnchorTextTest` (15, JVM), `EpubAnchorVerifierInstrumentedTest` (9), `unplacedAnnotationStaysStoredAndListedAndIsNeverDrawnOnOtherText` |
+| 3. Back must dismiss a selection first | ADR-0023 "Phase 4B clarification": selection > dialog > reveal chrome > exit, same for Back, Escape and gamepad B. | `backDismissesAnActiveSelectionBeforeChromeOrExit_visibleChrome` / `_hiddenChrome`, `escapeAndGamepadBDismissASelectionTheSameWay`, legacy test |
+| 4. Legacy WebViews must not offer inline highlights | Capability gate keyed on the real WebView version (below). | `InlineAnnotationCapabilityTest` (6, JVM), `legacyWebViewKeepsPositionNotesAndBookmarksButOffersNoInlineAnnotations`, API 24 emulator run |
+
+**WebView capability rule (evidence-based).** Inspected the resolved artifact `readium-navigator-3.4.0.aar`,
+`assets/readium/scripts/readium-reflowable.js` (a transpiled bundle with core-js polyfills for `matchAll`, `Promise`, `BigInt`,
+`WeakRef` and symbols; it is parsed fine by Chromium 52, so there is no syntax problem). It calls, UNPOLYFILLED:
+`Object.entries` inside `registerDecorationTemplates` (Chromium 54) and `document.body.append` when it creates the decoration
+container (Chromium 54): either absence alone prevents any decoration from being drawn, matching the observed 0/3 on WebView 52;
+`ResizeObserver` at window load (Chromium 64): viewport/body-size tracking, which decoration layout relies on after repagination;
+`Array.prototype.flatMap` in the css-selector generator (Chromium 69). Also `Object.values`, `getRootNode`, `Array.prototype.includes`,
+`CSS.escape` (all at or below 54). Introduction versions are from MDN/Chrome Platform Status (authoritative knowledge, not re-measured
+here). Rule: inline annotations are offered when the WebView's Chromium major version is **>= 69**, the highest platform version the
+script statically requires. Evidence points: 52 fails (measured), 109 passes (measured). **Uncertainty, documented:** nothing
+between 52 and 109 was executed; some WebViews in 54..68 might work and are deliberately not offered inline annotations rather than risk a
+silently missing highlight; 64 is the proven-needed floor (ResizeObserver) and 69 the conservative requirement. The version comes from
+`WebView.getCurrentWebViewPackage()` (API 26+) and the default User-Agent `Chrome/N` (all APIs); if both are present the lower wins; if
+neither is readable the state is `UNKNOWN`, treated as unsupported. `InlineAnnotationSupport` is {SUPPORTED, UNSUPPORTED_LEGACY_WEBVIEW,
+UNKNOWN}. When not offered: no custom selection menu (the platform's own selection and Copy remain), no decoration listener, no
+decorations; the Notes list shows a localized explanation; bookmarks and "Add note at current position" work.
+
+**Stale-anchor protection.** `EpubAnchorVerifier` (core.reader) obtains the SANITIZED markup Readium is served for the locator's href
+(`EpubSession.sanitizedMarkup`, the publication container's `sanitizeEpubHtml` transform), derives the comparable text of every text node under
+`body`, and verifies the locator's `text.before/highlight/after`. Findings from Readium's own script: `before`/`after` are slices of
+`document.body.textContent` (no separators between blocks) trimmed to word boundaries; `highlight` is `Selection.toString()` (block breaks become
+newlines); so all whitespace and invisible format characters are dropped on both sides and the rest is compared exactly. PLACEABLE only when
+exactly one occurrence of the highlight has its stored context immediately before and after it; otherwise UNPLACED (text missing, context changed,
+ambiguous repeated passage, unreadable resource) or MALFORMED (not a text anchor). Progression is page-level and is never proof. Results are cached per
+href (LRU of 24) and per locator for the reader session, annotations are grouped by resource, so 500 annotations parse a chapter once: 500 anchors
+verified in 248 ms on the RP5 and 317 ms on the API 24 emulator, 1 parse; 4 chapters x 120 annotations = 4 parses. A new HIGHLIGHT is verified before it is saved;
+a selection that cannot be anchored is refused with a localized message. **Sanitizer coupling:** verification runs against the sanitized rendition; a future
+`sanitizeEpubHtml` change that alters visible text is potentially anchor-affecting and must keep
+`EpubAnchorVerifierInstrumentedTest.currentSanitizerKeepsPersistedSelectionLocatorsVerifiable` and `AnchorTextTest.currentSanitizerKeepsPersistedSelectionTripletsVerifiable` green.
+Those replay selection locators captured from REAL Readium selections on the RP5 (`GoldenSelectionLocators`: single word, after a removed script,
+after a removed form, inline `<em>`, non-ASCII, repeated phrase, whole sentence). Variant checks on the real session: MISSING (paragraph rewritten) unplaces exactly the annotations whose
+text or context named it; SHIFTED (inserted text) keeps all 8 placeable; FORMKEPT (a weaker sanitizer) unplaces only the anchor whose context included the form.
+
+**Selection and annotation behavior (EPUB only).** Readium `selectionActionModeCallback` (installed only when supported) offers Highlight, Add note and Copy
+(Readium uses the callback instead of the platform's, so Select all and platform share/search are not available through it). Highlight: HIGHLIGHT, default style `amber`,
+selection cleared, filled Readium Highlight drawn. Add note: Compose editor with the quoted text; Save creates a selection NOTE (underline); Cancel creates nothing; the selection
+is cleared when the editor opens. Position note: Notes (reader controls) > "Add note at current position" (no selection needed, no inline mark, listed and jumpable). Stable styleKeys
+`amber`, `green`, `blue`, `rose` resolve per reader tone (Light, Paper, Dark) in `AnnotationStyles`; an unknown key falls back to amber; note underlines are a neutral grey so kind never relies on hue
+(highlight text contrast >= 4.5:1 on every palette, asserted in `AnnotationPaletteTest`). Decorations: one group `shelfos.annotations`, `Decoration.id = Annotation.id`, registered/applied only inside
+`repeatOnLifecycle(STARTED)` and re-applied on navigator recreation, palette/tone change and when annotations change; tapping a mark opens the editor and consumes the tap (chrome does not toggle).
+The in-reader Notes dialog lists notes, highlights and bookmarks with filters, kind, excerpt, body preview, style, location and a "text location unavailable" state; jump, edit and delete (confirmation for notes and
+highlights, immediate for bookmarks as before). The existing Bookmarks dialog is unchanged. Caps: `locatorJson` 64 KiB (UTF-8), selected text 2,000 UTF-16 units cut on a code point, body 20,000 characters (Save disabled
+and counted, never truncated), blank NOTE bodies rejected. All new strings EN/ES/PT-BR.
+
+**Commands and results** (one class per Gradle invocation, `ANDROID_SERIAL` set, both packages uninstalled first, per-device XML counts read each time; RP5 = `d8f7f1b6` Retroid Pocket 5, Android 13,
+WebView `com.android.webview` 109.0.5414.123; emulator = `emulator-5554` API 24, WebView 52.0.2743.100):
+
+| Step | Device | Result |
+| --- | --- | --- |
+| compile, JVM (`core.reader.*`, `domain.annotations.*`, `EpubXhtmlSanitizerTest`, `LocalizationPolicyTest`, `LocalizationMessageMappingTest`) | host | 353 tests, 0 failures; new: `SelectedTextTest` 9, `AnchorTextTest` 15, `AnnotationPaletteTest` 7, `InlineAnnotationCapabilityTest` 6, `AnnotationDomainTest` 11 (4 new) |
+| `EpubAnchorVerifierInstrumentedTest` | RP5 / API 24 | 9/9 / 9/9 |
+| `AnnotationRepositoryTest` (3 new 4B tests) | RP5 / API 24 | 15/15 / 15/15 |
+| `EpubAnnotationsTest` | RP5 | **23/23** (3 are gated evidence tests that return immediately unless started with `-e deathPhase`/`-e stress2000`) |
+| `EpubAnnotationsTest#positionNote...`, `#legacyWebView...` | API 24 | 1/1, 1/1 (real WebView 52: gate active, position notes and bookmarks work) |
+| `UatHarnessTest` (debug harness) | RP5 / API 24 | 1/1 (on-screen PASS in about 3.5 s / on-screen "SKIPPED (capability gate)") |
+| `EpubBookmarkTest` | RP5 / API 24 | **8/9** (known baseline, below) / 9/9 |
+| `EpubRecreationTest` | RP5 / API 24 | 1/1 / 1/1 |
+| `EpubChapterHighlightTest` | RP5 / API 24 | 3/3 / 3/3 |
+| `AnnotationMigrationTest`, `BookmarkPersistenceTest`, `RemovalDialogKnowledgeTest` | RP5 | 6/6, 7/7, 4/4 |
+| `assembleDebug`, `assembleDebugAndroidTest`, `lintDebug` | host | BUILD SUCCESSFUL, lint clean |
+
+**Known baseline failure (not a 4B regression):** `EpubBookmarkTest.bookmarksDialogIsReachableAndOperableThroughKeyboardFocus` fails 1/9 on the RP5 with the same assertion on baseline `main`; the class passes 9/9
+on the emulator. Known: API 24 / WebView 52 EPUB managed-font tests fail (old WebView), not a 4B defect (not re-run).
+
+**RP5 interaction coverage (automated, real injected touch through the real WebView):** long-press selection and the toolbar; Highlight; Add note and Cancel; tap a decoration opens the editor and chrome stays as it was;
+style change, body add and clear (kind stays HIGHLIGHT), delete with confirmation removes the row and the decoration; selection-note edit and blank refusal; list kinds/filters/delete/edit; position note and its jump; recreation and a fresh open (2 marks);
+scroll mode, 1.8x font, Dark and Paper palettes (tints verified in the DOM); a repeated phrase drawn only in its own paragraph; a stale annotation not drawn, listed with the unavailable state, jumpable and deletable; malformed locator jump fails with a message;
+Back with a selection (visible chrome, hidden chrome), Escape and gamepad B; edge taps still turn pages, a centre tap still toggles chrome, selection still works beside a decoration.
+
+**Process death (RP5, AUTOMATED):** `am instrument -e deathPhase seed` created a highlight and a selection note, the app process was force-stopped, `-e deathPhase restore` ran in a new process: 2 stored annotations, 2 decorations on the exact text, both OK.
+
+**Scale, production path (RP5; includes opening the book, the Room read and exact-text verification):** 500 stored highlights in one chapter: all 500 decorations present **3.7 s** after launch, main-thread worst delay **199 ms**
+(14 delays over 100 ms, none over 1 s), page turn afterwards works. Stress evidence only: 2,000 across 4 chapters: chapter 1 (500) drawn 6.6 s after launch, worst delay 176 ms (20 over 100 ms), no ANR (`dumpsys dropbox data_app_anr` has no ShelfOS entry).
+The spike's measured Readium-only apply cost (94-273 ms, renderer memory +100 MB at 500 and +225 MB at 2,000) still applies; the 2 GB SM-T580 memory behavior is part of the pending manual UAT.
+
+**Samsung SM-T580 (Android 8.1, 2 GB): PENDING MANUAL UAT.** Its Micro-USB data hardware is damaged, so ADB is impossible. A debug-only harness (`src/debug`, zero release impact) provides a second launcher entry "ShelfOS 4B UAT":
+device, Android/API, WebView package and exact version, capability state, the synthetic book only, a 500-decoration run whose apply time and PASS/FAIL show on screen, and a reset button. Expected outcome if its WebView is old:
+the gate activates, no inline Highlight action, position notes and bookmarks work, the app is stable; that is not a 4B failure. Acceptance is PRE-MERGE.
+
+**Infrastructure notes.** (1) A Compose test rule advances its frame clock only while the test pumps it, so tests that wait on the WebView must call `waitForIdle()` between probes (`AnnotationUiProbe.settle`); a background-thread sampler is used for frame
+gaps because a main-looper ticker prevents Espresso from ever idling. (2) Gradle reports a JUnit assumption failure as a test failure, so gated evidence tests return early instead. (3) `LibraryRepository.add` ignores `LibraryItem.preferences`; tests save appearance through `saveAppearance`.
+(4) `evaluateJavascript` appears only in test/debug-harness code as read-only measurement.
+
+**Not executed / remaining:** Samsung manual UAT; TalkBack, hardware keyboard and gamepad driving of the new dialogs beyond the semantic Back/Escape/B keys and Compose focus (the controls are standard focusable buttons with content descriptions);
+fixed-layout annotations, Notes hub and export (4C-4F, out of scope).
+
+## PHASE 4B — READIUM ANNOTATION SPIKE (2026-10-10)
+
+Authoritative evidence for the production slice above. It was recorded on the unpushed spike branch `phase-4/4b-readium-spike` (commit `fc101b7`) and is reproduced here unchanged; the spike harness (`EpubAnnotationSpikeTest`, `EpubAnnotationSpikeActivity`, the retained-marks bridge) was not carried into the product.
+
+Status: **bounded engineering spike only. Full 4B is NOT implemented, Phase 4 is NOT complete.** Branch
+`phase-4/4b-readium-spike` from `main` @ `de2f2f2c45ca708c70601a3d1d96a82b4db38171`. Question answered with runtime evidence:
+can ShelfOS build persistent EPUB text highlights and selection-anchored notes on the pinned **Readium Kotlin Toolkit 3.4.0**
+without ShelfOS-owned JavaScript, EPUB mutation, a Room change, Readium types outside `core.reader`, or any new dependency /
+upgrade? **Recommendation: CONDITIONAL GO on the primary target (RP5, WebView 109)**, subject to the mitigations listed under
+"Required mitigations" and to an administrator decision on the Back/selection conflict. API 24 / WebView 52 is a **NO** for inline
+decorations (capability gate required). `docs/features/EPUB.md` does not exist in this repository (EPUB behaviour is documented in
+`docs/features/READER.md`).
+
+Every result below is **AUTOMATED** unless labelled MANUAL. No step required a human. Touch input was injected with
+`Instrumentation.sendPointerSync` (real long-press and handle-drag gestures through the real WebView), the selection toolbar item was
+clicked through the accessibility window tree, Back through `sendKeyDownUpSync` and `input keyevent 4`. Not run on a physical human
+finger, TalkBack, keyboard or gamepad selection (see "Not executed").
+
+**Devices actually used.** Primary: Retroid Pocket 5 (`d8f7f1b6`), Android 13 / API 33, arm64, WebView `com.android.webview`
+**109.0.5414.123** (`dumpsys webviewupdate`), 1920x1080 landscape. Secondary: `emulator-5554` (API 24, x86_64, WebView
+**52.0.2743.100**) for observation only. Samsung SM-T580 was not connected and was not tested. ShelfOS was not installed on either
+device before the spike; both debug/test packages and all spike files were removed afterwards.
+
+**Harness (spike-only, listed in the handoff).** `EpubAnnotationSpikeTest` (androidTest) drives the real `EpubActivity` through
+the debug subclass `EpubAnnotationSpikeActivity` against the generated synthetic fixture `OriginalFixtures.epubAnnotationSpike`
+(three chapters, unique token per paragraph, a phrase repeated in every paragraph, inline `<em>`, a `<script>` and a `<form>`, non-ASCII
+text, resource-boundary sentences; variants `SHIFTED`, `FORMKEPT`, `MISSING`, `LARGE` = 4 x 170 paragraphs x 3 unique tokens). The
+ShelfOS-owned adapter is `core.reader.EpubAnnotationBridge` (no Readium type escapes it; no JavaScript). `evaluateJavascript` is used
+**only in the test harness**, read-only, to measure DOM (decoration element count/boxes, text under each box), and, for repeatable
+multi-node ranges, to create a *synthetic selection through the DOM Selection API* (selection input only; it never creates or alters a
+highlight). Persistence for lifecycle tests is a private SharedPreferences file in the harness: no annotation database, no Room schema.
+
+### APIs confirmed in 3.4.0 (javap + compile) and discrepancies from plan §9.2
+Confirmed: `EpubNavigatorFragment` implements `SelectableNavigator` and `DecorableNavigator`; `currentSelection()` (suspend),
+`clearSelection()`, `Selection(locator, rect)`; `applyDecorations(list, group)`, `supportsDecorationStyle`, `addDecorationListener`,
+`removeDecorationListener`; `Decoration(id, locator, style, extras)`; `Decoration.Style.Highlight/Underline(tint, isActive)`;
+`Configuration.selectionActionModeCallback` (settable), `decorationTemplates`. Discrepancies: (1) `Selection.rect` is **nullable**
+(`RectF?`); (2) `OnActivatedEvent` is nested as `DecorableNavigator.OnActivatedEvent` and its `rect`/`point` are nullable (both were
+present in practice); (3) `DecorableNavigator.Listener` is a Kotlin interface, not a SAM lambda; (4) **`addDecorationListener` and
+`applyDecorations` throw `IllegalStateException: Fragment ... not attached to an activity` when called before the fragment is
+attached** (first run of the spike crashed this way). `EpubSurface` instantiates the navigator before the fragment transaction attaches it,
+so both must wait for `lifecycle.withStarted`. **ExperimentalReadiumApi**: no opt-in is required for the selection/decoration symbols
+(`EpubAnnotationBridge.kt` compiles with no `@OptIn` and no warnings; no deprecation warnings in the touched files, `compileDebugKotlin
+--rerun`). `javap` shows `@ExperimentalReadiumApi` on `Configuration.servedAssets`, `readiumCssRsProperties`, `useReadiumCssFontSize`
+and `disableSelectionWhenProtected`; the existing file-level opt-in in `EpubReader.kt` already covers ShelfOS's use.
+
+### 1. Selection (RP5, AUTOMATED)
+Real injected long-press on a word starts native selection; the custom `selectionActionModeCallback` is invoked; the floating toolbar
+shows the two spike items; clicking one fires `onActionItemClicked`; `currentSelection()` returns data. A native handle drag (injected
+touch) extended the selection to `quillfeather1x1 stands alone in this`. Sample (single word) locator JSON:
+`{"href":"chapter1.xhtml","type":"application/xhtml+xml","title":"Chapter 1","locations":{"progression":0,"position":1,"totalProgression":0},"text":{"before":"First words of chapter 1: the opening tide.Paragraph 1 of chapter 1. Marker ","highlight":"quillfeather1x1","after":" stands alone in this line. ..."}}`.
+
+**Fields populated:** `href`, `type` (mediaType), `title` (resource/chapter title), `locations.progression`, `locations.position`,
+`locations.totalProgression`, `text.before`, `text.highlight`, `text.after`. **Not populated:** `locations.fragments`,
+`locations.otherLocations` (no `cssSelector`, no CFI/partial-CFI key on any selection). Important semantics: `progression` is the
+progression of the **page start** at selection time (0 for page 1, 0.1429 for page 2, 0.875 for the last page of an 8-page chapter), not
+of the selection; `position` and `totalProgression` are **resource-level** (position 1/2/3 and totalProgression 0/0.333/0.667 for
+chapters 1/2/3 regardless of the page). `before`/`after` are about 150-200 characters of surrounding text and are concatenated **without
+separators across block boundaries** (`tide.Paragraph 1`); `<script>` and `<form>` text (removed by `sanitizeEpubHtml`) is absent.
+**Trustworthiness:** `text.highlight` equalled the selected text for the real single-word long-press, the real handle-drag multi-word
+selection, a synthetic range crossing `<em>` (`hidden emphasis phrase`, markup excluded), and a range crossing a paragraph boundary
+(the highlight then contains `\n\n` at the block break while `before`/`after` do not use separators). Conclusion: text is
+trustworthy; the **only fine anchor is the text triplet** (plus a page-level progression), which is sufficient (see 3).
+`rect` is in **WebView-view pixels**, not screen pixels (selection rect y=349..391 vs screen y=510..552, offset 162 = the WebView's
+screen top).
+
+### 2. Serialization round trip (AUTOMATED)
+`Locator.toJSON().toString()` persisted as a plain string, objects discarded, re-parsed only from the string (`Locator.fromJSON`, same
+boundary as `isReadiumLocatorJson`/`EpubController.goTo`): lossless for every real locator captured (re-serialization equal, fields
+equal, non-ASCII `Café naïve “quoted” — dash` intact, `Locator` equality holds). An **unknown extra key inside `locations`**
+(`"shelfosRendition":1`) is preserved in `otherLocations`, survives a round trip and is inert for decoration and jump (spike10b), which makes a
+ShelfOS-side rendition/version tag possible without a schema change. Malformed JSON is rejected by `fromJSON`; the bridge skips it.
+A pure JVM serialization test is not possible (no `org.json` on the unit-test classpath and no dependency may be added), so this
+is instrumented.
+
+### 3. Decoration rendering from the reparsed locator only (RP5, AUTOMATED)
+`applyDecorations(list, "shelfos.annotations")` with `Decoration.id = "ann-A"` etc., built **only** from the persisted-and-reparsed
+locator. Readium creates `div#r2-decoration-N[data-group="shelfos.annotations"]` with one child per decoration
+(`data-style="...Highlight"` / `...Underline"`; the DOM id is Readium's, the ShelfOS id is only in the Decoration). **Highlight and Underline both
+render at the intended text, in paginated and scroll mode**, with the Light, Dark and Paper reading palettes (visible, tint at 30% alpha for
+highlight). Checked by DOM geometry: the center of every occurrence of the phrase lies inside a decoration box only for the intended
+occurrence. A phrase repeated in 26 paragraphs (`quiet harbor lies`) was decorated **in exactly the selected paragraph, never elsewhere**;
+the single word `quillfeather1x1` (11 substring occurrences) and the `<em>`-spanning phrase were also placed exactly. A cross-paragraph
+selection produced one decoration with four line boxes covering both paragraphs. Screenshots were reviewed (kept outside the repo, deleted).
+
+### 4. Restoration / lifecycle (RP5, AUTOMATED)
+All with marks reloaded from the persisted string only: (A) `Activity.recreate()` and a real rotation to portrait; (B) fresh navigator
+rebuild (ShelfOS rebuilds the navigator on recreation, so A and B are the same mechanism); (C) live font-size 1.8 / 0.7, line height,
+margins, scroll on/off, Dark and Paper palettes (pagination changed from 5 to 20 pages); (D) process death: `am force-stop` between two
+test invocations, then a fresh process (pid changed) re-applied from the persisted file. **Every case resolved 3/3 decorations at the right
+text.** `applyDecorations` called at STARTED by the bridge (the earliest legal moment) worked; I could not catch a moment where the page document was provably
+still loading (ActivityScenario returns after resume; a manual apply with the page already complete resolved in 63 ms), so "queued before first load" is
+**not separately proven for the first resource**. Marks for **other, not yet loaded resources** are demonstrably queued by Readium
+and appear when the resource loads (2,000-mark test: chapters 2 and 4 resolved immediately, chapter 3 after 2.3 s; jump tests decorated chapters 2 and 3 targets on arrival). Calling before the fragment is
+attached throws (above). No decoration state is read from Fragment state.
+
+### 5. Decoration activation (RP5, AUTOMATED)
+`onDecorationActivated` fires on a real tap with `decoration.id` (`ann-A`), `rect` (WebView pixels) and `point` (WebView pixels). Returning
+`true` consumes the tap (reader chrome does **not** toggle); returning `false` lets the existing center-tap `InputListener` toggle chrome.
+Long-press on a decorated word still starts selection and fires no activation. A tap on an applied mark can therefore open an edit UI.
+
+### 6. Interaction conflicts (RP5, AUTOMATED; conflict map only, no redesign)
+Center tap on unmarked text toggles chrome as before; edge taps still turn pages and do not toggle chrome; with a selection active the
+**first tap anywhere only dismisses the selection** (no chrome toggle, no page turn). `clearSelection()` ends the ActionMode (callback
+`onDestroyActionMode` fired) and is a harmless no-op with nothing selected. **Back vs selection:** ShelfOS's `dispatchKeyEvent`
+consumes Back (ADR-0023) before the platform can dismiss the selection ActionMode: with chrome visible Back leaves the reader on the first press
+(selection mode destroyed with the Activity); with chrome hidden the first Back reveals chrome and the **selection ActionMode stays active**
+(`onDestroyActionMode` not called); the second Back exits. The chrome-visible case was reproduced with both `sendKeyDownUpSync(KEYCODE_BACK)` and `input keyevent 4`; the chrome-hidden case with the key event only.
+The user is never trapped, but the Android convention "Back dismisses selection first" is not honored; that is an ADR-0023 amendment for the administrator.
+
+### 7. Jump to annotation (RP5, AUTOMATED)
+Only persisted locator JSON, through `EpubController.goTo`. **A single `goTo` is NOT reliable in paginated mode:** across 4 targets x 3
+origins it landed on the target text in only 6/10, 5/10 and 6/10 trials (fresh open, after live font-size change, after recreation); misses
+land on a stale page of the right chapter (scroll offset of the already loaded/preloaded resource, or chapter start). Same-resource jumps
+and cold-loaded resources hit. Scroll mode: 10/10 within one line (the target paragraph top within 24 px of the viewport top). **Mitigation proven:**
+repeat the same `goTo(locator)` once the navigator's `currentLocator.href` equals the locator's href (public API only, about 400 ms apart):
+**30/30 hits** in paginated mode across fresh open, font-size change to 1.8 and recreation. The text triplet, not progression, is what drives the
+landing once the resource is current (after the font change the old progression pointed pages away and the text still found the text).
+`progressSnapshot` was never used for navigation.
+
+### 8. Changed / unresolvable content (RP5, AUTOMATED)
+Marks persisted from the base fixture, then the same marks applied against variants. No crash, reader state intact (page turns, locator flow,
+`goTo` returns true), persisted data byte-identical afterwards. `SHIFTED` (two inserted paragraphs at the start) and `FORMKEPT` (the form text
+now present in the DOM): all 5 marks still on their exact text. A mark whose `href` does not exist in the publication and a malformed JSON
+string are silently ignored (no decoration, no exception). **`MISSING` (the quoted text no longer exists): Readium did not drop the
+decoration; it fuzzy-matched it to different text (`quillfeather1x7` was drawn over paragraph 9).** Readium's text-quote anchoring tolerates
+changes by approximate matching and gives **no callback or return value** for "not placed" or "placed approximately"; the only observable is the
+DOM, which ShelfOS may not script. Failure is therefore **not detectable through the Readium API**.
+
+### 9. Scale (RP5, AUTOMATED; synthetic valid locators, text triplet + progression, fixture `LARGE`)
+| Marks | Mode | applyDecorations returns | All resolved in DOM (resource in view) | Main-thread max gap | Page turn after | Memory |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 (baseline) | paged | n/a | n/a | n/a | 112-132 ms | at end: app PSS 266 MB; WebView renderer process ~150 MB |
+| 500 (all chapter 1) | paged | 94 ms | 2.45 s | 65 ms, 0 gaps > 100 ms | 121-133 ms | app PSS 277 MB; renderer ~246 MB |
+| 500 | scroll | 101 ms | 2.48 s | 71 ms, 0 gaps > 100 ms | 121-143 ms | app PSS 277 MB; renderer ~249 MB |
+| 2,000 (4 chapters x about 500) | paged | 273 ms | ch.1 5.1 s, ch.3 2.3 s, ch.2/4 already done | 200 ms (one gap > 100 ms), 0 > 500 ms | 111-132 ms | app PSS 248 MB; renderer ~375 MB |
+No ANR (`dumpsys dropbox data_app_anr` has no ShelfOS entry; no `ANR in` in logcat), no visible jank, page-turn latency unchanged versus baseline. Rendering happens in the WebView renderer process, off the
+app main thread. 500 on the RP5 **passes**. 2,000 passes in this per-resource distribution; 2,000 marks in a single resource was not measured, and
+the renderer memory cost (+100 MB at 500, +225 MB at 2,000) matters on the 2 GB SM-T580, which was not available.
+
+### 10. Sanitizer coupling
+Annotations are anchored on text of the **sanitized rendition**: with `sanitizeEpubHtml` active, script text (`shelfosSpikeTrap`) and form text are absent from the
+rendered DOM and from every captured `before`/`after`. Create, persist, reparse and restore against the same sanitizer is exact (all lifecycle cases).
+Robustness comes only from `text.before/highlight/after` (approximate quote matching with context); `progression` is page-level and layout-dependent, and
+`fragments`/`otherLocations` carry nothing. Controlled variation: with the form text kept (a weaker sanitizer) all marks still resolved on their exact text;
+with the highlighted text removed, Readium silently mis-anchored. **A future sanitizer change cannot be assumed safe: small context changes are
+absorbed by fuzzy matching, but a change that removes or alters the highlighted text itself can silently move a highlight to other text.** Any sanitizer change needs a
+restoration regression test (the fixture variants in `OriginalFixtures.epubAnnotationSpike` are suitable).
+
+### 11. API 24 / WebView 52 (emulator, AUTOMATED observation)
+Selection works (action mode created, identical locator shape). **Decorations do not render: 0 of 3 resolved.** Readium's own bundled script fails on this WebView:
+`Uncaught ReferenceError: ResizeObserver is not defined`, `Uncaught TypeError: Object.entries is not a function`, `Uncaught TypeError:
+document.body.append is not a function`. `applyDecorations` returns normally. This is a Readium 3.4.0 / old-WebView limitation (the same environment already has the
+documented managed-font limitation), not ShelfOS code. Inline highlights need a minimum-WebView capability gate (at least one that provides `ResizeObserver`, Chromium 64+; not
+verified at any specific version between 52 and 109).
+
+### Required mitigations before 4B implementation
+1. Jump: `EpubController.goTo` must use the two-step `goTo` (second call once `currentLocator.href` matches), with a production regression test.
+2. Attach timing: register the decoration listener and apply decorations only inside `lifecycle.withStarted`, for every newly built navigator (already how the bridge works).
+3. Capability gate for inline highlights/notes on WebViews that cannot run Readium's script; keep position-anchored notes + bookmarks there.
+4. Mis-anchoring: add a ShelfOS-side placement guard outside the WebView (for example a rendition/sanitizer version key inside `locations`, proven inert, and/or an exact Kotlin-side check of `before+highlight+after` against the sanitized resource text) so annotations from an older rendition are shown as unplaced instead of drawn on other text. Never delete data on failure.
+5. Back/selection: administrator decision on amending ADR-0023 so Back first dismisses an active selection (ShelfOS tracks ActionMode create/destroy through the bridge).
+6. Decoration listener: return `true` when opening the edit UI, otherwise the tap also toggles chrome.
+7. Persist the full `locatorJson` (text triplet is the anchor); never use `progression`/`position`/`totalProgression` as a range anchor; cap sizes per plan §6.1.
+8. Re-validate on the SM-T580 (2 GB) with 500 and 2,000 marks before committing to those counts.
+
+### Not executed (and what would be needed)
+SM-T580 (not connected). TalkBack, hardware keyboard and gamepad selection (no UI path to start a selection without touch exists; plan §9.4's non-selection note path remains
+required). API 24 Back/activation/jump/scale behaviour (decorations do not render there). 2,000 marks in a single resource. MANUAL owner check (optional, not required for the
+result): on the RP5 with a debug build of this branch, long-press a word in any EPUB through a real finger and confirm the selection toolbar appears; nothing to report unless it does not.
+
+### Commands (all one class per Gradle invocation, `ANDROID_SERIAL` set, per-device XML checked)
+`gradlew.bat :app:compileDebugKotlin` (and `--rerun` for warnings); instrumented, RP5: `ANDROID_SERIAL=d8f7f1b6 gradlew.bat :app:connectedDebugAndroidTest
+-Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.EpubAnnotationSpikeTest` => **22/22, 0 failures** (484.7 s, per-device XML count verified; an earlier identical run before `spike3b_crossBlockSelection` was added was 21/21); existing `EpubRecreationTest` 1/1 and `EpubChapterHighlightTest` 3/3 re-run after the
+`EpubActivity`/`EpubSurface` hook change; single-method iteration and the process-death pair and emulator observation by `am instrument`; emulator observation by `am instrument` for single methods. `gradlew.bat :app:assembleDebug` BUILD SUCCESSFUL.
+
 ## PHASE 4A — ANNOTATION FOUNDATION (2026-10-10)
 
 Status: **implemented locally, pending independent review (Codex High) and administrator triage. Not merged.**

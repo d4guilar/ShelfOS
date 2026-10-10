@@ -218,6 +218,58 @@
     <string name="content_desc_bookmark_row">Marcador, %1$s</string>
     <string name="content_desc_bookmark_delete">Eliminar marcador, %1$s</string>
 
+    <!-- Notas, resaltados y lista de anotaciones del lector (Fase 4B) -->
+    <string name="action_notes">Notas</string>
+    <string name="action_save">Guardar</string>
+    <string name="annotations_title">Notas y resaltados</string>
+    <string name="annotations_filter_all">Todo</string>
+    <string name="annotations_filter_notes">Notas</string>
+    <string name="annotations_filter_highlights">Resaltados</string>
+    <string name="annotations_filter_bookmarks">Marcadores</string>
+    <plurals name="annotations_count">
+        <item quantity="one">%1$d elemento</item>
+        <item quantity="other">%1$d elementos</item>
+    </plurals>
+    <string name="annotations_empty">Todavía no hay notas, resaltados ni marcadores.</string>
+    <string name="annotations_empty_filtered">No hay nada en esta vista.</string>
+    <string name="annotation_add_note_here">Añadir nota en la posición actual</string>
+    <string name="annotation_kind_highlight">Resaltado</string>
+    <string name="annotation_kind_note">Nota</string>
+    <string name="annotation_kind_note_position">Nota en una posición</string>
+    <string name="annotation_kind_bookmark">Marcador</string>
+    <string name="annotation_style_amber">Ámbar</string>
+    <string name="annotation_style_green">Verde</string>
+    <string name="annotation_style_blue">Azul</string>
+    <string name="annotation_style_rose">Rosa</string>
+    <string name="annotation_style_unknown">Color desconocido</string>
+    <string name="annotation_location_unavailable">Ubicación del texto no disponible</string>
+    <string name="annotation_open_failed">No se pudo abrir esta ubicación. Aun así puedes editarla o eliminarla.</string>
+    <string name="annotation_inline_unavailable">Las anotaciones de texto en línea requieren una versión más reciente y compatible de Android System WebView. Los marcadores y las notas en una posición siguen funcionando.</string>
+    <string name="content_desc_annotation_row">%1$s, %2$s</string>
+    <string name="content_desc_annotation_edit">Editar %1$s</string>
+    <string name="content_desc_annotation_delete">Eliminar %1$s</string>
+    <string name="annotation_editor_new_note">Nota nueva</string>
+    <string name="annotation_editor_note">Editar nota</string>
+    <string name="annotation_editor_highlight">Editar resaltado</string>
+    <string name="annotation_note_label">Nota</string>
+    <string name="annotation_highlight_note_label">Nota (opcional)</string>
+    <string name="annotation_style_label">Color del resaltado</string>
+    <string name="annotation_style_selected">%1$s, seleccionado</string>
+    <string name="annotation_note_counter">%1$d de %2$d caracteres</string>
+    <string name="annotation_delete_confirm_title">¿Eliminar este elemento?</string>
+    <string name="annotation_delete_confirm_body">Se quitará de esta publicación. El archivo del libro no se modifica.</string>
+    <string name="selection_action_highlight">Resaltar</string>
+    <string name="selection_action_add_note">Añadir nota</string>
+    <string name="selection_action_copy">Copiar</string>
+    <string name="annotation_selection_no_text">La selección no contiene texto legible.</string>
+    <string name="annotation_selection_too_large">Esta selección es demasiado grande para guardarla.</string>
+    <string name="annotation_selection_unanchorable">Este pasaje no se puede guardar de forma fiable. Prueba a seleccionar un pasaje más corto.</string>
+    <string name="annotation_save_failed">No se pudo guardar.</string>
+    <string name="annotation_update_failed">No se pudo actualizar.</string>
+    <string name="annotation_delete_failed">No se pudo eliminar.</string>
+    <string name="annotation_note_empty">Escribe algo para guardar la nota.</string>
+    <string name="annotation_note_too_long">Las notas pueden tener hasta %1$d caracteres.</string>
+
     <!-- Diálogo de apariencia -->
     <string name="appearance_dialog_title">Apariencia de lectura</string>
     <string name="appearance_presentation">Presentación</string>
