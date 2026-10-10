@@ -1,5 +1,14 @@
 # Annotation and Notes Specification
 
+## Current status (2026-10-10)
+
+Only **EPUB bookmarks** exist today (Room table `bookmark`, with a cascade from the
+LibraryItem); there are no highlights, notes, Notes hub or export, and fixed-page readers
+(PDF/CBZ/CBR) have no bookmarks. The Phase 4 plan and the proposed model, which supersedes
+the conceptual sketch below for Phase 4, are in
+[`PHASE_4_IMPLEMENTATION_PLAN.md`](../PHASE_4_IMPLEMENTATION_PLAN.md) and
+[ADR-0025](../adr/0025-annotation-anchor-and-knowledge-model.md).
+
 ## Goal
 
 Annotations should become a reusable knowledge layer across ShelfOS.

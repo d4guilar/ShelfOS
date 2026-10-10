@@ -347,8 +347,11 @@ A user can comfortably read a CBZ comic or manga entirely with touch, keyboard, 
 
 ### Current status
 
-Not started. Phase 4 is the next numbered roadmap area following the accepted
-Phase 3 (2026-10-09); this roadmap does not yet scope its implementation.
+Not started (implementation). Phase 4 is the next numbered roadmap area following the
+accepted Phase 3 (2026-10-09). Planning is recorded in
+[`PHASE_4_IMPLEMENTATION_PLAN.md`](PHASE_4_IMPLEMENTATION_PLAN.md) (slices 4A–4F) and
+[ADR-0025](adr/0025-annotation-anchor-and-knowledge-model.md) (Proposed); no slice is
+authorized or implemented yet.
 
 ### Goal
 ShelfOS becomes useful for active reading and study.
