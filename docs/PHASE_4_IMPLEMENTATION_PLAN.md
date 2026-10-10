@@ -805,8 +805,10 @@ carries the spike entry). ADR-0025 is unchanged and none of its decisions was co
   repagination and process death, decoration activation, 500 decorations without jank on the RP5 (WebView 109). Four conditions were found and are all resolved in this slice: (1) deterministic two-stage jump,
   (2) stale-anchor protection, (3) Back/selection precedence, (4) WebView capability gate.
 - **Stale-anchor mitigation (section 9.4 risk closed for EPUB).** `core.reader.EpubAnchorVerifier` verifies a stored `text.before/highlight/after` against the same SANITIZED rendition ShelfOS exposes to Readium
-  (whitespace- and invisible-character-insensitive, otherwise exact) before drawing; PLACEABLE / UNPLACED / MALFORMED; unplaced annotations are never drawn, deleted or rewritten and are listed with a localized
-  "text location unavailable" state. Cached per resource for the session. A sanitizer change that alters visible text is potentially anchor-affecting (regression tests named in VALIDATION.md).
+  before drawing; PLACEABLE / UNPLACED / MALFORMED; unplaced annotations are never drawn, deleted or rewritten and are listed with a localized
+  "text location unavailable" state. The first implementation used lossy whitespace/invisible-character compaction; independent review found word-boundary and ZWJ/ZWNJ false-positive paths. The hardened
+  verifier preserves the sanitized DOM text-node stream exactly and requires one unique exact `before + highlight + after` window. Different or ambiguous text is UNPLACED; progression never resolves ambiguity.
+  Cached per resource for the session. A sanitizer change that alters visible text is potentially anchor-affecting (regression tests named in VALIDATION.md).
 - **Deterministic jump.** `EpubController.jumpTo`: exact persisted locator, `go`, await the navigator reaching the target resource, the same locator once more; bounded, cancellation-safe; 30/30 on the RP5 (a single `go` missed 6/30 in the same test).
 - **Back/selection precedence.** ADR-0023 "Phase 4B clarification": selection, then dialog, then reveal chrome, then exit; same for Back, Escape and gamepad B.
 - **WebView capability.** Offered only when the real WebView's Chromium major version is >= 69 (highest platform version Readium 3.4.0's unpolyfilled script statically requires; 52 measured failing, 109 measured passing, between untested).

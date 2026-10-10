@@ -36,11 +36,12 @@ class AnchorTextTest {
         assertTrue(later.textFraction!! > v.textFraction!!)
     }
 
-    @Test fun blockBreaksInHighlightButNotInContextStillMatch() {
-        // Selection.toString() puts newlines at block breaks; body.textContent (used for before/after) does not.
+    @Test fun blockBreaksThatDifferFromTextContentAreConservativelyUnplaced() {
+        // Selection.toString() can put newlines at block breaks while body.textContent does not. Treating them as equal
+        // would require a lossy transform, so this uncommon cross-block anchor is deliberately refused.
         val v = AnchorText.verify(first, "Paragraph 5 of chapter 1. Marker quillfeather1x5 stands alone in this line. The quiet harbor lies beyond the old lighthouse, and the quiet harbor waits for the ",
             "tide.\n\nParagraph 6 of chapter 1.", " Marker quillfeather1x6 stands")
-        assertEquals(AnchorStatus.PLACEABLE, v.status)
+        assertEquals(AnchorStatus.UNPLACED, v.status)
     }
 
     @Test fun repeatedPhraseIsPlacedOnlyWhereItsContextMatches() {
@@ -88,11 +89,32 @@ class AnchorTextTest {
         assertEquals(AnchorStatus.UNPLACED, AnchorText.verify(first, "Paragraph 3 of chapter 1.", "quillfeather1x10", "stands alone in this line.").status)
     }
 
-    @Test fun invisibleCharactersAndWhitespaceKindsDoNotAffectComparison() {
+    @Test fun sanitizedDomTextStreamPreservesWhitespaceAndUnicodeFormatCharacters() {
         val markup = "<html><body><p>Soft\u00ADhyphen word and\u00A0nbsp   spaced\u200B text.</p></body></html>"
         val text = AnchorText.visibleText(markup, xml = false)!!
-        assertEquals("Softhyphenwordandnbspspacedtext.", text)
-        assertEquals(AnchorStatus.PLACEABLE, AnchorText.verify(text, "Soft hyphen ", "word and nbsp", " spaced text.").status)
+        assertEquals("Soft\u00ADhyphen word and\u00A0nbsp   spaced\u200B text.", text)
+        assertEquals(AnchorStatus.PLACEABLE, AnchorText.verify(text, "Soft\u00ADhyphen ", "word and\u00A0nbsp", "   spaced\u200B text.").status)
+        assertEquals(AnchorStatus.UNPLACED, AnchorText.verify(text, "Soft hyphen ", "word and nbsp", " spaced text.").status)
+    }
+
+    @Test fun wordAndWhitespaceBoundariesCannotCollapseIntoDifferentText() {
+        assertEquals(AnchorStatus.UNPLACED, AnchorText.verify("A therapist walks", "A ", "the rapist", " walks").status)
+        assertEquals(AnchorStatus.UNPLACED, AnchorText.verify("A the rapist walks", "A ", "therapist", " walks").status)
+        assertEquals(AnchorStatus.UNPLACED, AnchorText.verify("foobar", "", "foo bar", "").status)
+        assertEquals(AnchorStatus.UNPLACED, AnchorText.verify("foo bar", "", "foobar", "").status)
+        assertEquals(AnchorStatus.PLACEABLE, AnchorText.verify("A the rapist walks", "A ", "the rapist", " walks").status)
+    }
+
+    @Test fun zwjAndZwnjDifferencesNeverCompareEqual() {
+        val womanTechnologist = "\uD83D\uDC69\u200D\uD83D\uDCBB"
+        val unjoinedEmoji = "\uD83D\uDC69\uD83D\uDCBB"
+        assertEquals(AnchorStatus.UNPLACED, AnchorText.verify(unjoinedEmoji, "", womanTechnologist, "").status)
+        assertEquals(AnchorStatus.UNPLACED, AnchorText.verify(womanTechnologist, "", unjoinedEmoji, "").status)
+
+        val joinedPersian = "می\u200Cروم"
+        val unjoinedPersian = "میروم"
+        assertEquals(AnchorStatus.UNPLACED, AnchorText.verify(unjoinedPersian, "", joinedPersian, "").status)
+        assertEquals(AnchorStatus.UNPLACED, AnchorText.verify(joinedPersian, "", unjoinedPersian, "").status)
     }
 
     @Test fun blankHighlightIsMalformedNotUnplaced() {

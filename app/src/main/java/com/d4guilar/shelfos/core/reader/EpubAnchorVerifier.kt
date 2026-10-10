@@ -29,8 +29,9 @@ import org.readium.r2.shared.publication.Locator
  *
  * How Readium builds the text triplet (verified in the pinned readium-reflowable.js): `before` and `after` are
  * slices of `document.body.textContent` (whitespace intact, NO separators between blocks), trimmed to word
- * boundaries; `highlight` is `Selection.toString()` (rendered text: block breaks become newlines). The two therefore
- * disagree about whitespace, so comparison drops all whitespace and invisible format characters on BOTH sides.
+ * boundaries; `highlight` is `Selection.toString()` (rendered text: block breaks can become newlines). Verification
+ * deliberately performs no lossy normalization: a cross-block selection whose strings do not exactly match the
+ * sanitized text stream is conservatively UNPLACED rather than risking a mark on different text.
  */
 
 /** The text part of a stored Readium locator. [progression] is a secondary hint only and is never proof. */
@@ -48,23 +49,13 @@ enum class AnchorStatus {
 /** [textFraction] is the match's offset within the resource's comparable text (0..1); a derived ordering hint only. */
 data class AnchorVerdict(val status: AnchorStatus, val textFraction: Double? = null)
 
-/** Comparable-text rules shared by both sides of the comparison. Pure and JVM-testable. */
+/** Exact sanitized-DOM text-stream and matching rules. Pure and JVM-testable. */
 object AnchorText {
-    private fun ignorable(c: Char): Boolean =
-        Character.isWhitespace(c) || Character.isSpaceChar(c) || c == '\u00AD' || c == '\u200B' || c == '\u200C' ||
-            c == '\u200D' || c == '\u2060' || c == '\uFEFF'
-
-    /** Drops every whitespace and invisible format character; the rest is compared exactly (case, accents, punctuation). */
-    fun compact(text: CharSequence?): String {
-        if (text.isNullOrEmpty()) return ""
-        val out = StringBuilder(text.length)
-        for (i in text.indices) if (!ignorable(text[i])) out.append(text[i])
-        return out.toString()
-    }
-
     /**
      * The comparable text of a sanitized content document: every text node under `body` in document order, like the
-     * DOM's `body.textContent`. Null when the markup has no body at all (nothing can be verified).
+     * DOM's `body.textContent`. Text-node content, whitespace and Unicode join controls are preserved exactly; Jsoup's
+     * parser performs the same markup/entity decoding step a browser DOM performs. No separators are invented between
+     * elements. Null when the markup has no body at all (nothing can be verified).
      */
     fun visibleText(markup: String, xml: Boolean): String? {
         val document = if (xml) Jsoup.parse(markup, "", Parser.xmlParser()) else Jsoup.parse(markup)
@@ -76,33 +67,37 @@ object AnchorText {
                 is DataNode -> out.append(node.wholeData)
             }
         })
-        return compact(out)
+        return out.toString()
     }
 
     /**
-     * Verifies a highlighted passage against a resource's comparable text [resource]. PLACEABLE only when exactly one
-     * occurrence of the highlight has [before] immediately in front of it and [after] immediately behind it. Several
-     * context-identical occurrences are ambiguous and therefore UNPLACED: progression is page-level and cannot prove
-     * which one the reader meant.
+     * Verifies a highlighted passage against a resource's exact text stream [resource]. PLACEABLE only when the exact
+     * combined window `before + highlight + after` occurs once. Several identical windows are ambiguous and therefore
+     * UNPLACED: progression is page-level and cannot prove which one the reader meant. Empty boundary context is allowed,
+     * but every character that is present is significant.
      */
     fun verify(resource: String, before: String?, highlight: String?, after: String?): AnchorVerdict {
-        val h = compact(highlight)
-        if (h.isEmpty()) return AnchorVerdict(AnchorStatus.MALFORMED)
-        val b = compact(before)
-        val a = compact(after)
+        val h = highlight
+        if (h.isNullOrBlank()) return AnchorVerdict(AnchorStatus.MALFORMED)
+        val b = before.orEmpty()
+        val a = after.orEmpty()
+        val window = b + h + a
         var matches = 0
-        var first = -1
+        var firstWindow = -1
         var from = 0
         while (true) {
-            val at = resource.indexOf(h, from)
+            val at = resource.indexOf(window, from)
             if (at < 0) break
-            val beforeOk = b.isEmpty() || (at >= b.length && resource.regionMatches(at - b.length, b, 0, b.length))
-            val afterOk = a.isEmpty() || resource.startsWith(a, at + h.length)
-            if (beforeOk && afterOk) { matches++; if (first < 0) first = at; if (matches > 1) break }
+            matches++
+            if (firstWindow < 0) firstWindow = at
+            if (matches > 1) break
             from = at + 1
         }
         return when {
-            matches == 1 -> AnchorVerdict(AnchorStatus.PLACEABLE, if (resource.isEmpty()) null else first.toDouble() / resource.length)
+            matches == 1 -> AnchorVerdict(
+                AnchorStatus.PLACEABLE,
+                if (resource.isEmpty()) null else (firstWindow + b.length).toDouble() / resource.length,
+            )
             else -> AnchorVerdict(AnchorStatus.UNPLACED)
         }
     }
@@ -151,7 +146,7 @@ class EpubAnchorVerifier(private val loadResource: suspend (href: String) -> Res
     }
 
     private suspend fun verdict(anchor: SelectionAnchor): AnchorVerdict {
-        if (AnchorText.compact(anchor.highlight).isEmpty()) return AnchorVerdict(AnchorStatus.MALFORMED)
+        if (anchor.highlight.isNullOrBlank()) return AnchorVerdict(AnchorStatus.MALFORMED)
         val text = textFor(anchor.href) ?: return AnchorVerdict(AnchorStatus.UNPLACED)
         return withContext(Dispatchers.Default) { AnchorText.verify(text, anchor.before, anchor.highlight, anchor.after) }
     }

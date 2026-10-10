@@ -16,7 +16,7 @@ resolved in this slice, each with a regression test:
 | Spike condition | Resolution | Evidence |
 | --- | --- | --- |
 | 1. A single `goTo` is unreliable in paginated mode (5-6 of 10) | `EpubController.jumpTo`: parse the exact persisted locator, `go`, await `currentLocator` reaching the target resource (bounded, cancellation-safe, no sleep), issue the same locator once more. `progressSnapshot` never navigates. | `EpubAnnotationsTest.jumpingToAnAnnotationIsDeterministicInPaginatedMode_thirtyRepeatedJumps`: **30/30** on the RP5 with the two-stage jump. The same test with the second `go` temporarily removed (experiment, reverted) **missed 6 of 30** (`jump 3 to quillfeather1x20, 7 to 2x1, 8 to 1x20, 13 to 1x1, 23 to 1x20, 30 to 1x20`), so the test discriminates. |
-| 2. Readium silently approximates a stale locator onto the wrong text | ShelfOS-owned stale-anchor verification against the same sanitized rendition (below). Unverifiable annotations are not drawn, not deleted and not rewritten. | `AnchorTextTest` (15, JVM), `EpubAnchorVerifierInstrumentedTest` (9), `unplacedAnnotationStaysStoredAndListedAndIsNeverDrawnOnOtherText` |
+| 2. Readium silently approximates a stale locator onto the wrong text | ShelfOS-owned stale-anchor verification against the same sanitized rendition (below). Unverifiable annotations are not drawn, not deleted and not rewritten. The verifier was hardened after independent review found that its first lossy whitespace/join-control compaction could merge different text. | `AnchorTextTest` (17, JVM), `EpubAnchorVerifierInstrumentedTest` (9), `unplacedAnnotationStaysStoredAndListedAndIsNeverDrawnOnOtherText` |
 | 3. Back must dismiss a selection first | ADR-0023 "Phase 4B clarification": selection > dialog > reveal chrome > exit, same for Back, Escape and gamepad B. | `backDismissesAnActiveSelectionBeforeChromeOrExit_visibleChrome` / `_hiddenChrome`, `escapeAndGamepadBDismissASelectionTheSameWay`, legacy test |
 | 4. Legacy WebViews must not offer inline highlights | Capability gate keyed on the real WebView version (below). | `InlineAnnotationCapabilityTest` (6, JVM), `legacyWebViewKeepsPositionNotesAndBookmarksButOffersNoInlineAnnotations`, API 24 emulator run |
 
@@ -41,17 +41,26 @@ decorations; the Notes list shows a localized explanation; bookmarks and "Add no
 (`EpubSession.sanitizedMarkup`, the publication container's `sanitizeEpubHtml` transform), derives the comparable text of every text node under
 `body`, and verifies the locator's `text.before/highlight/after`. Findings from Readium's own script: `before`/`after` are slices of
 `document.body.textContent` (no separators between blocks) trimmed to word boundaries; `highlight` is `Selection.toString()` (block breaks become
-newlines); so all whitespace and invisible format characters are dropped on both sides and the rest is compared exactly. PLACEABLE only when
-exactly one occurrence of the highlight has its stored context immediately before and after it; otherwise UNPLACED (text missing, context changed,
+newlines). The first production verifier dropped all whitespace and several invisible format characters. Independent review found that this was
+lossy: for example, `the rapist` could compare equal to `therapist`, and removing ZWJ/ZWNJ could merge semantically different Unicode text. The
+hardened verifier now concatenates the sanitized body's actual text nodes in DOM order without inventing block separators and preserves every
+character exactly, including ordinary whitespace, ZWJ and ZWNJ. It performs no case, punctuation, diacritic, Unicode-normalization or fuzzy
+transformation. PLACEABLE requires exactly one occurrence of the exact combined `before + highlight + after` window; otherwise UNPLACED (text missing, context changed,
 ambiguous repeated passage, unreadable resource) or MALFORMED (not a text anchor). Progression is page-level and is never proof. Results are cached per
 href (LRU of 24) and per locator for the reader session, annotations are grouped by resource, so 500 annotations parse a chapter once: 500 anchors
 verified in 248 ms on the RP5 and 317 ms on the API 24 emulator, 1 parse; 4 chapters x 120 annotations = 4 parses. A new HIGHLIGHT is verified before it is saved;
-a selection that cannot be anchored is refused with a localized message. **Sanitizer coupling:** verification runs against the sanitized rendition; a future
+a selection that cannot be anchored is refused with a localized message. A cross-block selection whose `Selection.toString()` newline representation
+does not exactly equal `body.textContent` is conservatively UNPLACED. **Sanitizer coupling:** verification runs against the sanitized rendition; a future
 `sanitizeEpubHtml` change that alters visible text is potentially anchor-affecting and must keep
 `EpubAnchorVerifierInstrumentedTest.currentSanitizerKeepsPersistedSelectionLocatorsVerifiable` and `AnchorTextTest.currentSanitizerKeepsPersistedSelectionTripletsVerifiable` green.
 Those replay selection locators captured from REAL Readium selections on the RP5 (`GoldenSelectionLocators`: single word, after a removed script,
 after a removed form, inline `<em>`, non-ASCII, repeated phrase, whole sentence). Variant checks on the real session: MISSING (paragraph rewritten) unplaces exactly the annotations whose
 text or context named it; SHIFTED (inserted text) keeps all 8 placeable; FORMKEPT (a weaker sanitizer) unplaces only the anchor whose context included the form.
+
+**Post-review stale-anchor remediation (2026-10-10).** Focused validation after removing the lossy compaction: `AnchorTextTest` 17/17; the exact
+word-boundary, whitespace-boundary, ZWJ and ZWNJ collisions are UNPLACED; `EpubAnchorVerifierInstrumentedTest` 9/9 on the RP5, including all eight real
+golden locators, BASE/MISSING/SHIFTED/FORMKEPT and the 500-anchor cache/performance case (221 ms, one resource parse); RP5 production-path stale/unplaced
+and normal-highlight methods 1/1 each. This remediation changes only anchor verification, its tests and this documentation; Samsung UAT remains pending.
 
 **Selection and annotation behavior (EPUB only).** Readium `selectionActionModeCallback` (installed only when supported) offers Highlight, Add note and Copy
 (Readium uses the callback instead of the platform's, so Select all and platform share/search are not available through it). Highlight: HIGHLIGHT, default style `amber`,
@@ -69,7 +78,7 @@ WebView `com.android.webview` 109.0.5414.123; emulator = `emulator-5554` API 24,
 
 | Step | Device | Result |
 | --- | --- | --- |
-| compile, JVM (`core.reader.*`, `domain.annotations.*`, `EpubXhtmlSanitizerTest`, `LocalizationPolicyTest`, `LocalizationMessageMappingTest`) | host | 353 tests, 0 failures; new: `SelectedTextTest` 9, `AnchorTextTest` 15, `AnnotationPaletteTest` 7, `InlineAnnotationCapabilityTest` 6, `AnnotationDomainTest` 11 (4 new) |
+| compile, JVM (`core.reader.*`, `domain.annotations.*`, `EpubXhtmlSanitizerTest`, `LocalizationPolicyTest`, `LocalizationMessageMappingTest`) | host | Initial 4B run: 353 tests, 0 failures; new: `SelectedTextTest` 9, `AnchorTextTest` 15 (expanded to 17 by the post-review remediation above), `AnnotationPaletteTest` 7, `InlineAnnotationCapabilityTest` 6, `AnnotationDomainTest` 11 (4 new) |
 | `EpubAnchorVerifierInstrumentedTest` | RP5 / API 24 | 9/9 / 9/9 |
 | `AnnotationRepositoryTest` (3 new 4B tests) | RP5 / API 24 | 15/15 / 15/15 |
 | `EpubAnnotationsTest` | RP5 | **23/23** (3 are gated evidence tests that return immediately unless started with `-e deathPhase`/`-e stress2000`) |
