@@ -40,8 +40,9 @@ next member's actual format and capabilities. Preserve independent member IDs,
 locators, progress and preferences; a change of container must not reset Series
 Continue Reading or require the user to return to the Library.
 
-Format support remains a separate implementation requirement: CBR is still future
-scope, not enabled by this decision. An unsupported or unreadable candidate must
+Format support remains a separate implementation requirement and is not enabled
+by this decision; CBR support now exists independently (native Phase 3 container
+adapter, ADR-0024). An unsupported or unreadable candidate must
 be reported individually in import review without rejecting the other members or
 changing their proposed grouping. Do not advertise an unsupported member as
 readable or silently skip it during omnibus navigation. Apply the existing

@@ -21,7 +21,25 @@ transition. It passes its automated, emulator and physical-device checks, includ
 fixes for its first review and a full acceptance-closure pass; see
 [validation](docs/VALIDATION.md) for two documented, non-blocking environment limitations
 (an emulator-specific API 24 test flake and an API 37 UI-test tooling gap, neither a
-ShelfOS defect). This is not a release.
+ShelfOS defect).
+
+Phase 2 (everyday reading refinements) is **complete** (2026-10-02). Phase 3, the
+fixed-layout and comic reading foundation, is **complete and owner-UAT accepted**
+(2026-10-09). Current local reading support is **EPUB, PDF, CBZ and CBR**: EPUB
+through the Readium-based reader, and fixed-layout PDF plus CBZ/CBR comics and
+manga with single-page, explicit two-page spread and AUTO modes (AUTO reads one
+source page at a time; genuine authored wide pages display whole), page
+thumbnails and navigation, progress/resume, zoom and fit behaviors, LTR/RTL
+navigation, keyboard/controller navigation, and tablet and foldable-aware
+layouts. CBR/RAR archives are read natively and directly — no conversion or
+repacking — and source publications are never modified. Nothing is downloaded or
+supplied by ShelfOS; you read files you own or have legally obtained. See
+[validation](docs/VALIDATION.md) for the accepted evidence and its documented
+caveats (including API 24/25 legacy-PDF handling that the owner's API 27 test
+device does not exercise).
+
+This is not a release: ShelfOS remains an early development prototype. The next
+roadmap area is Phase 4 (Notes and Knowledge Layer), which has not started.
 
 Global destinations are Library, Search, Notes, Shelves and Settings. Notes and
 Shelves are placeholders; their functionality is not implemented. See the [Phase 1 plan](docs/PHASE_1_PLAN.md)
@@ -73,9 +91,11 @@ See [validation status and acceptance checklist](docs/VALIDATION.md),
 [Phase 0 decisions](docs/adr/0016-phase-zero-foundation.md).
 GitHub Actions is configured for builds, unit tests and lint; device tests run
 separately. Historical Phase 0 validation passed a clean-checkout build, seven JVM tests and
-five Android tests on both phone and expanded API 35 emulator layouts. Physical
-devices, fold postures, API 24/37 runtimes and broader accessibility QA remain.
-Phase 1 emulator and private-sample results are recorded separately in the validation document.
+five Android tests on both phone and expanded API 35 emulator layouts. Physical-device
+validation now includes the Phase 3 records (a Retroid Pocket 5 on API 33 and the
+owner's Samsung Galaxy Tab A on API 27); dedicated foldable hardware, an API 25
+runtime, API 37 automated UI tests and broader accessibility QA remain. Phase 1,
+Phase 2 and Phase 3 results are recorded in the validation document.
 
 ## Product and design
 

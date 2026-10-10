@@ -116,8 +116,9 @@ manga reader. A generic `.zip` library is one import container holding multiple
 publication files, such as EPUB, PDF and CBZ. The outer ZIP never becomes one giant
 publication or comic. A ZIP containing `Book.epub`, `Paper.pdf` and `Comic.cbz`
 produces three candidates; the nested CBZ remains one candidate and is interpreted
-by its publication-format adapter. Future CBR or structured formats participate
-only after their own format support ships.
+by its publication-format adapter. CBR participates through its own container
+adapter (shipped in Phase 3); future structured formats participate only after
+their own format support ships.
 
 Arbitrary nested generic ZIP archives are not recursively expanded by default.
 Supported publication containers are inspected according to their format; other
@@ -130,7 +131,7 @@ Preserve safe relative paths as evidence. `Books/` or `Manga/` may strengthen a
 category hint; `Dune/` or `Berserk/` plus names and metadata may suggest a Series;
 `Research/` may suggest a Shelf. Folder evidence never creates authoritative
 Categories, Series or Shelves. Proposals stay reviewable and user decisions win.
-Mixed nested publication formats, such as CBZ and future CBR volumes, can propose
+Mixed nested publication formats, such as CBZ and CBR volumes, can propose
 one Series without conversion or physical merging.
 
 Archive review reports totals by proposed category, detected Series, suggested
@@ -201,8 +202,9 @@ or ambiguous online matches are enrichment states, not failed local imports.
 Series proposals may contain mixed formats, such as a CBR first volume and a CBZ
 second volume. Do not group or split Series by extension. Assess format support
 per candidate and isolate unsupported members without failing the whole batch;
-see [mixed-format Series](SERIES.md#mixed-format-members). This does not add CBR
-support to the current implementation scope.
+see [mixed-format Series](SERIES.md#mixed-format-members). Series proposals never
+govern format support: CBR support ships on its own (native Phase 3 container
+adapter), and grouping decisions must not gate or imply it.
 
 Progressive duplicate detection uses known source URI/reference, then name + size +
 modified date, then identifiers/metadata, then content fingerprint when needed.

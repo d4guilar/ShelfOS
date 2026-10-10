@@ -8,9 +8,17 @@ EPUB supports typography changes; original-page PDF and image pages retain
 authored fonts/layout. PDF font replacement remains future reconstruction work.
 Manga PDFs use the same category-based RTL default as Manga CBZs. Reader adapters
 for EPUB, Original PDF and CBZ are implemented and accepted as part of Phase 1
-(ADR-0017, 2026-09-24). The sections below describe the shared target behavior;
-Phase 2 (see `docs/PHASE_2_PLAN.md`) hardens and extends this accepted foundation
-rather than starting it.
+(ADR-0017, 2026-09-24). Phase 2 (see `docs/PHASE_2_PLAN.md`) hardened and extended
+that foundation. The Phase 3 fixed-layout/comic reader is implemented and accepted
+(2026-10-09): PDF/CBZ/CBR fixed-page reading with page thumbnails and a page
+navigator, SINGLE/SPREAD/AUTO page modes, progress/resume, zoom and fit behaviors,
+LTR/RTL and keyboard/controller navigation, and tablet/foldable-aware layouts.
+AUTO reads one source page at a time (genuine authored wide source pages display
+whole); SPREAD is the explicit pairing mode. CBR/RAR archives are read natively
+and directly through the shared image-sequence pipeline with no conversion and no
+source mutation (see `docs/adr/0024-native-cbr-libarchive.md`). The sections below
+describe the shared target behavior; remaining gaps (annotations, Adapted PDF,
+later formats) stay future work.
 
 ## Shared goals
 
@@ -75,10 +83,12 @@ Later:
 Initial:
 
 - CBZ
+- CBR
 
 Features:
 
 - single page
+- spread modes: SINGLE / SPREAD / AUTO (AUTO = one source page at a time)
 - page turn
 - fit page
 - fit width
@@ -91,11 +101,13 @@ Features:
 Initial:
 
 - CBZ
+- CBR
 
 Features:
 
 - same rendering core as Comics
 - RTL default
+- spread modes: SINGLE / SPREAD / AUTO
 - page turn
 - progress
 - thumbnails
@@ -128,4 +140,5 @@ per member's actual format/capabilities while retaining its own locator, progres
 and preferences. A CBR volume followed by a CBZ volume must work continuously once
 both formats are supported; no conversion or shared archive container is required.
 See [mixed-format Series](SERIES.md#mixed-format-members) for the support boundary
-and acceptance cases. CBR support remains future work.
+and acceptance cases. Both container adapters now exist: CBR is implemented natively
+(Phase 3, 2026-10-09; ADR-0024), though Series/omnibus itself remains future work.

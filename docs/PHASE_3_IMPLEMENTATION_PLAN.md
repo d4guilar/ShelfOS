@@ -1,15 +1,25 @@
 # Phase 3 Implementation Plan — Comics and Manga
 
-Status: **3A (rendering/fidelity foundation) COMPLETE and MERGED to `main`** (`#24`). **3B (page
-thumbnails/navigation) COMPLETE and MERGED** (`#25`). **3C (spreads + Manga pairing) COMPLETE and MERGED**
-(`#26`). **3D (adaptive/foldable comic spreads) COMPLETE and MERGED** (`#27`). **3E (native CBR: 3E-A
-dependency foundation, 3E-B native RAR engine, 3E-C container adapter and bounded cache, 3E-D product
-integration, 3E-E acceptance hardening, including every remediation round) COMPLETE, accepted and MERGED to
-`main`** (`#28`, "feat: add native CBR reading support"). **3F (final accumulated technical acceptance) is
-IMPLEMENTED on `phase-3/3f-final-acceptance`; technical validation is complete; it is pending independent Codex
-review and the owner's Samsung tablet UAT** (see §34). Phase 3 overall is **NOT complete**. See §22/§23 for
-what 3A landed, §24 for 3B, §25 for 3C (including its R1/R2 records), §26/§26a/§26b for 3D, §27-§33a for 3E,
-§34 for 3F, and `docs/adr/0024-native-cbr-libarchive.md` plus `docs/VALIDATION.md` for the evidence.
+Status: **Phase 3 is COMPLETE and ACCEPTED (2026-10-09).** **3A (rendering/fidelity
+foundation) COMPLETE and MERGED to `main`** (`#24`). **3B (page thumbnails/navigation)
+COMPLETE and MERGED** (`#25`). **3C (spreads + Manga pairing) COMPLETE and MERGED**
+(`#26`). **3D (adaptive/foldable comic spreads) COMPLETE and MERGED** (`#27`). **3E
+(native CBR: 3E-A dependency foundation, 3E-B native RAR engine, 3E-C container adapter
+and bounded cache, 3E-D product integration, 3E-E acceptance hardening, including every
+remediation round) COMPLETE, accepted and MERGED to `main`** (`#28`, "feat: add native
+CBR reading support"). **3F (final accumulated technical acceptance) plus the Samsung
+owner-UAT remediation (final AUTO semantics and launcher icon) are COMPLETE and
+ACCEPTED** — the owner's final physical re-test passed and was accepted in place of a
+further independent review, and the work merged to `main` as
+`6be818749ba2ca1389c633847307ccb02d6874e0` (`#29`, "fix: complete Phase 3 reader
+acceptance") — see §34 and §35. Real-device owner UAT ran on a Samsung Galaxy Tab A
+(SM-T580, Android 8.1 / API 27). See §22/§23 for what 3A landed, §24 for 3B, §25 for 3C
+(including its R1/R2 records), §26/§26a/§26b for 3D, §27-§33a for 3E, §34 for 3F, and
+`docs/adr/0024-native-cbr-libarchive.md` plus `docs/VALIDATION.md` for the evidence.
+
+Per-slice and per-remediation status lines below (for example "Phase 3 is NOT
+complete") record each checkpoint's status at the time it was written; the
+top-of-file status above is authoritative.
 
 ## 1. Status / base
 
@@ -26,8 +36,13 @@ what 3A landed, §24 for 3B, §25 for 3C (including its R1/R2 records), §26/§2
   and `docs/features/READER.md` (see §5).
 - §12/§13/§21 below authorized exactly one slice at a time. 3A (§22/§23), 3B (§24), 3C
   (§25, including its Codex R1/R2 remediation records), 3D (§26/§26a/§26b) and 3E (§27-§33a) are
-  complete and merged to `main` (`#24`-`#28`). 3F (§34) is implemented with technical validation
-  complete, pending independent Codex review and owner Samsung UAT. Phase 3 overall is not complete.
+  complete and merged to `main` (`#24`-`#28`). 3F (§34) and the Samsung owner-UAT remediation
+  (§35) are complete and accepted: the owner's final physical re-test passed and was accepted
+  in place of a further independent review, and Phase 3 merged to `main` as `6be8187` (`#29`).
+  Phase 3 is complete and accepted (2026-10-09). The previously stale planning wording in
+  `docs/features/READER.md`, `docs/features/IMPORT.md` and `docs/features/COMICS_MANGA.md`
+  (CBR described as future) was corrected in the docs-only
+  `docs: reconcile Phase 3 reader documentation` pass.
 
 ## 22. 3A implementation record (landed)
 
@@ -1964,10 +1979,13 @@ before == after on both host and device. The `PageSource` abstraction, the share
 `FixedReader`, the single `{"version":1,"page":N}` progress model, the CBR container-adapter path and the global
 bounded CBR cache are unchanged. No dependency, Room/schema, minSdk or cloud change.
 
-**Status**: 3A-3E complete and merged. 3F implemented; technical validation complete; pending independent Codex
-review and the owner's Samsung tablet UAT (requires Android 7.0 / API 24+). Phase 3 is **NOT complete**. Final
-Phase 3 documentation reconciliation has not started. Known stale planning wording in `docs/features/READER.md`,
-`docs/features/IMPORT.md` and `docs/features/COMICS_MANGA.md` (CBR described as future) is left for that pass.
+**Status**: 3A-3E complete and merged. 3F implemented; technical validation complete. (Status at this
+checkpoint: pending independent Codex review and the owner's Samsung tablet UAT — both since completed.
+The owner's Samsung UAT ran with two findings remediated (§35), the final physical re-test passed and was
+accepted in place of a further independent review, and Phase 3 merged to `main` as `6be8187` (`#29`), making
+Phase 3 complete and accepted 2026-10-09.) The then-known stale planning wording in `docs/features/READER.md`,
+`docs/features/IMPORT.md` and `docs/features/COMICS_MANGA.md` (CBR described as future) was corrected by the
+docs-only `docs: reconcile Phase 3 reader documentation` pass.
 
 ## 2. Why Phase 3 is not green-field
 
@@ -2738,8 +2756,11 @@ readiness.
 ## 35. Samsung owner-UAT remediation (post-3F)
 
 Owner UAT on a Samsung Galaxy Tab A (SM-T580, API 27): old-device performance PASS; CBR physical UAT PASS
-(owner-provided real-world CBR). Two findings were remediated; the **final Samsung recheck is pending** and Phase 3
-is still **NOT complete**.
+(owner-provided real-world CBR, including a 151-page publication). Two findings were remediated; the **final
+Samsung recheck passed and was accepted (2026-10-09)** — AUTO semantics and explicit SPREAD accepted,
+fullscreen and navigation successful, launcher icon accepted, and performance on this old device judged very
+good for the intended reading workflow — and Phase 3 is **complete and accepted**. Note that API 27 does not
+exercise the special API 24/25 `PdfRenderer` compatibility path; this device test is not evidence for it.
 
 **AUTO contract (supersedes the AUTO width policy in §9/§25/§26 and the 3D fold-aware AUTO pairing)**: AUTO is
 publication-aware single-page reading. It never pairs two source pages because the viewport is wide
@@ -2751,9 +2772,16 @@ progress are unchanged (`{"version":1,"page":N}` = displayed source page); no pr
 keeps the new meaning). Fold safe-pane rendering is unchanged. `verticalFoldSpreadEligibleForAuto` and
 `AUTO_SPREAD_MIN_WIDTH_DP` remain only as legacy helpers, no longer deciding presentation.
 
+Final AUTO remediation validation: `SpreadModelTest` **48/48**, `ReaderPreferencesSpreadTest` **13/13**,
+`FoldLayoutTest` **29/29** (JVM); API 24 emulator `FixedReaderSpreadViewModelTest` **14/14** and
+`FixedReaderSpreadUiTest` **11/11**; zero crashes in those targeted runs. Three older AUTO-pairing tests were
+intentionally rewritten because the accepted AUTO semantics changed. `FoldRenderGeometryUI` was not rerun
+after this final remediation; the owner's final physical re-test was accepted instead of another independent
+review round.
+
 **Launcher icon**: the manifest referenced the 32dp in-app glyph vector as `android:icon`. Replaced by an adaptive
 icon (dark tile, white approved mark, monochrome layer) with a vector legacy fallback for API 24-25; artwork
-unchanged. Owner visual recheck on the Samsung launcher pending.
+unchanged. Owner visual recheck on the Samsung launcher passed and was accepted (2026-10-09).
 
 **Future UX (not implemented)**: skeleton placeholders while remote metadata resolves (no metadata/network work
 here).

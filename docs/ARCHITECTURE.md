@@ -7,8 +7,17 @@ library/reading state, PDF/CBZ adapters, Readium EPUB integration, the cover-exp
 reader transition and the rest of 1D polish are implemented and validated on both emulators
 and physical hardware. Two documented, non-blocking environment limitations remain (an API
 24 emulator-specific test flake and an API 37 automated-UI-test tooling gap; see
-[VALIDATION](VALIDATION.md)), neither a ShelfOS defect. Do not describe it as a public
-release: [Public Demo Readiness](VALIDATION.md) is a separate, later gate.
+[VALIDATION](VALIDATION.md)), neither a ShelfOS defect.
+
+Phase 2 (everyday reading refinements) is complete ([validation](VALIDATION.md),
+2026-10-02). Phase 3 — the fixed-layout/comic reading foundation: fixed-page
+rendering and fidelity, page thumbnails, SINGLE/SPREAD/AUTO spreads, foldable-aware
+layout, and native CBR/RAR reading via libarchive ([ADR-0024](adr/0024-native-cbr-libarchive.md))
+— is complete and accepted with real-device owner UAT ([validation](VALIDATION.md),
+2026-10-09). Its known environment limits are documented there: no API 25 runtime
+was available (that path is reviewed from AOSP source contract only) and no
+dedicated foldable hardware was used. Do not describe ShelfOS as a public release:
+[Public Demo Readiness](VALIDATION.md) is a separate, later gate.
 
 [PHASE_1_PLAN](PHASE_1_PLAN.md) scopes that first slice. Accepted ADRs 0018–0022
 extend the target architecture; they do not claim the new ingestion, Series,
@@ -379,17 +388,24 @@ BOOK
 
 COMIC
 ├── CBZ/ZIP container → ImageSequenceReaderEngine
-├── future CBR/RAR container → ImageSequenceReaderEngine
+├── CBR/RAR container → ImageSequenceReaderEngine
 └── PDF  → PdfReaderEngine with comic presentation
 
 MANGA
 ├── CBZ/ZIP container → ImageSequenceReaderEngine + RTL defaults
-├── future CBR/RAR container → ImageSequenceReaderEngine + RTL defaults
+├── CBR/RAR container → ImageSequenceReaderEngine + RTL defaults
 └── PDF  → PdfReaderEngine + RTL-aware presentation where possible
 
 DOCUMENT
 └── PDF  → Original PDF adapter or future Adapted PDF adapter where supported
 ```
+
+The fixed-page readers implement this mapping through the shared `PageSource`
+abstraction: CBZ/ZIP uses `ZipPageSource`, CBR/RAR uses `RarContainer`/`RarPageSource`
+(native, read-only libarchive; [ADR-0024](adr/0024-native-cbr-libarchive.md)), and
+both feed `ImagePageRenderer` behind `FixedReader`. Archives are read through
+Android SAF/PFD/FD boundaries rather than archive filesystem paths; no container is
+written, converted or repacked.
 
 ## 12. Input architecture
 
