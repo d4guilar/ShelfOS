@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.d4guilar.shelfos.domain.annotations.AnnotationCounts
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -222,14 +223,15 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                         LibraryScreen(libraryState, layout.showDetails, library::selectFilter, library::select,
                             onOpen = { id -> library.select(id); if (!layout.showDetails) openDetails(id) },
                             onFavorite = library::toggleFavorite, onRead = ::openReader, onEdit = library::edit, onRemove = library::remove,
-                            restoreFocus = restoreFocus)
+                            knowledgeCounts = rememberKnowledgeCounts(container, libraryState.selected?.id), restoreFocus = restoreFocus)
                     }
                     composable("details/{id}") { backStack ->
                         val item = library.publication(backStack.arguments?.getString("id"))
                         if (item != null) PublicationDetails(item, item.id in libraryState.favorites,
                             onFavorite = { library.toggleFavorite(item.id) }, modifier = Modifier.fillMaxWidth().testTag("details_screen"),
                             onRead = { openReader(item.id) }, onEdit = { title, creator, category -> library.edit(item.id, title, creator, category) },
-                            onRemove = { library.remove(item.id); nav.popBackStack() }, focusPrimaryAction = true)
+                            onRemove = { library.remove(item.id); nav.popBackStack() }, focusPrimaryAction = true,
+                            knowledgeCounts = rememberKnowledgeCounts(container, item.id))
                         else PlaceholderScreen(stringResource(R.string.publication_unavailable_title), stringResource(R.string.publication_unavailable_body))
                     }
                     composable("reader/{id}") { backStack ->
@@ -310,4 +312,19 @@ private fun PlaceholderScreen(title: String, description: String) {
         Text(title, style = MaterialTheme.typography.headlineMedium)
         Text(description, color = t.colors.secondary)
     }
+}
+
+/**
+ * Live canonical annotation counts for the removal confirmation, or null until the first read arrives (the dialog
+ * keeps removal disabled while unknown, so data is never deleted undisclosed). Re-keyed per item so a stale count from
+ * a previously selected item is never shown.
+ */
+@Composable
+private fun rememberKnowledgeCounts(container: AppContainer, itemId: String?): AnnotationCounts? {
+    val counts = remember(itemId) { mutableStateOf<AnnotationCounts?>(null) }
+    LaunchedEffect(itemId) {
+        if (itemId == null) counts.value = AnnotationCounts.None
+        else container.annotations.counts(itemId).collect { counts.value = it }
+    }
+    return counts.value
 }

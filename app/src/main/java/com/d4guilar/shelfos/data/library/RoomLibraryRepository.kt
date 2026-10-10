@@ -4,12 +4,12 @@ package com.d4guilar.shelfos.data.library
 import com.d4guilar.shelfos.core.database.*
 import com.d4guilar.shelfos.core.files.PrivateCopyUsage
 import com.d4guilar.shelfos.core.files.PublicationFiles
+import com.d4guilar.shelfos.domain.annotations.KnowledgePolicy
 import com.d4guilar.shelfos.domain.library.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import java.util.UUID
 
 interface LibraryRepository {
     val publications: Flow<List<LibraryItem>>
@@ -18,7 +18,7 @@ interface LibraryRepository {
     suspend fun add(item: LibraryItem): String
     suspend fun favorite(id: String)
     suspend fun edit(id: String, title: String, creator: String, category: MediaCategory)
-    /** Removes ShelfOS's entry and state. Never deletes the source file or a private copy. */
+    /** Removes ShelfOS's entry and state under [KnowledgePolicy.DELETE] (the only policy in Phase 4A): the entry, its reading state, preferences and every bookmark/highlight/note, atomically. Never deletes the source file or a private copy. */
     suspend fun remove(id: String)
     suspend fun available(id: String, available: Boolean)
     suspend fun reading(id: String, locator: String, progress: Int)
@@ -38,7 +38,7 @@ interface BookmarkRepository {
     suspend fun deleteBookmark(id: String)
 }
 
-class RoomLibraryRepository(private val dao: LibraryDao, private val files: PublicationFiles? = null) : LibraryRepository, PrivateCopyStore, BookmarkRepository {
+class RoomLibraryRepository(private val dao: LibraryDao, private val files: PublicationFiles? = null) : LibraryRepository, PrivateCopyStore {
     override val publications = dao.observe().map { rows -> rows.map(::item) }
     override val globalPreferences = dao.globalPreferences()
     override fun publication(id: String) = dao.observeRecord(id).map { row -> row?.let(::item) }
@@ -51,9 +51,10 @@ class RoomLibraryRepository(private val dao: LibraryDao, private val files: Publ
     }
     override suspend fun favorite(id: String) = dao.favorite(id)
     override suspend fun edit(id: String, title: String, creator: String, category: MediaCategory) = dao.edit(id, title.trim(), creator.trim(), category.name)
-    override suspend fun remove(id: String) {
+    override suspend fun remove(id: String) = remove(id, KnowledgePolicy.DELETE)
+    suspend fun remove(id: String, policy: KnowledgePolicy) {
         val removed = dao.byId(id) ?: return
-        dao.remove(id)
+        when (policy) { KnowledgePolicy.DELETE -> dao.removeDeletingKnowledge(id) }
         // Release platform access only when no remaining item needs it; files are never deleted here.
         withContext(Dispatchers.IO) { files?.releaseAccess(removed.sourceUri, dao.bySource(removed.sourceUri) != null) }
     }
@@ -71,10 +72,6 @@ class RoomLibraryRepository(private val dao: LibraryDao, private val files: Publ
     override suspend fun unusedPrivateCopies() = files?.unusedCopies(snapshot()) ?: PrivateCopyUsage(0, 0)
     override suspend fun deleteUnusedPrivateCopies() = files?.deleteUnusedCopies(snapshot()) ?: PrivateCopyUsage(0, 0)
 
-    override fun bookmarks(itemId: String) = dao.observeBookmarks(itemId).map { rows -> rows.map(::bookmark) }
-    override suspend fun addBookmark(itemId: String, locator: String, progress: Int, label: String?) =
-        dao.addBookmark(BookmarkEntity(UUID.randomUUID().toString(), itemId, locator, progress.coerceIn(0, 100), label, System.currentTimeMillis()))
-    override suspend fun deleteBookmark(id: String) = dao.deleteBookmark(id)
 
     private suspend fun snapshot() = dao.records().map(::item)
 
@@ -87,5 +84,4 @@ class RoomLibraryRepository(private val dao: LibraryDao, private val files: Publ
             row.preferences?.json ?: "{}")
     }
 
-    private fun bookmark(e: BookmarkEntity) = Bookmark(e.id, e.itemId, e.locator, e.progress, e.label, e.createdAt)
 }

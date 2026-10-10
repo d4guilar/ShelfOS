@@ -1,5 +1,14 @@
 # Documentation Changelog
 
+
+## Phase 4A annotation foundation recorded (2026-10-10)
+
+- `docs/PHASE_4_IMPLEMENTATION_PLAN.md`: status line updated and a 4A implementation record added to section 13.1
+  (implemented locally, pending independent review; deviations listed). ADR-0025 unchanged (Proposed).
+- `docs/VALIDATION.md`: new "PHASE 4A" entry with exact commands, per-class test counts, migration/failure-injection
+  evidence and the emulator-only device upgrade check.
+- Code state described: Room version 4 (`annotation` table, no FK), legacy `bookmark` table retained, removal deletes
+  annotations explicitly and the removal dialog states the count. Phase 4 is not complete; 4B-4F not started.
 ## Phase 4 planning recorded (2026-10-10)
 
 - Added `docs/PHASE_4_IMPLEMENTATION_PLAN.md` (Notes and Knowledge Layer: repository audit,

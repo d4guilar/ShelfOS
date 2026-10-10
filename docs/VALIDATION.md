@@ -1,5 +1,62 @@
 # Validation
 
+## PHASE 4A — ANNOTATION FOUNDATION (2026-10-10)
+
+Status: **implemented locally, pending independent review (Codex High) and administrator triage. Not merged.**
+Branch `phase-4/4a-annotation-foundation` from `main` @ `b2ce163ab2629c1309506e75b36adfabec843e7b`. Phase 4 is NOT
+complete; 4B-4F have not started. Progressive validation only (no full JVM or full connected suite, by design).
+
+**Scope delivered** (`docs/PHASE_4_IMPLEMENTATION_PLAN.md` §13.1, ADR-0025 which stays Proposed): Room 3 -> 4 with the
+canonical `annotation` table (no foreign key), hand-written `MIGRATION_3_4` with in-migration verification, legacy
+`bookmark` table kept and no longer read or written, `AnnotationRepository`, `BookmarkRepository` compatibility
+adapter, `KnowledgePolicy.DELETE` on item removal, removal-dialog counts (EN/ES/PT-BR plurals), strict fixed-page and
+parse-only Readium locator validation, Room-generated `4.json`.
+
+**Commands and results** (all on `emulator-5554` = `shelfos-api24`, API 24, one class per Gradle invocation,
+`ANDROID_SERIAL=emulator-5554`, per-device XML checked each time; the screen was woken first with
+`input keyevent 224` + `svc power stayon true`, see the caveat below):
+
+| Step | Command | Result |
+| --- | --- | --- |
+| 1 compile | `gradlew.bat :app:compileDebugKotlin`; `:app:compileDebugAndroidTestKotlin` | OK (after fixing a `kotlin.Annotation` name clash with explicit imports) |
+| 2 JVM | `gradlew.bat :app:testDebugUnitTest --tests ...AnnotationDomainTest --tests ...LocalizationPolicyTest` and `--tests` EpubBookmarkLocationTest, EpubBookmarkPresentationTest, ImportPolicyTest, ImportViewModelTest, FoundationTest, LocalizationMessageMappingTest | AnnotationDomainTest 7/7, LocalizationPolicyTest 7/7, EpubBookmarkLocationTest 6/6, EpubBookmarkPresentationTest 31/31, ImportPolicyTest 13/13, ImportViewModelTest 17/17, FoundationTest 5/5, LocalizationMessageMappingTest 7/7 |
+| 3-4 DB / migration | `gradlew.bat :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.d4guilar.shelfos.AnnotationMigrationTest` | 6/6 |
+| 3 repository | same, `...AnnotationRepositoryTest` | 12/12 |
+| 5 existing persistence | same, `...BookmarkPersistenceTest` / `...LibraryPersistenceTest` / `...RoomPersistenceTest` | 7/7, 10/10, 1/1 |
+| 6 existing EPUB bookmarks | same, `...EpubBookmarkTest` / `...EpubBookmarkLocationInstrumentedTest` | 9/9, 6/6 |
+| 7 removal / dialog / smoke | same, `...RemovalDialogKnowledgeTest` / `...NavigationSmokeTest` | 4/4, 28/28 |
+| 8-10 build gates | `gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug` | BUILD SUCCESSFUL, lint clean |
+
+**Caveat recorded:** the first `EpubBookmarkTest` run failed 9/9 with "No compose hierarchies found". Cause: the API 24
+emulator screen was asleep (`mAwake=false` in `dumpsys window`), so `ActivityScenario` paused/stopped the Activity. After waking
+the screen the same class passed 9/9 with no code change. This is an environment condition, not a ShelfOS defect.
+
+**Migration evidence** (`AnnotationMigrationTest`, real raw-SQL v3 file matching `3.json`; 3 items EPUB/PDF/CBZ, reading
+state and preferences per item, 8 bookmarks incl. NULL and empty labels, a 3-way progress+createdAt tie broken by id, an
+earlier-createdAt same-progress row, a quoted/unicode Readium locator and fixed-page locators): every bookmark id present as
+`BOOKMARK`, locator byte-identical, progress/title (NULL stays NULL)/createdAt preserved, `updatedAt == createdAt`, format
+`READIUM_LOCATOR_1` for EPUB and `FIXED_PAGE_1` otherwise, `orderKey` NULL, legacy `bookmark` rows still present, every other
+table's rows unchanged (raw dump before == after), user_version 4, compatibility repository returns the legacy order
+`b-e, b-d, b-a, b-b, b-c`. v1 -> v4 and v2 -> v4 chains pass. **Failure injection:** (a) an item with an unclassifiable
+format (`MOBI`) fails the migration; (b) a wrapper migration that runs the real `MIGRATION_3_4` to completion and then throws.
+In both, Room throws on open, the file stays `user_version = 3`, the `annotation` table does not exist (DDL rolled back),
+every bookmark row is intact, a second attempt fails identically (no silent rebuild), and after (b) the real migration still
+succeeds on that same file. Room's own schema validation after migration, plus a textual comparison of the migration SQL with
+`4.json` `createSql` (table and both indices identical), confirm the migration agrees with the generated schema.
+
+**Device upgrade check (emulator only; the Retroid Pocket 5 was not touched):** the pre-4A `main` @ `b2ce163` debug APK was
+built in a throw-away worktree outside the repo and installed; the app was launched once so the real app created its own v3
+database (`user_version 3`); two library items and five bookmarks (EPUB and PDF, a same-progress/same-createdAt pair) were then
+seeded into that database with the device `sqlite3` through `run-as` (**not** created through the reader UI; synthetic ids, no
+publication files pushed). The 4A debug APK was installed over it with `adb install -r` and launched: `user_version 4`, all
+five bookmarks present as `BOOKMARK` annotations with the expected formats and legacy order, the legacy table still held 5
+rows, library rows and reading state intact, process alive, no crash in the crash log. Bookmark creation and jump through the
+EPUB UI after migration are covered by `EpubBookmarkTest` 9/9 (which exercises the compatibility adapter), not by this manual
+check. The app was uninstalled from the emulator afterwards and the worktree removed.
+
+**Limitations:** the legacy `bookmark` table keeps rows for bookmarks the user later deletes (it is never updated), until it is
+dropped in a later migration; full JVM/connected regression, other devices (RP5, SM-T580) and TalkBack are 4F work.
+
 ## PHASE 3 — FINAL ACCEPTANCE AND OWNER UAT (2026-10-09)
 
 Status: **Phase 3 is COMPLETE and ACCEPTED.** The Samsung owner-UAT remediation below (final AUTO semantics +

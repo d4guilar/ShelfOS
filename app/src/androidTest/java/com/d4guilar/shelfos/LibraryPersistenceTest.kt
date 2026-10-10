@@ -39,7 +39,7 @@ class LibraryPersistenceTest {
             db.version = 1
         }
         fun open() = Room.databaseBuilder(context, ShelfDatabase::class.java, name)
-            .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3).build()
+            .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3, ShelfDatabase.MIGRATION_3_4).build()
         try {
             val db = open()
             try {
