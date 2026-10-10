@@ -11,8 +11,9 @@ carry the same 2-clause BSD header, with no UnRAR-derived-source notice, no
 UnRAR-License field-of-use clause, and no GPL/AGPL text anywhere consulted.
 Full evidence and reasoning: `docs/adr/0024-native-cbr-libarchive.md`.
 
-Purpose: CBR (RAR-container comics) is mandatory Phase 3 scope
-(`docs/PHASE_3_IMPLEMENTATION_PLAN.md`), and RAR is not a format ShelfOS can
+Purpose: CBR (RAR-container comics) was mandatory Phase 3 scope
+(`docs/PHASE_3_IMPLEMENTATION_PLAN.md`) and is now implemented and accepted
+(Phase 3 complete, 2026-10-09). RAR is not a format ShelfOS can
 safely or practically reimplement itself (solid/sequential archives, RAR4 vs
 RAR5 structural differences, proprietary reference implementation). libarchive
 was selected over UnRAR-derived alternatives specifically to avoid the

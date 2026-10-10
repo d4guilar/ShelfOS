@@ -225,7 +225,7 @@ Outstanding ideas:
 
 Adopt:
 - comic/manga reader as a first-class engine
-- CBR/CB7/WebP roadmap
+- CBR/CB7/WebP roadmap (CBR delivered in Phase 3)
 - aggressive image prefetch/cache discipline
 - streaming import/indexing for large libraries
 - robust file fingerprinting
@@ -260,7 +260,8 @@ Adopt:
 - EPUB
 - PDF
 - CBZ
-- later CBR / CB7 / DOCX / TXT / Markdown / additional formats
+- CBR
+- later CB7 / DOCX / TXT / Markdown / additional formats
 - paginated and scrolling modes
 - chapter navigation
 - full-text search

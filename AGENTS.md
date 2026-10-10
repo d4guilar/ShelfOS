@@ -240,9 +240,10 @@ Rules:
   modest hardware.
 - Metadata inferred from filenames, folders or providers is a candidate. User choices
   win, and secret provider credentials must never be embedded in the open-source APK.
-- CBZ and future CBR are container adapters for the same image-sequence reader
-  semantics. Any RAR implementation requires dependency and license review first.
-  CBR is mandatory Phase 3 scope (not optional/exploratory); see
+- CBZ and CBR are container adapters for the same image-sequence reader semantics.
+  CBR is implemented natively and read directly (libarchive, dependency and license
+  reviewed in `docs/adr/0024-native-cbr-libarchive.md`); no conversion or repacking,
+  and encrypted archives are unsupported and must report a truthful error. See
   `docs/PHASE_3_IMPLEMENTATION_PLAN.md` for the technical investigation and slice plan.
 - Accepted architecture does not authorize building all future features now;
   follow [roadmap sequencing](docs/ROADMAP.md#accepted-ingestion-and-organization-sequence).

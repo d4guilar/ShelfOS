@@ -1,12 +1,19 @@
 # Comics and Manga Specification
 
-## Next-build plan
+## Current status
 
-See [Phase 1 plan](../PHASE_1_PLAN.md) for the first PDF/CBZ reader work in progress.
-Manga RTL defaults apply to both formats and remain user-overridable. Direction
-changes navigation, not stored page order or the artwork itself. Initial AUTO
-spread behavior resolves to single-page; adaptive pairing and cover-offset rules
-remain later work. These features are not implemented in Phase 0.
+Basic PDF/CBZ reading and Manga RTL defaults were accepted in Phase 1
+([Phase 1 plan](../PHASE_1_PLAN.md); ADR-0017), and the Phase 3 fixed-layout/comic
+reader is **complete and accepted (2026-10-09)**: single-page reading, explicit
+two-page SPREAD mode, AUTO mode, page thumbnails and a page navigator,
+progress/resume, zoom and fit behaviors, LTR/RTL navigation, keyboard/controller
+navigation, tablet and foldable-aware layouts, and native CBR reading. Direction
+changes navigation, not stored page order or the artwork itself.
+
+AUTO semantics (final, accepted): AUTO normally reads one source page at a time at
+every width and never pairs ordinary portrait pages; a genuine authored wide source
+page is displayed whole. SPREAD is the explicit pairing mode for normal pages.
+See `../PHASE_3_IMPLEMENTATION_PLAN.md` §35.
 
 ## Shared engine
 
@@ -14,21 +21,22 @@ Comics and Manga should share image-sequence infrastructure where possible.
 
 They remain separate user-facing categories.
 
-CBZ and future CBR are container adapters, not separate reading systems:
+CBZ and CBR are container adapters, not separate reading systems. Both are
+implemented and accepted (Phase 3, 2026-10-09):
 
 ```text
-ComicContainer
-├── ZIP / CBZ
-└── RAR / CBR
-        ↓
-ImageSequenceReaderEngine
+CBZ/ZIP → ZipPageSource ───────────────┐
+                                       ├── PageSource → ImagePageRenderer
+CBR/RAR → RarContainer/RarPageSource ──┘
 ```
 
-CBR is high-priority future format work because real collections use it and
-conversion is unreliable and burdensome. Selecting a RAR implementation remains
-open and requires maintenance, Android, binary-size and license review. This
-priority does not add CBR to Phase 1. Credible public demonstration of polished
-mixed-format comic Series should wait until both container paths are supported.
+CBR is read natively and directly through libarchive (pinned 3.8.9, 2-clause BSD;
+see [ADR-0024](../adr/0024-native-cbr-libarchive.md)): RAR4 and RAR5, including
+solid archives, with no conversion or repacking of the source file. Encrypted
+archives are unsupported and report a truthful error. Archives are read through
+Android SAF/PFD/FD boundaries rather than archive filesystem paths. Credible public
+demonstration of polished mixed-format comic Series should still wait until Series
+itself is implemented; both container paths now exist.
 
 ## CBZ
 
@@ -67,7 +75,6 @@ Allow per-title override for:
 
 ## Later
 
-- CBR through the shared image-sequence pipeline
 - guided panels
 - automatic panel detection
 - page enhancement

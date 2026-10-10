@@ -1,8 +1,10 @@
 # PDF ingestion and reading modes
 
 Status: accepted product/architecture direction, 2026-09-24; advanced ingestion
-is future work. Original-page PDF reading is in the unvalidated Phase 1 working
-tree. No Adapted engine, PDF analysis service or SourceMap is implemented.
+is future work. Original-page PDF reading is implemented and accepted (Phase 1,
+2026-09-24), with fixed-layout reading extended and accepted in Phase 3
+(2026-10-09, including bounded API 24/25 legacy `PdfRenderer` compatibility
+handling). No Adapted engine, PDF analysis service or SourceMap is implemented.
 See [ADR-0018](../adr/0018-dual-pdf-reading-modes.md) and [roadmap](../ROADMAP.md).
 
 ## Modes and source preservation

@@ -1,9 +1,47 @@
 # Validation
 
+## PHASE 3 — FINAL ACCEPTANCE AND OWNER UAT (2026-10-09)
+
+Status: **Phase 3 is COMPLETE and ACCEPTED.** The Samsung owner-UAT remediation below (final AUTO semantics +
+launcher icon) was rechecked on the owner's device and passed; the owner's final physical re-test passed and was
+accepted **in place of running another independent Codex review**. The work merged to `main` as
+`6be818749ba2ca1389c633847307ccb02d6874e0` (`#29`, "fix: complete Phase 3 reader acceptance"). Documentation was
+reconciled in the docs-only `docs: reconcile Phase 3 reader documentation` pass. The per-checkpoint "**Phase 3
+is NOT complete**" statements in the entries below record the status at the time each entry was written and are
+superseded by this entry.
+
+**Owner UAT — Samsung Galaxy Tab A, model SM-T580, Android 8.1.0 / API 27, 2 GB RAM — observed and accepted**:
+large real-world CBR reading successful (including a 151-page publication); comic rendering visually good;
+navigation successful; fullscreen reading successful; AUTO semantics accepted after the final remediation;
+explicit SPREAD accepted; launcher icon accepted; performance on this old device judged very good for the
+intended reading workflow. **API 27 does not exercise the special API 24/25 `PdfRenderer` path — this device
+test is not evidence for that legacy compatibility handling.**
+
+**Final AUTO remediation validation (targeted)**: `SpreadModelTest` **48/48**, `ReaderPreferencesSpreadTest`
+**13/13**, `FoldLayoutTest` **29/29** (JVM); on the API 24 emulator `FixedReaderSpreadViewModelTest` **14/14**
+and `FixedReaderSpreadUiTest` **11/11**; zero crashes in those targeted runs. Three old AUTO-pairing tests were
+intentionally rewritten because the accepted AUTO semantics changed (SINGLE = exactly one source page; SPREAD =
+explicit pairing of normal pages; AUTO = normally one source page at a time, genuine authored wide source pages
+displayed whole). `FoldRenderGeometryUI` was **not** rerun after this final remediation.
+
+**Build/validation record**: full JVM baseline **479/479**; `assembleDebug`, `assembleDebugAndroidTest`,
+`lintDebug` and `bundleDebug` all passed. Physical / targeted: RP5 arm64 API 33 CBR/PDF/native tests; the owner
+real-world CBR test (including the 151-page publication); API 24 PDF lifecycle tests
+(`PdfFailedOpenFinalizationTest`) **5/5**. The API 25 runtime environment was unavailable; its path was reviewed
+from the AOSP source contract instead (API 25 requires a resolvable `sPdfiumLock` and fails closed as
+`UNREADABLE` when it cannot be safely resolved; API 24 uses preflight plus a bounded private-monitor fallback
+only where genuinely necessary; API 26+ is the normal platform path, unaffected).
+
+**Known test-environment caveats preserved (not product defects without further evidence)**: API 37
+Espresso/`InputManager` issues may be infrastructure-related; API 24 ADB/AVD can go offline; an isolated native
+`libart` SIGSEGV may be infrastructure noise; and comma-separated instrumentation class arguments can silently
+run only the first class — targeted test classes must be invoked separately.
+
 ## SAMSUNG UAT REMEDIATION (2026-10-09)
 
-Status: Phase 3 is **NOT complete**. Owner hands-on UAT on a Samsung Galaxy Tab A (SM-T580, Android 8.1 / API 27)
-produced two findings, remediated here; the **final Samsung recheck is still pending**.
+Status (at this checkpoint, superseded by the final-acceptance entry above): Phase 3 was **not complete** when
+this entry was written. Owner hands-on UAT on a Samsung Galaxy Tab A (SM-T580, Android 8.1 / API 27)
+produced two findings, remediated here; the final Samsung recheck has since **passed and been accepted**.
 
 **Owner UAT results (recorded)**: old-device performance **PASS** (content loads easily; fullscreen reader with
 controls hidden is excellent; comfortable as a dedicated reader). CBR physical owner UAT **PASS** (an owner-provided
@@ -34,15 +72,20 @@ upscale it on a backing plate. Fix (same approved mark/path, no redesign): adapt
 monochrome layer) plus a vector legacy fallback for API 24-25 (`mipmap-anydpi/ic_launcher.xml`); manifest now uses
 `@mipmap/ic_launcher`. APK inspection (`aapt2 dump badging`, `unzip -l`) shows the adaptive icon for API 26+ and
 `mipmap-anydpi-v21` legacy vector. The API 24 emulator launcher renders the legacy icon crisply; the adaptive path
-(API 26+) was not visually verified on a device. **The owner must visually recheck on the Samsung launcher.**
+(API 26+) was not visually verified on a device. **The owner must visually recheck on the Samsung launcher**
+(done: passed and accepted 2026-10-09; see the final-acceptance entry at the top of this file).
 
-**Not done / pending**: final Samsung recheck (AUTO behavior and icon); independent Codex review; Phase 3 final
-reconciliation. Future UX note (not implemented): remote-metadata skeleton placeholders.
+**Pending at this checkpoint (since completed)**: the final Samsung recheck (AUTO behavior and icon) — passed
+and accepted 2026-10-09; an independent Codex review — the owner's final physical re-test was accepted instead;
+Phase 3 final documentation reconciliation — done in the `docs: reconcile Phase 3 reader documentation` pass.
+Future UX note (not implemented): remote-metadata skeleton placeholders.
 
 ## PHASE 3F — FINAL ACCUMULATED TECHNICAL ACCEPTANCE (2026-10-09)
 
-Status: 3A–3E **COMPLETE/accepted/merged** (`#24`–`#28`). 3F **IMPLEMENTED; technical validation complete;
-pending independent Codex review and owner Samsung tablet UAT**. Phase 3 overall is **NOT complete**. Branch
+Status (at this checkpoint, superseded by the final-acceptance entry above): 3A–3E **COMPLETE/accepted/merged**
+(`#24`–`#28`). 3F was **IMPLEMENTED with technical validation complete, pending independent Codex review and
+owner Samsung tablet UAT**; both later completed (owner's final physical re-test accepted in place of a further
+independent review) and Phase 3 is now **COMPLETE/accepted** (merged `6be8187`, `#29`). Branch
 `phase-3/3f-final-acceptance`, base `main` @ `af323ce`. Narrative and defect detail:
 `docs/PHASE_3_IMPLEMENTATION_PLAN.md` §34.
 

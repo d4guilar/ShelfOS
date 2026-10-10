@@ -1,7 +1,10 @@
 # ShelfOS Product Specification
 
-Status: product direction. Phase 0 is the recorded acceptance baseline; Phase 1 is
-unfinished work in progress. Capabilities below are not a claim of production readiness.
+Status: product direction, reconciled with the accepted implementation (2026-10-09).
+Phases 0–3 are accepted; Phase 3 added the fixed-layout/comic reading foundation
+(PDF, CBZ and native CBR with spread modes and thumbnails). Capabilities below are
+not a claim of production readiness; later phases — starting with Phase 4, Notes
+and Knowledge Layer — are unimplemented direction.
 
 ## 1. Product definition
 
@@ -109,7 +112,7 @@ Expected experience:
 Optimized for:
 
 - CBZ
-- later CBR
+- CBR (native, implemented in Phase 3)
 - comic PDFs
 
 Defaults:
@@ -386,9 +389,9 @@ pressure, mandatory sharing, streaks or intrusive rewards. The publication stays
 
 ## 15. Long-term possibilities
 
-Beyond the accepted ingestion/organization direction; timing is not committed. (CBR is
-an exception: it is mandatory Phase 3 scope, not an uncommitted long-term possibility —
-see `docs/ROADMAP.md` Phase 3 and `docs/PHASE_3_IMPLEMENTATION_PLAN.md`.)
+Beyond the accepted ingestion/organization direction; timing is not committed. (CBR,
+formerly called out here as mandatory Phase 3 scope, is implemented and accepted —
+see `docs/ROADMAP.md` Phase 3 and `docs/adr/0024-native-cbr-libarchive.md`.)
 
 - DOCX
 - OCR
@@ -435,7 +438,7 @@ High-value long-term capabilities include:
 - e-ink/low-animation mode
 - biometric privacy lock
 - configurable hardware controls
-- CBR/CB7/WebP support
+- CB7/WebP support (CBR support shipped in Phase 3)
 - paragraph/focus reading
 - robust large-library indexing
 

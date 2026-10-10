@@ -3,10 +3,17 @@
 ## Status
 
 Accepted 2026-10-07, Phase 3E-A only (`docs/PHASE_3_IMPLEMENTATION_PLAN.md`). This
-ADR covers the native/build-system boundary decision for CBR support. It does
-**not** mean CBR import works, that solid-archive RAR reading works, or that
-JNI archive parsing has been validated — those are later slices (3E-B through
-3E-E), currently NOT STARTED.
+ADR covers the native/build-system boundary decision for CBR support. At the time
+of acceptance it did **not** mean CBR import worked, that solid-archive RAR reading
+worked, or that JNI archive parsing had been validated — those were later slices
+(3E-B through 3E-E). Those slices are now implemented and merged (`#28`), and CBR
+reading is accepted as part of Phase 3 final acceptance (2026-10-09, `#29`),
+including physical-arm validation (`LibarchiveRarNativeTest` 13/13 on a Retroid
+Pocket 5) and real-world owner CBR reading on a Samsung Galaxy Tab A. The
+checkpoint-scoped statements below ("not yet exercised against a real archive",
+"physical ARM validation remains Phase 3F scope") record the 3E-A checkpoint as
+written; §34–§35 of `docs/PHASE_3_IMPLEMENTATION_PLAN.md` and
+`docs/VALIDATION.md` carry the later evidence.
 
 ## Context
 

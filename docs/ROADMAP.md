@@ -280,43 +280,75 @@ A user can import an EPUB or PDF, read it, close the app, reopen it, and return 
 
 ## Phase 3 — Comics and Manga
 
+### Current status
+
+**Phase 3 is complete and accepted (2026-10-09).** Slices 3A–3F landed as PRs
+`#24`–`#28`, and final acceptance (final AUTO semantics, legacy-PDF hardening and
+launcher icon, including the Samsung owner-UAT remediation) merged as PR `#29`
+(`6be818749ba2ca1389c633847307ccb02d6874e0`, "fix: complete Phase 3 reader
+acceptance"). Owner UAT ran on a Samsung Galaxy Tab A (SM-T580, Android 8.1 /
+API 27, 2 GB RAM): a large real-world CBR read successfully, comic rendering,
+navigation and fullscreen reading were accepted, the final AUTO semantics and
+explicit SPREAD were accepted, the launcher icon was accepted, and performance on
+this old device was judged very good for the intended reading workflow. Note that
+API 27 does not exercise the special API 24/25 `PdfRenderer` compatibility path.
+Full evidence and caveats (API 25 runtime unavailable — reviewed from AOSP source
+contract only; `FoldRenderGeometryUI` not rerun after the final AUTO remediation;
+no dedicated foldable hardware) are in `VALIDATION.md` and
+`PHASE_3_IMPLEMENTATION_PLAN.md` §34–§35.
+
 Scope note: basic CBZ reading and Manga RTL (including Manga PDFs) were pulled
 forward and are **implemented and accepted as part of Phase 1** (ADR-0017,
-2026-09-24). Advanced spreads, thumbnails, foldable pairing, CBR support and
-broader comic/manga polish remain here. The original inventory below is retained
-for coverage; items already accepted in Phase 1 are marked accordingly.
+2026-09-24). Advanced spreads, thumbnails, foldable-aware pairing and native CBR
+support were completed here in Phase 3. The original inventory below is retained
+for coverage; delivered items are marked accordingly. ShelfOS as a whole is not
+finished: Phase 4 (Notes and Knowledge Layer) is next and has not started.
 
 ### Goal
 Make image-sequence media first-class.
 
 ### Deliverables
 
-- CBZ parser
-- image sequence reader
-- Comics defaults
-- Manga RTL defaults
-- user-overridable reading direction
-- fit page
-- fit width
-- single page
-- spreads where appropriate
-- page thumbnails
-- progress persistence
-- keyboard/gamepad paging
-- foldable two-page/spread behavior
-- hinge-aware gutter handling
-- high-priority CBR container support through the same image-sequence engine as CBZ,
-  after explicit RAR implementation/license review
-- source-faithful, resolution-aware rendering and high-resolution zoom/re-render
-- immersive-chrome rediscoverability across touch, keyboard/gamepad and accessibility
+- [x] CBZ parser (accepted in Phase 1)
+- [x] image sequence reader (3A; shared `PageSource`/`ImagePageRenderer` pipeline)
+- [x] Comics defaults
+- [x] Manga RTL defaults
+- [x] user-overridable reading direction
+- [x] fit page
+- [x] fit width
+- [x] single page (SINGLE = exactly one source page)
+- [x] spreads where appropriate (explicit SPREAD pairs normal pages; AUTO reads
+  one source page at a time and shows genuine authored wide source pages whole —
+  `PHASE_3_IMPLEMENTATION_PLAN.md` §35)
+- [x] page thumbnails (3B)
+- [x] progress persistence
+- [x] keyboard/gamepad paging
+- [x] foldable two-page/spread behavior (3D; validated with fold tests and
+  emulator geometry — no dedicated foldable hardware yet)
+- [x] hinge-aware gutter handling (3D)
+- [x] high-priority CBR container support through the same image-sequence engine
+  as CBZ (3E; native libarchive RAR4/RAR5 including solid archives, dependency
+  and license review completed in ADR-0024; encrypted archives report a truthful
+  error; no conversion or repacking)
+- [x] source-faithful, resolution-aware rendering and high-resolution zoom/re-render (3A)
+- [ ] immersive-chrome rediscoverability across touch, keyboard/gamepad and
+  accessibility (reader chrome was hardened in Phase 2A; broader accessibility
+  QA remains open)
 
 ### Done when
 
 A user can comfortably read a CBZ comic or manga entirely with touch, keyboard, or controller.
 
+**Accepted** via the final owner UAT (2026-10-09); see Current status above.
+
 ---
 
 ## Phase 4 — Notes and Knowledge Layer
+
+### Current status
+
+Not started. Phase 4 is the next numbered roadmap area following the accepted
+Phase 3 (2026-10-09); this roadmap does not yet scope its implementation.
 
 ### Goal
 ShelfOS becomes useful for active reading and study.
@@ -571,9 +603,10 @@ Begins only after Android architecture/product stability.
 Exploratory scope or deferred implementation; accepted adapter directions are
 sequenced above, not implemented. Community themes and cloud/sync are additionally
 demand-gated (see `design/THEMES.md` and the local-first section in `ARCHITECTURE.md`);
-nothing here is a committed delivery phase. (CBR is no longer in this list: it is
-mandatory Phase 3 scope, gated only on RAR dependency/license review, not an
-uncommitted exploration item — see `docs/PHASE_3_IMPLEMENTATION_PLAN.md`.)
+nothing here is a committed delivery phase. (CBR is not in this list: it was
+mandatory Phase 3 scope and is now implemented, accepted and merged — native
+libarchive RAR reading, see `docs/adr/0024-native-cbr-libarchive.md` and the
+Phase 3 section above.)
 
 - DOCX
 - TXT / Markdown

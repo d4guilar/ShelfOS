@@ -1,5 +1,26 @@
 # Documentation Changelog
 
+## Phase 3 reader documentation reconciled (2026-10-09)
+
+- Reconciled documentation with the completed, owner-UAT-accepted Phase 3 reader work (merged to `main` as
+  `6be8187`, `#29`, "fix: complete Phase 3 reader acceptance").
+- `README.md`, `docs/PRODUCT.md`, `docs/ARCHITECTURE.md`, `docs/ROADMAP.md` and `AGENTS.md`: Phase 3 is now
+  represented as complete/accepted (2026-10-09); current local reading support is stated conservatively as
+  EPUB, PDF, CBZ and CBR; Phase 4 (Notes and Knowledge Layer) is pointed to as the next, not-started area.
+- `docs/features/READER.md`, `docs/features/COMICS_MANGA.md`, `docs/features/IMPORT.md`,
+  `docs/features/SERIES.md`, `docs/features/DATA_INGESTION.md`, `docs/features/PDF_INGESTION.md`,
+  `docs/COMPETITIVE_FEATURES.md` and `docs/DEPENDENCIES.md`: removed stale "CBR is future work" and
+  "Phase 1 in progress" wording; documented the accepted final AUTO semantics (one source page at a time;
+  SPREAD is the explicit pairing mode) and the native libarchive CBR path.
+- `docs/adr/0024-native-cbr-libarchive.md`: status updated from "3E-B through 3E-E NOT STARTED" to
+  implemented/accepted, keeping the 3E-A checkpoint text as history.
+- `docs/PHASE_3_IMPLEMENTATION_PLAN.md` (header, §1, §34, §35) and `docs/VALIDATION.md` (new
+  "PHASE 3 — FINAL ACCEPTANCE AND OWNER UAT" entry): pending-review/UAT statements replaced with the
+  accepted outcome; per-checkpoint "Phase 3 is NOT complete" lines retained as historical status records
+  under an explicit supersession note; validation caveats (API 25 source-contract-only, no rerun of
+  `FoldRenderGeometryUI`, known test-environment issues) preserved.
+- Documentation-only pass: no production code, tests, Gradle/build configuration or dependencies changed.
+
 ## Post-Phase-2 EPUB XHTML regression recorded (2026-10-02)
 
 - Added `docs/VALIDATION.md`'s "POST-PHASE-2 EPUB XHTML REGRESSION" entry for a maintenance fix on

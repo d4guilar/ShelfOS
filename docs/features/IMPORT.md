@@ -1,7 +1,7 @@
 # Import feature entry points
 
-Status: single-file import is Phase 1 work in progress; the library-scale system
-below is accepted direction, not completed functionality.
+Status: single-file import is accepted (Phase 1, 2026-09-24); the library-scale
+system below is accepted direction, not completed functionality.
 
 ## Entry points and shared contract
 
@@ -23,8 +23,9 @@ guaranteed real-time folder watcher is assumed.
 
 ## Format and review surface
 
-Initial reading scope: EPUB, PDF and CBZ. CBR, CB7, DOCX, TXT/Markdown and other
-formats remain later work subject to capability/license review.
+Current reading scope: EPUB, PDF, CBZ and CBR (CBR accepted in Phase 3,
+2026-10-09). CB7, DOCX, TXT/Markdown and other formats remain later work subject
+to capability/license review.
 
 Review may show cover, title, creator, proposed category, Series/volume/issue,
 year, provenance/confidence, duplicate warnings and Shelf assignments. User
