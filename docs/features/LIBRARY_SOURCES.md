@@ -119,6 +119,65 @@ deletion of source files. Do not remove items still backed by another Source or
 managed copy. Disconnect stops future scanning and releases access only when no
 other item/operation needs it. It never deletes the user's files.
 
+## Publication identity across removal and re-import (future)
+
+Future requirement; not implemented, and not part of Phase 4 (Notes and Knowledge
+Layer). The user-facing goal:
+
+```text
+publication removed
+→ later imported again
+→ ShelfOS recognizes a trustworthy match
+→ user is offered restoration of previous local state
+```
+
+Potential restorable state may eventually include read/unread status, reading
+progress, annotations, bookmarks, metadata overrides, category/organizational
+state, and other publication-specific local state where appropriate.
+
+### Current facts
+
+These remain true today and constrain any future design:
+
+- `LibraryItem` identity is currently a generated UUID.
+- Re-import currently creates a new identity.
+- ShelfOS currently has no trusted content fingerprint sufficient to prove that
+  two imports are the same publication.
+
+### Matching rules
+
+- Do not silently reattach state based only on filename.
+- Do not silently reattach state based only on file size.
+- Do not silently reattach state based only on title/metadata resemblance.
+- Identity matching should eventually use trustworthy publication/content
+  evidence.
+- Ambiguous matches require explicit user confirmation.
+- A wrong match is worse than leaving history detached.
+- Orphaned knowledge/history must not be silently reassigned.
+
+Publication identity is not metadata matching. Enrichment candidate matching may
+share evidence or candidate-resolution concepts in the future, but metadata
+resemblance alone must never prove that two imports are the same publication,
+and metadata lookup must never be required to open or read a local file —
+reading remains independent of enrichment. See
+[metadata enrichment](METADATA_ENRICHMENT.md#1-goal). A filename match is not
+proof of identity either (see "Moved files and safe disconnect" above).
+
+### Conceptual future flow
+
+```text
+import
+→ compute/obtain publication identity evidence
+→ previously known publication candidate?
+→ confidence/evidence evaluation
+→ if sufficiently trustworthy, offer restoration/relink
+→ user confirms where ambiguity exists
+```
+
+No fingerprint scheme or cryptographic algorithm is chosen here; any such design
+is a separate future decision. See also
+[publication identity](../ARCHITECTURE.md#publication-identity-is-not-a-local-source-location).
+
 ## Changed publications
 
 Content changes may invalidate page locators, SourceMaps, annotations, chapters and

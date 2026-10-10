@@ -1,5 +1,21 @@
 # Documentation Changelog
 
+## Future reader and library requirements recorded (2026-10-10)
+
+- Documentation only: three accepted future requirements were recorded in their
+  canonical homes — large-publication (multi-GB CBZ/CBR/PDF) scalability acceptance
+  (`docs/features/READER.md`, `docs/features/COMICS_MANGA.md`), durable publication
+  identity with removal → re-import recognition and explicit history restoration
+  (`docs/features/LIBRARY_SOURCES.md`), and phone-first zoom/gesture research
+  (`docs/features/READER.md`, `docs/features/COMICS_MANGA.md`).
+- `docs/ROADMAP.md`: grouped as **Reader & Library Hardening** — future,
+  post-Phase-4 work with no dates and no phase number. Explicitly NOT part of
+  Phase 4 (Notes and Knowledge Layer) scope; no Phase 4 scope expansion.
+- `docs/PRODUCT.md`, `docs/features/METADATA_ENRICHMENT.md` and
+  `docs/ARCHITECTURE.md`: principle/cross-reference updates only — reading never
+  depends on metadata, metadata resemblance is not publication identity.
+- No implementation: no production code, tests, Room schema, Gradle/build
+  configuration or dependencies changed.
 
 ## Phase 4A annotation foundation recorded (2026-10-10)
 

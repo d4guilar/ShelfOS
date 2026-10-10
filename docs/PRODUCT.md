@@ -596,6 +596,16 @@ Enrichment is optional and local-first.
 
 If online lookup fails, ShelfOS still reads the publication using embedded or user-provided metadata.
 
+> **The file is the source of truth; metadata turns the folder into a library.**
+
+ShelfOS should eventually be capable of taking messy local publication files and
+enriching them with proper title, creators, publisher, year, series, volume/issue and a
+high-quality cover, while preserving the original publication, keeping user overrides
+authoritative, allowing reading without enrichment, and keeping accepted metadata
+locally available offline afterward. Metadata matching is not publication identity:
+resemblance alone never proves that two imports are the same publication (see
+[Library Sources](features/LIBRARY_SOURCES.md#publication-identity-across-removal-and-re-import-future)).
+
 The user can always edit metadata and cover art.
 
 Manual edits take precedence over automatic refresh.

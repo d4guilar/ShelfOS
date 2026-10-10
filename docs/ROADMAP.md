@@ -582,6 +582,51 @@ ShelfOS should feel intentionally designed for foldables rather than merely stre
 
 ---
 
+## Reader & Library Hardening
+
+Future, post-Phase-4 work recorded from accepted reader feedback and administrator
+review. Not a numbered phase, not dated, and explicitly **not part of Phase 4**
+(Notes and Knowledge Layer); no slice is authorized. Each area has a canonical
+feature-specification home — the bullets below are the roadmap grouping, not the
+full requirement text.
+
+### Reader performance / scale
+
+- multi-GB publication acceptance across CBZ, CBR and PDF — time to first readable
+  page, memory while opening and during long sessions, random and sequential page
+  navigation, thumbnail generation and navigation, zoom/high-resolution re-render,
+  archive access behavior, recovery under Android memory pressure, reopening/
+  resuming, large page counts, unusually large individual page images, and behavior
+  on modest/older hardware — with the architectural expectation that the entire
+  publication/archive is never required to be in memory to begin reading.
+  Large-file support is a performance/reliability requirement, not a
+  format-support checkbox; no maximum supported file size is committed.
+  See [Reader](features/READER.md#reader-performance-and-scale-hardening-future)
+  and [Comics and Manga](features/COMICS_MANGA.md#large-publication-scale-future).
+
+### Reader interaction
+
+- phone-first zoom gesture refinement: bounded UX/interaction research before any
+  gesture is chosen, to reduce repeated pinch gestures on small phone displays
+  while coexisting with ordinary pinch-to-zoom, page turning, edge taps,
+  center-tap chrome, immersive/fullscreen reader behavior, keyboard/controller
+  navigation, future fixed-layout annotation interactions and accessibility.
+  Reader UX hardening, not a redesign of the fixed-page reader.
+  See [Reader](features/READER.md#phone-first-zoom-and-gesture-refinement-future)
+  and [Comics and Manga](features/COMICS_MANGA.md#phone-first-zoom-gestures-future).
+
+### Library identity
+
+- durable publication identity: recognize a previously known publication after
+  removal → re-import and offer explicit restoration/relink of local history (read
+  state, progress, annotations, bookmarks, metadata overrides, organizational
+  state). No silent reattachment on filename, size or metadata resemblance alone;
+  ambiguous matches require explicit user confirmation; a wrong match is worse
+  than leaving history detached.
+  See [Library Sources](features/LIBRARY_SOURCES.md#publication-identity-across-removal-and-re-import-future).
+
+---
+
 ## Future Platform Track — iOS / iPadOS
 
 Begins only after Android architecture/product stability.

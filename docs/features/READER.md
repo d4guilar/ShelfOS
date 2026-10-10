@@ -143,3 +143,81 @@ both formats are supported; no conversion or shared archive container is require
 See [mixed-format Series](SERIES.md#mixed-format-members) for the support boundary
 and acceptance cases. Both container adapters now exist: CBR is implemented natively
 (Phase 3, 2026-10-09; ADR-0024), though Series/omnibus itself remains future work.
+
+## Reader performance and scale hardening (future)
+
+Future requirement; not implemented, and not part of Phase 4 (Notes and
+Knowledge Layer). Working framing: **Reader Performance / Scale Hardening**.
+
+ShelfOS should explicitly plan for very large publications, including
+multi-gigabyte CBZ, CBR and PDF files. Large-file support is a
+performance/reliability requirement, not a format-support checkbox: it is not
+enough to "support large files"; future reader performance acceptance must
+evaluate behavior, not merely successful open.
+
+Current evidence is narrow. Large CBZ archives have measurement-level evidence
+only (a ~3.16 GB private sample and a ~2.99 GB synthetic load pass, recorded in
+[validation](../VALIDATION.md), with no documented pass/fail threshold), and
+there is no accepted multi-GB CBR or PDF evidence. Current validation does not
+establish multi-GB acceptance across formats, and no maximum supported file
+size is committed.
+
+Future reader performance acceptance should evaluate:
+
+- time to first readable page
+- memory usage while opening
+- memory usage during long reading sessions
+- random page navigation
+- sequential page turns
+- thumbnail generation
+- thumbnail navigation
+- zoom / high-resolution re-render behavior
+- archive access behavior
+- recovery under Android memory pressure
+- reopening/resuming a very large publication
+- large page counts
+- unusually large individual page images
+- behavior on modest/older Android hardware
+
+Architectural expectation: ShelfOS should not require the entire
+publication/archive to be loaded into memory in order to begin reading.
+
+Comic/manga container specifics at scale are recorded in
+[Comics and Manga](COMICS_MANGA.md#large-publication-scale-future). Roadmap
+grouping: [Reader & Library Hardening](../ROADMAP.md#reader--library-hardening).
+
+## Phone-first zoom and gesture refinement (future)
+
+Future reader UX requirement; research only, not implemented, and not part of
+Phase 4.
+
+Standard pinch-to-zoom works, but repeated pinch gestures can make comic/manga
+reading on small phone displays cumbersome. ShelfOS should investigate
+phone-first and potentially one-handed zoom interactions such as:
+
+- double-tap zoom
+- double-tap-and-drag / hold-and-drag zoom
+- anchored zoom toward the tapped content
+- quick return to fitted page
+- other established reader patterns that reduce repeated pinch gestures
+
+This requirement describes behavior, not competitor cloning: ShelfOS must not
+copy another application's gesture set wholesale.
+
+Any eventual gesture must coexist safely with:
+
+- ordinary pinch-to-zoom
+- page turning
+- edge taps
+- center-tap chrome behavior
+- immersive/fullscreen reader behavior
+- keyboard/controller navigation
+- future fixed-layout annotation interactions
+- accessibility
+
+The eventual implementation must begin with a bounded UX/interaction research
+task before choosing the final gesture; the exact gesture is intentionally not
+specified here. This is reader UX hardening, not a redesign of the fixed-page
+reader. Comic/manga-specific context is recorded in
+[Comics and Manga](COMICS_MANGA.md#phone-first-zoom-gestures-future). Roadmap
+grouping: [Reader & Library Hardening](../ROADMAP.md#reader--library-hardening).

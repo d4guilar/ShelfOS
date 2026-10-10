@@ -117,3 +117,48 @@ Already-sharp sources should be left alone. Do not introduce sharpening artifact
 color shifts, unnecessary memory pressure or page-turn latency merely to claim an
 enhancement. Optional processing should address a demonstrated deficiency and remain
 subordinate to source fidelity.
+
+## Large-publication scale (future)
+
+Future requirement; not implemented, and not part of Phase 4 (Notes and Knowledge
+Layer). Comics and Manga are the formats most likely to encounter very large files:
+multi-gigabyte CBZ and CBR archives of huge page images. The reader-wide acceptance
+criteria (time to first readable page, memory while opening and during long sessions,
+random and sequential navigation, thumbnail generation and navigation,
+zoom/high-resolution re-render, archive access behavior, recovery under Android memory
+pressure, reopening/resuming, large page counts, unusually large individual page
+images, and behavior on modest/older hardware) are canonical in
+[Reader](READER.md#reader-performance-and-scale-hardening-future).
+
+Comic-specific aspects that future acceptance must also cover:
+
+- archive access behavior for CBZ and CBR (including solid RAR archives) without
+  requiring the whole archive in memory to begin reading, and without a full
+  extract-before-read path
+- thumbnail generation and thumbnail navigation for very large page counts
+- zoom / high-resolution re-render of unusually large individual page images
+- bounded memory while paging and while generating thumbnails
+- truthful, recoverable behavior when the device cannot handle a given archive
+
+Current evidence is measurement-level only for large CBZ (see
+[validation](../VALIDATION.md)); no multi-GB CBR or PDF acceptance exists, and no
+maximum supported file size is committed. Large-file support here is a
+performance/reliability requirement, not a format-support checkbox.
+
+## Phone-first zoom gestures (future)
+
+Future reader UX requirement; research only, not implemented, and not part of Phase 4.
+Pinch-to-zoom works, but repeated pinch gestures can make phone comic/manga reading
+cumbersome. ShelfOS should investigate phone-first and potentially one-handed
+interactions — double-tap zoom, double-tap-and-drag / hold-and-drag zoom, anchored
+zoom toward tapped content, quick return to fitted page, and other established reader
+patterns — so one-handed phone reading stays comfortable.
+
+The canonical requirement — candidate behaviors, the coexistence rules (ordinary
+pinch-to-zoom, page turning, edge taps, center-tap chrome, immersive/fullscreen
+reader behavior, keyboard/controller navigation, future fixed-layout annotation
+interactions and accessibility) and the bounded research-first process before any
+gesture is chosen — is recorded in
+[Reader](READER.md#phone-first-zoom-and-gesture-refinement-future). This describes
+behavior, not competitor cloning; no other application's gesture set is to be copied
+wholesale.
