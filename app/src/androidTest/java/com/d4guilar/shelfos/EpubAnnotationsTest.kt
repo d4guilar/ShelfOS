@@ -378,10 +378,27 @@ class EpubAnnotationsTest {
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 2 }
             assertEquals(1, compose.onAllNodesWithTag("annotation_unplaced", useUnmergedTree = true).fetchSemanticsNodes().size)
             compose.onNodeWithText("Text location unavailable", useUnmergedTree = true).assertExists()
-            // Untouched in storage; still jumpable; still deletable.
+            // Untouched in storage; listed and marked unavailable; NOT jumpable (the controller is never asked); editable; deletable.
             assertEquals(stale.locatorJson, stored().first { it.id == stale.id }.locatorJson)
-            compose.onNode(hasContentDescription("quillfeather1x6", substring = true) and hasClickAction()).performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotations_list").fetchSemanticsNodes().isEmpty() }
+            val staleRow = hasContentDescription("quillfeather1x6", substring = true)
+            val placeableRow = hasContentDescription("quillfeather1x1", substring = true)
+            compose.onNode(staleRow).assertIsNotEnabled()
+            assertTrue("the unavailable location is part of the row's accessibility description",
+                compose.onAllNodes(staleRow and hasContentDescription("Text location unavailable", substring = true)).fetchSemanticsNodes().size == 1)
+            compose.onNode(placeableRow).assertIsEnabled()
+            val visibleBefore = p.tokenVisible("quillfeather1x1")
+            compose.onNode(staleRow).performClick()
+            p.settle(1_500)
+            assertEquals("the Notes list did not close as if navigation succeeded", 2, compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size)
+            assertTrue("no 'could not be opened' message: nothing was attempted", compose.onAllNodesWithText("could not be opened", substring = true).fetchSemanticsNodes().isEmpty())
+            assertFalse("reader did not move to the stale text", p.tokenVisible("quillfeather1x6"))
+            assertEquals("reader location unchanged", visibleBefore, p.tokenVisible("quillfeather1x1"))
+            assertEquals("stored locator untouched after the attempt", stale.locatorJson, stored().first { it.id == stale.id }.locatorJson)
+            // Edit stays reachable on the unavailable row; cancelling changes nothing.
+            compose.onAllNodes(hasContentDescription("Edit Highlight", substring = true))[1].performClick()
+            awaitEditor()
+            compose.onNodeWithText("Cancel").performClick(); compose.waitForIdle()
+            assertEquals(2, stored().size)
             compose.onNodeWithTag("epub_notes").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 2 }
             compose.onAllNodes(hasContentDescription("Delete Highlight", substring = true))[1].performClick()
@@ -518,6 +535,32 @@ class EpubAnnotationsTest {
                 assertTrue("chrome unchanged after key $code", chromeVisible())
                 assertNotEquals(Lifecycle.State.DESTROYED, scenario.state)
                 p.settle(400)
+            }
+        }
+    }
+
+    @Test fun escapeAndGamepadBDismissTheNotesListAndEscapeDismissesTheEditor() {
+        insert(AnnotationKind.HIGHLIGHT, GoldenSelectionLocators.WORD_FIRST_PARAGRAPH, "quillfeather1x1", style = "amber")
+        launch().use { scenario ->
+            val p = probe(scenario); awaitReader(p)
+            listOf(KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BUTTON_B).forEach { code ->
+                compose.onNodeWithTag("epub_notes").performClick()
+                compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 1 }
+                key(code)
+                compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotations_list").fetchSemanticsNodes().isEmpty() }
+                assertNotEquals("reader survives key $code", Lifecycle.State.DESTROYED, scenario.state)
+                assertTrue("reader chrome still present after key $code", chromeVisible())
+                // Editor opened from the list: Escape cancels it without saving or deleting. KNOWN FINDING (reported, not fixed here):
+                // gamepad B does NOT dismiss the editor while its text field has focus, so only Escape is asserted for the editor.
+                if (code != KeyEvent.KEYCODE_ESCAPE) return@forEach
+                compose.onNodeWithTag("epub_notes").performClick()
+                compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 1 }
+                compose.onNode(hasContentDescription("Edit Highlight", substring = true)).performClick()
+                awaitEditor()
+                key(code)
+                try { compose.waitUntil(10_000) { !editorOpen() } } catch (e: Throwable) { fail("editor not dismissed by key $code") }
+                assertEquals("cancelling by key $code changed nothing", 1, stored().size)
+                assertNotEquals(Lifecycle.State.DESTROYED, scenario.state)
             }
         }
     }

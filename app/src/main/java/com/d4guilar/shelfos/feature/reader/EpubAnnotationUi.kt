@@ -66,7 +66,7 @@ internal fun styleLabel(styleKey: String?): String = stringResource(when (styleK
 /**
  * The reader-local review list for ONE publication (not the global Notes hub): notes, highlights and bookmarks in
  * reading order with a kind label, excerpt, note preview, style name, location and an "unplaced" state. Every row is a
- * real button (jump), with separate Edit and Delete buttons, so touch, keyboard and D-pad all reach every action.
+ * button (jump) unless its text location is unavailable ([canNavigate]), with separate Edit and Delete buttons, so touch, keyboard and D-pad all reach every action.
  */
 @Composable
 fun AnnotationListDialog(
@@ -85,6 +85,7 @@ fun AnnotationListDialog(
     val rowTemplate = stringResource(R.string.content_desc_annotation_row)
     val editTemplate = stringResource(R.string.content_desc_annotation_edit)
     val deleteTemplate = stringResource(R.string.content_desc_annotation_delete)
+    val unavailableText = stringResource(R.string.annotation_location_unavailable)
     val visible = annotations.filter(filter::accepts)
     AlertDialog(onDismissRequest = onClose, title = { Text(stringResource(R.string.annotations_title)) }, text = {
         Column(Modifier.fillMaxWidth()) {
@@ -111,11 +112,12 @@ fun AnnotationListDialog(
                     val where = bookmarkDisplayText(presentation, { String.format(locationTemplate, it) }, { String.format(progressTemplate, it) }).replace('\n', ' ')
                     val spokenWhere = bookmarkAccessibilityText(presentation, { String.format(locationTemplate, it) }, { String.format(spokenTemplate, it) })
                     val unplaced = annotation.isSelectionBacked && anchors[annotation.id].let { it != null && it != AnchorStatus.PLACEABLE }
+                    val navigable = annotation.canNavigate(anchors[annotation.id])
                     val style = if (annotation.kind == AnnotationKind.HIGHLIGHT) styleLabel(annotation.styleKey) else null
                     val details = listOfNotNull(style, annotation.selectedText, annotation.body, spokenWhere).joinToString(", ")
                     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("annotation_row"), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f).clickable(role = Role.Button) { onJump(annotation) }
-                            .semantics(mergeDescendants = true) { contentDescription = String.format(rowTemplate, kind, details) }
+                        Column(Modifier.weight(1f).clickable(enabled = navigable, role = Role.Button) { onJump(annotation) }
+                            .semantics(mergeDescendants = true) { contentDescription = String.format(rowTemplate, kind, if (unplaced) "$details, $unavailableText" else details) }
                             .padding(vertical = 4.dp)) {
                             Text(listOfNotNull(kind, style).joinToString(" · "), fontWeight = FontWeight.Bold)
                             annotation.selectedText?.let { Text(it, maxLines = 3, overflow = TextOverflow.Ellipsis) }

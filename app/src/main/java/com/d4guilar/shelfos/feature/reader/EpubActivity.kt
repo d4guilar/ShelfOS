@@ -510,7 +510,11 @@ open class EpubActivity : AppCompatActivity() {
                 onJump = { annotation ->
                     annotationOpenFailed = false
                     annotationScope.launch {
-                        if (controller.jumpTo(annotation.locatorJson) == JumpResult.ARRIVED) annotationList = false else annotationOpenFailed = true
+                        when (navigateToAnnotation(annotation, state.anchors[annotation.id], controller::jumpTo)) {
+                            AnnotationNavigation.ARRIVED -> annotationList = false
+                            AnnotationNavigation.FAILED -> annotationOpenFailed = true
+                            AnnotationNavigation.BLOCKED -> Unit // text location unavailable: no navigation, list stays open, row says why
+                        }
                     }
                 },
                 onEdit = { annotationList = false; vm.openEditor(AnnotationEditorTarget.Existing(it.id)) },

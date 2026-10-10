@@ -114,3 +114,25 @@ fun Annotation.toMarkOrNull(): EpubMark? = when {
 
 /** True for annotations whose inline placement must be verified against the sanitized rendition. */
 val Annotation.isSelectionBacked: Boolean get() = toMarkOrNull() != null
+
+/**
+ * The single navigation-eligibility rule for annotations (Phase 4B). The anchor verdict controls BOTH inline placement and
+ * navigation, because Readium approximates an unmatched text locator and can land on unrelated text:
+ *  - BOOKMARK and position NOTE (no selectedText): navigable through the persisted locator, no text verification;
+ *  - HIGHLIGHT and selection NOTE (selectedText present): navigable ONLY when [status] is [AnchorStatus.PLACEABLE].
+ * A missing verdict (not verified yet) is not PLACEABLE, so selection-backed annotations stay unnavigable until proven.
+ * Based on model semantics ([isSelectionBacked]), never on UI labels.
+ */
+fun Annotation.canNavigate(status: AnchorStatus?): Boolean = !isSelectionBacked || status == AnchorStatus.PLACEABLE
+
+/** Result of [navigateToAnnotation]. */
+enum class AnnotationNavigation { ARRIVED, FAILED, BLOCKED }
+
+/**
+ * The only path from the annotation list to the navigator. [jump] (the controller's `jumpTo`) is invoked ONLY when
+ * [canNavigate] allows it; a blocked annotation never reaches the navigator, with no href, progress or approximate fallback.
+ */
+suspend fun navigateToAnnotation(annotation: Annotation, status: AnchorStatus?, jump: suspend (String) -> JumpResult): AnnotationNavigation {
+    if (!annotation.canNavigate(status)) return AnnotationNavigation.BLOCKED
+    return if (jump(annotation.locatorJson) == JumpResult.ARRIVED) AnnotationNavigation.ARRIVED else AnnotationNavigation.FAILED
+}

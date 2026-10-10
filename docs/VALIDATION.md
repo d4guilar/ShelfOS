@@ -16,7 +16,7 @@ resolved in this slice, each with a regression test:
 | Spike condition | Resolution | Evidence |
 | --- | --- | --- |
 | 1. A single `goTo` is unreliable in paginated mode (5-6 of 10) | `EpubController.jumpTo`: parse the exact persisted locator, `go`, await `currentLocator` reaching the target resource (bounded, cancellation-safe, no sleep), issue the same locator once more. `progressSnapshot` never navigates. | `EpubAnnotationsTest.jumpingToAnAnnotationIsDeterministicInPaginatedMode_thirtyRepeatedJumps`: **30/30** on the RP5 with the two-stage jump. The same test with the second `go` temporarily removed (experiment, reverted) **missed 6 of 30** (`jump 3 to quillfeather1x20, 7 to 2x1, 8 to 1x20, 13 to 1x1, 23 to 1x20, 30 to 1x20`), so the test discriminates. |
-| 2. Readium silently approximates a stale locator onto the wrong text | ShelfOS-owned stale-anchor verification against the same sanitized rendition (below). Unverifiable annotations are not drawn, not deleted and not rewritten. The verifier was hardened after independent review found that its first lossy whitespace/join-control compaction could merge different text. | `AnchorTextTest` (17, JVM), `EpubAnchorVerifierInstrumentedTest` (9), `unplacedAnnotationStaysStoredAndListedAndIsNeverDrawnOnOtherText` |
+| 2. Readium silently approximates a stale locator onto the wrong text | ShelfOS-owned stale-anchor verification against the same sanitized rendition (below). Unverifiable annotations are not drawn, not deleted and not rewritten. The verifier was hardened after independent review found that its first lossy whitespace/join-control compaction could merge different text. | `AnchorTextTest` (17, JVM), `EpubAnchorVerifierInstrumentedTest` (11), `AnnotationNavigationTest` (3, JVM), `unplacedAnnotationStaysStoredAndListedAndIsNeverDrawnOnOtherText` |
 | 3. Back must dismiss a selection first | ADR-0023 "Phase 4B clarification": selection > dialog > reveal chrome > exit, same for Back, Escape and gamepad B. | `backDismissesAnActiveSelectionBeforeChromeOrExit_visibleChrome` / `_hiddenChrome`, `escapeAndGamepadBDismissASelectionTheSameWay`, legacy test |
 | 4. Legacy WebViews must not offer inline highlights | Capability gate keyed on the real WebView version (below). | `InlineAnnotationCapabilityTest` (6, JVM), `legacyWebViewKeepsPositionNotesAndBookmarksButOffersNoInlineAnnotations`, API 24 emulator run |
 
@@ -46,8 +46,8 @@ lossy: for example, `the rapist` could compare equal to `therapist`, and removin
 hardened verifier now concatenates the sanitized body's actual text nodes in DOM order without inventing block separators and preserves every
 character exactly, including ordinary whitespace, ZWJ and ZWNJ. It performs no case, punctuation, diacritic, Unicode-normalization or fuzzy
 transformation. PLACEABLE requires exactly one occurrence of the exact combined `before + highlight + after` window; otherwise UNPLACED (text missing, context changed,
-ambiguous repeated passage, unreadable resource) or MALFORMED (not a text anchor). Progression is page-level and is never proof. Results are cached per
-href (LRU of 24) and per locator for the reader session, annotations are grouped by resource, so 500 annotations parse a chapter once: 500 anchors
+ambiguous repeated passage, unreadable resource) or MALFORMED (not a text anchor). Progression is page-level and is never proof. Sanitized resource text (not verdicts) is cached per
+href (LRU of 24) for the reader session, annotations are grouped by resource, so 500 annotations parse a chapter once: 500 anchors
 verified in 248 ms on the RP5 and 317 ms on the API 24 emulator, 1 parse; 4 chapters x 120 annotations = 4 parses. A new HIGHLIGHT is verified before it is saved;
 a selection that cannot be anchored is refused with a localized message. A cross-block selection whose `Selection.toString()` newline representation
 does not exactly equal `body.textContent` is conservatively UNPLACED. **Sanitizer coupling:** verification runs against the sanitized rendition; a future
@@ -61,6 +61,17 @@ text or context named it; SHIFTED (inserted text) keeps all 8 placeable; FORMKEP
 word-boundary, whitespace-boundary, ZWJ and ZWNJ collisions are UNPLACED; `EpubAnchorVerifierInstrumentedTest` 9/9 on the RP5, including all eight real
 golden locators, BASE/MISSING/SHIFTED/FORMKEPT and the 500-anchor cache/performance case (221 ms, one resource parse); RP5 production-path stale/unplaced
 and normal-highlight methods 1/1 each. This remediation changes only anchor verification, its tests and this documentation; Samsung UAT remains pending.
+
+**Unsafe-navigation and verdict-cache remediation (2026-10-10).** A second independent review found that an UNPLACED text annotation stayed jumpable and could hand its rejected
+locator to Readium, which may approximate onto unrelated text. The anchor verdict now controls both drawing and navigation through one rule, `Annotation.canNavigate(status)` /
+`navigateToAnnotation` (`core.reader`): BOOKMARK and position NOTE (no selectedText) navigate through their persisted locator; HIGHLIGHT and selection NOTE navigate only when PLACEABLE
+(UNPLACED, MALFORMED and not-yet-verified do not). A blocked annotation never reaches `EpubController.jumpTo`; there is no href, progression or approximate fallback. Its row is disabled and its
+accessibility description says the text location is unavailable, the Notes list stays open, and the annotation stays stored, listed, editable and deletable. The verifier's unbounded locator-keyed
+verdict map was removed (locators can be 64 KiB); only the bounded (24-resource) sanitized-text cache remains, matching is unchanged. Validation: `AnnotationNavigationTest` 3/3 (JVM, eligibility
+kinds x statuses and a spy proving zero navigator calls), `AnchorTextTest` 17/17, `EpubAnchorVerifierInstrumentedTest` 11/11 on the RP5 (500 anchors 230 ms, one parse; bounded-cache and
+3,000-distinct-locator tests), RP5 `EpubAnnotationsTest` methods 1/1 each: stale/unplaced production path (now asserting not jumpable), 30/30 PLACEABLE jumps, position-note jump, normal highlight,
+500-highlight production path, Escape/gamepad-B Notes dialog; API 24 legacy-WebView method 1/1. Finding (open, not fixed): gamepad B does not dismiss the annotation editor while its text field has
+focus (Escape does); Samsung UAT remains pending.
 
 **Selection and annotation behavior (EPUB only).** Readium `selectionActionModeCallback` (installed only when supported) offers Highlight, Add note and Copy
 (Readium uses the callback instead of the platform's, so Select all and platform share/search are not available through it). Highlight: HIGHLIGHT, default style `amber`,
@@ -95,7 +106,7 @@ on the emulator. Known: API 24 / WebView 52 EPUB managed-font tests fail (old We
 
 **RP5 interaction coverage (automated, real injected touch through the real WebView):** long-press selection and the toolbar; Highlight; Add note and Cancel; tap a decoration opens the editor and chrome stays as it was;
 style change, body add and clear (kind stays HIGHLIGHT), delete with confirmation removes the row and the decoration; selection-note edit and blank refusal; list kinds/filters/delete/edit; position note and its jump; recreation and a fresh open (2 marks);
-scroll mode, 1.8x font, Dark and Paper palettes (tints verified in the DOM); a repeated phrase drawn only in its own paragraph; a stale annotation not drawn, listed with the unavailable state, jumpable and deletable; malformed locator jump fails with a message;
+scroll mode, 1.8x font, Dark and Paper palettes (tints verified in the DOM); a repeated phrase drawn only in its own paragraph; a stale annotation not drawn, listed with the unavailable state, NOT jumpable (its row is disabled and no navigation request is made), still editable and deletable; malformed locator jump fails with a message;
 Back with a selection (visible chrome, hidden chrome), Escape and gamepad B; edge taps still turn pages, a centre tap still toggles chrome, selection still works beside a decoration.
 
 **Process death (RP5, AUTOMATED):** `am instrument -e deathPhase seed` created a highlight and a selection note, the app process was force-stopped, `-e deathPhase restore` ran in a new process: 2 stored annotations, 2 decorations on the exact text, both OK.

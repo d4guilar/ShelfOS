@@ -92,8 +92,9 @@ class EpubAnchorVerifierInstrumentedTest {
         assertEquals(500, result.size)
         assertTrue("every synthetic anchor is exact", result.values.all { it.status == AnchorStatus.PLACEABLE })
         assertEquals("the chapter is parsed once, not once per annotation", 1, session.anchorVerifier.parseCount)
-        // A second pass is served entirely from cache.
-        runBlocking { session.anchorVerifier.verifyAll(locators) }
+        // A second identical pass re-matches against the cached chapter text: same verdicts, no further parse.
+        val again = runBlocking { session.anchorVerifier.verifyAll(locators) }
+        assertEquals(result, again)
         assertEquals(1, session.anchorVerifier.parseCount)
         assertTrue("500 verifications took $elapsedMs ms", elapsedMs < 5_000)
         // Orders every annotation by reading position: fractions are strictly increasing along the document.
@@ -117,5 +118,38 @@ class EpubAnchorVerifierInstrumentedTest {
         assertEquals("ranges tile the book", ranges[0]!!.endInclusive, ranges[1]!!.start, 1e-9)
         assertEquals(1.0, ranges[2]!!.endInclusive, 0.0)
         assertNull(runBlocking { session.resourceRange("missing.xhtml") })
+    }
+
+    private fun syntheticLocator(n: Int, href: String = "chapter.xhtml") = JSONObject().put("href", href).put("type", "application/xhtml+xml").put("title", "t".repeat(1_000))
+        .put("locations", JSONObject().put("progression", 0.0))
+        .put("text", JSONObject().put("before", "k[$n]").put("highlight", "needle").put("after", "")).toString()
+
+    @Test fun theResourceTextCacheIsBounded() {
+        val verifier = EpubAnchorVerifier({ href -> ResourceMarkup("<html><body><p>$href needle</p></body></html>", xml = false) }, cacheSize = 8)
+        repeat(40) { n -> runBlocking { verifier.verify(syntheticLocator(0, "r$n.xhtml")) } }
+        assertEquals(40, verifier.parseCount)
+        assertEquals(8, verifier.cachedResourceCount)
+    }
+
+    @Test fun thousandsOfDistinctLocatorsDoNotAccumulateInTheSession() {
+        val body = "<html><body><p>" + (0 until 3_000).joinToString(" ") { "k[$it]needle" } + "</p></body></html>"
+        val verifier = EpubAnchorVerifier({ ResourceMarkup(body, xml = false) })
+        val locators = (0 until 3_000).map { syntheticLocator(it) }
+        assertEquals(3_000, locators.distinct().size)
+        val first = runBlocking { verifier.verifyAll(locators) }
+        assertEquals(3_000, first.size)
+        assertTrue(first.values.all { it.status == AnchorStatus.PLACEABLE })
+        assertEquals(1, verifier.parseCount)
+        assertEquals(1, verifier.cachedResourceCount)
+        // Structural property: no retained map in the verifier (any field, any depth one) grows with the locator count.
+        var retained = 0
+        generateSequence<Class<*>>(verifier.javaClass) { it.superclass }.flatMap { it.declaredFields.asSequence() }.forEach { f ->
+            f.isAccessible = true
+            (f.get(verifier) as? Map<*, *>)?.let { retained += it.size }
+        }
+        assertTrue("retained map entries $retained must be bounded by the resource cache, not locators", retained <= 24)
+        // Repeated passes yield identical verdicts without re-parsing.
+        assertEquals(first, runBlocking { verifier.verifyAll(locators) })
+        assertEquals(1, verifier.parseCount)
     }
 }

@@ -108,24 +108,24 @@ data class ResourceMarkup(val markup: String, val xml: Boolean)
 
 /**
  * Verifies selection locators against the session's sanitized rendition. [loadResource] returns the sanitized markup
- * for an href (or null when unreadable). Comparable text is cached per href for the reader session in a small LRU,
- * and verdicts are cached per locator string, so verifying hundreds of annotations parses each chapter once.
+ * for an href (or null when unreadable). Comparable text is cached per href for the reader session in a small LRU
+ * (at most [cacheSize] resources), so verifying hundreds of annotations parses each chapter once. Verdicts are deliberately
+ * NOT cached: a locator can be 64 KiB, and a locator-keyed map would keep every edited or deleted locator strongly
+ * referenced for the whole session; matching against the cached text is a cheap linear scan.
  */
 class EpubAnchorVerifier(private val loadResource: suspend (href: String) -> ResourceMarkup?, private val cacheSize: Int = 24) {
     private val mutex = Mutex()
     private val texts = object : LinkedHashMap<String, String?>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String?>?) = size > cacheSize
     }
-    private val verdicts = HashMap<String, AnchorVerdict>()
     /** How many times a resource was actually parsed (not served from cache); exposed for the performance regression test. */
     @Volatile var parseCount: Int = 0; private set
+    /** Resources currently held by the text cache; never exceeds the cache size. Exposed for the bound regression test. */
+    val cachedResourceCount: Int get() = texts.size
 
     suspend fun verify(locatorJson: String): AnchorVerdict {
         val anchor = parseAnchor(locatorJson) ?: return AnchorVerdict(AnchorStatus.MALFORMED)
-        return mutex.withLock {
-            verdicts[locatorJson]?.let { return@withLock it }
-            verdict(anchor).also { verdicts[locatorJson] = it }
-        }
+        return mutex.withLock { verdict(anchor) }
     }
 
     suspend fun verify(anchor: SelectionAnchor): AnchorVerdict = mutex.withLock { verdict(anchor) }
