@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos.feature.reader
 
+import android.view.KeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -18,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.onPreInterceptKeyBeforeSoftKeyboard
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -30,6 +32,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.d4guilar.shelfos.R
+import com.d4guilar.shelfos.core.input.InputContext
+import com.d4guilar.shelfos.core.input.ShelfCommand
+import com.d4guilar.shelfos.core.input.shelfCommand
 import com.d4guilar.shelfos.core.reader.*
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import com.d4guilar.shelfos.domain.annotations.Annotation
@@ -62,6 +67,16 @@ internal fun styleLabel(styleKey: String?): String = stringResource(when (styleK
     "rose" -> R.string.annotation_style_rose
     else -> R.string.annotation_style_unknown
 })
+
+/** Dialog-local Android Back/Escape/gamepad-B handling that runs before a focused text field or IME can consume it. */
+private fun Modifier.dismissOnShelfBack(onDismiss: () -> Unit) = onPreInterceptKeyBeforeSoftKeyboard { event ->
+    val native = event.nativeKeyEvent
+    val dismiss = native.keyCode == KeyEvent.KEYCODE_BACK ||
+        native.shelfCommand(InputContext.READER) == ShelfCommand.BACK
+    if (!dismiss) return@onPreInterceptKeyBeforeSoftKeyboard false
+    if (native.action == KeyEvent.ACTION_UP) onDismiss()
+    true // Consume down and up so a focused editor never interprets the command as text input.
+}
 
 /**
  * The reader-local review list for ONE publication (not the global Notes hub): notes, highlights and bookmarks in
@@ -160,7 +175,7 @@ fun AnnotationEditorDialog(
     val canSave = !tooLong && (!bodyRequired || body.isNotBlank())
     val field = remember { FocusRequester() }
     val selectedTemplate = stringResource(R.string.annotation_style_selected)
-    AlertDialog(onDismissRequest = onCancel, title = { Text(title) }, text = {
+    AlertDialog(onDismissRequest = onCancel, modifier = Modifier.dismissOnShelfBack(onCancel), title = { Text(title) }, text = {
         // A Dialog owns its own window: request focus only once that window has it, as the Search dialog does.
         val window = LocalWindowInfo.current
         LaunchedEffect(window.isWindowFocused) { if (window.isWindowFocused) runCatching { field.requestFocus() } }
@@ -199,7 +214,8 @@ fun AnnotationEditorDialog(
 
 @Composable
 fun AnnotationDeleteConfirmDialog(onConfirm: () -> Unit, onCancel: () -> Unit) {
-    AlertDialog(onDismissRequest = onCancel, title = { Text(stringResource(R.string.annotation_delete_confirm_title)) },
+    AlertDialog(onDismissRequest = onCancel, modifier = Modifier.dismissOnShelfBack(onCancel),
+        title = { Text(stringResource(R.string.annotation_delete_confirm_title)) },
         text = { Text(stringResource(R.string.annotation_delete_confirm_body)) },
         dismissButton = { TextButton(onCancel) { Text(stringResource(R.string.action_cancel)) } },
         confirmButton = { TextButton(onConfirm, Modifier.testTag("annotation_delete_confirm")) { Text(stringResource(R.string.action_delete)) } })

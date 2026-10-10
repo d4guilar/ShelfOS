@@ -539,7 +539,7 @@ class EpubAnnotationsTest {
         }
     }
 
-    @Test fun escapeAndGamepadBDismissTheNotesListAndEscapeDismissesTheEditor() {
+    @Test fun escapeAndGamepadBDismissTheNotesList() {
         insert(AnnotationKind.HIGHLIGHT, GoldenSelectionLocators.WORD_FIRST_PARAGRAPH, "quillfeather1x1", style = "amber")
         launch().use { scenario ->
             val p = probe(scenario); awaitReader(p)
@@ -550,17 +550,44 @@ class EpubAnnotationsTest {
                 compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotations_list").fetchSemanticsNodes().isEmpty() }
                 assertNotEquals("reader survives key $code", Lifecycle.State.DESTROYED, scenario.state)
                 assertTrue("reader chrome still present after key $code", chromeVisible())
-                // Editor opened from the list: Escape cancels it without saving or deleting. KNOWN FINDING (reported, not fixed here):
-                // gamepad B does NOT dismiss the editor while its text field has focus, so only Escape is asserted for the editor.
-                if (code != KeyEvent.KEYCODE_ESCAPE) return@forEach
+            }
+        }
+    }
+
+    @Test fun androidBackEscapeAndGamepadBDismissTheFocusedEditorWithoutSaving() {
+        insert(AnnotationKind.HIGHLIGHT, GoldenSelectionLocators.WORD_FIRST_PARAGRAPH, "quillfeather1x1", style = "amber")
+        launch().use { scenario ->
+            val p = probe(scenario); awaitReader(p)
+            listOf(KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BUTTON_B).forEach { code ->
                 compose.onNodeWithTag("epub_notes").performClick()
                 compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 1 }
                 compose.onNode(hasContentDescription("Edit Highlight", substring = true)).performClick()
                 awaitEditor()
+                compose.onNodeWithTag("annotation_body").assertIsFocused().performTextInput("unsaved")
                 key(code)
                 try { compose.waitUntil(10_000) { !editorOpen() } } catch (e: Throwable) { fail("editor not dismissed by key $code") }
                 assertEquals("cancelling by key $code changed nothing", 1, stored().size)
+                assertNull("cancelling by key $code must not save the draft", stored().single().body)
                 assertNotEquals(Lifecycle.State.DESTROYED, scenario.state)
+                assertTrue("reader chrome still present after key $code", chromeVisible())
+            }
+        }
+    }
+
+    @Test fun androidBackEscapeAndGamepadBDismissDeleteConfirmationWithoutDeleting() {
+        insert(AnnotationKind.HIGHLIGHT, GoldenSelectionLocators.WORD_FIRST_PARAGRAPH, "quillfeather1x1", style = "amber")
+        launch().use { scenario ->
+            val p = probe(scenario); awaitReader(p)
+            compose.onNodeWithTag("epub_notes").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 1 }
+            listOf(KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BUTTON_B).forEach { code ->
+                compose.onNode(hasContentDescription("Delete Highlight", substring = true)).performClick()
+                compose.onNodeWithTag("annotation_delete_confirm").assertExists()
+                key(code)
+                compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_delete_confirm").fetchSemanticsNodes().isEmpty() }
+                assertEquals("dismissal by key $code must not delete", 1, stored().size)
+                compose.onNodeWithTag("annotations_list").assertExists()
+                assertNotEquals("reader survives key $code", Lifecycle.State.DESTROYED, scenario.state)
             }
         }
     }

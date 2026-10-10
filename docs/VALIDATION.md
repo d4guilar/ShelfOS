@@ -70,8 +70,10 @@ accessibility description says the text location is unavailable, the Notes list 
 verdict map was removed (locators can be 64 KiB); only the bounded (24-resource) sanitized-text cache remains, matching is unchanged. Validation: `AnnotationNavigationTest` 3/3 (JVM, eligibility
 kinds x statuses and a spy proving zero navigator calls), `AnchorTextTest` 17/17, `EpubAnchorVerifierInstrumentedTest` 11/11 on the RP5 (500 anchors 230 ms, one parse; bounded-cache and
 3,000-distinct-locator tests), RP5 `EpubAnnotationsTest` methods 1/1 each: stale/unplaced production path (now asserting not jumpable), 30/30 PLACEABLE jumps, position-note jump, normal highlight,
-500-highlight production path, Escape/gamepad-B Notes dialog; API 24 legacy-WebView method 1/1. Finding (open, not fixed): gamepad B does not dismiss the annotation editor while its text field has
-focus (Escape does); Samsung UAT remains pending.
+500-highlight production path, Escape/gamepad-B Notes dialog; API 24 legacy-WebView method 1/1. **Final input remediation:** the annotation editor and delete confirmation now intercept Android
+Back/Escape/gamepad B at their dialog root before a focused text field or IME can consume the event. Focused RP5 validation 7/7: editor dismissal for all three inputs with the body focused (no save/delete,
+reader and chrome remain), Notes-list Escape/gamepad B, non-destructive delete-confirmation dismissal for all three inputs, selection-first Back behavior, normal note creation and ADR-0023's normal
+reveal-before-exit reader behavior. Samsung UAT remains pending.
 
 **Selection and annotation behavior (EPUB only).** Readium `selectionActionModeCallback` (installed only when supported) offers Highlight, Add note and Copy
 (Readium uses the callback instead of the platform's, so Select all and platform share/search are not available through it). Highlight: HIGHLIGHT, default style `amber`,
