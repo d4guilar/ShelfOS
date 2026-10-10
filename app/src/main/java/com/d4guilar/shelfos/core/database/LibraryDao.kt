@@ -21,8 +21,9 @@ data class ReadingEntity(@PrimaryKey val itemId: String, val locator: String, va
 @Entity(tableName = "reader_preference")
 data class ReaderPreferenceEntity(@PrimaryKey val itemId: String, val json: String)
 
-/** [locator] (a serialized Readium Locator) is authoritative; [progress] is a display/sort snapshot only. Several
- * rows may share one [itemId] — a bookmark is not a singleton per item like [ReadingEntity]/[ReaderPreferenceEntity]. */
+/** LEGACY (Room v3 and earlier): superseded by [AnnotationEntity] in v4 and migrated into it by MIGRATION_3_4. Kept
+ * declared so the exported schema describes the physical database; nothing reads or writes it at runtime. It is
+ * dropped in a later migration after physical acceptance (plan section 8.3). */
 @Entity(tableName = "bookmark", foreignKeys = [ForeignKey(entity = LibraryEntity::class,
     parentColumns = ["id"], childColumns = ["itemId"], onDelete = ForeignKey.CASCADE)], indices = [Index("itemId")])
 data class BookmarkEntity(@PrimaryKey val id: String, val itemId: String, val locator: String,
@@ -54,26 +55,16 @@ abstract class LibraryDao {
     @Query("DELETE FROM library_item WHERE id = :id") protected abstract suspend fun deleteItem(id: String)
     @Query("DELETE FROM reading_state WHERE itemId = :id") protected abstract suspend fun deleteReading(id: String)
     @Query("DELETE FROM reader_preference WHERE itemId = :id") protected abstract suspend fun deletePreferences(id: String)
-    /** Deletes ShelfOS-owned state for one item; other items and all source files are untouched. */
-    @Transaction open suspend fun remove(id: String) { deletePreferences(id); deleteReading(id); deleteItem(id) }
+    @Query("DELETE FROM annotation WHERE libraryItemId = :id") protected abstract suspend fun deleteAnnotations(id: String)
+    /**
+     * Deletes ShelfOS-owned state for one item under `KnowledgePolicy.DELETE`: preferences, reading state, every
+     * canonical annotation row and the item, atomically in one transaction. Other items and all source files are
+     * untouched. The annotation table has no foreign key, so it is deleted explicitly here (a failure anywhere rolls
+     * the whole removal back). The legacy `bookmark` table keeps its own cascade foreign key and is cleared by the
+     * item delete; nothing reads it any more. This is the only code path that removes a `library_item` row.
+     */
+    @Transaction open suspend fun removeDeletingKnowledge(id: String) { deletePreferences(id); deleteReading(id); deleteAnnotations(id); deleteItem(id) }
     @Upsert abstract suspend fun saveReading(state: ReadingEntity)
     @Upsert abstract suspend fun savePreferences(state: ReaderPreferenceEntity)
     @Query("SELECT json FROM reader_preference WHERE itemId = ''") abstract fun globalPreferences(): Flow<String?>
-
-    // Progress ascending, createdAt then id as deterministic tie-breakers: a useful default reading order, not a
-    // claim that progress is authoritative — jumping to a bookmark always uses its stored locator, never this
-    // ordering. id is the final tie-breaker so two bookmarks sharing both progress and createdAt still sort
-    // deterministically instead of relying on unspecified SQLite row order.
-    @Query("SELECT * FROM bookmark WHERE itemId = :itemId ORDER BY progress ASC, createdAt ASC, id ASC")
-    abstract fun observeBookmarks(itemId: String): Flow<List<BookmarkEntity>>
-    @Query("SELECT * FROM bookmark WHERE itemId = :itemId AND locator = :locator LIMIT 1")
-    protected abstract suspend fun bookmarkAt(itemId: String, locator: String): BookmarkEntity?
-    @Insert protected abstract suspend fun insertBookmark(bookmark: BookmarkEntity)
-    @Query("DELETE FROM bookmark WHERE id = :id") abstract suspend fun deleteBookmark(id: String)
-    /** A bookmark at the exact same locator the item already has is a safe no-op, not a second identical row —
-     * chosen over a UNIQUE constraint on the opaque locator JSON, which would assume more about its stability
-     * than is verified. */
-    @Transaction open suspend fun addBookmark(bookmark: BookmarkEntity) {
-        if (bookmarkAt(bookmark.itemId, bookmark.locator) == null) insertBookmark(bookmark)
-    }
 }

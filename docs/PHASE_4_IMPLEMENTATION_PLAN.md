@@ -1,11 +1,11 @@
 # Phase 4 Implementation Plan — Notes and Knowledge Layer
 
-Status: **PLANNING ONLY (2026-10-10).** Phase 4 has not started. This document and
-[ADR-0025](adr/0025-annotation-anchor-and-knowledge-model.md) (Proposed) contain no
-implementation, no schema change, no dependency change and no UI work. Nothing here
-authorizes an implementation agent to start a slice; each slice below needs explicit
-administrator authorization, exactly as Phase 3's slices did
-(`docs/PHASE_3_IMPLEMENTATION_PLAN.md` §12/§21).
+Status: **Phase 4A (Annotation foundation) is IMPLEMENTED LOCALLY and pending independent review (see the 4A
+implementation record in section 13.1 and `docs/VALIDATION.md`); Phase 4 as a whole is NOT complete and 4B-4F have not
+started.** The rest of this document is the original planning text (2026-10-10, [ADR-0025](adr/0025-annotation-anchor-and-knowledge-model.md),
+Proposed). Each slice still needs explicit administrator authorization, exactly as Phase 3's slices did
+(`docs/PHASE_3_IMPLEMENTATION_PLAN.md` §12/§21). 4A added the schema, migration and removal policy described below; the
+remaining slices add none until authorized.
 
 Anything marked **(proposed)** is a recommendation for review, not an accepted design.
 Anything marked **(verified)** was checked against the repository or the pinned
@@ -740,6 +740,41 @@ only its own scope.
   against `4.json`); migration performance on large bookmark counts (single INSERT…SELECT);
   FK-less integrity (§8.2).
 - **Codex High review: yes** — schema, migration, data-loss surface, removal semantics.
+
+#### 4A implementation record (2026-10-10; local, pending independent review)
+
+Implemented on `phase-4/4a-annotation-foundation` (from `main` @ `b2ce163`); evidence in `docs/VALIDATION.md`
+("PHASE 4A"). ADR-0025 remains Proposed and none of its decisions changed. Contradicting evidence found: none.
+
+- **Added:** `domain/annotations/` (`Annotation`, kinds/formats, `KnowledgePolicy.DELETE`, `AnnotationRules`,
+  strict `FixedPageLocator`), `core/database/AnnotationDao.kt` (`AnnotationEntity`, `AnnotationDao`),
+  `data/annotations/` (`AnnotationRepository`, `RoomAnnotationRepository`, `RoomBookmarkRepository`),
+  `core/reader/AnnotationLocators.kt` (parse-only Readium check), `MIGRATION_3_4`, `4.json` (Room-generated).
+- **Removal:** `LibraryDao.removeDeletingKnowledge` deletes preferences, reading state, annotations and the item in one
+  transaction; it is the only code path that deletes a `library_item` row. The removal dialog shows per-kind counts
+  (plurals EN/ES/PT-BR) and keeps removal disabled while the count is still loading.
+- **Deviations from this plan (all deliberate; none changes ADR-0025):**
+  1. `LibraryRepository.remove(id)` keeps its one-argument interface shape (about ten test fakes implement it) and means
+     `KnowledgePolicy.DELETE`; `RoomLibraryRepository.remove(id, policy)` takes the policy explicitly.
+  2. `RoomLibraryRepository` no longer implements `BookmarkRepository`; `RoomBookmarkRepository` (over
+     `AnnotationRepository`) does, exposed as `AppContainer.bookmarks`. `EpubActivity` and the existing EPUB tests moved
+     from `container.library` to `container.bookmarks` for bookmark calls.
+  3. The compatibility adapter stores locator strings without Readium parsing (`validateLocator = false`), because
+     `EpubBookmarkTest.malformedBookmarkLocator...` requires a malformed locator to be storable and deletable. New
+     `AnnotationRepository` callers validate by default (4B/4C should). Kind invariants still apply to the adapter.
+  4. Item existence is checked inside the create transaction (replacing the dropped FK; the old FK-rejection test now
+     asserts the repository rejects an unknown item).
+  5. Migration is stricter than §8.3: it also fails (rolls back) on a bookmark whose item is missing or whose format is
+     not EPUB/PDF/CBZ/CBR, and verifies every migrated row field-by-field, not just the count.
+  6. The 64 KiB `locatorJson` cap and 2,000/20,000 text caps in §6.1 are 4B work and are not enforced yet.
+  7. The DAO exposes both bookmark-compat and reading ordering, a recent-first global read, per-kind counts and an orphan
+     count; unknown persisted kinds/formats are skipped and counted (`AnnotationListing.skippedUnknown`).
+  8. `BookmarkPersistenceTest` was updated: the "cascade through the real FK" assertion became "removal deletes the
+     canonical annotation rows explicitly", because the annotation table deliberately has no FK; the legacy table's own
+     cascade is unchanged and asserted in `AnnotationRepositoryTest`.
+- **Known limitations:** deleted bookmarks stay in the unwritten legacy table until it is dropped; no UI exposes
+  annotations other than the unchanged EPUB bookmark dialog; the upgrade check seeded bookmarks with `sqlite3` rather than
+  through the reader UI.
 
 ### 13.2 4B — EPUB highlights and notes
 

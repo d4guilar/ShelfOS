@@ -235,17 +235,17 @@ class EpubBookmarkTest {
             // not-bookmarked state the race below starts from.
             compose.onNodeWithText("Add bookmark").performClick()
             compose.waitUntil(10_000) { compose.onAllNodes(hasText("Remove bookmark") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
-            val liveLocator = runBlocking { container.library.bookmarks("test-epub-chapters").first().single().locator }
+            val liveLocator = runBlocking { container.bookmarks.bookmarks("test-epub-chapters").first().single().locator }
             compose.onNodeWithText("Remove bookmark").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("No bookmarks yet.").fetchSemanticsNodes().isNotEmpty() }
 
             // Two genuinely concurrent activations for that exact real location, started before either completes.
             runBlocking {
                 awaitAll(
-                    async { container.library.addBookmark("test-epub-chapters", liveLocator, 0) },
-                    async { container.library.addBookmark("test-epub-chapters", liveLocator, 0) },
+                    async { container.bookmarks.addBookmark("test-epub-chapters", liveLocator, 0) },
+                    async { container.bookmarks.addBookmark("test-epub-chapters", liveLocator, 0) },
                 )
-                assertTrue(container.library.bookmarks("test-epub-chapters").first().size == 1)
+                assertTrue(container.bookmarks.bookmarks("test-epub-chapters").first().size == 1)
             }
         }
     }
@@ -273,7 +273,7 @@ class EpubBookmarkTest {
             awaitAddEnabled()
             compose.onNodeWithText("Add bookmark").assertExists()
         }
-        runBlocking { assertTrue(container.library.bookmarks("test-epub-chapters").first().isEmpty()) }
+        runBlocking { assertTrue(container.bookmarks.bookmarks("test-epub-chapters").first().isEmpty()) }
     }
 
     /** R3 remediation: bookmark state must be recomputed from the *live* locator on return to a previously
@@ -349,7 +349,7 @@ class EpubBookmarkTest {
     @Test fun malformedBookmarkLocatorShowsAReadableFailureRatherThanCrashingAndCanStillBeDeleted() {
         ActivityScenario.launch<EpubActivity>(EpubActivity.intent(context, "test-epub-chapters")).use {
             awaitReader()
-            runBlocking { container.library.addBookmark("test-epub-chapters", "not a valid locator", 0) }
+            runBlocking { container.bookmarks.addBookmark("test-epub-chapters", "not a valid locator", 0) }
             compose.onNodeWithText("Bookmarks").performClick()
             bookmarkCount(1)
             compose.onNode(hasContentDescription("Bookmark, ", substring = true) and hasClickAction()).performClick()

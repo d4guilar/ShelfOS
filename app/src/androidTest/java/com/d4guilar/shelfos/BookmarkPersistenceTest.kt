@@ -3,7 +3,10 @@ package com.d4guilar.shelfos
 
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
-import com.d4guilar.shelfos.core.database.BookmarkEntity
+import com.d4guilar.shelfos.core.database.AnnotationEntity
+import com.d4guilar.shelfos.data.annotations.RoomAnnotationRepository
+import com.d4guilar.shelfos.data.annotations.RoomBookmarkRepository
+import com.d4guilar.shelfos.domain.annotations.DefaultAnnotationLocatorValidator
 import com.d4guilar.shelfos.core.database.ShelfDatabase
 import com.d4guilar.shelfos.data.library.RoomLibraryRepository
 import kotlinx.coroutines.flow.first
@@ -12,7 +15,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 /**
- * Phase 2B.2: the Room v2 -> v3 bookmark migration, and bookmark repository CRUD, ordering, duplicate and
+ * Phase 2B.2: the Room v2 -> v3 bookmark migration (now continuing to v4, where bookmarks live in the canonical annotation table), and bookmark repository CRUD, ordering, duplicate and
  * isolation behavior. Follows [LibraryPersistenceTest]'s own established migration-testing convention (bootstrap
  * the old schema with raw SQL, open with Room + the real migrations, assert data survives) rather than adding
  * `androidx.room:room-testing`/`MigrationTestHelper` — this project already has a working, dependency-free pattern
@@ -21,9 +24,12 @@ import org.junit.Test
 class BookmarkPersistenceTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    /** Phase 4A: bookmarks are now the BOOKMARK kind of the canonical annotation table, behind the unchanged BookmarkRepository contract. */
+    private fun bookmarks(db: ShelfDatabase) = RoomBookmarkRepository(RoomAnnotationRepository(db.annotations(), DefaultAnnotationLocatorValidator { true }))
+
     /** Bootstraps a real v2 database (matching app/schemas/.../2.json exactly) with one pre-existing library item,
      * its resume state and its preferences, then migrates it to v3 and verifies nothing pre-existing was lost. */
-    @Test fun bookmarkMigrationPreservesExistingDataAndSupportsCascadeDelete() = runBlocking<Unit> {
+    @Test fun bookmarkMigrationPreservesExistingDataAndRemovalDeletesCanonicalAnnotations() = runBlocking<Unit> {
         val name = "bookmark-migration-test.db"
         context.deleteDatabase(name)
         val itemId = "pre-migration-item"
@@ -40,7 +46,7 @@ class BookmarkPersistenceTest {
             db.version = 2
         }
         fun open() = Room.databaseBuilder(context, ShelfDatabase::class.java, name)
-            .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3).build()
+            .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3, ShelfDatabase.MIGRATION_3_4).build()
         try {
             val db = open()
             try {
@@ -56,16 +62,18 @@ class BookmarkPersistenceTest {
 
                 // The new bookmark table exists and accepts a row tied to the existing item.
                 val locator = """{"href":"chapter2.xhtml","locations":{"progression":0.5}}"""
-                repository.addBookmark(itemId, locator, 55, null)
-                val saved = repository.bookmarks(itemId).first()
+                bookmarks(db).addBookmark(itemId, locator, 55, null)
+                val saved = bookmarks(db).bookmarks(itemId).first()
                 assertEquals(1, saved.size)
                 assertEquals(locator, saved.single().locator)
                 assertEquals(55, saved.single().progress)
                 assertNull(saved.single().label)
 
-                // Deleting the LibraryItem cascades bookmark deletion through the real FK, not application code.
+                // Phase 4A: the annotation table has no foreign key, so removal deletes its rows explicitly and
+                // atomically (KnowledgePolicy.DELETE). The pre-4A version of this test asserted the FK cascade.
                 repository.remove(itemId)
-                assertTrue(repository.bookmarks(itemId).first().isEmpty())
+                assertTrue(bookmarks(db).bookmarks(itemId).first().isEmpty())
+                db.openHelper.writableDatabase.query("SELECT COUNT(*) FROM annotation WHERE libraryItemId = ?", arrayOf(itemId)).use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
             } finally { db.close() }
         } finally { context.deleteDatabase(name) }
     }
@@ -77,13 +85,13 @@ class BookmarkPersistenceTest {
             val item = OriginalFixtures.pdf(context)
             repository.add(item)
             val locator = """{"href":"chapter1.xhtml"}"""
-            repository.addBookmark(item.id, locator, 10)
-            repository.addBookmark(item.id, locator, 10)
-            repository.addBookmark(item.id, locator, 10)
-            assertEquals(1, repository.bookmarks(item.id).first().size)
+            bookmarks(db).addBookmark(item.id, locator, 10)
+            bookmarks(db).addBookmark(item.id, locator, 10)
+            bookmarks(db).addBookmark(item.id, locator, 10)
+            assertEquals(1, bookmarks(db).bookmarks(item.id).first().size)
             // A different locator for the same item is a genuinely new bookmark, not a duplicate.
-            repository.addBookmark(item.id, """{"href":"chapter2.xhtml"}""", 20)
-            assertEquals(2, repository.bookmarks(item.id).first().size)
+            bookmarks(db).addBookmark(item.id, """{"href":"chapter2.xhtml"}""", 20)
+            assertEquals(2, bookmarks(db).bookmarks(item.id).first().size)
         } finally { db.close() }
     }
 
@@ -94,29 +102,28 @@ class BookmarkPersistenceTest {
             val item = OriginalFixtures.pdf(context)
             repository.add(item)
             // Inserted out of order; the observed list must always come back progress-ascending.
-            repository.addBookmark(item.id, """{"href":"c3.xhtml"}""", 80)
-            repository.addBookmark(item.id, """{"href":"c1.xhtml"}""", 10)
-            repository.addBookmark(item.id, """{"href":"c2.xhtml"}""", 50)
-            val ordered = repository.bookmarks(item.id).first()
+            bookmarks(db).addBookmark(item.id, """{"href":"c3.xhtml"}""", 80)
+            bookmarks(db).addBookmark(item.id, """{"href":"c1.xhtml"}""", 10)
+            bookmarks(db).addBookmark(item.id, """{"href":"c2.xhtml"}""", 50)
+            val ordered = bookmarks(db).bookmarks(item.id).first()
             assertEquals(listOf(10, 50, 80), ordered.map { it.progress })
         } finally { db.close() }
     }
 
     /** When progress and createdAt are both identical (e.g. two bookmarks added in the same millisecond), id is the
      * final deterministic tie-breaker rather than unspecified SQLite row order. Uses explicit deterministic ids and
-     * an explicit shared createdAt inserted directly through the DAO — not [RoomLibraryRepository.addBookmark],
+     * an explicit shared createdAt inserted directly through the DAO — not [RoomBookmarkRepository.addBookmark],
      * which always generates a random UUID and the current time — so the expected order is explicit, not incidental. */
     @Test fun bookmarksWithIdenticalProgressAndCreatedAtStillSortDeterministicallyById() = runBlocking<Unit> {
         val db = Room.inMemoryDatabaseBuilder(context, ShelfDatabase::class.java).build()
         try {
-            val dao = db.library()
+            val dao = db.annotations()
             val item = OriginalFixtures.pdf(context)
-            RoomLibraryRepository(dao).add(item)
+            RoomLibraryRepository(db.library()).add(item)
             // Inserted out of id order; every row shares the same progress and createdAt.
-            dao.addBookmark(BookmarkEntity("c-bookmark", item.id, """{"href":"c3.xhtml"}""", 50, null, 1_000L))
-            dao.addBookmark(BookmarkEntity("a-bookmark", item.id, """{"href":"c1.xhtml"}""", 50, null, 1_000L))
-            dao.addBookmark(BookmarkEntity("b-bookmark", item.id, """{"href":"c2.xhtml"}""", 50, null, 1_000L))
-            val ordered = dao.observeBookmarks(item.id).first()
+            for ((id, page) in listOf("c-bookmark" to 3, "a-bookmark" to 1, "b-bookmark" to 2))
+                dao.create(AnnotationEntity(id, item.id, "BOOKMARK", "READIUM_LOCATOR_1", """{"href":"c$page.xhtml"}""", 50, null, null, null, null, null, 1_000L, 1_000L))
+            val ordered = bookmarks(db).bookmarks(item.id).first()
             assertEquals(listOf("a-bookmark", "b-bookmark", "c-bookmark"), ordered.map { it.id })
         } finally { db.close() }
     }
@@ -128,20 +135,20 @@ class BookmarkPersistenceTest {
             val a = OriginalFixtures.pdf(context)
             val b = OriginalFixtures.cbz(context)
             repository.add(a); repository.add(b)
-            repository.addBookmark(a.id, """{"href":"a1.xhtml"}""", 10)
-            repository.addBookmark(b.id, """{"href":"b1.xhtml"}""", 20)
-            assertEquals(1, repository.bookmarks(a.id).first().size)
-            assertEquals(1, repository.bookmarks(b.id).first().size)
-            assertEquals(a.id, repository.bookmarks(a.id).first().single().itemId)
-            assertEquals(b.id, repository.bookmarks(b.id).first().single().itemId)
+            bookmarks(db).addBookmark(a.id, """{"href":"a1.xhtml"}""", 10)
+            bookmarks(db).addBookmark(b.id, """{"href":"b1.xhtml"}""", 20)
+            assertEquals(1, bookmarks(db).bookmarks(a.id).first().size)
+            assertEquals(1, bookmarks(db).bookmarks(b.id).first().size)
+            assertEquals(a.id, bookmarks(db).bookmarks(a.id).first().single().itemId)
+            assertEquals(b.id, bookmarks(db).bookmarks(b.id).first().single().itemId)
         } finally { db.close() }
     }
 
-    @Test fun addingABookmarkForANonexistentItemIsRejectedByTheForeignKey() = runBlocking<Unit> {
+    @Test fun addingABookmarkForANonexistentItemIsRejectedByTheRepository() = runBlocking<Unit> {
         val db = Room.inMemoryDatabaseBuilder(context, ShelfDatabase::class.java).build()
         try {
             val repository = RoomLibraryRepository(db.library())
-            assertTrue(runCatching { repository.addBookmark("missing-item", """{"href":"x.xhtml"}""", 10) }.isFailure)
+            assertTrue(runCatching { bookmarks(db).addBookmark("missing-item", """{"href":"x.xhtml"}""", 10) }.isFailure)
         } finally { db.close() }
     }
 
@@ -151,11 +158,11 @@ class BookmarkPersistenceTest {
             val repository = RoomLibraryRepository(db.library())
             val item = OriginalFixtures.pdf(context)
             repository.add(item)
-            repository.addBookmark(item.id, """{"href":"c1.xhtml"}""", 10)
-            repository.addBookmark(item.id, """{"href":"c2.xhtml"}""", 20)
-            val toDelete = repository.bookmarks(item.id).first().first { it.progress == 10 }
-            repository.deleteBookmark(toDelete.id)
-            val remaining = repository.bookmarks(item.id).first()
+            bookmarks(db).addBookmark(item.id, """{"href":"c1.xhtml"}""", 10)
+            bookmarks(db).addBookmark(item.id, """{"href":"c2.xhtml"}""", 20)
+            val toDelete = bookmarks(db).bookmarks(item.id).first().first { it.progress == 10 }
+            bookmarks(db).deleteBookmark(toDelete.id)
+            val remaining = bookmarks(db).bookmarks(item.id).first()
             assertEquals(1, remaining.size)
             assertEquals(20, remaining.single().progress)
         } finally { db.close() }

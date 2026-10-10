@@ -65,6 +65,23 @@
     <string name="dialog_remove_title">¿Quitar de ShelfOS?</string>
     <string name="dialog_remove_body">Esto elimina la entrada, su posición de lectura y sus preferencias de lectura de ShelfOS. El archivo original no se ve afectado.</string>
     <string name="dialog_remove_private_copy_note">ShelfOS conserva su copia privada sin conexión (%1$s). Puedes eliminar copias sin usar en Ajustes.</string>
+    <string name="dialog_remove_annotations_intro">Esto también elimina de forma permanente tus elementos guardados de esta publicación:</string>
+    <plurals name="dialog_remove_bookmarks_line">
+        <item quantity="one">%1$d marcador</item>
+        <item quantity="other">%1$d marcadores</item>
+    </plurals>
+    <plurals name="dialog_remove_highlights_line">
+        <item quantity="one">%1$d resaltado</item>
+        <item quantity="other">%1$d resaltados</item>
+    </plurals>
+    <plurals name="dialog_remove_notes_line">
+        <item quantity="one">%1$d nota</item>
+        <item quantity="other">%1$d notas</item>
+    </plurals>
+    <plurals name="dialog_remove_other_saved_line">
+        <item quantity="one">%1$d otro elemento guardado</item>
+        <item quantity="other">%1$d otros elementos guardados</item>
+    </plurals>
     <string name="original_file_unavailable_title">Archivo original no disponible</string>
     <string name="original_file_unavailable_body">ShelfOS no puede acceder al archivo original en este momento. Puede que se haya movido, eliminado o desconectado, o que se haya revocado el acceso. Tu posición de lectura y tus cambios se conservan.</string>
     <string name="favorite_on">★ En favoritos</string>

@@ -17,11 +17,13 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.core.designsystem.shelfAction
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
+import com.d4guilar.shelfos.domain.annotations.AnnotationCounts
 import com.d4guilar.shelfos.domain.library.LibraryItem
 import com.d4guilar.shelfos.domain.library.MediaCategory
 import com.d4guilar.shelfos.feature.importing.PublicationEditor
@@ -35,7 +37,9 @@ import com.d4guilar.shelfos.feature.importing.originLabel
  */
 @Composable
 fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> Unit, modifier: Modifier = Modifier,
-    onRead: (Rect?) -> Unit, onEdit: (String, String, MediaCategory) -> Unit, onRemove: () -> Unit, focusPrimaryAction: Boolean = false) {
+    onRead: (Rect?) -> Unit, onEdit: (String, String, MediaCategory) -> Unit, onRemove: () -> Unit, focusPrimaryAction: Boolean = false,
+    /** Canonical annotation counts for this item; null while still loading, which keeps removal unconfirmable (never delete undisclosed data). */
+    knowledgeCounts: AnnotationCounts?) {
     val t = LocalShelfTokens.current
     var details by rememberSaveable(item.id) { mutableStateOf(false) }
     var editing by rememberSaveable(item.id) { mutableStateOf(false) }
@@ -51,9 +55,13 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
         text = {
             val body = stringResource(R.string.dialog_remove_body)
             val copyNote = item.managedPath?.let { stringResource(R.string.dialog_remove_private_copy_note, formatSize(item.byteSize)) }
-            Text(if (copyNote != null) "$body\n\n$copyNote" else body)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(body)
+                if (knowledgeCounts != null && knowledgeCounts.total > 0) KnowledgeDeletionNote(knowledgeCounts)
+                if (copyNote != null) Text(copyNote)
+            }
         },
-        confirmButton = { TextButton({ removing = false; onRemove() }, Modifier.testTag("confirm_remove")) { Text(stringResource(R.string.action_remove)) } },
+        confirmButton = { TextButton({ removing = false; onRemove() }, Modifier.testTag("confirm_remove"), enabled = knowledgeCounts != null) { Text(stringResource(R.string.action_remove)) } },
         dismissButton = { TextButton({ removing = false }) { Text(stringResource(R.string.action_cancel)) } })
     BoxWithConstraints(modifier.fillMaxHeight()) {
         // The cover yields height first so the primary Read action stays in view on compact windows.
@@ -94,5 +102,17 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
                 stringResource(R.string.detail_cover_generated),
             ).joinToString("\n"), style = MaterialTheme.typography.bodySmall, color = t.colors.secondary)
         }
+    }
+}
+
+/** Discloses what removal also deletes (canonical annotation rows, per kind); only shown when the total is not 0. */
+@Composable
+private fun KnowledgeDeletionNote(counts: AnnotationCounts) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(stringResource(R.string.dialog_remove_annotations_intro))
+        if (counts.bookmarks > 0) Text(pluralStringResource(R.plurals.dialog_remove_bookmarks_line, counts.bookmarks, counts.bookmarks))
+        if (counts.highlights > 0) Text(pluralStringResource(R.plurals.dialog_remove_highlights_line, counts.highlights, counts.highlights))
+        if (counts.notes > 0) Text(pluralStringResource(R.plurals.dialog_remove_notes_line, counts.notes, counts.notes))
+        if (counts.other > 0) Text(pluralStringResource(R.plurals.dialog_remove_other_saved_line, counts.other, counts.other))
     }
 }

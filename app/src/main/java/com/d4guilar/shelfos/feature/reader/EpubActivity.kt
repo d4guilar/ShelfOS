@@ -89,7 +89,7 @@ open class EpubActivity : AppCompatActivity() {
         val searchCursorOpener = createSearchCursorOpener()
         setContent {
             val vm: EpubReaderViewModel = viewModel(factory = viewModelFactory { initializer {
-                EpubReaderViewModel(itemId, container.library, container.library, createEpubReaderFactory(container),
+                EpubReaderViewModel(itemId, container.library, container.bookmarks, createEpubReaderFactory(container),
                     container.backgroundScope, searchCursorOpener)
             } })
             val theme by container.themes.theme.collectAsStateWithLifecycle(initialValue = null as ThemeId?)
