@@ -58,7 +58,7 @@ class EpubAnnotationsTest {
     private fun launchLegacy() = ActivityScenario.launch<EpubLegacyWebViewTestActivity>(EpubLegacyWebViewTestActivity.intent(ctx, id))
     private fun probe(scenario: ActivityScenario<out android.app.Activity>) = AnnotationUiProbe(inst, scenario) { compose.waitForIdle() }
     private fun awaitReader(p: AnnotationUiProbe) {
-        compose.waitUntil(30_000) { compose.onAllNodes(hasText("Notes") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(30_000) { compose.onAllNodesWithTag("epub_notes").fetchSemanticsNodes().isNotEmpty() }
         assertTrue("page ready", p.awaitReady())
     }
     private fun stored(): List<Annotation> = runBlocking { container.annotations.observeForPublication(id).first().annotations }
@@ -118,8 +118,8 @@ class EpubAnnotationsTest {
         launch().use { scenario ->
             val p = probe(scenario); awaitReader(p)
             compose.onNodeWithTag("epub_notes").performClick()
-            compose.onNodeWithTag("annotations_empty").assertExists()
-            compose.onNodeWithTag("annotation_add_here").performClick()
+            compose.onNodeWithTag("notebook_empty").assertExists()
+            compose.onNodeWithTag("notebook_add_note").performClick()
             awaitEditor()
             compose.onNodeWithTag("annotation_editor_save").assertIsNotEnabled()   // a blank body cannot be saved
             compose.onNodeWithTag("annotation_body").performTextInput("A position note about the opening")
@@ -129,7 +129,7 @@ class EpubAnnotationsTest {
             assertNull("a position note carries no selected text", saved.selectedText)
             assertEquals("A position note about the opening", saved.body)
             compose.onNodeWithTag("epub_notes").performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 1 }
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size == 1 }
             compose.onNodeWithText("Note at position").assertExists()
             assertEquals("no inline decoration for a position note", 0, p.decorationCount())
         }
@@ -184,7 +184,7 @@ class EpubAnnotationsTest {
         launch().use { scenario ->
             val p = probe(scenario); awaitReader(p)
             compose.onNodeWithTag("epub_notes").performClick()
-            compose.onNodeWithTag("annotation_add_here").performClick()
+            compose.onNodeWithTag("notebook_add_note").performClick()
             awaitEditor()
             compose.onNodeWithTag("annotation_body").performTextInput("n".repeat(20_001))
             compose.onNodeWithTag("annotation_editor_save").assertIsNotEnabled()
@@ -277,14 +277,14 @@ class EpubAnnotationsTest {
             awaitStored { it.size == 3 }
             closeDialog()
             compose.onNodeWithTag("epub_notes").performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 3 }
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size == 3 }
             compose.onNode(hasContentDescription("Highlight, Amber, quillfeather1x1", substring = true) and hasClickAction()).assertExists()
             compose.onNode(hasContentDescription("Note, quillfeather1x3, note body text", substring = true) and hasClickAction()).assertExists()
             compose.onNode(hasContentDescription("Bookmark, ", substring = true) and hasClickAction()).assertExists()
             // Filters.
-            compose.onNode(hasText("Highlights") and hasClickAction()).performClick(); compose.waitUntil(5_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 1 }
-            compose.onNode(hasText("Bookmarks") and hasClickAction() and hasAnyAncestor(isDialog())).performClick(); compose.waitUntil(5_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 1 }
-            compose.onNode(hasText("All") and hasClickAction()).performClick(); compose.waitUntil(5_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 3 }
+            compose.onNode(hasText("Highlights") and hasClickAction()).performClick(); compose.waitUntil(5_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size == 1 }
+            compose.onNodeWithTag("notebook_filter_bookmarks").performClick(); compose.waitUntil(5_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size == 1 }
+            compose.onNode(hasText("All") and hasClickAction()).performClick(); compose.waitUntil(5_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size == 3 }
             // A bookmark row is deleted directly (existing semantics); other kinds ask first.
             compose.onNode(hasContentDescription("Delete Bookmark", substring = true)).performClick()
             awaitStored { it.size == 2 }
@@ -382,8 +382,8 @@ class EpubAnnotationsTest {
             assertEquals("the stale annotation is not drawn anywhere (Readium would approximate it)", 1, p.decorationCount())
             assertTrue(p.tokenDecorated("quillfeather1x1"))
             compose.onNodeWithTag("epub_notes").performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 2 }
-            assertEquals(1, compose.onAllNodesWithTag("annotation_unplaced", useUnmergedTree = true).fetchSemanticsNodes().size)
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size == 2 }
+            assertEquals(1, compose.onAllNodesWithTag("notebook_unavailable", useUnmergedTree = true).fetchSemanticsNodes().size)
             compose.onNodeWithText("Text location unavailable", useUnmergedTree = true).assertExists()
             // Untouched in storage; listed and marked unavailable; NOT jumpable (the controller is never asked); editable; deletable.
             assertEquals(stale.locatorJson, stored().first { it.id == stale.id }.locatorJson)
@@ -396,7 +396,7 @@ class EpubAnnotationsTest {
             val visibleBefore = p.tokenVisible("quillfeather1x1")
             compose.onNode(staleRow).performClick()
             p.settle(1_500)
-            assertEquals("the Notes list did not close as if navigation succeeded", 2, compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size)
+            assertEquals("the Notebook did not close as if navigation succeeded", 2, compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size)
             assertTrue("no 'could not be opened' message: nothing was attempted", compose.onAllNodesWithText("could not be opened", substring = true).fetchSemanticsNodes().isEmpty())
             assertFalse("reader did not move to the stale text", p.tokenVisible("quillfeather1x6"))
             assertEquals("reader location unchanged", visibleBefore, p.tokenVisible("quillfeather1x1"))
@@ -407,7 +407,7 @@ class EpubAnnotationsTest {
             compose.onNodeWithText("Cancel").performClick(); compose.waitForIdle()
             assertEquals(2, stored().size)
             compose.onNodeWithTag("epub_notes").performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 2 }
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size == 2 }
             compose.onAllNodes(hasContentDescription("Delete Highlight", substring = true))[1].performClick()
             compose.onNodeWithTag("annotation_delete_confirm").performClick()
             awaitStored { it.size == 1 && it.single().id == placeable.id }
@@ -445,11 +445,13 @@ class EpubAnnotationsTest {
             order.forEachIndexed { n, index ->
                 val token = targets[index]
                 compose.onNodeWithTag("epub_notes").performClick()
-                compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size >= 1 }
+                compose.waitUntil(10_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size >= 1 }
                 val row = hasContentDescription(token, substring = true) and hasClickAction()
-                compose.onNodeWithTag("annotations_list").performScrollToNode(row)
+                compose.onNodeWithTag("notebook_list").performScrollToNode(row)
                 compose.onNode(row).performClick()
-                try { compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotations_list").fetchSemanticsNodes().isEmpty() } }
+                // Compact: the Notebook dialog closes on arrival. Expanded (RP5 landscape): the supporting pane stays open beside the reader.
+                val pane = compose.onAllNodesWithTag("notebook_pane").fetchSemanticsNodes().isNotEmpty()
+                try { if (!pane) compose.waitUntil(10_000) { compose.onAllNodesWithTag("notebook_list").fetchSemanticsNodes().isEmpty() } }
                 catch (e: Throwable) { fail("jump ${n + 1} to $token did not close the list; open-failed message shown=" + compose.onAllNodesWithText("could not be opened", substring = true).fetchSemanticsNodes().isNotEmpty() + " landed=" + p.tokenVisible(token)) }
                 var landed = false
                 val end = SystemClock.uptimeMillis() + 4_000
@@ -466,7 +468,7 @@ class EpubAnnotationsTest {
             val p = probe(scenario); awaitReader(p)
             runBlocking { container.bookmarks.addBookmark(id, "this is not a locator", 10) }
             compose.onNodeWithTag("epub_notes").performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 1 }
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size == 1 }
             compose.onNode(hasContentDescription("Bookmark, ", substring = true) and hasClickAction()).performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("This location could not be opened", substring = true).fetchSemanticsNodes().isNotEmpty() }
             compose.onNode(hasContentDescription("Delete Bookmark", substring = true)).performClick()
@@ -479,7 +481,7 @@ class EpubAnnotationsTest {
             val p = probe(scenario); awaitReader(p)
             openChapter(p, "Chapter 2"); pageUntilVisible(p, "quillfeather2x1")
             compose.onNodeWithTag("epub_notes").performClick()
-            compose.onNodeWithTag("annotation_add_here").performClick()
+            compose.onNodeWithTag("notebook_add_note").performClick()
             awaitEditor()
             compose.onNodeWithTag("annotation_body").performTextInput("remember chapter two")
             compose.onNodeWithTag("annotation_editor_save").performClick()
@@ -487,7 +489,7 @@ class EpubAnnotationsTest {
             openChapter(p, "Chapter 3")
             assertFalse(p.tokenVisible("quillfeather2x1"))
             compose.onNodeWithTag("epub_notes").performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 1 }
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size == 1 }
             compose.onNode(hasContentDescription("Note at position, remember chapter two", substring = true) and hasClickAction()).performClick()
             awaitUntil(p, what = "back at chapter 2") { p.tokenVisible("quillfeather2x1") }
         }
@@ -546,15 +548,32 @@ class EpubAnnotationsTest {
         }
     }
 
+    @Test fun keyboardBTogglesCurrentBookmarkButDoesNotLeakIntoSearch() {
+        launch().use { scenario ->
+            val p = probe(scenario); awaitReader(p)
+            key(KeyEvent.KEYCODE_B)
+            awaitStored { list -> list.count { it.kind == AnnotationKind.BOOKMARK } == 1 }
+            key(KeyEvent.KEYCODE_B)
+            awaitStored { list -> list.none { it.kind == AnnotationKind.BOOKMARK } }
+
+            compose.onNodeWithText("Search").performClick()
+            compose.onNode(hasSetTextAction()).assertIsFocused()
+            key(KeyEvent.KEYCODE_B)
+            compose.onNode(hasSetTextAction()).assertTextContains("b", substring = true)
+            assertTrue(stored().none { it.kind == AnnotationKind.BOOKMARK })
+            assertNotEquals(Lifecycle.State.DESTROYED, scenario.state)
+        }
+    }
+
     @Test fun escapeAndGamepadBDismissTheNotesList() {
         insert(AnnotationKind.HIGHLIGHT, GoldenSelectionLocators.WORD_FIRST_PARAGRAPH, "quillfeather1x1", style = "amber")
         launch().use { scenario ->
             val p = probe(scenario); awaitReader(p)
             listOf(KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BUTTON_B).forEach { code ->
                 compose.onNodeWithTag("epub_notes").performClick()
-                compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 1 }
+                compose.waitUntil(10_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size == 1 }
                 key(code)
-                compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotations_list").fetchSemanticsNodes().isEmpty() }
+                compose.waitUntil(10_000) { compose.onAllNodesWithTag("notebook_list").fetchSemanticsNodes().isEmpty() }
                 assertNotEquals("reader survives key $code", Lifecycle.State.DESTROYED, scenario.state)
                 assertTrue("reader chrome still present after key $code", chromeVisible())
             }
@@ -566,7 +585,7 @@ class EpubAnnotationsTest {
         launch().use { scenario ->
             val p = probe(scenario); awaitReader(p)
             compose.onNodeWithTag("epub_notes").performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 1 }
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size == 1 }
             compose.onNode(hasContentDescription("Edit Highlight", substring = true)).performClick()
             awaitEditor()
             compose.onNodeWithTag("annotation_body").assertIsFocused().performTextInput("controller saved")
@@ -579,7 +598,7 @@ class EpubAnnotationsTest {
 
             listOf(KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BUTTON_B).forEach { code ->
                 compose.onNodeWithTag("epub_notes").performClick()
-                compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 1 }
+                compose.waitUntil(10_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size == 1 }
                 compose.onNode(hasContentDescription("Edit Highlight", substring = true)).performClick()
                 awaitEditor()
                 compose.onNodeWithTag("annotation_body").assertIsFocused().performTextInput("unsaved")
@@ -598,14 +617,14 @@ class EpubAnnotationsTest {
         launch().use { scenario ->
             val p = probe(scenario); awaitReader(p)
             compose.onNodeWithTag("epub_notes").performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 1 }
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size == 1 }
             listOf(KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BUTTON_B).forEach { code ->
                 compose.onNode(hasContentDescription("Delete Highlight", substring = true)).performClick()
                 compose.onNodeWithTag("annotation_delete_confirm").assertExists()
                 key(code)
                 compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_delete_confirm").fetchSemanticsNodes().isEmpty() }
                 assertEquals("dismissal by key $code must not delete", 1, stored().size)
-                compose.onNodeWithTag("annotations_list").assertExists()
+                compose.onNodeWithTag("notebook_list").assertExists()
                 assertNotEquals("reader survives key $code", Lifecycle.State.DESTROYED, scenario.state)
             }
         }
@@ -652,14 +671,14 @@ class EpubAnnotationsTest {
             compose.onNodeWithTag("epub_notes").performClick()
             compose.onNodeWithTag("annotation_inline_unavailable").assertExists()
             compose.onNodeWithText("Inline text annotations require a newer compatible Android System WebView", substring = true).assertExists()
-            compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 1 }   // the stored highlight is still listed
-            compose.onNodeWithTag("annotation_add_here").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size == 1 }   // the stored highlight is still listed
+            compose.onNodeWithTag("notebook_add_note").performClick()
             awaitEditor()
             compose.onNodeWithTag("annotation_body").performTextInput("works without inline support")
             compose.onNodeWithTag("annotation_editor_save").performClick()
             awaitStored { it.size == 2 }
             // Bookmarks are unaffected.
-            compose.onNodeWithText("Bookmarks").performClick()
+            compose.onNode(hasText("Bookmarks") and hasClickAction() and !hasAnyAncestor(hasTestTag("notebook_panel"))).performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Add bookmark").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Add bookmark").performClick()
             awaitStored { s -> s.count { it.kind == AnnotationKind.BOOKMARK } == 1 }
@@ -711,7 +730,7 @@ class EpubAnnotationsTest {
         sampler.start()
         try { launch().use { scenario ->
             val p = probe(scenario)
-            compose.waitUntil(30_000) { compose.onAllNodes(hasText("Notes") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(30_000) { compose.onAllNodesWithTag("epub_notes").fetchSemanticsNodes().isNotEmpty() }
             awaitUntil(p, 60_000, "500 decorations (have ${p.decorationCount()})") { p.decorationCount() >= 500 }
             val ms = SystemClock.uptimeMillis() - started
             sampler.stop()
@@ -731,7 +750,7 @@ class EpubAnnotationsTest {
         val sampler = FrameGapSampler(); val started = SystemClock.uptimeMillis(); sampler.start()
         try { launch().use { scenario ->
             val p = probe(scenario)
-            compose.waitUntil(60_000) { compose.onAllNodes(hasText("Notes") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(60_000) { compose.onAllNodesWithTag("epub_notes").fetchSemanticsNodes().isNotEmpty() }
             awaitUntil(p, 120_000, "chapter 1 decorations (have ${p.decorationCount()})") { p.decorationCount() >= 500 }
             val ms = SystemClock.uptimeMillis() - started
             sampler.stop()

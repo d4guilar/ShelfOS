@@ -39,10 +39,10 @@ caveats (including API 24/25 legacy-PDF handling that the owner's API 27 test
 device does not exercise).
 
 This is not a release: ShelfOS remains an early development prototype. The next
-roadmap area is Phase 4 (Notes and Knowledge Layer), which has started: 4A is
-merged, 4B is merged and accepted, 4C.1 (fixed-layout bookmarks and page notes)
-is accepted on its branch after a passing Samsung UAT and is awaiting push/PR,
-and 4C.2 is in planning; 4D–4F have not started.
+roadmap area is Phase 4 (Notes and Knowledge Layer), which has started: 4A and
+4B are merged, 4C.1 (fixed-layout bookmarks and page notes) is merged and
+accepted, and 4C.2's adaptive cross-format Publication Notebook is implemented
+and awaiting review/acceptance; 4D–4F have not started.
 
 Global destinations are Library, Search, Notes, Shelves and Settings. Notes and
 Shelves are placeholders; their functionality is not implemented. See the [Phase 1 plan](docs/PHASE_1_PLAN.md)

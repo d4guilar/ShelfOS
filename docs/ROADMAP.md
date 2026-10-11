@@ -302,7 +302,7 @@ forward and are **implemented and accepted as part of Phase 1** (ADR-0017,
 2026-09-24). Advanced spreads, thumbnails, foldable-aware pairing and native CBR
 support were completed here in Phase 3. The original inventory below is retained
 for coverage; delivered items are marked accordingly. ShelfOS as a whole is not
-finished: Phase 4 (Notes and Knowledge Layer) is the next roadmap area — 4A and 4B are merged (PR #34, `71c1740`); 4C.1 (fixed-layout bookmarks, page notes and the fixed-reader Notebook) is accepted on `phase-4/4c1-fixed-annotations` after a passing Samsung SM-T580 manual UAT (not merged, not in a PR), 4C.2 is in planning and not implemented; 4D–4F have not started.
+finished: Phase 4 (Notes and Knowledge Layer) is the next roadmap area — 4A and 4B are merged; 4C.1 is merged and accepted at `0040c52187e50515b7d20608e5ef8e71dacc7809`; 4C.2's adaptive cross-format Publication Notebook is implemented and awaiting review/acceptance; 4D–4F have not started.
 
 ### Goal
 Make image-sequence media first-class.
@@ -347,7 +347,7 @@ A user can comfortably read a CBZ comic or manga entirely with touch, keyboard, 
 
 ### Current status
 
-Phase 4 has started. Slice 4A (annotation foundation) is merged; slice 4B (EPUB highlights and notes) is merged and accepted (PR #34, commit `71c1740`) — full acceptance evidence is in `docs/VALIDATION.md`, including the Samsung Galaxy Tab A SM-T580 manual UAT PASS with a non-blocking repeated-rotation harness timeout and the independent Codex High review PASS. 4C is in two checkpoints (section 13.3 of the plan): 4C.1 fixed-layout annotation capability is **ACCEPTED** on branch `phase-4/4c1-fixed-annotations` — implementation and remediation complete, final independent Codex High re-review PASS, RP5 targeted controller/input validation PASS, and the Samsung SM-T580 manual UAT PASS (PDF, CBZ, CBR, bookmarks, notes, Notebook filters, Back, rotation, SPREAD source-page identity, portrait and landscape UI, old-device performance, reopen persistence); it is not merged and not in a PR. Keyboard B and Escape/gamepad B were not tested on the Samsung and are covered by the RP5 sourced-key automation; physical TalkBack remains unverified and stylus/S Pen was not tested. 4C.2 the adaptive notebook is in planning and NOT implemented; 4D (Notes hub), 4E (export) and 4F (acceptance) have not started. The 4C.2 side-by-side notebook is a baseline reader-local surface; the polished book/tabletop posture and document-plus-notes work listed under the later foldable phase is not replaced by it. Planning is recorded in [`PHASE_4_IMPLEMENTATION_PLAN.md`](PHASE_4_IMPLEMENTATION_PLAN.md) (slices 4A–4F) and [ADR-0025](adr/0025-annotation-anchor-and-knowledge-model.md) (Proposed).
+Phase 4 has started. 4A and 4B are merged; 4C.1 fixed-layout annotation capability is merged and accepted at `0040c52187e50515b7d20608e5ef8e71dacc7809`. 4C.2's adaptive Publication Notebook is implemented on `phase-4/4c2-adaptive-notebook` and awaits the required independent High review and owner acceptance: one shared current-publication panel across EPUB/PDF/CBZ/CBR, dialog on compact hosts and an end-edge pane on hosts at least 840×480dp. The polished book/tabletop posture and deeper document-plus-notes work remain later foldable work. 4D (Notes hub), 4E (export) and 4F (acceptance) have not started. Evidence is in [`VALIDATION.md`](VALIDATION.md) and the plan in [`PHASE_4_IMPLEMENTATION_PLAN.md`](PHASE_4_IMPLEMENTATION_PLAN.md).
 
 ### Goal
 ShelfOS becomes useful for active reading and study.
