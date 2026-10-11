@@ -1,5 +1,19 @@
 # Documentation Changelog
 
+## Phase 4C.1 accepted (2026-10-11)
+
+- `docs/VALIDATION.md`: "PHASE 4C.1" status changed from REMEDIATED LOCALLY / FINAL INDEPENDENT REVIEW PENDING to **ACCEPTED (not merged, not in a PR)**. Added the independent-review/controller evidence table (Codex High final re-review PASS; RP5 `FixedReaderAnnotationsUiTest` 18/18; shared EPUB editor Save/Cancel and Back/Escape/gamepad-B cancellation regression; Bookmark traversal + sourced gamepad A; known unrelated `EpubBookmarkTest` 8/9 baseline) and the Samsung SM-T580 manual UAT evidence block (device Android 8.1 / API 27 / 2 GB RAM, APK `ShelfOS-Phase4C1-UAT.apk` 25,139,650 bytes, SHA-256 `9F9FB09F75005108E9455DE5858579DF13AF8D2119C1F69A805E52D59160707B`, built from HEAD `55a7b518`). Per-flow results recorded: PDF, CBZ, CBR, Bookmarks, Notes, Notebook filters, Back, Rotation, SPREAD source-page identity, Portrait UI, Landscape UI, old-device performance and reopen persistence all PASS; Keyboard B and Escape/gamepad B **NOT TESTED on Samsung** (covered by RP5 sourced-key automation, not blockers); nothing weird reported. The temporary LAN IP/URL is deliberately not recorded as project evidence because DHCP addresses change. Physical TalkBack remains unverified and stylus/S Pen is recorded as NOT TESTED (no compatible hardware; pen scope remains future work). Historical entries and run tables left unchanged.
+- `docs/PHASE_4_IMPLEMENTATION_PLAN.md`: header status and section 13.3.15 now record 4C.1 as ACCEPTED on `phase-4/4c1-fixed-annotations` (not merged, not in a PR). 4C.2, 4C as a whole, 4D, 4E and 4F remain NOT done; Phase 4 as a whole is NOT complete.
+- `docs/features/ANNOTATIONS.md` (status plus the "Fixed-layout bookmarks and page notes" heading), `docs/features/READER.md`, `docs/ROADMAP.md` (Phase 3 scope note and the Phase 4 "Current status") and `README.md`: "implemented locally / ready for independent review" 4C.1 wording replaced with accepted-but-not-merged wording. Terminology unchanged: Publication Notebook (canonical documentation name), Notebook (user-facing control/header), Notes (`kind=NOTE` annotations, Notes filter, future global Notes destination).
+- Documentation only: no production code, tests, Room schema, migration, dependency, ADR or Gradle/build change. No APK rebuild, no push, no PR, no 4C.2 work.
+
+## Phase 4C.1 implemented locally (2026-10-11)
+
+- `docs/PHASE_4_IMPLEMENTATION_PLAN.md`: header and section 13.3 status updated; new section 13.3.15 (4C.1 implementation record). Status wording: "IMPLEMENTED LOCALLY / READY FOR INDEPENDENT REVIEW"; 4C.2, 4C as a whole and 4D–4F are NOT done; Samsung UAT NOT performed.
+- `docs/VALIDATION.md`: new "PHASE 4C.1" section with the per-class test counts, the environment limits (RP5 not connected, no TalkBack, no real controller, no real RAR image fixture) and the process-death evidence.
+- `docs/features/ANNOTATIONS.md` (status plus a "Fixed-layout bookmarks and page notes" section), `docs/features/READER.md`, `docs/ROADMAP.md` and `README.md`: stale "planned, not implemented" 4C wording updated for 4C.1.
+- No Room schema, migration, dependency, ADR or production-JS change.
+
 ## Phase 4C planned: fixed-layout annotations and the reader-local Publication Notebook (2026-10-10)
 
 - `docs/PHASE_4_IMPLEMENTATION_PLAN.md`: section 13.3 rewritten as a full 4C plan (repository audit, design, adaptive layout, Back/input rules, two checkpoints 4C.1 and 4C.2, validation matrix, Ponytail review of the plan, administrator decisions D1-D14, stop conditions); §6.2 refined (canonical fixed locator string, strict navigation decision, spread/RTL binding, `orderKey = page/pageCount`); §10, §11, §14, §15, §17, §19, §20 and §21 cross-referenced.

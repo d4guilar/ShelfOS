@@ -58,4 +58,14 @@ object FixedPageLocator {
     }
 
     fun isValid(json: String) = parse(json) != null
+
+    /**
+     * The canonical locator string for a 0-based [page], byte-identical to the reader's own `pageLocator(page)`
+     * (checked on device). Pure Kotlin because `org.json` is unavailable to JVM tests; exact-string equality is what
+     * the repository's bookmark de-duplication relies on, so every fixed annotation is created through this.
+     */
+    fun format(page: Int): String {
+        require(page >= 0) { "page must be non-negative" }
+        return "{\"version\":1,\"page\":$page}"
+    }
 }

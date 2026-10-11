@@ -4,6 +4,7 @@ package com.d4guilar.shelfos.feature.reader
 import android.view.KeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,8 +19,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.key.onPreInterceptKeyBeforeSoftKeyboard
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -34,6 +39,8 @@ import androidx.compose.ui.unit.dp
 import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.core.input.InputContext
 import com.d4guilar.shelfos.core.input.ShelfCommand
+import com.d4guilar.shelfos.core.input.isGamepadSource
+import com.d4guilar.shelfos.core.input.resolveInputSources
 import com.d4guilar.shelfos.core.input.shelfCommand
 import com.d4guilar.shelfos.core.reader.*
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
@@ -69,7 +76,7 @@ internal fun styleLabel(styleKey: String?): String = stringResource(when (styleK
 })
 
 /** Dialog-local Android Back/Escape/gamepad-B handling that runs before a focused text field or IME can consume it. */
-private fun Modifier.dismissOnShelfBack(onDismiss: () -> Unit) = onPreInterceptKeyBeforeSoftKeyboard { event ->
+internal fun Modifier.dismissOnShelfBack(onDismiss: () -> Unit) = onPreInterceptKeyBeforeSoftKeyboard { event ->
     val native = event.nativeKeyEvent
     val dismiss = native.keyCode == KeyEvent.KEYCODE_BACK ||
         native.shelfCommand(InputContext.READER) == ShelfCommand.BACK
@@ -174,11 +181,41 @@ fun AnnotationEditorDialog(
     val tooLong = body.length > AnnotationLimits.MAX_BODY
     val canSave = !tooLong && (!bodyRequired || body.isNotBlank())
     val field = remember { FocusRequester() }
+    val save = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val inputModeManager = LocalInputModeManager.current
+    var fieldFocused by remember { mutableStateOf(false) }
+    var saveFocusRequests by remember { mutableIntStateOf(0) }
+    var initialFocusRequested by remember(editorKey) { mutableStateOf(false) }
     val selectedTemplate = stringResource(R.string.annotation_style_selected)
-    AlertDialog(onDismissRequest = onCancel, modifier = Modifier.dismissOnShelfBack(onCancel), title = { Text(title) }, text = {
+    AlertDialog(onDismissRequest = onCancel, modifier = Modifier.dismissOnShelfBack(onCancel)
+        .onPreInterceptKeyBeforeSoftKeyboard { event ->
+            val native = event.nativeKeyEvent
+            val sources = resolveInputSources(native.source, native.device?.sources)
+            if (!fieldFocused || native.keyCode != KeyEvent.KEYCODE_BUTTON_A || !isGamepadSource(sources))
+                return@onPreInterceptKeyBeforeSoftKeyboard false
+            // Keep focus on the editor for DOWN. Move it only on UP so this same press cannot also activate Save.
+            if (native.action == KeyEvent.ACTION_DOWN) inputModeManager.requestInputMode(InputMode.Keyboard)
+            if (native.action == KeyEvent.ACTION_UP) {
+                focusManager.clearFocus(force = true)
+                saveFocusRequests++
+            }
+            true
+        }, title = { Text(title) }, text = {
         // A Dialog owns its own window: request focus only once that window has it, as the Search dialog does.
         val window = LocalWindowInfo.current
-        LaunchedEffect(window.isWindowFocused) { if (window.isWindowFocused) runCatching { field.requestFocus() } }
+        LaunchedEffect(window.isWindowFocused) {
+            if (window.isWindowFocused && !initialFocusRequested) {
+                initialFocusRequested = true
+                runCatching { field.requestFocus() }
+            }
+        }
+        LaunchedEffect(saveFocusRequests) {
+            if (saveFocusRequests > 0) repeat(3) {
+                if (runCatching { save.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+                withFrameNanos { }
+            }
+        }
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             quote?.let { Text(it, maxLines = 6, overflow = TextOverflow.Ellipsis, color = tokens.colors.secondary, modifier = Modifier.testTag("annotation_editor_quote")) }
             if (styleEditable) {
@@ -198,7 +235,8 @@ fun AnnotationEditorDialog(
                     }
                 }
             }
-            OutlinedTextField(body, { body = it }, Modifier.fillMaxWidth().heightIn(min = 120.dp).focusRequester(field).testTag("annotation_body"),
+            OutlinedTextField(body, { body = it }, Modifier.fillMaxWidth().heightIn(min = 120.dp).focusRequester(field)
+                .onFocusChanged { fieldFocused = it.hasFocus }.testTag("annotation_body"),
                 label = { Text(stringResource(if (bodyRequired) R.string.annotation_note_label else R.string.annotation_highlight_note_label)) },
                 isError = tooLong)
             if (body.length > AnnotationLimits.MAX_BODY * 9 / 10) Text(
@@ -206,8 +244,11 @@ fun AnnotationEditorDialog(
                 color = if (tooLong) MaterialTheme.colorScheme.error else tokens.colors.secondary, style = tokens.typography.labelSmall)
             onDelete?.let { TextButton(it, Modifier.testTag("annotation_editor_delete")) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) } }
         }
-    }, dismissButton = { TextButton(onCancel) { Text(stringResource(R.string.action_cancel)) } },
-        confirmButton = { TextButton({ onSave(body, if (styleEditable) style else null) }, enabled = canSave, modifier = Modifier.testTag("annotation_editor_save")) {
+    }, dismissButton = { TextButton(onCancel, Modifier.activateOnGamepadConfirm(onActivate = onCancel)
+        .focusable().testTag("annotation_editor_cancel")) { Text(stringResource(R.string.action_cancel)) } },
+        confirmButton = { TextButton({ onSave(body, if (styleEditable) style else null) }, enabled = canSave,
+            modifier = Modifier.focusRequester(save).activateOnGamepadConfirm(canSave) { onSave(body, if (styleEditable) style else null) }
+                .focusable(enabled = canSave).testTag("annotation_editor_save")) {
             Text(stringResource(R.string.action_save))
         } })
 }

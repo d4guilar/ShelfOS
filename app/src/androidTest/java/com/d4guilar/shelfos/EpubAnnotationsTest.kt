@@ -2,6 +2,7 @@
 package com.d4guilar.shelfos
 
 import android.os.SystemClock
+import android.view.InputDevice
 import android.view.KeyEvent
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
@@ -75,6 +76,12 @@ class EpubAnnotationsTest {
     private fun chromeVisible() = compose.onAllNodesWithTag("epub_notes").fetchSemanticsNodes().isNotEmpty()
     private fun selectionText(p: AnnotationUiProbe) = p.jsString("window.getSelection().toString()").orEmpty()
     private fun key(code: Int) { inst.sendKeyDownUpSync(code); compose.waitForIdle() }
+    private fun gamepadKey(code: Int) {
+        val downTime = SystemClock.uptimeMillis()
+        inst.sendKeySync(KeyEvent(downTime, downTime, KeyEvent.ACTION_DOWN, code, 0, 0, -1, 0, 0, InputDevice.SOURCE_GAMEPAD))
+        inst.sendKeySync(KeyEvent(downTime, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0, 0, -1, 0, 0, InputDevice.SOURCE_GAMEPAD))
+        compose.waitForIdle()
+    }
     private fun editorOpen() = compose.onAllNodesWithTag("annotation_body").fetchSemanticsNodes().isNotEmpty()
     private fun awaitEditor() = compose.waitUntil(10_000) { editorOpen() }
 
@@ -554,10 +561,22 @@ class EpubAnnotationsTest {
         }
     }
 
-    @Test fun androidBackEscapeAndGamepadBDismissTheFocusedEditorWithoutSaving() {
+    @Test fun sharedEditorSupportsControllerSaveAndBackEscapeGamepadBCancel() {
         insert(AnnotationKind.HIGHLIGHT, GoldenSelectionLocators.WORD_FIRST_PARAGRAPH, "quillfeather1x1", style = "amber")
         launch().use { scenario ->
             val p = probe(scenario); awaitReader(p)
+            compose.onNodeWithTag("epub_notes").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 1 }
+            compose.onNode(hasContentDescription("Edit Highlight", substring = true)).performClick()
+            awaitEditor()
+            compose.onNodeWithTag("annotation_body").assertIsFocused().performTextInput("controller saved")
+            gamepadKey(KeyEvent.KEYCODE_BUTTON_A)
+            compose.onNodeWithTag("annotation_editor_save").assertIsFocused()
+            assertNull("the first A must not save", stored().single().body)
+            gamepadKey(KeyEvent.KEYCODE_BUTTON_A)
+            compose.waitUntil(10_000) { !editorOpen() }
+            awaitStored { it.singleOrNull()?.body == "controller saved" }
+
             listOf(KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BUTTON_B).forEach { code ->
                 compose.onNodeWithTag("epub_notes").performClick()
                 compose.waitUntil(10_000) { compose.onAllNodesWithTag("annotation_row").fetchSemanticsNodes().size == 1 }
@@ -567,7 +586,7 @@ class EpubAnnotationsTest {
                 key(code)
                 try { compose.waitUntil(10_000) { !editorOpen() } } catch (e: Throwable) { fail("editor not dismissed by key $code") }
                 assertEquals("cancelling by key $code changed nothing", 1, stored().size)
-                assertNull("cancelling by key $code must not save the draft", stored().single().body)
+                assertEquals("cancelling by key $code must not save the draft", "controller saved", stored().single().body)
                 assertNotEquals(Lifecycle.State.DESTROYED, scenario.state)
                 assertTrue("reader chrome still present after key $code", chromeVisible())
             }

@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -61,6 +62,11 @@ import com.d4guilar.shelfos.core.reader.fixedReaderVerticalScaleOverflow
 import com.d4guilar.shelfos.core.reader.resolveReaderFoldLayout
 import com.d4guilar.shelfos.core.reader.selectSoloPane
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
+import com.d4guilar.shelfos.domain.annotations.AnnotationKind
+import com.d4guilar.shelfos.domain.annotations.FixedPageLocator
+import com.d4guilar.shelfos.domain.annotations.FixedPageNavigation
+import com.d4guilar.shelfos.domain.annotations.fixedPageNavigation
+import kotlinx.coroutines.delay
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.offset
@@ -75,8 +81,13 @@ import kotlin.math.roundToInt
  * the stored page order or the artwork.
  */
 @Composable
-fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor> = emptyList(), onBack: () -> Unit) {
+fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor> = emptyList(),
+    annotations: FixedAnnotationViewModel? = null, onBack: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
+    // Phase 4C.1: bookmarks, page notes and the Notebook exist only when an annotation ViewModel is supplied.
+    val annotationState = annotations?.state?.collectAsStateWithLifecycle()?.value ?: FixedAnnotationState()
+    var notebook by rememberSaveable { mutableStateOf(false) }
+    var deleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
     val t = LocalShelfTokens.current
     val item = state.item
     var controls by rememberSaveable { mutableStateOf(true) }
@@ -166,6 +177,8 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
     // FixedReaderTransformBoundsTest hang on the API 24 emulator.
     fun dismissAppearance() { appearance = false; runCatching { pageFocus.requestFocus() }; pageFocusRestoreRequests++ }
     fun dismissThumbnails() { thumbnails = false; runCatching { pageFocus.requestFocus() }; pageFocusRestoreRequests++ }
+    // Phase 4C.1: the Notebook closes through the same stable-focus rule as Appearance and Pages.
+    fun dismissNotebook() { notebook = false; runCatching { pageFocus.requestFocus() }; pageFocusRestoreRequests++ }
 
     LaunchedEffect(Unit) { pageFocus.requestFocus() }
     LaunchedEffect(controlFocusRequests) { if (controlFocusRequests > 0) runCatching { firstControl.requestFocus() } }
@@ -190,7 +203,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
     // Drives BOTH halves of true modality that HingeSafeDialogOverlay itself cannot own, because it is a SIBLING
     // (not a wrapper) of this screen's own background content: (1) the root-level Back/gamepad-B/page-command
     // interception below, and (2) the background Column's own conditional focus/accessibility suppression.
-    val hingeSafeModalOpen = chromePane != null && ((appearance && item != null) || (thumbnails && state.count > 0))
+    val hingeSafeModalOpen = chromePane != null && ((appearance && item != null) || (thumbnails && state.count > 0) || (notebook && annotations != null))
     LaunchedEffect(pageFocusRestoreRequests) {
         if (pageFocusRestoreRequests > 0 && chromePane != null) runCatching { pageFocus.requestFocus() }
     }
@@ -288,7 +301,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
         val native = event.nativeKeyEvent
         if (native.action != KeyEvent.ACTION_UP) return@onPreviewKeyEvent false
         if (native.shelfCommand(InputContext.READER, rtl) == ShelfCommand.BACK) {
-            if (appearance) dismissAppearance() else if (thumbnails) dismissThumbnails()
+            if (appearance) dismissAppearance() else if (thumbnails) dismissThumbnails() else if (notebook) dismissNotebook()
             true
         } else false
     }) {
@@ -319,6 +332,12 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
                 }
                 true
             }
+            // Keyboard letter B (never a gamepad button): toggles the bookmark for the authoritative source page. This
+            // Column only sees keys while no dialog or text field owns focus, so typed B in a note never reaches it.
+            ShelfCommand.TOGGLE_BOOKMARK -> if (annotations == null) false else {
+                if (native.action == KeyEvent.ACTION_UP) annotations.toggleBookmark(state.page, state.count)
+                true
+            }
             else -> false
         }
     }) {
@@ -338,10 +357,28 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
             TextButton({ thumbnails = true }, Modifier.testTag("reader_thumbnails"), enabled = state.count > 0) { Text(stringResource(R.string.action_thumbnails)) }
             TextButton({ scale = if (scale == 1f) 2f else 1f; panX = 0f; panY = 0f; foldSpreadProgress = 0f }) { Text(stringResource(if (scale == 1f) R.string.action_zoom_in else R.string.action_reset_zoom)) }
             TextButton({ hideControls() }) { Text(stringResource(R.string.action_hide_controls)) }
+            if (annotations != null) {
+                // Phase 4C.1: the bookmark control names the page it acts on (state.page, the true source page) and
+                // states its result in text, semantics and a check mark, never by color alone.
+                val bookmarked = state.page in annotationState.bookmarkedPages
+                val bookmarkDescription = stringResource(if (bookmarked) R.string.content_desc_fixed_bookmark_remove else R.string.content_desc_fixed_bookmark_add, state.page + 1)
+                val bookmarkState = stringResource(if (bookmarked) R.string.fixed_bookmark_state_on else R.string.fixed_bookmark_state_off)
+                TextButton({ annotations.toggleBookmark(state.page, state.count) }, Modifier.testTag("reader_bookmark").activateOnGamepadConfirm(state.count > 0) { annotations.toggleBookmark(state.page, state.count) }.semantics {
+                    contentDescription = bookmarkDescription; stateDescription = bookmarkState; selected = bookmarked
+                }, enabled = state.count > 0) {
+                    if (bookmarked) Text("✓ ", Modifier.clearAndSetSemantics { })
+                    Text(if (state.count > 0) stringResource(R.string.reader_bookmark_page, state.page + 1) else stringResource(R.string.annotation_kind_bookmark))
+                }
+                TextButton({ notebook = true }, Modifier.testTag("reader_notebook").activateOnGamepadConfirm { notebook = true }) { Text(stringResource(R.string.action_notebook)) }
+            }
             // Input-discovery hint (Phase 2A.1): decorative only, since no single existing control is exactly
             // "Back" to merge this into; the system Back gesture/button remains self-describing to TalkBack.
             backHint?.let { Row(Modifier.padding(start = 4.dp).testTag("back_hint").clearAndSetSemantics { }, horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically) { InputKeycap(it); Text(stringResource(R.string.action_back), color = t.colors.secondary, style = t.typography.labelSmall) } }
+        }
+        annotationState.notice?.let { notice ->
+            LaunchedEffect(notice) { delay(6_000); annotations?.dismissNotice() }
+            Text(notice.resolve(), Modifier.fillMaxWidth().padding(8.dp).clickable { annotations?.dismissNotice() }.testTag("annotation_notice"))
         }
         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().focusRequester(pageFocus).focusable().testTag("reader_page")
             // Phase 3D: onGloballyPositioned (superseding plain onSizeChanged) captures this surface's own
@@ -753,6 +790,51 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
         vm::applyAppearance, vm::resetAppearance, safePane = chromePane)
     if (thumbnails && state.count > 0) ThumbnailNavigator(state.count, state.page, rtl, vm.thumbnails,
         onSelect = { page -> vm.showPage(page); dismissThumbnails() }, onDismiss = ::dismissThumbnails, safePane = chromePane)
+    // Phase 4C.1 Notebook: the reader-local review list for THIS publication plus the page-note editor and delete
+    // confirmation. Back precedence (ADR-0023): editor/confirmation (own dialog windows) -> Notebook -> chrome -> exit.
+    // The editor target and its unsaved draft live in the ViewModel and rememberSaveable, so rotation keeps them.
+    if (annotations != null) {
+        if (notebook) {
+            val entries = remember(annotationState.annotations, state.count) { fixedNotebookEntries(annotationState.annotations, state.count) }
+            NotebookDialog(chromePane, ::dismissNotebook) {
+                NotebookPanel(entries, listOf(AnnotationFilter.ALL, AnnotationFilter.NOTES, AnnotationFilter.BOOKMARKS),
+                    addNoteLabel = stringResource(R.string.notebook_add_note_page, state.page + 1), canAddNote = state.count > 0,
+                    onAddNote = { annotations.beginNote(state.page, state.count) },
+                    onJump = { entryId ->
+                        // Strict: only a locator that is a real page of THIS publication moves the reader; nothing is clamped.
+                        annotationState.annotations.firstOrNull { it.id == entryId }?.let { a ->
+                            (fixedPageNavigation(a.locatorJson, state.count) as? FixedPageNavigation.Navigable)?.let { vm.showPage(it.page); dismissNotebook() }
+                        }
+                    },
+                    onEdit = { annotations.openEditor(FixedEditorTarget.Existing(it)) },
+                    onDelete = { entryId ->
+                        val target = annotationState.annotations.firstOrNull { it.id == entryId }
+                        if (target?.kind == AnnotationKind.NOTE) deleteTarget = entryId else annotations.delete(entryId)
+                    })
+            }
+        }
+        when (val editor = annotationState.editor) {
+            null -> Unit
+            is FixedEditorTarget.NewNote -> AnnotationEditorDialog("fixed-new-note", String.format(stringResource(R.string.notebook_editor_new_note), editor.page + 1),
+                null, "", null, styleEditable = false, bodyRequired = true,
+                onSave = { body, _ -> annotations.saveNewNote(editor, body) }, onDelete = null, onCancel = annotations::closeEditor)
+            is FixedEditorTarget.Existing -> {
+                val note = annotationState.annotations.firstOrNull { it.id == editor.id && it.kind == AnnotationKind.NOTE }
+                if (note == null) LaunchedEffect(editor) { annotations.closeEditor() }
+                else {
+                    val page = FixedPageLocator.parse(note.locatorJson)
+                    AnnotationEditorDialog("fixed-edit-${note.id}",
+                        if (page != null) String.format(stringResource(R.string.notebook_editor_edit_note), page + 1) else stringResource(R.string.annotation_editor_note),
+                        null, note.body.orEmpty(), null, styleEditable = false, bodyRequired = true,
+                        onSave = { body, _ -> annotations.updateNote(note.id, body) },
+                        onDelete = { deleteTarget = note.id }, onCancel = annotations::closeEditor)
+                }
+            }
+        }
+        deleteTarget?.let { id ->
+            AnnotationDeleteConfirmDialog(onConfirm = { deleteTarget = null; annotations.delete(id) }, onCancel = { deleteTarget = null })
+        }
+    }
     }
 }
 

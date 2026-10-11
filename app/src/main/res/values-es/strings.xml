@@ -270,6 +270,23 @@
     <string name="annotation_note_empty">Escribe algo para guardar la nota.</string>
     <string name="annotation_note_too_long">Las notas pueden tener hasta %1$d caracteres.</string>
 
+    <!-- Marcadores de página, notas de página y el Cuaderno del lector (Fase 4C.1) -->
+    <string name="action_notebook">Cuaderno</string>
+    <string name="notebook_title">Cuaderno</string>
+    <string name="reader_bookmark_page">Marcador · Página %1$d</string>
+    <string name="content_desc_fixed_bookmark_add">Añadir marcador, página %1$d</string>
+    <string name="content_desc_fixed_bookmark_remove">Quitar marcador, página %1$d</string>
+    <string name="fixed_bookmark_state_on">Con marcador</string>
+    <string name="fixed_bookmark_state_off">Sin marcador</string>
+    <string name="notebook_add_note_page">Añadir nota en la página %1$d</string>
+    <string name="notebook_editor_new_note">Nueva nota · Página %1$d</string>
+    <string name="notebook_editor_edit_note">Editar nota · Página %1$d</string>
+    <string name="notebook_row_page">Página %1$d</string>
+    <string name="notebook_location_malformed">Ubicación de página no disponible</string>
+    <string name="notebook_location_out_of_range">Guardada en la página %1$d. Esta publicación ahora termina en la página %2$d.</string>
+    <string name="content_desc_notebook_edit">Editar %1$s, página %2$d</string>
+    <string name="content_desc_notebook_delete">Eliminar %1$s, página %2$d</string>
+
     <!-- Diálogo de apariencia -->
     <string name="appearance_dialog_title">Apariencia de lectura</string>
     <string name="appearance_presentation">Presentación</string>
