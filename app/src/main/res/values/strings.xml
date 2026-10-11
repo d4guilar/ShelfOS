@@ -273,6 +273,23 @@
     <string name="annotation_note_empty">Write something to save a note.</string>
     <string name="annotation_note_too_long">Notes can be up to %1$d characters.</string>
 
+    <!-- Fixed-layout bookmarks, page notes and the reader Notebook (Phase 4C.1) -->
+    <string name="action_notebook">Notebook</string>
+    <string name="notebook_title">Notebook</string>
+    <string name="reader_bookmark_page">Bookmark · Page %1$d</string>
+    <string name="content_desc_fixed_bookmark_add">Add bookmark, page %1$d</string>
+    <string name="content_desc_fixed_bookmark_remove">Remove bookmark, page %1$d</string>
+    <string name="fixed_bookmark_state_on">Bookmarked</string>
+    <string name="fixed_bookmark_state_off">Not bookmarked</string>
+    <string name="notebook_add_note_page">Add note on page %1$d</string>
+    <string name="notebook_editor_new_note">New note · Page %1$d</string>
+    <string name="notebook_editor_edit_note">Edit note · Page %1$d</string>
+    <string name="notebook_row_page">Page %1$d</string>
+    <string name="notebook_location_malformed">Page location unavailable</string>
+    <string name="notebook_location_out_of_range">Saved on page %1$d. This publication now ends at page %2$d.</string>
+    <string name="content_desc_notebook_edit">Edit %1$s, page %2$d</string>
+    <string name="content_desc_notebook_delete">Delete %1$s, page %2$d</string>
+
     <!-- Appearance dialog -->
     <string name="appearance_dialog_title">Reading appearance</string>
     <string name="appearance_presentation">Presentation</string>

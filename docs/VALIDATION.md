@@ -1,5 +1,43 @@
 # Validation
 
+## PHASE 4C.1 — FIXED-LAYOUT BOOKMARKS, PAGE NOTES AND THE FIXED-READER NOTEBOOK (2026-10-11)
+
+Status: **IMPLEMENTED LOCALLY / READY FOR INDEPENDENT REVIEW.** Branch `phase-4/4c1-fixed-annotations` (from `main` @ `b1ce488`); one commit, not pushed. NOT independently reviewed (D10 requires a fresh Codex High review), Samsung SM-T580 manual UAT NOT performed, 4C.2 / 4C as a whole / 4D onward NOT done. Design record: `docs/PHASE_4_IMPLEMENTATION_PLAN.md` section 13.3.15.
+
+**Environment, stated plainly.** Only the API 24 emulator (`emulator-5554`, `shelfos-api24`, WebView 52) was reachable for this run. The RP5 (`d8f7f1b6`, Android 13) was NOT connected, so NO RP5 evidence exists for 4C.1 and the known RP5 baseline failure (`EpubBookmarkTest.bookmarksDialogIsReachableAndOperableThroughKeyboardFocus`) was not re-run. TalkBack was not run (no hardware TalkBack claim). No real controller was used: gamepad behavior is proven with injected `KEYCODE_BUTTON_A`/`KEYCODE_BUTTON_B` events only. No real RAR image fixture exists (no RAR-writing tooling, see `CbrProductIntegrationTest`), so CBR is proven through the shared fixed-reader architecture with an in-memory page source, not the native RAR decoder. Each class below was run in its own Gradle invocation after uninstalling `com.d4guilar.shelfos` and `com.d4guilar.shelfos.test`, and every per-class XML test count was read (none was 0).
+
+| Run (API 24 emulator) | Tests | Result |
+| --- | --- | --- |
+| JVM `testDebugUnitTest` (whole module) | 556 (8 new in `FixedPageNavigationTest`) | 0 failures |
+| `FixedAnnotationRepositoryTest` (repository, PDF/CBZ/CBR items, Room v4) | 8 | pass |
+| `FixedReaderAnnotationsUiTest` (real `MainActivity`, PDF + CBZ/Manga + spread CBZ) | 18 | pass |
+| `FixedReaderCbrAnnotationHostedTest` (CBR item via in-memory pages; hinge-safe Notebook under a vertical fold) | 3 | pass |
+| `FixedAnnotationProcessDeathTest` (two phases, see below) | 1 + 1 | pass |
+| Regression: `FixedReaderRecreationTest` | 7 | pass (2 failed first, see below; pass after the chrome reorder) |
+| Regression: `NavigationSmokeTest` | 28 | pass (6 failed first, see below; pass after the chrome reorder) |
+| Regression: `FixedReaderHingeSafeModalTest` / `ThumbnailNavigationUiTest` / `FixedReaderSpreadUiTest` / `ReaderDialogFoldSafetyTest` / `FixedReaderFoldableUiTest` | 7 / 7 / 11 / 4 / 9 | pass |
+| Regression: `MalformedFixedReaderResilienceTest` / `AnnotationRepositoryTest` | 4 / 15 | pass |
+| Regression: `FixedReaderTransformBoundsTest` | 15 | pass on the second run; the first run hung one test for 1,579 s (emulator/harness stall, no assertion failed) and was killed with the loop, so it is NOT counted as a pass |
+| `assembleDebug`, `assembleDebugAndroidTest`, `lintDebug` | n/a | build successful; lint 0 errors, 55 warnings, none on 4C.1 code (the existing MissingQuantity/PluralsCandidate/Untranslatable set) |
+
+Not run: `EpubAnnotationsTest`, `EpubBookmarkTest`, `EpubRecreationTest` and the rest of the EPUB suite (EPUB behavior is untouched; the emulator's WebView 52 does not exercise inline annotations, and the RP5 was unavailable); the full ~40-minute suite (deliberately); anything on the Samsung tablet.
+
+**What the tests prove.**
+
+- Locator and ordering: `FixedPageLocator.format(n)` equals the reader's `pageLocator(n)` on device (0, 1, 9, 123, `Int.MAX_VALUE`); strict parsing rejects malformed, wrong-version, missing, non-integer and negative pages (JVM); `orderKey = page/pageCount`, a one-page publication yields 0.0, bookmarks and notes interleave in reading order; Room reports version 4 and no schema file changed.
+- Bookmarks (PDF, CBZ, CBR): created at the exact page with no body/text/style/title, an exact duplicate returns the same row, toggle removes, keyboard letter B toggles, the Bookmark control is selected and announces its state, recreation keeps it.
+- Input: keyboard B toggles; the letter B typed in the note editor reaches the text field only and creates no bookmark; gamepad B (`KEYCODE_BUTTON_B`) is Back (leaves the reader with chrome visible) and creates nothing; gamepad A (`KEYCODE_BUTTON_A`) on the focused Bookmark control toggles it (before the new `activateOnGamepadConfirm`, A did nothing on Compose buttons in this environment).
+- Notes: "Add note on page N" anchors to `FixedReaderState.page`; blank text cannot be saved; Cancel creates nothing; editing a page-1 note while reading page 3 keeps the page-1 locator, creation time and kind; delete asks for confirmation (Cancel keeps it).
+- Strict navigation: a valid row moves to the exact page and closes the Notebook; a row at `page == count` or 9999 and malformed locators (`{"version":1}`, negative page) stay listed with the localized reason, are not clickable, do not move or clamp the reader, are never rewritten, and stay editable (notes) and deletable; CBR parity for create, toggle, valid jump and out-of-range.
+- Page identity: SPREAD (explicit) anchors to `state.page` (the pair's lowest page after Next), a thumbnail pick of the pair's second page anchors to exactly that page, RTL Manga stores the same plain index as LTR, and Pages and slider selections bind the exact source page for a bookmark and a note.
+- Notebook: opens from chrome; shows only the current publication (another publication's note is absent and untouched); filters All/Notes/Bookmarks (no Highlights chip); empty state; bookmark removal; rotation keeps an open Notebook and an unsaved draft, never saves it and never duplicates the note across three recreations.
+- Back (ADR-0023): system Back, Escape and gamepad B each close the Notebook and stay in the reader; with the editor open and its text field focused each closes only the editor first, then the Notebook; under a vertical fold the Notebook renders in the hinge-safe overlay entirely on one side of the hinge and Back (dispatcher), Escape and gamepad B dismiss it. The hosted fold test reaches Back through `OnBackPressedDispatcher`, because a raw `KEYCODE_BACK` injected into the hosted `ComponentActivity` did not reach it (a harness limitation; the real `MainActivity` tests use the raw key).
+- Process death: phase A created a bookmark and a note through the reader UI, the app and test processes were `am force-stop`ped (no shelfos process remained), and phase B in a new process found both rows with the original locators and body and listed them in the Notebook. This was executed with direct `adb shell am instrument` runs (Gradle uninstalls the app after a run). An unsaved DRAFT does not survive process death (D5) and no claim is made for it.
+
+**Findings fixed during validation.** (1) Placing Bookmark and Notebook before Zoom/Hide pushed those two off a 411 dp screen and broke eight existing tests; the new buttons now follow Hide controls, so on narrow phones they need a horizontal scroll or focus traversal (risk, below). (2) Compose buttons ignore `KEYCODE_BUTTON_A`; fixed for the new controls only. (3) A Notebook dialog with no focused element never received Escape/gamepad B; it now takes focus when its window gains it.
+
+**Remaining risks and open items.** Samsung and RP5 hardware, TalkBack and a physical controller are unverified. The 4B-owned editor and delete-confirmation dialogs still have no gamepad-A activation (shared EPUB code was not changed). On narrow phones the Bookmark and Notebook buttons are off-screen until the chrome row is scrolled (keyboard B and focus traversal still reach them). Under a vertical fold the Notebook list uses the hinge-safe overlay, while the editor and delete confirmation remain platform dialogs (as in 4B and the plan, D5).
+
 ## PHASE 4B — EPUB HIGHLIGHTS AND NOTES (2026-10-10)
 
 Status: **ACCEPTED AND MERGED (PR #34, commit `71c1740`).** (Status recorded at acceptance, before the merge: "implemented and accepted locally, ready for push / PR".) Automated validation is complete on the RP5 (WebView 109) and the API 24 emulator (WebView 52); the independent Codex High final review passed; the manual owner UAT on the Samsung Galaxy Tab A SM-T580 (Android 8.1 / API 27, 2 GB RAM) passed — see section 3 for the evidence (Samsung UAT evidence, rotation note, stylus status and 500-decoration stress are recorded at the end of this section). Branch `phase-4/4b-epub-highlights-notes` from `main` @ `de2f2f2c45ca708c70601a3d1d96a82b4db38171`. No Room change (schema v4, `app/schemas` untouched), no dependency or Readium change, no ShelfOS-owned JavaScript, no publication mutation.

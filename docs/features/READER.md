@@ -18,8 +18,7 @@ whole); SPREAD is the explicit pairing mode. CBR/RAR archives are read natively
 and directly through the shared image-sequence pipeline with no conversion and no
 source mutation (see `docs/adr/0024-native-cbr-libarchive.md`). The sections below
 describe the shared target behavior; remaining gaps (annotations, Adapted PDF,
-later formats) stay future work. Note: bookmarks are implemented for EPUB only; PDF/CBZ/CBR
-page bookmarks and page notes are planned for Phase 4C, not implemented (see `docs/PHASE_4_IMPLEMENTATION_PLAN.md` section 13.3).
+later formats) stay future work. Note: PDF/CBZ/CBR page bookmarks and page notes with a reader-local Notebook are implemented locally and ready for independent review (Phase 4C.1, see `features/ANNOTATIONS.md`); EPUB bookmarks are unchanged.
 
 ## Shared goals
 
@@ -52,7 +51,7 @@ Features:
 - Publisher / ShelfOS reading presentation
 
 Merged and accepted (Phase 4B, PR #34, EPUB only): text highlights, selection and position notes, a per-publication Notes list; see
-[ANNOTATIONS.md](ANNOTATIONS.md). Back dismisses an active text selection before touching reader chrome (ADR-0023, Phase 4B clarification). Planned, not implemented (Phase 4C, `docs/PHASE_4_IMPLEMENTATION_PLAN.md` section 13.3): page bookmarks and page notes for PDF/CBZ/CBR and an optional reader-local Publication Notebook for the current publication in all four formats (side by side on wide windows, a dialog otherwise).
+[ANNOTATIONS.md](ANNOTATIONS.md). Back dismisses an active text selection before touching reader chrome (ADR-0023, Phase 4B clarification). Implemented locally, ready for independent review (Phase 4C.1): page bookmarks (Bookmark chrome control or the keyboard letter B) and page notes for PDF/CBZ/CBR with strict, never-clamping annotation navigation and a **Notebook** dialog for the current publication (Back, Escape and gamepad B close the editor first, then the Notebook, then follow the normal chrome rules). Planned, not implemented (Phase 4C.2, `docs/PHASE_4_IMPLEMENTATION_PLAN.md` section 13.3): the adaptive side-by-side Notebook and its EPUB integration.
 
 Later:
 

@@ -1,5 +1,12 @@
 # Documentation Changelog
 
+## Phase 4C.1 implemented locally (2026-10-11)
+
+- `docs/PHASE_4_IMPLEMENTATION_PLAN.md`: header and section 13.3 status updated; new section 13.3.15 (4C.1 implementation record). Status wording: "IMPLEMENTED LOCALLY / READY FOR INDEPENDENT REVIEW"; 4C.2, 4C as a whole and 4D–4F are NOT done; Samsung UAT NOT performed.
+- `docs/VALIDATION.md`: new "PHASE 4C.1" section with the per-class test counts, the environment limits (RP5 not connected, no TalkBack, no real controller, no real RAR image fixture) and the process-death evidence.
+- `docs/features/ANNOTATIONS.md` (status plus a "Fixed-layout bookmarks and page notes" section), `docs/features/READER.md`, `docs/ROADMAP.md` and `README.md`: stale "planned, not implemented" 4C wording updated for 4C.1.
+- No Room schema, migration, dependency, ADR or production-JS change.
+
 ## Phase 4C planned: fixed-layout annotations and the reader-local Publication Notebook (2026-10-10)
 
 - `docs/PHASE_4_IMPLEMENTATION_PLAN.md`: section 13.3 rewritten as a full 4C plan (repository audit, design, adaptive layout, Back/input rules, two checkpoints 4C.1 and 4C.2, validation matrix, Ponytail review of the plan, administrator decisions D1-D14, stop conditions); §6.2 refined (canonical fixed locator string, strict navigation decision, spread/RTL binding, `orderKey = page/pageCount`); §10, §11, §14, §15, §17, §19, §20 and §21 cross-referenced.

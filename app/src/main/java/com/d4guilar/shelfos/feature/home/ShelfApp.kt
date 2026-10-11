@@ -239,7 +239,10 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                         val reader: FixedReaderViewModel = viewModel(factory = viewModelFactory { initializer {
                             FixedReaderViewModel(id, container.library, container.fixedReaders, container.backgroundScope)
                         } })
-                        FixedReaderScreen(reader, folds = folds) { nav.popBackStack() }
+                        val annotations: FixedAnnotationViewModel = viewModel(factory = viewModelFactory { initializer {
+                            FixedAnnotationViewModel(id, container.annotations)
+                        } })
+                        FixedReaderScreen(reader, folds = folds, annotations = annotations) { nav.popBackStack() }
                     }
                     composable(Destination.SEARCH.route) {
                         Column(Modifier.fillMaxSize().padding(t.spacing.medium), verticalArrangement = Arrangement.spacedBy(t.spacing.medium)) {

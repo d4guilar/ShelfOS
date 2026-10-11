@@ -69,7 +69,7 @@ internal fun styleLabel(styleKey: String?): String = stringResource(when (styleK
 })
 
 /** Dialog-local Android Back/Escape/gamepad-B handling that runs before a focused text field or IME can consume it. */
-private fun Modifier.dismissOnShelfBack(onDismiss: () -> Unit) = onPreInterceptKeyBeforeSoftKeyboard { event ->
+internal fun Modifier.dismissOnShelfBack(onDismiss: () -> Unit) = onPreInterceptKeyBeforeSoftKeyboard { event ->
     val native = event.nativeKeyEvent
     val dismiss = native.keyCode == KeyEvent.KEYCODE_BACK ||
         native.shelfCommand(InputContext.READER) == ShelfCommand.BACK
