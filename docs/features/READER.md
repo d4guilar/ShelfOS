@@ -19,7 +19,7 @@ and directly through the shared image-sequence pipeline with no conversion and n
 source mutation (see `docs/adr/0024-native-cbr-libarchive.md`). The sections below
 describe the shared target behavior; remaining gaps (annotations, Adapted PDF,
 later formats) stay future work. Note: bookmarks are implemented for EPUB only; PDF/CBZ/CBR
-page bookmarks are Phase 4 work (see `docs/PHASE_4_IMPLEMENTATION_PLAN.md`).
+page bookmarks and page notes are planned for Phase 4C, not implemented (see `docs/PHASE_4_IMPLEMENTATION_PLAN.md` section 13.3).
 
 ## Shared goals
 
@@ -51,8 +51,8 @@ Features:
 - user-imported managed fonts (TTF/OTF) with app-private managed storage
 - Publisher / ShelfOS reading presentation
 
-Implemented locally and accepted for release (Phase 4B, EPUB only): text highlights, selection and position notes, a per-publication Notes list; see
-[ANNOTATIONS.md](ANNOTATIONS.md). Back dismisses an active text selection before touching reader chrome (ADR-0023, Phase 4B clarification).
+Merged and accepted (Phase 4B, PR #34, EPUB only): text highlights, selection and position notes, a per-publication Notes list; see
+[ANNOTATIONS.md](ANNOTATIONS.md). Back dismisses an active text selection before touching reader chrome (ADR-0023, Phase 4B clarification). Planned, not implemented (Phase 4C, `docs/PHASE_4_IMPLEMENTATION_PLAN.md` section 13.3): page bookmarks and page notes for PDF/CBZ/CBR and an optional reader-local Publication Notebook for the current publication in all four formats (side by side on wide windows, a dialog otherwise).
 
 Later:
 

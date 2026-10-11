@@ -1,5 +1,13 @@
 # Documentation Changelog
 
+## Phase 4C planned: fixed-layout annotations and the reader-local Publication Notebook (2026-10-10)
+
+- `docs/PHASE_4_IMPLEMENTATION_PLAN.md`: section 13.3 rewritten as a full 4C plan (repository audit, design, adaptive layout, Back/input rules, two checkpoints 4C.1 and 4C.2, validation matrix, Ponytail review of the plan, administrator decisions D1-D14, stop conditions); §6.2 refined (canonical fixed locator string, strict navigation decision, spread/RTL binding, `orderKey = page/pageCount`); §10, §11, §14, §15, §17, §19, §20 and §21 cross-referenced.
+- Corrections recorded: `ShelfCommand.TOGGLE_BOOKMARK` is the keyboard letter B (gamepad B is BACK) and still has no consumer; the repository has no `WindowSizeClass`/`material3-adaptive` (adaptive primitive is `feature/home/AdaptiveLayout.kt`); fixed `orderKey` must not be the raw page index.
+- Status reconciled after PR #34 (`71c1740`): Phase 4A merged; Phase 4B merged and accepted; Phase 4C planning, NOT implemented; Phase 4D-4F not started. Updated in the plan header and 4B record, `docs/ROADMAP.md`, `docs/features/ANNOTATIONS.md`, `docs/features/READER.md` and the status line of `docs/VALIDATION.md` (historical evidence untouched). `README.md` (outside `docs/`, lines 42-43) still says 4B is "implemented and accepted locally" and was deliberately left for the administrator, because this planning change is restricted to `docs/`.
+- ADR-0025 is unchanged: the notebook is a presentation of the same canonical model and the fixed-layout rules are consistent with its decisions 3 and 12. A dated Back-precedence clarification to ADR-0023 is PROPOSED in the plan (section 13.3.5) and is to be applied during 4C.2, not now.
+- Planning only: no production code, tests, Room schema, Gradle/build configuration or dependencies changed; nothing implemented.
+
 ## Future reader and library requirements recorded (2026-10-10)
 
 - Documentation only: three accepted future requirements were recorded in their
