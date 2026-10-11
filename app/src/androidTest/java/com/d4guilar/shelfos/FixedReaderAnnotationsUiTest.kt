@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos
 
+import android.os.SystemClock
+import android.view.InputDevice
 import android.view.KeyEvent
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -64,6 +66,13 @@ class FixedReaderAnnotationsUiTest {
         container.annotations.create(if (locator == null) draft else draft.copy(locatorJson = locator), validateLocator = locator == null)
     }
     private fun key(code: Int) { instrumentation.sendKeyDownUpSync(code); compose.waitForIdle() }
+    private fun gamepadKey(code: Int) {
+        val downTime = SystemClock.uptimeMillis()
+        instrumentation.sendKeySync(KeyEvent(downTime, downTime, KeyEvent.ACTION_DOWN, code, 0, 0, -1, 0, 0, InputDevice.SOURCE_GAMEPAD))
+        instrumentation.sendKeySync(KeyEvent(downTime, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0, 0, -1, 0, 0, InputDevice.SOURCE_GAMEPAD))
+        compose.waitForIdle()
+    }
+    private fun isFocused(tag: String) = compose.onNodeWithTag(tag).fetchSemanticsNode().config.getOrNull(SemanticsProperties.Focused) == true
 
     private fun openNotebook() {
         compose.onNodeWithTag("reader_notebook").performScrollTo().performClick()
@@ -125,12 +134,16 @@ class FixedReaderAnnotationsUiTest {
 
     @Test fun gamepadBIsBackAndNeverTogglesWhileGamepadAActivatesTheFocusedBookmarkControl() {
         read("test-pdf")
-        compose.waitUntil(10_000) {
-            runCatching { compose.onNodeWithTag("reader_bookmark").requestFocus() }
-            compose.waitForIdle()
-            compose.onNodeWithTag("reader_bookmark").fetchSemanticsNode().config.getOrNull(SemanticsProperties.Focused) == true
+        // Follow the user's real route from the reader page into the chrome. Focus traversal scrolls the compact
+        // horizontal row until the initially off-screen Bookmark control is visible and focused.
+        compose.waitUntil(5_000) { isFocused("reader_page") }
+        gamepadKey(KeyEvent.KEYCODE_DPAD_UP)
+        repeat(8) {
+            if (isFocused("reader_bookmark")) return@repeat
+            gamepadKey(KeyEvent.KEYCODE_DPAD_RIGHT)
         }
-        key(KeyEvent.KEYCODE_BUTTON_A)
+        compose.onNodeWithTag("reader_bookmark").assertIsFocused()
+        gamepadKey(KeyEvent.KEYCODE_BUTTON_A)
         awaitStored("test-pdf", 1)
         compose.waitUntil(5_000) { isBookmarkSelected() }
         // Gamepad B is the existing semantic BACK: with chrome visible it leaves the reader and must not touch bookmarks.
@@ -149,13 +162,23 @@ class FixedReaderAnnotationsUiTest {
         awaitTag("annotation_body")
         compose.onNodeWithTag("annotation_editor_save").assertIsNotEnabled() // blank body cannot be saved
         compose.onNodeWithTag("annotation_body").performTextInput("abandoned")
-        compose.onNodeWithText("Cancel").performClick()
+        gamepadKey(KeyEvent.KEYCODE_BUTTON_A)
+        compose.onNodeWithTag("annotation_body").assertTextContains("abandoned")
+        compose.onNodeWithTag("annotation_editor_save").assertIsFocused()
+        compose.onNodeWithTag("annotation_body").assertExists()
+        assertEquals("the first A only moves focus and never saves", 0, stored("test-pdf").size)
+        gamepadKey(KeyEvent.KEYCODE_DPAD_LEFT)
+        compose.onNodeWithTag("annotation_editor_cancel").assertIsFocused()
+        gamepadKey(KeyEvent.KEYCODE_BUTTON_A)
         awaitNoTag("annotation_body")
         assertEquals("a cancelled draft is never saved", 0, stored("test-pdf").size)
         compose.onNodeWithTag("notebook_add_note").performClick()
         awaitTag("annotation_body")
         compose.onNodeWithTag("annotation_body").performTextInput("Page two thought")
-        compose.onNodeWithTag("annotation_editor_save").performClick()
+        gamepadKey(KeyEvent.KEYCODE_BUTTON_A)
+        compose.onNodeWithTag("annotation_editor_save").assertIsFocused()
+        assertEquals("focus transfer is not persistence", 0, stored("test-pdf").size)
+        gamepadKey(KeyEvent.KEYCODE_BUTTON_A)
         awaitStored("test-pdf", 1)
         val note = stored("test-pdf").single()
         assertEquals(AnnotationKind.NOTE, note.kind); assertEquals("Page two thought", note.body)
