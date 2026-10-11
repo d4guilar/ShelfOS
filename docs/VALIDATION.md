@@ -2,7 +2,7 @@
 
 ## PHASE 4C.1 — FIXED-LAYOUT BOOKMARKS, PAGE NOTES AND THE FIXED-READER NOTEBOOK (2026-10-11)
 
-Status: **REMEDIATED LOCALLY / FINAL INDEPENDENT REVIEW PENDING.** Branch `phase-4/4c1-fixed-annotations` (from `main` @ `b1ce488`); two local commits, not pushed. Independent Codex High review found that controller focus could not leave the shared multiline annotation field and that the RP5 Bookmark test acquired off-screen focus non-portably. The narrow remediation adds a source-aware controller route from the field to Save and corrects the Bookmark test to use real D-pad traversal; final independent review is still required. Samsung SM-T580 manual UAT NOT performed, 4C.2 / 4C as a whole / 4D onward NOT done. Design record: `docs/PHASE_4_IMPLEMENTATION_PLAN.md` section 13.3.15.
+Status: **ACCEPTED (not merged, not in a PR).** Branch `phase-4/4c1-fixed-annotations` (from `main` @ `b1ce488`); two local commits, not pushed. Independent Codex High review found that controller focus could not leave the shared multiline annotation field and that the RP5 Bookmark test acquired off-screen focus non-portably. The narrow remediation adds a source-aware controller route from the field to Save and corrects the Bookmark test to use real D-pad traversal. Implementation and remediation are complete, the final independent Codex High re-review passed, RP5 targeted controller/input validation passed, and the manual owner UAT on the Samsung Galaxy Tab A SM-T580 passed (PDF, CBZ, CBR, bookmarks, notes, Notebook filters, Back, rotation, SPREAD source-page identity, portrait and landscape UI, old-device performance and reopen persistence — see the Samsung evidence block below). Keyboard B and Escape/gamepad B were NOT tested on the Samsung; they are accepted on the RP5 sourced-event automation recorded here, and no physical keyboard or controller testing is claimed. Physical TalkBack remains unverified. No blocking finding remains. 4C.2 / 4C as a whole / 4D onward NOT done; the adaptive side-by-side Publication Notebook, the global Notes hub and export are not implemented. Design record: `docs/PHASE_4_IMPLEMENTATION_PLAN.md` section 13.3.15.
 
 **Environment, stated plainly.** The initial implementation validation used only the API 24 emulator (`emulator-5554`, `shelfos-api24`, WebView 52). Remediation validation used the connected RP5 (`d8f7f1b6`, Android 13, WebView 109) as the primary target. The first full RP5 class run passed 3 tests before the device screen timed out and locked; the remaining 15 failed during setup with no Compose hierarchy, so that run is recorded as an environment failure, not a pass. After enabling stay-awake and waking/unlocking the RP5, all focused and full-class reruns below passed. TalkBack was not run. No real controller was used: gamepad behavior is proven with explicitly `SOURCE_GAMEPAD`-sourced key events. No real RAR image fixture exists (no RAR-writing tooling, see `CbrProductIntegrationTest`), so CBR is proven through the shared fixed-reader architecture with an in-memory page source, not the native RAR decoder.
 
@@ -25,7 +25,7 @@ Status: **REMEDIATED LOCALLY / FINAL INDEPENDENT REVIEW PENDING.** Branch `phase
 | Remediation RP5 isolated Bookmark D-pad traversal + sourced gamepad A | 1 | pass |
 | Remediation RP5 shared EPUB editor A-save + Back/Escape/gamepad-B cancellation | 1 | pass |
 
-Not run: the full `EpubAnnotationsTest`, `EpubBookmarkTest`, `EpubRecreationTest` or broader EPUB suite; only the shared-editor EPUB regression named above was required and run on RP5. The known unrelated RP5 `EpubBookmarkTest` 8/9 baseline was not rerun. The full ~40-minute suite and Samsung tablet UAT were deliberately not run.
+Not run: the full `EpubAnnotationsTest`, `EpubBookmarkTest`, `EpubRecreationTest` or broader EPUB suite; only the shared-editor EPUB regression named above was required and run on RP5. The known unrelated RP5 `EpubBookmarkTest` 8/9 baseline was not rerun. The full ~40-minute accumulated suite was deliberately not run (it is 4F scope). The manual Samsung tablet UAT has since been performed and passed — see the Samsung evidence block below.
 
 **What the tests prove.**
 
@@ -41,7 +41,45 @@ Not run: the full `EpubAnnotationsTest`, `EpubBookmarkTest`, `EpubRecreationTest
 
 **Findings fixed during validation and review.** (1) Placing Bookmark and Notebook before Zoom/Hide pushed those two off a 411 dp screen and broke eight existing tests; the new buttons now follow Hide controls, so on narrow phones they need a horizontal scroll or focus traversal. (2) Compose buttons ignore `KEYCODE_BUTTON_A`; focused annotation Save/Cancel and the new fixed-reader controls now use the existing local confirmation helper. (3) A Notebook dialog with no focused element never received Escape/gamepad B; it now takes focus when its window gains it. (4) Independent review found the auto-focused multiline editor trapped controller focus; sourced controller A is now consumed on down/up, releases the field, and moves to Save only after up, so the first press cannot save. (5) The RP5 Bookmark test no longer requests focus directly on an off-screen control; it traverses from the focused page into the chrome and lets D-pad traversal scroll Bookmark into view.
 
-**Remaining risks and open items.** Samsung hardware, TalkBack and a physical controller are unverified; RP5 automation used explicitly sourced injected controller events. The delete-confirmation dialog was not redesigned. On narrow phones the Bookmark and Notebook buttons are off-screen until the chrome row is scrolled (keyboard B and focus traversal reach them). Under a vertical fold the Notebook list uses the hinge-safe overlay, while the editor and delete confirmation remain platform dialogs (as in 4B and the plan, D5). Final independent review remains pending.
+**Remaining risks and open items (non-blocking).** Physical TalkBack remains unverified, and keyboard B and Escape/gamepad B were not exercised on the Samsung hardware — both are covered only by RP5 automation with explicitly sourced injected key events (`SOURCE_GAMEPAD`, D-pad traversal), so no physical keyboard or controller testing is claimed. The RP5 automation also did not use a real RAR image fixture (no RAR-writing tooling, see `CbrProductIntegrationTest`), so CBR is proven through the shared fixed-reader architecture with an in-memory page source; the Samsung UAT did exercise the real CBR path. The delete-confirmation dialog was not redesigned. On narrow phones the Bookmark and Notebook buttons are off-screen until the chrome row is scrolled (keyboard B and focus traversal reach them). Under a vertical fold the Notebook list uses the hinge-safe overlay, while the editor and delete confirmation remain platform dialogs (as in 4B and the plan, D5). The known unrelated RP5 `EpubBookmarkTest` 8/9 baseline is a pre-existing, non-4C.1 failure. The adaptive side-by-side Publication Notebook, EPUB integration and highlights in the Notebook are 4C.2 work and remain not implemented.
+
+**Acceptance.** Implementation complete; remediation complete; final independent Codex High re-review PASS; RP5 targeted controller/input validation PASS (`FixedReaderAnnotationsUiTest` 18/18, shared EPUB editor Save/Cancel and Back/Escape/gamepad-B cancellation regression, Bookmark traversal plus sourced gamepad A); Samsung SM-T580 manual UAT PASS; old-device performance acceptable; no blocking findings. **Phase 4C.1 is ACCEPTED, not merged and not in a PR.** 4C.2, 4C as a whole, 4D, 4E and 4F are NOT done; Phase 4 as a whole is NOT complete.
+
+**Independent review and controller evidence.**
+
+| Reviewer / run | Result |
+| --- | --- |
+| Codex High final re-review | **PASS** |
+| RP5 `FixedReaderAnnotationsUiTest` (PDF + CBZ/Manga + spread CBZ) | **18 / 18 PASS** (0 failures) |
+| RP5 shared EPUB controller regression (editor A-save; Back/Escape/gamepad-B cancellation) | **PASS** |
+| RP5 isolated editor A → Save / A → Cancel path | **PASS** |
+| RP5 Bookmark traversal (real D-pad from the page into the chrome) + `SOURCE_GAMEPAD` A | **PASS** |
+| Known RP5 baseline `EpubBookmarkTest` | **8 / 9**, unrelated pre-existing baseline, not rerun |
+
+**Samsung SM-T580 manual UAT evidence (2026-10-11): PHASE 4C.1 ACCEPTED.** Device: Samsung Galaxy Tab A SM-T580, Android 8.1 / API 27, 2 GB RAM. UAT APK: `ShelfOS-Phase4C1-UAT.apk`, 25,139,650 bytes, SHA-256 `9F9FB09F75005108E9455DE5858579DF13AF8D2119C1F69A805E52D59160707B`, built from reviewed HEAD `55a7b5187382110b79513d2d3c9eea784b6955a6` and installed manually over the local LAN. The temporary LAN address is deliberately not recorded as permanent project evidence, because DHCP addresses change.
+
+| Manual result | Samsung |
+| --- | --- |
+| PDF | **PASS** |
+| CBZ | **PASS** |
+| CBR | **PASS** |
+| Bookmarks | **PASS** |
+| Notes | **PASS** |
+| Notebook filters | **PASS** |
+| Back | **PASS** |
+| Rotation | **PASS** |
+| SPREAD source-page identity | **PASS** |
+| Portrait UI | **PASS** |
+| Landscape UI | **PASS** |
+| Old-device performance | **PASS** |
+| Reopen persistence | **PASS** |
+| Keyboard B | **NOT TESTED on Samsung** (covered by RP5 sourced-key automation) |
+| Escape / gamepad B | **NOT TESTED on Samsung** (covered by RP5 sourced-key automation) |
+| Anything weird | none reported |
+
+Keyboard B and Escape/gamepad B were NOT tested on the Samsung. This is **not** a failure and **not** a blocker: both already carry independent RP5 / instrumentation validation evidence (explicitly `SOURCE_GAMEPAD`-sourced key events and real D-pad traversal). No physical keyboard or controller testing on Samsung hardware is claimed. Physical TalkBack also remains unverified.
+
+**Stylus / S Pen:** **NOT TESTED** — no compatible stylus hardware is available. This is not a 4C.1 failure and is not required for 4C.1 acceptance. Future stylus validation should confirm that pen input can participate in the existing semantic text-selection → Highlight/Add note workflow. Handwriting, ink, notebook and pen-specific scope remains future work and was not added to 4C.1.
 
 ## PHASE 4B — EPUB HIGHLIGHTS AND NOTES (2026-10-10)
 
