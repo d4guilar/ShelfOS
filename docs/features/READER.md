@@ -51,10 +51,11 @@ Features:
 - user-imported managed fonts (TTF/OTF) with app-private managed storage
 - Publisher / ShelfOS reading presentation
 
+Implemented locally and accepted for release (Phase 4B, EPUB only): text highlights, selection and position notes, a per-publication Notes list; see
+[ANNOTATIONS.md](ANNOTATIONS.md). Back dismisses an active text selection before touching reader chrome (ADR-0023, Phase 4B clarification).
+
 Later:
 
-- highlight
-- notes
 - Adapted PDF presentation through structured content and SourceMap (later)
 
 ## Documents

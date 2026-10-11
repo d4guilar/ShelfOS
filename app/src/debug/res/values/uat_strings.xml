@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- Debug-only manual UAT harness strings: not user-facing product copy, never shipped, intentionally not translated. -->
+<resources>
+    <string name="uat_app_label" translatable="false">ShelfOS 4B UAT</string>
+    <string name="uat_title" translatable="false">ShelfOS Phase 4B manual UAT (debug build only)</string>
+    <string name="uat_open_reader" translatable="false">Open synthetic EPUB reader</string>
+    <string name="uat_run_stress" translatable="false">Run 500-decoration stress (result shown on screen)</string>
+    <string name="uat_reset" translatable="false">Reset UAT data</string>
+    <string name="uat_checklist" translatable="false">Checklist (use the synthetic book only):\n1. Long-press a word: the selection toolbar should show Highlight, Add note and Copy (only when the capability above says OFFERED).\n2. Highlight a phrase, then Add note on another; both should draw (filled vs underlined).\n3. Tap a drawn mark: an editor opens and the reader controls do not toggle.\n4. Rotate the tablet and reopen the book: marks come back.\n5. Notes (reader controls) lists everything; tap a row to jump back to it.\n6. With a selection active press Back once: only the selection goes away.\n7. On an old WebView the toolbar must NOT offer Highlight; Notes still offers Add note at current position and bookmarks work.</string>
+</resources>

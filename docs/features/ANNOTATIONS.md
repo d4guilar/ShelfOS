@@ -2,12 +2,14 @@
 
 ## Current status (2026-10-10)
 
-Only **EPUB bookmarks** exist today (Room table `bookmark`, with a cascade from the
-LibraryItem); there are no highlights, notes, Notes hub or export, and fixed-page readers
-(PDF/CBZ/CBR) have no bookmarks. The Phase 4 plan and the proposed model, which supersedes
-the conceptual sketch below for Phase 4, are in
-[`PHASE_4_IMPLEMENTATION_PLAN.md`](../PHASE_4_IMPLEMENTATION_PLAN.md) and
-[ADR-0025](../adr/0025-annotation-anchor-and-knowledge-model.md).
+Implemented locally and accepted for release (Phase 4B, pending Samsung manual UAT and review): in EPUB, text highlights, selection-anchored notes, position-anchored notes, EPUB bookmarks, an in-reader
+per-publication Notes list (jump, edit, delete), style and optional body on highlights, and restoration of inline marks after reopen, recreation and process death. Highlights and notes
+use the canonical `annotation` table (Room v4); the legacy `bookmark` table is inert. Inline marks need a WebView whose Chromium major version is at least 69; otherwise only bookmarks and position notes
+are offered (see `docs/VALIDATION.md`, Phase 4B). Not built yet: fixed-layout (PDF/CBZ/CBR) bookmarks and notes (4C), the global Notes hub (4D), export (4E). The Phase 4 plan and the model are in
+[`PHASE_4_IMPLEMENTATION_PLAN.md`](../PHASE_4_IMPLEMENTATION_PLAN.md) and [ADR-0025](../adr/0025-annotation-anchor-and-knowledge-model.md).
+
+Stale text: before a selection-backed annotation is drawn, ShelfOS verifies its stored text context against the same sanitized rendition it gives the reader. If the text cannot be found exactly, the
+annotation is kept, listed with a "text location unavailable" state, and never drawn on other text. The source publication is never modified.
 
 ## Goal
 

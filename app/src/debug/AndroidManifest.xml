@@ -15,5 +15,24 @@
             android:name=".feature.reader.EpubManagedFontProofActivity"
             android:exported="false"
             android:theme="@style/Theme.ShelfOS.Reader" />
+        <!-- Phase 4B debug-only: legacy-WebView simulation host for instrumentation, manual UAT launcher and its stress reader. -->
+        <activity
+            android:name=".feature.reader.EpubLegacyWebViewTestActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ShelfOS.Reader" />
+        <activity
+            android:name=".feature.reader.UatStressActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ShelfOS.Reader" />
+        <activity
+            android:name=".debug.UatLauncherActivity"
+            android:exported="true"
+            android:label="@string/uat_app_label"
+            android:theme="@style/Theme.ShelfOS">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>
