@@ -40,7 +40,7 @@ device does not exercise).
 
 This is not a release: ShelfOS remains an early development prototype. The next
 roadmap area is Phase 4 (Notes and Knowledge Layer), which has started: 4A is
-merged and 4B is implemented and accepted locally; 4C–4F have not started.
+merged, 4B is merged and accepted, and 4C planning has started; 4D–4F have not started.
 
 Global destinations are Library, Search, Notes, Shelves and Settings. Notes and
 Shelves are placeholders; their functionality is not implemented. See the [Phase 1 plan](docs/PHASE_1_PLAN.md)
