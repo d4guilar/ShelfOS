@@ -1,11 +1,6 @@
 # Phase 4 Implementation Plan — Notes and Knowledge Layer
 
-Status: **Phase 4A (Annotation foundation) is merged; Phase 4B (EPUB highlights and notes) is IMPLEMENTED LOCALLY, validated on the RP5 and the API 24 emulator, and
-pending Samsung manual UAT and independent review (see the 4B implementation record in section 13.2 and `docs/VALIDATION.md`); Phase 4 as a whole is NOT complete and 4C-4F have not
-started.** The rest of this document is the original planning text (2026-10-10, [ADR-0025](adr/0025-annotation-anchor-and-knowledge-model.md),
-Proposed). Each slice still needs explicit administrator authorization, exactly as Phase 3's slices did
-(`docs/PHASE_3_IMPLEMENTATION_PLAN.md` §12/§21). 4A added the schema, migration and removal policy described below; the
-remaining slices add none until authorized.
+Status: **Phase 4A (Annotation foundation) is merged; Phase 4B (EPUB highlights and notes) is IMPLEMENTED AND ACCEPTED LOCALLY — READY FOR PUSH / PR** (full acceptance evidence in `docs/VALIDATION.md`; see the 4B implementation record in section 13.2). Phase 4 as a whole is NOT complete: 4C (fixed-layout notes), 4D (Notes hub), 4E (export) and 4F (acceptance) have not started. The rest of this document is the original planning text (2026-10-10, [ADR-0025](adr/0025-annotation-anchor-and-knowledge-model.md), Proposed). Each slice still needs explicit administrator authorization, exactly as Phase 3's slices did (`docs/PHASE_3_IMPLEMENTATION_PLAN.md` §12/§21). 4A added the schema, migration and removal policy described below; the remaining slices (4C–4F) add none until authorized.
 
 Anything marked **(proposed)** is a recommendation for review, not an accepted design.
 Anything marked **(verified)** was checked against the repository or the pinned
@@ -796,7 +791,7 @@ Implemented on `phase-4/4a-annotation-foundation` (from `main` @ `b2ce163`); evi
 - **Risks:** §9.4 (WebView 52, scale, interaction conflicts, selection accessibility, sanitizer coupling).
 - **Codex High review: yes** — reader lifecycle, persistence, WebView interaction; the spike result itself should get an administrator go/no-go before the full slice proceeds.
 
-#### 4B implementation record (2026-10-10; local, pending Samsung manual UAT and independent review)
+#### 4B implementation record (2026-10-10; locally accepted; ready for push / PR)
 
 Implemented on `phase-4/4b-epub-highlights-notes` (from `main` @ `de2f2f2`); evidence in `docs/VALIDATION.md` ("PHASE 4B - EPUB HIGHLIGHTS AND NOTES", which also
 carries the spike entry). ADR-0025 is unchanged and none of its decisions was contradicted. Phase 4 as a whole is NOT complete; 4C-4F have not started.
@@ -825,7 +820,7 @@ carries the spike entry). ADR-0025 is unchanged and none of its decisions was co
   5. The selection is cleared when the note editor opens (the draft is already captured), not after Save; Cancel creates nothing. The unsaved draft survives rotation (ViewModel) but not process death.
   6. A new HIGHLIGHT whose text cannot be verified against the rendition is refused with a message instead of being stored unplaceable; a note on such a selection is also refused (it could never be drawn).
   7. Search results and the legacy Bookmarks dialog still use the single `goTo`; only the Notes list uses the deterministic `jumpTo`.
-- **Remaining for 4B acceptance:** Samsung SM-T580 manual UAT (pre-merge); independent review.
+- **Current status:** IMPLEMENTED AND ACCEPTED LOCALLY — ready for push / PR (Samsung manual UAT PASS with a non-blocking repeated-rotation harness timeout; independent Codex High review PASS). Remaining: push / PR (not yet performed) and later 4C–4F acceptance work.
 
 ### 13.3 4C — Fixed-layout notes and bookmark polish
 

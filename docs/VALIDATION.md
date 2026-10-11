@@ -2,11 +2,7 @@
 
 ## PHASE 4B — EPUB HIGHLIGHTS AND NOTES (2026-10-10)
 
-Status: **implemented locally; automated validation complete on the RP5 (WebView 109) and the API 24 emulator (WebView 52);
-Samsung SM-T580 acceptance is PENDING MANUAL UAT (see below). Pending independent review (Codex High) and administrator
-triage. Not merged. Phase 4 is NOT complete: 4C (fixed-layout notes), 4D (Notes hub), 4E (export) and 4F (acceptance) have not
-started.** Branch `phase-4/4b-epub-highlights-notes` from `main` @ `de2f2f2c45ca708c70601a3d1d96a82b4db38171`. No Room change
-(schema v4, `app/schemas` untouched), no dependency or Readium change, no ShelfOS-owned JavaScript, no publication mutation.
+Status: **IMPLEMENTED AND ACCEPTED LOCALLY — READY FOR PUSH / PR.** Automated validation is complete on the RP5 (WebView 109) and the API 24 emulator (WebView 52); the independent Codex High final review passed; the manual owner UAT on the Samsung Galaxy Tab A SM-T580 (Android 8.1 / API 27, 2 GB RAM) passed — see section 3 for the evidence (Samsung UAT evidence, rotation note, stylus status and 500-decoration stress are recorded at the end of this section). Branch `phase-4/4b-epub-highlights-notes` from `main` @ `de2f2f2c45ca708c70601a3d1d96a82b4db38171`. No Room change (schema v4, `app/schemas` untouched), no dependency or Readium change, no ShelfOS-owned JavaScript, no publication mutation.
 `docs/features/EPUB.md` does not exist in this repository (EPUB behavior is documented in `docs/features/READER.md`).
 
 **Spike verdict carried forward.** The earlier bounded spike (recorded below, "PHASE 4B — READIUM ANNOTATION SPIKE"; the spike
@@ -115,18 +111,19 @@ Back with a selection (visible chrome, hidden chrome), Escape and gamepad B; edg
 
 **Scale, production path (RP5; includes opening the book, the Room read and exact-text verification):** 500 stored highlights in one chapter: all 500 decorations present **3.7 s** after launch, main-thread worst delay **199 ms**
 (14 delays over 100 ms, none over 1 s), page turn afterwards works. Stress evidence only: 2,000 across 4 chapters: chapter 1 (500) drawn 6.6 s after launch, worst delay 176 ms (20 over 100 ms), no ANR (`dumpsys dropbox data_app_anr` has no ShelfOS entry).
-The spike's measured Readium-only apply cost (94-273 ms, renderer memory +100 MB at 500 and +225 MB at 2,000) still applies; the 2 GB SM-T580 memory behavior is part of the pending manual UAT.
+The spike's measured Readium-only apply cost (94-273 ms, renderer memory +100 MB at 500 and +225 MB at 2,000) still applies; the 2 GB SM-T580 memory behavior is part of the manual UAT below.
 
-**Samsung SM-T580 (Android 8.1, 2 GB): PENDING MANUAL UAT.** Its Micro-USB data hardware is damaged, so ADB is impossible. A debug-only harness (`src/debug`, zero release impact) provides a second launcher entry "ShelfOS 4B UAT":
-device, Android/API, WebView package and exact version, capability state, the synthetic book only, a 500-decoration run whose apply time and PASS/FAIL show on screen, and a reset button. Expected outcome if its WebView is old:
-the gate activates, no inline Highlight action, position notes and bookmarks work, the app is stable; that is not a 4B failure. Acceptance is PRE-MERGE.
+**Samsung SM-T580 manual UAT evidence (2026-10-10): PHASE 4B ACCEPTED LOCALLY.** Device: Samsung Galaxy Tab A SM-T580, Android 8.1 / API 27, 2 GB RAM. USB data/ADB validation was not possible because the tablet's Micro-USB data-transfer hardware is damaged; validation was therefore performed manually using the reviewed debug UAT APK (`ShelfOS-Phase4B-UAT.apk`) installed over the local LAN. Reviewed APK: `ShelfOS-Phase4B-UAT.apk`, size 27,336,077 bytes, SHA-256 `EC48D16EAD173D54CA4E0749BB1429336C63CBBBCA4A093C0EC62A35B1FD9B0D`. The temporary LAN IP/URL used for the manual review is **not** recorded as permanent project evidence because DHCP addresses can change.
 
-**Infrastructure notes.** (1) A Compose test rule advances its frame clock only while the test pumps it, so tests that wait on the WebView must call `waitForIdle()` between probes (`AnnotationUiProbe.settle`); a background-thread sampler is used for frame
-gaps because a main-looper ticker prevents Espresso from ever idling. (2) Gradle reports a JUnit assumption failure as a test failure, so gated evidence tests return early instead. (3) `LibraryRepository.add` ignores `LibraryItem.preferences`; tests save appearance through `saveAppearance`.
-(4) `evaluateJavascript` appears only in test/debug-harness code as read-only measurement.
+Result: **PASS**. Manual UAT on the Samsung synthetic EPUB reader exercised the normal highlight/note reader workflow (text selection → Highlight → add note → edit/delete → jump); the inline annotation capability was usable on the tested Samsung environment, therefore the unsupported/unknown WebView fallback path was N/A for this physical UAT.
 
-**Not executed / remaining:** Samsung manual UAT; TalkBack, hardware keyboard and gamepad driving of the new dialogs beyond the semantic Back/Escape/B keys and Compose focus (the controls are standard focusable buttons with content descriptions);
-fixed-layout annotations, Notes hub and export (4C-4F, out of scope).
+**500-decoration stress (SM-T580, 2 GB RAM):** Result: **PASS**. Decorations: **500 / 500**. First decoration result: **8,781 ms after launch**. All decorations: **8,781 ms after launch**. Worst observed main-thread frame gap: **350 ms**. Post-load reader responsiveness: **remained usable/responsive**. Device-specific Phase 4B UAT evidence on a real 2016-era Android 8.1 tablet with 2 GB RAM; the numbers are not a formal performance guarantee or maximum.
+
+**Repeated-rotation note (NON-BLOCKING):** During manual stress testing the tablet was rotated approximately eight times. The debug stress harness restarts/recreates its measurement with Activity/navigator recreation; after repeated rapid rotations, one restarted stress run timed out. Normal reader rotation/reopen sanity otherwise passed, no annotation data loss was observed, no persistent unresponsiveness was observed, and the timeout occurred during repeated debug stress-harness recreation. This is **not treated as a Phase 4B acceptance blocker** and is **not fixed**; it may be revisited during later reader performance/scale hardening or Phase 4F acceptance.
+
+**Stylus / S Pen status:** **NOT TESTED** — compatible stylus hardware was not available. This is NOT a Phase 4B failure and is NOT required for 4B acceptance. Future stylus validation should confirm that pen input can participate in the existing semantic text-selection → Highlight/Add note workflow. Handwriting, ink annotation, notebook, and pen-specific implementation scope remain future work and are NOT part of Phase 4B.
+
+**Not executed / remaining:** TalkBack, hardware keyboard and gamepad driving of the new dialogs beyond the semantic Back/Escape/B keys and Compose focus (the controls are standard focusable buttons with content descriptions); fixed-layout annotations, Notes hub and export (4C-4F, out of scope).
 
 ## PHASE 4B — READIUM ANNOTATION SPIKE (2026-10-10)
 

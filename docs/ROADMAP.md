@@ -302,7 +302,7 @@ forward and are **implemented and accepted as part of Phase 1** (ADR-0017,
 2026-09-24). Advanced spreads, thumbnails, foldable-aware pairing and native CBR
 support were completed here in Phase 3. The original inventory below is retained
 for coverage; delivered items are marked accordingly. ShelfOS as a whole is not
-finished: Phase 4 (Notes and Knowledge Layer) is next and has not started.
+finished: Phase 4 (Notes and Knowledge Layer) is the next roadmap area — 4A is merged and 4B is implemented and accepted locally; 4C–4F have not started.
 
 ### Goal
 Make image-sequence media first-class.
@@ -347,11 +347,7 @@ A user can comfortably read a CBZ comic or manga entirely with touch, keyboard, 
 
 ### Current status
 
-Not started (implementation). Phase 4 is the next numbered roadmap area following the
-accepted Phase 3 (2026-10-09). Planning is recorded in
-[`PHASE_4_IMPLEMENTATION_PLAN.md`](PHASE_4_IMPLEMENTATION_PLAN.md) (slices 4A–4F) and
-[ADR-0025](adr/0025-annotation-anchor-and-knowledge-model.md) (Proposed); no slice is
-authorized or implemented yet.
+Phase 4 has started. Slice 4A (annotation foundation) is merged; slice 4B (EPUB highlights and notes) is implemented and accepted locally — full acceptance evidence is in `docs/VALIDATION.md`, including the Samsung Galaxy Tab A SM-T580 manual UAT PASS with a non-blocking repeated-rotation harness timeout and the independent Codex High review PASS. 4C (fixed-layout notes), 4D (Notes hub), 4E (export) and 4F (acceptance) have not started. Planning is recorded in [`PHASE_4_IMPLEMENTATION_PLAN.md`](PHASE_4_IMPLEMENTATION_PLAN.md) (slices 4A–4F) and [ADR-0025](adr/0025-annotation-anchor-and-knowledge-model.md) (Proposed).
 
 ### Goal
 ShelfOS becomes useful for active reading and study.

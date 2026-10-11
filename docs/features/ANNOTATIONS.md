@@ -2,7 +2,7 @@
 
 ## Current status (2026-10-10)
 
-Implemented locally (Phase 4B, pending Samsung manual UAT and review): in EPUB, text highlights, selection-anchored notes, position-anchored notes, EPUB bookmarks, an in-reader
+Implemented locally and accepted for release (Phase 4B, pending Samsung manual UAT and review): in EPUB, text highlights, selection-anchored notes, position-anchored notes, EPUB bookmarks, an in-reader
 per-publication Notes list (jump, edit, delete), style and optional body on highlights, and restoration of inline marks after reopen, recreation and process death. Highlights and notes
 use the canonical `annotation` table (Room v4); the legacy `bookmark` table is inert. Inline marks need a WebView whose Chromium major version is at least 69; otherwise only bookmarks and position notes
 are offered (see `docs/VALIDATION.md`, Phase 4B). Not built yet: fixed-layout (PDF/CBZ/CBR) bookmarks and notes (4C), the global Notes hub (4D), export (4E). The Phase 4 plan and the model are in
