@@ -1,5 +1,9 @@
 # Documentation Changelog
 
+## Phase 4C.2 final review status (2026-10-11)
+
+- `docs/PHASE_4_IMPLEMENTATION_PLAN.md`, `docs/VALIDATION.md`, `docs/ROADMAP.md`, `README.md`, `docs/features/ANNOTATIONS.md`, `docs/features/READER.md`: 4C.2 recorded as implementation complete, independent Codex High review PASS, ready to merge; physical/manual UAT deferred to Phase 4F (phase-closure acceptance, not a blocker); 4C implementation complete once 4C.2 merges; Phase 4 not complete; 4D-4F not started. Documentation only: no code, tests, resources, schema or dependency change.
+
 ## Phase 4C.2 remediation: EPUB Notebook accessibility semantics (2026-10-11)
 
 - `docs/VALIDATION.md`: records review findings H1 (EPUB spoken semantics lost in the shared Notebook row) and M1 (self-contradiction) and their fix; the 4C.1 acceptance block is labelled a HISTORICAL SNAPSHOT (pre-merge) with current status stated separately (4C.1 MERGED + ACCEPTED at `0040c52`; 4C.2 implemented locally, remediation complete, pending re-review). `docs/PHASE_4_IMPLEMENTATION_PLAN.md` stale "not yet merged / 4C.2 planned" wording corrected. No acceptance of 4C.2 is claimed.

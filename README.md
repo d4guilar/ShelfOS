@@ -41,8 +41,9 @@ device does not exercise).
 This is not a release: ShelfOS remains an early development prototype. The next
 roadmap area is Phase 4 (Notes and Knowledge Layer), which has started: 4A and
 4B are merged, 4C.1 (fixed-layout bookmarks and page notes) is merged and
-accepted, and 4C.2's adaptive cross-format Publication Notebook is implemented
-and awaiting review/acceptance; 4D–4F have not started.
+accepted, and 4C.2's adaptive cross-format Publication Notebook is implementation
+complete with independent Codex High review PASS and ready to merge (physical UAT is
+deferred to 4F); 4D–4F have not started.
 
 Global destinations are Library, Search, Notes, Shelves and Settings. Notes and
 Shelves are placeholders; their functionality is not implemented. See the [Phase 1 plan](docs/PHASE_1_PLAN.md)

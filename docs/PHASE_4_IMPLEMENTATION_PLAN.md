@@ -1,6 +1,6 @@
 # Phase 4 Implementation Plan — Notes and Knowledge Layer
 
-Status (reconciled 2026-10-11): **Phase 4A and 4B are merged; 4C.1 is MERGED + ACCEPTED on `main` at `0040c52187e50515b7d20608e5ef8e71dacc7809`. 4C.2 is implemented on `phase-4/4c2-adaptive-notebook` and awaits the required independent High review and owner acceptance; it is not merged. Phases 4D–4F have not started.** Phase 4 as a whole is NOT complete. Room remains v4 and 4C adds no migration or dependency.
+Status (reconciled 2026-10-11): **Phase 4A and 4B are merged; 4C.1 is MERGED + ACCEPTED on `main` at `0040c52187e50515b7d20608e5ef8e71dacc7809`. 4C.2 on `phase-4/4c2-adaptive-notebook` is IMPLEMENTATION COMPLETE with independent Codex High review PASS and is READY TO MERGE (not yet merged); physical/manual UAT is deferred to Phase 4F. 4C is implementation complete once 4C.2 merges. Phases 4D–4F have not started.** Phase 4 as a whole is NOT complete. Room remains v4 and 4C adds no migration or dependency.
 
 Anything marked **(proposed)** is a recommendation for review, not an accepted design.
 Anything marked **(verified)** was checked against the repository or the pinned
@@ -830,11 +830,11 @@ carries the spike entry). ADR-0025 is unchanged and none of its decisions was co
   5. The selection is cleared when the note editor opens (the draft is already captured), not after Save; Cancel creates nothing. The unsaved draft survives rotation (ViewModel) but not process death.
   6. A new HIGHLIGHT whose text cannot be verified against the rendition is refused with a message instead of being stored unplaceable; a note on such a selection is also refused (it could never be drawn).
   7. Search results and the legacy Bookmarks dialog still use the single `goTo`; only the Notes list uses the deterministic `jumpTo`.
-- **Current status:** ACCEPTED AND MERGED (PR #34, commit `71c1740`). Acceptance evidence at merge time: Samsung manual UAT PASS with a non-blocking repeated-rotation harness timeout; independent Codex High review PASS. Remaining Phase 4 work: 4C (4C.1 merged and accepted at `0040c52`; 4C.2 implemented locally, remediation complete, pending re-review; section 13.3), then 4D-4F.
+- **Current status:** ACCEPTED AND MERGED (PR #34, commit `71c1740`). Acceptance evidence at merge time: Samsung manual UAT PASS with a non-blocking repeated-rotation harness timeout; independent Codex High review PASS. Remaining Phase 4 work: 4C (4C.1 merged and accepted at `0040c52`; 4C.2 implementation complete, Codex High PASS, ready to merge, physical UAT deferred to 4F; section 13.3), then 4D-4F.
 
 ### 13.3 4C — Fixed-layout notes, bookmark polish and the reader-local Publication Notebook
 
-**Status: 4C.1 MERGED + ACCEPTED (`main` @ `0040c52187e50515b7d20608e5ef8e71dacc7809`); 4C.2 IMPLEMENTED, REVIEW/ACCEPTANCE PENDING (2026-10-11; section 13.3.16).** This section supersedes the earlier short 4C description; the original summary is §10 and the anchor rules are §6.2.
+**Status: 4C.1 MERGED + ACCEPTED (`main` @ `0040c52187e50515b7d20608e5ef8e71dacc7809`); 4C.2 IMPLEMENTATION COMPLETE + CODEX HIGH PASS, READY TO MERGE; physical UAT deferred to 4F (2026-10-11; section 13.3.16).** This section supersedes the earlier short 4C description; the original summary is §10 and the anchor rules are §6.2.
 
 #### 13.3.1 Goal, scope and non-goals
 
@@ -1097,7 +1097,9 @@ Implemented on `phase-4/4c1-fixed-annotations`, accepted after independent High 
 - Drafts survive rotation (ViewModel target plus `rememberSaveable` body) and are never auto-saved. They do NOT survive process death (D5); committed annotations do (verified, see VALIDATION).
 - Delivered by 4C.2: adaptive side-by-side, `notebookPresentation`, EPUB port onto the panel, EPUB `TOGGLE_BOOKMARK`, and highlights in the Notebook. The 4D hub, export, ink, OCR and PDF text selection remain future work.
 
-#### 13.3.16 4C.2 implementation record (2026-10-11; REVIEW/ACCEPTANCE PENDING)
+#### 13.3.16 4C.2 implementation record (2026-10-11; IMPLEMENTATION COMPLETE, CODEX HIGH PASS, READY TO MERGE)
+
+**Final status.** Original implementation `953e9c03fbea854ce1e5562386bded74ae6ce45a`; accessibility/docs remediation `a3d74cba52503b79f753234959416c071617c01e`. Independent Codex High found H1 (EPUB Notebook spoken accessibility semantics lost; restored through separate visual and spoken location representations) and M1 (validation documentation status contradiction; corrected); the final Codex High re-review is **PASS**. Workflow decision: physical/manual UAT is performed once at phase closure, so the Samsung UAT for 4C.2 is **deferred to Phase 4F**, which owns the comprehensive hardware acceptance matrix over the accumulated 4A, 4B, 4C.1, 4C.2, 4D and 4E behavior (checklist not yet written). It is not a merge blocker and no Samsung 4C.2 PASS is claimed. Phase 4 as a whole is NOT complete or accepted until 4D, 4E and 4F finish.
 
 Implemented on `phase-4/4c2-adaptive-notebook` from the accepted 4C.1 merge `0040c52187e50515b7d20608e5ef8e71dacc7809`. The mandatory RP5 gate passed before adaptive UI work: the same Activity, EPUB session and `EpubNavigatorFragment` remained mounted through four pane-equivalent width cycles; one navigator remained; href was unchanged; total progression stayed within 0.01; the resource remained usable. The retained final-UI regression repeats the test by opening/closing the real pane under a forced 1600×1000 at 160 dpi viewport and restores the RP5 to 360 dpi.
 

@@ -302,7 +302,7 @@ forward and are **implemented and accepted as part of Phase 1** (ADR-0017,
 2026-09-24). Advanced spreads, thumbnails, foldable-aware pairing and native CBR
 support were completed here in Phase 3. The original inventory below is retained
 for coverage; delivered items are marked accordingly. ShelfOS as a whole is not
-finished: Phase 4 (Notes and Knowledge Layer) is the next roadmap area — 4A and 4B are merged; 4C.1 is merged and accepted at `0040c52187e50515b7d20608e5ef8e71dacc7809`; 4C.2's adaptive cross-format Publication Notebook is implemented and awaiting review/acceptance; 4D–4F have not started.
+finished: Phase 4 (Notes and Knowledge Layer) is the next roadmap area — 4A and 4B are merged; 4C.1 is merged and accepted at `0040c52187e50515b7d20608e5ef8e71dacc7809`; 4C.2's adaptive cross-format Publication Notebook is implementation complete with independent Codex High PASS and ready to merge (physical UAT deferred to 4F); 4D–4F have not started.
 
 ### Goal
 Make image-sequence media first-class.
@@ -347,7 +347,7 @@ A user can comfortably read a CBZ comic or manga entirely with touch, keyboard, 
 
 ### Current status
 
-Phase 4 has started. 4A and 4B are merged; 4C.1 fixed-layout annotation capability is merged and accepted at `0040c52187e50515b7d20608e5ef8e71dacc7809`. 4C.2's adaptive Publication Notebook is implemented on `phase-4/4c2-adaptive-notebook` and awaits the required independent High review and owner acceptance: one shared current-publication panel across EPUB/PDF/CBZ/CBR, dialog on compact hosts and an end-edge pane on hosts at least 840×480dp. The polished book/tabletop posture and deeper document-plus-notes work remain later foldable work. 4D (Notes hub), 4E (export) and 4F (acceptance) have not started. Evidence is in [`VALIDATION.md`](VALIDATION.md) and the plan in [`PHASE_4_IMPLEMENTATION_PLAN.md`](PHASE_4_IMPLEMENTATION_PLAN.md).
+Phase 4 has started. 4A and 4B are merged; 4C.1 fixed-layout annotation capability is merged and accepted at `0040c52187e50515b7d20608e5ef8e71dacc7809`. 4C.2's adaptive Publication Notebook is implementation complete on `phase-4/4c2-adaptive-notebook` with independent Codex High review PASS and ready to merge (physical/manual UAT is deferred to the Phase 4F phase-closure acceptance): one shared current-publication panel across EPUB/PDF/CBZ/CBR, dialog on compact hosts and an end-edge pane on hosts at least 840×480dp. The polished book/tabletop posture and deeper document-plus-notes work remain later foldable work. 4D (Notes hub), 4E (export) and 4F (acceptance) have not started. Evidence is in [`VALIDATION.md`](VALIDATION.md) and the plan in [`PHASE_4_IMPLEMENTATION_PLAN.md`](PHASE_4_IMPLEMENTATION_PLAN.md).
 
 ### Goal
 ShelfOS becomes useful for active reading and study.

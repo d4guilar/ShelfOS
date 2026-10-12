@@ -18,7 +18,7 @@ whole); SPREAD is the explicit pairing mode. CBR/RAR archives are read natively
 and directly through the shared image-sequence pipeline with no conversion and no
 source mutation (see `docs/adr/0024-native-cbr-libarchive.md`). The sections below
 describe the shared target behavior; remaining gaps (the global Notes hub, export, Adapted PDF,
-later formats) stay future work. PDF/CBZ/CBR page bookmarks and page notes are merged and accepted in Phase 4C.1; Phase 4C.2's adaptive cross-format Publication Notebook is implemented and awaiting review/acceptance (see `features/ANNOTATIONS.md`).
+later formats) stay future work. PDF/CBZ/CBR page bookmarks and page notes are merged and accepted in Phase 4C.1; Phase 4C.2's adaptive cross-format Publication Notebook is implementation complete with Codex High PASS, ready to merge, physical UAT deferred to Phase 4F (see `features/ANNOTATIONS.md`).
 
 ## Shared goals
 
@@ -51,7 +51,7 @@ Features:
 - Publisher / ShelfOS reading presentation
 
 Merged and accepted (Phase 4B, PR #34, EPUB only): text highlights, selection and position notes, a per-publication Notes list; see
-[ANNOTATIONS.md](ANNOTATIONS.md). Back dismisses an active text selection before touching reader chrome (ADR-0023). Phase 4C.1's fixed annotations are merged and accepted. Phase 4C.2 is implemented and awaiting review/acceptance: **Notebook** replaces the EPUB reader's Notes chrome label, uses the shared panel in all four formats, and adapts between dialog and side pane from actual reader-host constraints without rebuilding the EPUB navigator. Keyboard B toggles the current EPUB bookmark only in valid reader input context; gamepad B remains Back.
+[ANNOTATIONS.md](ANNOTATIONS.md). Back dismisses an active text selection before touching reader chrome (ADR-0023). Phase 4C.1's fixed annotations are merged and accepted. Phase 4C.2 is implementation complete with Codex High PASS, ready to merge (physical UAT deferred to Phase 4F): **Notebook** replaces the EPUB reader's Notes chrome label, uses the shared panel in all four formats, and adapts between dialog and side pane from actual reader-host constraints without rebuilding the EPUB navigator. Keyboard B toggles the current EPUB bookmark only in valid reader input context; gamepad B remains Back.
 
 Later:
 
