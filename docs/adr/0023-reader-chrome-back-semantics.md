@@ -92,3 +92,7 @@ left the reader (and destroyed the selection with it) and with chrome hidden it 
 active (spike evidence, `docs/VALIDATION.md`). There is no Back trap: with nothing selected the original two-press contract
 holds. The selection is tracked from the framework's `Activity.onActionModeStarted/Finished`, so it also applies on
 WebViews where inline annotations are unavailable and the platform's own selection menu is shown.
+
+## Phase 4C.2 clarification (2026-10-11)
+
+An open in-window Publication Notebook pane is a transient supporting layer above chrome semantics. After any active EPUB selection and any editor/delete dialog, Back, Escape or gamepad B closes the Notebook pane before revealing hidden chrome or leaving the reader. Each press removes exactly one layer; compact Notebook dialogs retain their own window-level dismissal.

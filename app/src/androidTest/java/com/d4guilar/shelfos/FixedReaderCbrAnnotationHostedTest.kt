@@ -6,8 +6,11 @@ import android.graphics.Color
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import com.d4guilar.shelfos.core.reader.FoldOrientation
 import com.d4guilar.shelfos.core.reader.FoldRect
 import com.d4guilar.shelfos.core.reader.ReaderFoldDescriptor
@@ -94,7 +97,7 @@ class FixedReaderCbrAnnotationHostedTest {
     private val item = LibraryItem("cbr-hosted", "CBR hosted", "ShelfOS test", MediaCategory.COMIC, "test:cbr-hosted",
         PublicationFormat.CBR, "cbr-hosted.cbr", 0, managedPath = "unused")
 
-    private fun host(pages: Int = 3): Pair<FixedReaderViewModel, AnnotationRepositoryHandle> {
+    private fun host(pages: Int = 3, expanded: Boolean = false): Pair<FixedReaderViewModel, AnnotationRepositoryHandle> {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scopes += it }
         val store = ViewModelStore().also { stores += it }
         val database = Room.inMemoryDatabaseBuilder(context, ShelfDatabase::class.java).build().also { db = it }
@@ -110,7 +113,12 @@ class FixedReaderCbrAnnotationHostedTest {
         })
         val reader = provider[FixedReaderViewModel::class.java]
         val annotations = provider[FixedAnnotationViewModel::class.java]
-        compose.setContent { backOwner = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current; FixedReaderScreen(reader, folds = listOfNotNull(fold), annotations = annotations) { } }
+        compose.setContent {
+            backOwner = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current
+            if (expanded) CompositionLocalProvider(LocalDensity provides Density(1f)) {
+                FixedReaderScreen(reader, folds = listOfNotNull(fold), annotations = annotations) { }
+            } else FixedReaderScreen(reader, folds = listOfNotNull(fold), annotations = annotations) { }
+        }
         return reader to AnnotationRepositoryHandle(repo)
     }
 
@@ -166,5 +174,25 @@ class FixedReaderCbrAnnotationHostedTest {
             try { compose.waitUntil(10_000) { compose.onAllNodesWithTag("notebook_hinge_safe_content", useUnmergedTree = true).fetchSemanticsNodes().isEmpty() } } catch (e: Throwable) { fail("key $code did not dismiss") }
             compose.onNodeWithTag("reader_screen").assertExists()
         }
+    }
+
+    @Test fun expandedNotebookIsAnEndPanePreservesPageAndFilterAndBackClosesOnlyPane() {
+        val (_, handle) = host(expanded = true)
+        handle.add(fixedPageDraft(item.id, AnnotationKind.NOTE, 0, 3, 0, "Pane note"))
+        awaitPage("1 / 3")
+        val fullWidth = compose.onNodeWithTag("reader_page").fetchSemanticsNode().boundsInWindow.width
+        compose.onNodeWithTag("reader_notebook").performScrollTo().performClick()
+        awaitTag("notebook_pane")
+        val pane = compose.onNodeWithTag("notebook_pane").fetchSemanticsNode().boundsInWindow
+        val reader = compose.onNodeWithTag("reader_page").fetchSemanticsNode().boundsInWindow
+        assertTrue("reader shrinks for the pane", reader.width < fullWidth)
+        assertTrue("Notebook is placed at the physical end edge", pane.left >= reader.right - 1f)
+        compose.onNodeWithTag("notebook_filter_notes").performClick().assertIsSelected()
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BUTTON_R1); awaitPage("2 / 3")
+        compose.runOnUiThread { backOwner!!.onBackPressedDispatcher.onBackPressed() }
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("notebook_pane").fetchSemanticsNodes().isEmpty() }
+        awaitPage("2 / 3")
+        compose.onNodeWithTag("reader_notebook").performScrollTo().performClick(); awaitTag("notebook_pane")
+        compose.onNodeWithTag("notebook_filter_notes").assertIsSelected()
     }
 }

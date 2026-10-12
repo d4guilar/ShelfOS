@@ -60,6 +60,7 @@ import com.d4guilar.shelfos.core.input.*
 import com.d4guilar.shelfos.core.reader.*
 import com.d4guilar.shelfos.core.theme.*
 import com.d4guilar.shelfos.domain.annotations.AnnotationKind
+import com.d4guilar.shelfos.domain.annotations.Annotation
 import com.d4guilar.shelfos.domain.library.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -165,6 +166,9 @@ open class EpubActivity : AppCompatActivity() {
         var chapters by rememberSaveable { mutableStateOf(false) }
         var bookmarks by rememberSaveable { mutableStateOf(false) }
         var annotationList by rememberSaveable { mutableStateOf(false) }
+        var notebookFilterOrdinal by rememberSaveable { mutableIntStateOf(AnnotationFilter.ALL.ordinal) }
+        var notebookFocused by remember { mutableStateOf(false) }
+        var notebookSideBySide by remember { mutableStateOf(false) }
         var annotationOpenFailed by rememberSaveable { mutableStateOf(false) }
         var deleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
         var search by rememberSaveable { mutableStateOf(false) }
@@ -219,6 +223,7 @@ open class EpubActivity : AppCompatActivity() {
         // dialog dismisses itself in its own window; (3) hidden chrome is revealed; (4) visible chrome leaves the reader.
         fun backPress() {
             if (dismissSelectionLayer(controller)) return
+            if (annotationList && notebookSideBySide) { annotationList = false; return }
             if (controls) finish() else { controls = true; controlFocusRequests++ }
         }
         val annotationScope = rememberCoroutineScope()
@@ -265,7 +270,9 @@ open class EpubActivity : AppCompatActivity() {
                 // modality signal) rather than filtering by the resolved *semantic* command here, since Escape/
                 // gamepad B legitimately produce ShelfCommand.BACK while still being real, attributable input.
                 event.inputModalityOrNull()?.let { modality = it }
-                when (val command = event.readerCommand(rtl, search || (controls && (topFocused || bottomFocused)))) {
+                val inputBlocked = appearance || chapters || bookmarks || search || state.editor != null || deleteTarget != null ||
+                    (annotationList && !notebookSideBySide)
+                when (val command = event.readerCommand(rtl, search || notebookFocused || (controls && (topFocused || bottomFocused)))) {
                     ShelfCommand.NEXT_PAGE, ShelfCommand.PREVIOUS_PAGE, ShelfCommand.OPEN_MENU, ShelfCommand.BACK,
                     ShelfCommand.SEARCH -> {
                         if (event.action == KeyEvent.ACTION_UP) when (command) {
@@ -277,6 +284,13 @@ open class EpubActivity : AppCompatActivity() {
                         }
                         true
                     }
+                    ShelfCommand.TOGGLE_BOOKMARK -> if (inputBlocked || currentLocatorJson == null) false else {
+                        if (event.action == KeyEvent.ACTION_UP) {
+                            currentBookmark?.let { vm.deleteBookmark(it.id) }
+                                ?: currentLocatorJson?.let { vm.addBookmark(it, locatorProgress(it)) }
+                        }
+                        true
+                    }
                     else -> false
                 }
             }
@@ -285,7 +299,12 @@ open class EpubActivity : AppCompatActivity() {
         LaunchedEffect(controlFocusRequests) { if (controlFocusRequests > 0) runCatching { firstControl.requestFocus() } }
 
         Surface(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().safeDrawingPadding().testTag("epub_reader")) {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val notebookLayout = notebookPresentation(maxWidth.value, maxHeight.value)
+                val sideNotebook = annotationList && session != null && notebookLayout.presentation == NotebookPresentation.SIDE_BY_SIDE
+                SideEffect { notebookSideBySide = sideNotebook }
+                Row(Modifier.fillMaxSize()) {
+            Column(Modifier.weight(1f).fillMaxHeight().safeDrawingPadding().testTag("epub_reader")) {
                 if (controls) FlowRow(Modifier.fillMaxWidth().onFocusChanged { topFocused = it.hasFocus },
                     horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -297,7 +316,7 @@ open class EpubActivity : AppCompatActivity() {
                     }
                     TextButton({ chapters = true }, enabled = session != null) { Text(stringResource(R.string.action_chapters)) }
                     TextButton({ bookmarks = true }, enabled = session != null) { Text(stringResource(R.string.action_bookmarks)) }
-                    TextButton({ annotationOpenFailed = false; annotationList = true }, enabled = session != null, modifier = Modifier.testTag("epub_notes")) { Text(stringResource(R.string.action_notes)) }
+                    TextButton({ annotationOpenFailed = false; annotationList = true }, enabled = session != null, modifier = Modifier.testTag("epub_notes")) { Text(stringResource(R.string.action_notebook)) }
                     TextButton({ search = true }, enabled = session != null) { Text(stringResource(R.string.nav_search)) }
                     TextButton({ appearance = true }, enabled = session != null) { Text(stringResource(R.string.action_appearance)) }
                 }
@@ -340,6 +359,30 @@ open class EpubActivity : AppCompatActivity() {
                             }
                         }
                     }
+                }
+            }
+            if (sideNotebook) {
+                VerticalDivider()
+                Surface(Modifier.width(notebookLayout.paneWidthDp.dp).fillMaxHeight().testTag("notebook_pane"), tonalElevation = 1.dp) {
+                    EpubNotebookPanel(state, session, inlineSupport, currentLocatorJson != null, AnnotationFilter.entries[notebookFilterOrdinal],
+                        onFilterChange = { notebookFilterOrdinal = it.ordinal },
+                        onAddHere = { currentLocatorJson?.let(vm::beginPositionNote) },
+                        onJump = { annotation ->
+                            annotationOpenFailed = false
+                            annotationScope.launch {
+                                when (navigateToAnnotation(annotation, state.anchors[annotation.id], controller::jumpTo)) {
+                                    // The pane is a supporting layer: it stays open (no reflow after landing).
+                                    AnnotationNavigation.ARRIVED, AnnotationNavigation.BLOCKED -> Unit
+                                    AnnotationNavigation.FAILED -> annotationOpenFailed = true
+                                }
+                            }
+                        },
+                        onEdit = { vm.openEditor(AnnotationEditorTarget.Existing(it.id)) },
+                        onDelete = { if (it.kind == AnnotationKind.BOOKMARK) vm.deleteAnnotation(it.id) else deleteTarget = it.id },
+                        modifier = Modifier.dismissOnShelfBack { annotationList = false }.onFocusChanged { notebookFocused = it.hasFocus }.padding(12.dp),
+                        fillHeight = true, openFailed = annotationOpenFailed)
+                }
+            }
                 }
             }
         }
@@ -503,9 +546,10 @@ open class EpubActivity : AppCompatActivity() {
                 }
             }, confirmButton = { TextButton({ bookmarks = false }) { Text(stringResource(R.string.action_close)) } })
         }
-        if (annotationList && session != null) {
-            AnnotationListDialog(state.annotations, state.anchors, { session.presentBookmark(it.locatorJson, it.progressSnapshot, state.epubPositions) },
-                inlineSupport, canAddHere = currentLocatorJson != null, openFailed = annotationOpenFailed,
+        if (annotationList && session != null && !notebookSideBySide) {
+            NotebookDialog(null, { annotationList = false }) {
+                EpubNotebookPanel(state, session, inlineSupport, currentLocatorJson != null, AnnotationFilter.entries[notebookFilterOrdinal],
+                onFilterChange = { notebookFilterOrdinal = it.ordinal },
                 onAddHere = { currentLocatorJson?.let { annotationList = false; vm.beginPositionNote(it) } },
                 onJump = { annotation ->
                     annotationOpenFailed = false
@@ -519,7 +563,8 @@ open class EpubActivity : AppCompatActivity() {
                 },
                 onEdit = { annotationList = false; vm.openEditor(AnnotationEditorTarget.Existing(it.id)) },
                 onDelete = { if (it.kind == AnnotationKind.BOOKMARK) vm.deleteAnnotation(it.id) else deleteTarget = it.id },
-                onClose = { annotationList = false })
+                modifier = Modifier, fillHeight = false, openFailed = annotationOpenFailed)
+            }
         }
         when (val editor = state.editor) {
             null -> Unit
@@ -550,5 +595,54 @@ open class EpubActivity : AppCompatActivity() {
     companion object {
         private const val EXTRA_ITEM_ID = "itemId"
         fun intent(context: Context, itemId: String): Intent = Intent(context, EpubActivity::class.java).putExtra(EXTRA_ITEM_ID, itemId)
+    }
+}
+
+/** EPUB adapter for the same format-neutral Notebook content used by fixed-layout readers. */
+@Composable
+private fun EpubNotebookPanel(
+    state: EpubReaderState, session: EpubSession, inlineSupport: InlineAnnotationSupport, canAddHere: Boolean,
+    filter: AnnotationFilter, onFilterChange: (AnnotationFilter) -> Unit,
+    onAddHere: () -> Unit, onJump: (Annotation) -> Unit, onEdit: (Annotation) -> Unit, onDelete: (Annotation) -> Unit,
+    modifier: Modifier, fillHeight: Boolean, openFailed: Boolean,
+) {
+    val locationTemplate = stringResource(R.string.bookmark_location)
+    val progressTemplate = stringResource(R.string.reading_progress_visual)
+    val spokenTemplate = stringResource(R.string.reading_progress_spoken)
+    val unavailable = UiMessage.Resource(R.string.annotation_location_unavailable)
+    val positionNoteLabel = stringResource(R.string.annotation_kind_note_position)
+    val styleNames = AnnotationStyles.keys.associateWith { styleLabel(it) }
+    val entries = remember(state.annotations, state.anchors, state.epubPositions, session, locationTemplate, progressTemplate, spokenTemplate, styleNames, positionNoteLabel) {
+        state.annotations.map { annotation ->
+            val anchor = state.anchors[annotation.id]
+            val jump = when {
+                !annotation.isSelectionBacked -> NotebookJump.AVAILABLE
+                anchor == null -> NotebookJump.PENDING
+                anchor == AnchorStatus.PLACEABLE -> NotebookJump.AVAILABLE
+                else -> NotebookJump.UNAVAILABLE
+            }
+            val presentation = session.presentBookmark(annotation.locatorJson, annotation.progressSnapshot, state.epubPositions)
+            NotebookEntry(annotation.id, annotation.kind, null, annotation.body?.takeIf(String::isNotBlank), jump,
+                if (jump == NotebookJump.UNAVAILABLE) unavailable else null,
+                editable = annotation.kind != AnnotationKind.BOOKMARK,
+                excerpt = annotation.selectedText,
+                style = if (annotation.kind == AnnotationKind.HIGHLIGHT) styleNames[annotation.styleKey] ?: styleNames.values.firstOrNull() else null,
+                location = bookmarkDisplayText(presentation, { String.format(locationTemplate, it) }, { String.format(progressTemplate, it) }).replace('\n', ' '),
+                kindLabel = if (annotation.kind == AnnotationKind.NOTE && annotation.selectedText == null) positionNoteLabel else null,
+                spokenLocation = bookmarkAccessibilityText(presentation, { String.format(locationTemplate, it) }, { String.format(spokenTemplate, it) }))
+        }
+    }
+    Column(modifier) {
+        if (!inlineSupport.offersInlineAnnotations) Text(stringResource(R.string.annotation_inline_unavailable),
+            Modifier.padding(bottom = 4.dp).testTag("annotation_inline_unavailable"),
+            color = LocalShelfTokens.current.colors.secondary, style = LocalShelfTokens.current.typography.labelSmall)
+        if (openFailed) Text(stringResource(R.string.annotation_open_failed), Modifier.padding(bottom = 4.dp), color = MaterialTheme.colorScheme.error)
+        NotebookPanel(entries, AnnotationFilter.entries, filter, onFilterChange,
+            addNoteLabel = stringResource(R.string.annotation_add_note_here), canAddNote = canAddHere,
+            onAddNote = onAddHere,
+            onJump = { id -> state.annotations.firstOrNull { it.id == id }?.let(onJump) },
+            onEdit = { id -> state.annotations.firstOrNull { it.id == id }?.let(onEdit) },
+            onDelete = { id -> state.annotations.firstOrNull { it.id == id }?.let(onDelete) },
+            modifier = if (fillHeight) Modifier.weight(1f) else Modifier, fillHeight = fillHeight)
     }
 }

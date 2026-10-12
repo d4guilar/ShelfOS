@@ -15,10 +15,6 @@ import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -31,6 +27,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,6 +67,9 @@ enum class NotebookJump { AVAILABLE, PENDING, UNAVAILABLE }
 data class NotebookEntry(
     val id: String, val kind: AnnotationKind, val page: Int?, val body: String?,
     val jump: NotebookJump, val unavailableReason: UiMessage?, val editable: Boolean,
+    val excerpt: String? = null, val style: String? = null, val location: String? = null, val kindLabel: String? = null,
+    /** Spoken form of [location] for the row's contentDescription; never shown. Falls back to the visual location/page. */
+    val spokenLocation: String? = null,
 )
 
 /** Maps canonical fixed-page annotations (already in reading order) to rows. Strict: only [FixedPageNavigation.Navigable] may jump. */
@@ -96,11 +96,12 @@ fun fixedNotebookEntries(annotations: List<Annotation>, pageCount: Int): List<No
  */
 @Composable
 fun NotebookPanel(
-    entries: List<NotebookEntry>, filters: List<AnnotationFilter>, addNoteLabel: String, canAddNote: Boolean,
+    entries: List<NotebookEntry>, filters: List<AnnotationFilter>, filter: AnnotationFilter,
+    onFilterChange: (AnnotationFilter) -> Unit, addNoteLabel: String, canAddNote: Boolean,
     onAddNote: () -> Unit, onJump: (String) -> Unit, onEdit: (String) -> Unit, onDelete: (String) -> Unit,
+    modifier: Modifier = Modifier, fillHeight: Boolean = false,
 ) {
-    var filterOrdinal by rememberSaveable { mutableIntStateOf(AnnotationFilter.ALL.ordinal) }
-    val filter = AnnotationFilter.entries[filterOrdinal].takeIf { it in filters } ?: AnnotationFilter.ALL
+    val activeFilter = filter.takeIf { it in filters } ?: AnnotationFilter.ALL
     val tokens = LocalShelfTokens.current
     val rowTemplate = stringResource(R.string.content_desc_annotation_row)
     val editTemplate = stringResource(R.string.content_desc_notebook_edit)
@@ -108,35 +109,39 @@ fun NotebookPanel(
     val editPlain = stringResource(R.string.content_desc_annotation_edit)
     val deletePlain = stringResource(R.string.content_desc_annotation_delete)
     val pageTemplate = stringResource(R.string.notebook_row_page)
-    val visible = entries.filter { filter.acceptsKind(it.kind) }
+    val notebookTitle = stringResource(R.string.notebook_title)
+    val visible = remember(entries, activeFilter) { entries.filter { activeFilter.acceptsKind(it.kind) } }
     // A dialog owns its window: take focus once that window has it, so Back/Escape/gamepad B and D-pad reach the Notebook.
     val initialFocus = remember { FocusRequester() }
     val window = LocalWindowInfo.current
     LaunchedEffect(window.isWindowFocused) { if (window.isWindowFocused) runCatching { initialFocus.requestFocus() } }
-    Column(Modifier.fillMaxWidth().focusRequester(initialFocus).focusable().testTag("notebook_panel")) {
+    Column(modifier.fillMaxWidth().then(if (fillHeight) Modifier.fillMaxHeight() else Modifier)
+        .focusRequester(initialFocus).focusable().semantics { paneTitle = notebookTitle }.testTag("notebook_panel")) {
         TextButton(onAddNote, enabled = canAddNote, modifier = Modifier.testTag("notebook_add_note").activateOnGamepadConfirm(canAddNote, onAddNote)) { Text(addNoteLabel) }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            filters.forEach { value -> FilterChip(filter == value, { filterOrdinal = value.ordinal },
+            filters.forEach { value -> FilterChip(activeFilter == value, { onFilterChange(value) },
                 label = { Text(stringResource(value.labelRes())) },
-                leadingIcon = if (filter == value) { { Text("✓", Modifier.clearAndSetSemantics { }) } } else null,
-                modifier = Modifier.testTag("notebook_filter_${value.name.lowercase()}").activateOnGamepadConfirm { filterOrdinal = value.ordinal }) }
+                leadingIcon = if (activeFilter == value) { { Text("✓", Modifier.clearAndSetSemantics { }) } } else null,
+                modifier = Modifier.testTag("notebook_filter_${value.name.lowercase()}").activateOnGamepadConfirm { onFilterChange(value) }) }
         }
         Text(pluralStringResource(R.plurals.annotations_count, visible.size, visible.size), color = tokens.colors.secondary, style = tokens.typography.labelSmall)
         if (visible.isEmpty()) Text(stringResource(if (entries.isEmpty()) R.string.annotations_empty else R.string.annotations_empty_filtered),
             Modifier.padding(vertical = 16.dp).testTag("notebook_empty"))
-        else LazyColumn(Modifier.heightIn(max = 420.dp).testTag("notebook_list")) {
+        else LazyColumn((if (fillHeight) Modifier.weight(1f) else Modifier.heightIn(max = 420.dp)).testTag("notebook_list")) {
             items(visible, key = { it.id }) { entry ->
-                val kind = stringResource(entry.kind.labelRes())
-                val where = entry.page?.let { String.format(pageTemplate, it) }
+                val kind = entry.kindLabel ?: stringResource(entry.kind.labelRes())
+                val where = entry.location ?: entry.page?.let { String.format(pageTemplate, it) }
                 val reason = entry.unavailableReason?.resolve()
-                val details = listOfNotNull(where, entry.body, reason).joinToString(", ")
+                val details = listOfNotNull(entry.style, entry.excerpt, entry.body, entry.spokenLocation ?: where, reason).joinToString(", ")
                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("notebook_row"), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f).heightIn(min = 48.dp).activateOnGamepadConfirm(entry.jump == NotebookJump.AVAILABLE) { onJump(entry.id) }
                         .clickable(enabled = entry.jump == NotebookJump.AVAILABLE, role = Role.Button) { onJump(entry.id) }
                         .semantics(mergeDescendants = true) { contentDescription = String.format(rowTemplate, kind, details.ifEmpty { kind }) }
                         .padding(vertical = 4.dp), verticalArrangement = Arrangement.Center) {
-                        Text(listOfNotNull(kind, where).joinToString(" · "), fontWeight = FontWeight.Bold)
+                        Text(listOfNotNull(kind, entry.style).joinToString(" · "), fontWeight = FontWeight.Bold)
+                        entry.excerpt?.let { Text(it, maxLines = 3, overflow = TextOverflow.Ellipsis) }
                         entry.body?.let { Text(it, maxLines = 3, overflow = TextOverflow.Ellipsis, color = tokens.colors.secondary) }
+                        where?.let { Text(it, color = tokens.colors.secondary, style = tokens.typography.labelSmall) }
                         reason?.let { Text(it, color = MaterialTheme.colorScheme.error, style = tokens.typography.labelSmall, modifier = Modifier.testTag("notebook_unavailable")) }
                     }
                     if (entry.editable) TextButton({ onEdit(entry.id) }, Modifier.testTag("notebook_edit").activateOnGamepadConfirm { onEdit(entry.id) }.semantics {

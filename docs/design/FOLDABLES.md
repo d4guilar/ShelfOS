@@ -127,6 +127,10 @@ Preserve:
 
 The transition should feel like the same reading session expanding or contracting.
 
+### Implemented baseline: Publication Notebook (Phase 4C.2)
+
+The reader-local Publication Notebook is the first document-plus-notes baseline. It is driven by the reader host's actual Compose constraints, not a device name: below 840dp width or 480dp height it is a dialog; otherwise it is an end-edge pane sized to 36% and clamped to 320–400dp. Opening it keeps the reader mounted, and the open/filter/reading state survives resize and recreation. This does not replace future hinge-aligned book/tabletop posture work.
+
 ## 6. Comics and manga on foldables
 
 Foldables are a priority form factor for sequential art.

@@ -87,6 +87,7 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
     // Phase 4C.1: bookmarks, page notes and the Notebook exist only when an annotation ViewModel is supplied.
     val annotationState = annotations?.state?.collectAsStateWithLifecycle()?.value ?: FixedAnnotationState()
     var notebook by rememberSaveable { mutableStateOf(false) }
+    var notebookFilterOrdinal by rememberSaveable { mutableIntStateOf(AnnotationFilter.ALL.ordinal) }
     var deleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
     val t = LocalShelfTokens.current
     val item = state.item
@@ -270,7 +271,6 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
         val physical = PageGroup(state.slots.map { it.page }).physicalOrder(rtl).map { p -> state.slots.first { it.page == p } }
         FoldSpreadGeometry(left, slotDims(physical[0]), right, slotDims(physical[1]))
     })
-    BackHandler { backPress() }
     // Phase 3D Codex R1 remediation, finding 4: Appearance/Pages are now nested INSIDE this Box, as the LAST
     // children (painted on top of, and composed strictly after, the main reader Column below) -- required so
     // their own hinge-safe overlay path (see HingeSafeDialogOverlay's class doc) can both paint over the reader
@@ -296,14 +296,40 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
     // never be an ancestor of the currently focused node while every one of its own focus targets is disabled,
     // so its onPreviewKeyEvent simply never runs for an arrow key while the modal is open. This reuses the SAME
     // `InputMapper`/`ShelfCommand` semantic layer Column itself already uses -- no second key-mapping system.
-    Box(Modifier.fillMaxSize().onPreviewKeyEvent { event ->
+    val backgroundModalBlock = if (hingeSafeModalOpen) Modifier.focusProperties { canFocus = false }.clearAndSetSemantics { } else Modifier
+    BoxWithConstraints(Modifier.fillMaxSize().onPreviewKeyEvent { event ->
         if (!hingeSafeModalOpen) return@onPreviewKeyEvent false
         val native = event.nativeKeyEvent
-        if (native.action != KeyEvent.ACTION_UP) return@onPreviewKeyEvent false
-        if (native.shelfCommand(InputContext.READER, rtl) == ShelfCommand.BACK) {
-            if (appearance) dismissAppearance() else if (thumbnails) dismissThumbnails() else if (notebook) dismissNotebook()
-            true
-        } else false
+        if (native.shelfCommand(InputContext.READER, rtl) != ShelfCommand.BACK) return@onPreviewKeyEvent false
+        if (native.action == KeyEvent.ACTION_UP) {
+            if (appearance) dismissAppearance() else if (thumbnails) dismissThumbnails() else dismissNotebook()
+        }
+        true
+    }) {
+    val notebookLayout = notebookPresentation(maxWidth.value, maxHeight.value)
+    val sideNotebook = notebook && annotations != null && notebookLayout.presentation == NotebookPresentation.SIDE_BY_SIDE
+    BackHandler { if (sideNotebook) dismissNotebook() else backPress() }
+    Row(Modifier.fillMaxSize()) {
+    // Keep the reader column mounted in this stable Row; the optional pane only changes its measured width.
+    Column(Modifier.weight(1f).fillMaxHeight().background(t.colors.canvas).testTag("reader_screen").then(backgroundModalBlock).onPreviewKeyEvent { event ->
+        val native = event.nativeKeyEvent
+        native.inputModalityOrNull()?.let { modality = it }
+        when (val command = native.readerCommand(rtl, controls && (topFocused || bottomFocused))) {
+            ShelfCommand.NEXT_PAGE, ShelfCommand.PREVIOUS_PAGE, ShelfCommand.OPEN_MENU, ShelfCommand.BACK -> {
+                if (native.action == KeyEvent.ACTION_UP) when (command) {
+                    ShelfCommand.NEXT_PAGE -> vm.turn(1)
+                    ShelfCommand.PREVIOUS_PAGE -> vm.turn(-1)
+                    ShelfCommand.OPEN_MENU -> toggleControls(moveFocus = true)
+                    else -> if (sideNotebook) dismissNotebook() else backPress()
+                }
+                true
+            }
+            ShelfCommand.TOGGLE_BOOKMARK -> if (annotations == null) false else {
+                if (native.action == KeyEvent.ACTION_UP) annotations.toggleBookmark(state.page, state.count)
+                true
+            }
+            else -> false
+        }
     }) {
     // Codex R2 remediation, finding B: while a hinge-safe modal is open, the ENTIRE background reader subtree
     // (chrome rows, page content, Previous/Next/slider) is made structurally unfocusable (`canFocus = false`,
@@ -313,34 +339,6 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
     // control at all, the structural complement to the root-level key interception above. Neither modifier is
     // ever applied outside a hinge-safe modal, so the ordinary (non-fold, or fold-but-no-dialog-open) reader is
     // completely unaffected -- focus/accessibility behave exactly as before this remediation.
-    val backgroundModalBlock = if (hingeSafeModalOpen) Modifier.focusProperties { canFocus = false }.clearAndSetSemantics { } else Modifier
-    Column(Modifier.fillMaxSize().background(t.colors.canvas).testTag("reader_screen").then(backgroundModalBlock).onPreviewKeyEvent { event ->
-        val native = event.nativeKeyEvent
-        // Raw modality classification is independent of which (if any) ShelfCommand the event becomes: it must
-        // also apply to focus-navigation keys, CONFIRM and anything else that never reaches the branch below.
-        // inputModalityOrNull() itself excludes the raw system Back/Home keys (never a modality signal) rather
-        // than filtering by the resolved *semantic* command here, since Escape/gamepad B legitimately produce
-        // ShelfCommand.BACK while still being real, attributable keyboard/controller input.
-        native.inputModalityOrNull()?.let { modality = it }
-        when (val command = native.readerCommand(rtl, controls && (topFocused || bottomFocused))) {
-            ShelfCommand.NEXT_PAGE, ShelfCommand.PREVIOUS_PAGE, ShelfCommand.OPEN_MENU, ShelfCommand.BACK -> {
-                if (native.action == KeyEvent.ACTION_UP) when (command) {
-                    ShelfCommand.NEXT_PAGE -> vm.turn(1)
-                    ShelfCommand.PREVIOUS_PAGE -> vm.turn(-1)
-                    ShelfCommand.OPEN_MENU -> toggleControls(moveFocus = true)
-                    else -> backPress()
-                }
-                true
-            }
-            // Keyboard letter B (never a gamepad button): toggles the bookmark for the authoritative source page. This
-            // Column only sees keys while no dialog or text field owns focus, so typed B in a note never reaches it.
-            ShelfCommand.TOGGLE_BOOKMARK -> if (annotations == null) false else {
-                if (native.action == KeyEvent.ACTION_UP) annotations.toggleBookmark(state.page, state.count)
-                true
-            }
-            else -> false
-        }
-    }) {
         // Phase 3D: confined to chromePane's width/offset under a vertical fold split (see chromePane's doc
         // above); an ordinary Modifier.fillMaxWidth() otherwise -- byte-for-byte the pre-3D behavior.
         val topChromeModifier = chromePane?.let { pane -> with(screenDensity) { Modifier.offset(x = pane.left.toDp()).width(pane.width.toDp()) } }
@@ -781,6 +779,34 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
             }
         } }
     }
+    if (sideNotebook) {
+        VerticalDivider()
+        val entries = remember(annotationState.annotations, state.count) { fixedNotebookEntries(annotationState.annotations, state.count) }
+        Surface(Modifier.width(notebookLayout.paneWidthDp.dp).fillMaxHeight().testTag("notebook_pane"), tonalElevation = 1.dp) {
+            NotebookPanel(entries, listOf(AnnotationFilter.ALL, AnnotationFilter.NOTES, AnnotationFilter.BOOKMARKS),
+                filter = AnnotationFilter.entries[notebookFilterOrdinal], onFilterChange = { notebookFilterOrdinal = it.ordinal },
+                addNoteLabel = stringResource(R.string.notebook_add_note_page, state.page + 1), canAddNote = state.count > 0,
+                onAddNote = { annotations.beginNote(state.page, state.count) },
+                onJump = { id -> annotationState.annotations.firstOrNull { it.id == id }?.let { a ->
+                    (fixedPageNavigation(a.locatorJson, state.count) as? FixedPageNavigation.Navigable)?.let { vm.showPage(it.page) }
+                } },
+                onEdit = { annotations.openEditor(FixedEditorTarget.Existing(it)) },
+                onDelete = { id -> annotationState.annotations.firstOrNull { it.id == id }?.let { a ->
+                    if (a.kind == AnnotationKind.NOTE) deleteTarget = id else annotations.delete(id)
+                } }, modifier = Modifier.dismissOnShelfBack(::dismissNotebook).onPreviewKeyEvent { event ->
+                    val native = event.nativeKeyEvent
+                    if (native.keyCode !in setOf(KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_PAGE_DOWN,
+                            KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1)) return@onPreviewKeyEvent false
+                    if (native.action == KeyEvent.ACTION_UP) when (native.readerCommand(rtl, controlsFocused = true)) {
+                        ShelfCommand.NEXT_PAGE -> vm.turn(1)
+                        ShelfCommand.PREVIOUS_PAGE -> vm.turn(-1)
+                        else -> Unit
+                    }
+                    true
+                }.padding(12.dp), fillHeight = true)
+        }
+    }
+    }
     // Codex R2 remediation, finding B: every dismissal path (Cancel, Apply, scrim tap, Back, gamepad B) now
     // goes through the SAME dismissAppearance()/dismissThumbnails() -- the reader stays open, `state.page` is
     // untouched by either, and focus is restored to the reader's own stable `pageFocus` surface (see those two
@@ -794,10 +820,11 @@ fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor
     // confirmation. Back precedence (ADR-0023): editor/confirmation (own dialog windows) -> Notebook -> chrome -> exit.
     // The editor target and its unsaved draft live in the ViewModel and rememberSaveable, so rotation keeps them.
     if (annotations != null) {
-        if (notebook) {
+        if (notebook && notebookLayout.presentation == NotebookPresentation.DIALOG) {
             val entries = remember(annotationState.annotations, state.count) { fixedNotebookEntries(annotationState.annotations, state.count) }
             NotebookDialog(chromePane, ::dismissNotebook) {
                 NotebookPanel(entries, listOf(AnnotationFilter.ALL, AnnotationFilter.NOTES, AnnotationFilter.BOOKMARKS),
+                    filter = AnnotationFilter.entries[notebookFilterOrdinal], onFilterChange = { notebookFilterOrdinal = it.ordinal },
                     addNoteLabel = stringResource(R.string.notebook_add_note_page, state.page + 1), canAddNote = state.count > 0,
                     onAddNote = { annotations.beginNote(state.page, state.count) },
                     onJump = { entryId ->
