@@ -1,5 +1,13 @@
 # Documentation Changelog
 
+## Phase 4D implemented locally: global Notes hub (2026-10-12)
+
+- `docs/PHASE_4_IMPLEMENTATION_PLAN.md`: header status reconciled (4C merged: 4C.1 at `0040c52`, 4C.2 in PR #37 at `ca47e3d`, 4C.2 physical UAT deferred to 4F; 4D IMPLEMENTED LOCALLY / READY FOR INDEPENDENT REVIEW; 4E and 4F not started; Phase 4 not complete). Section 7.3 records the owner rule that keep-notes is never implicit (two default-free actions) instead of the earlier "default KEEP"; section 8.4 records the retirement of the `BookmarkRepository` adapter; new section 13.4.1 (4D implementation record and administrator decisions).
+- `docs/VALIDATION.md`: new "PHASE 4D" section with per-class, per-device counts, the RP5 authorization loss (all later evidence emulator-only), the 10,000-annotation measurements and `EXPLAIN QUERY PLAN`, what was not run, and the first things a hardware device must run.
+- `docs/features/ANNOTATIONS.md` (status plus the "Global Notes hub" section), `docs/features/READER.md` (open-at-annotation entry points), `docs/ROADMAP.md`, `README.md`: 4C recorded as merged, 4D as implemented locally, Notes no longer a placeholder.
+- `docs/adr/0025-annotation-anchor-and-knowledge-model.md`: two one-line clarifications only (adapter retired in 4D; keep policy implemented as explicit default-free actions with a display-only snapshot). No decision changed.
+- Code in the same change: Room v5 (`annotation_source_snapshot`), `KnowledgePolicy.KEEP`, `feature/notes`, keyset queries, open-at-annotation for EPUB and fixed readers. No dependency or Gradle change, no export/import/FTS.
+
 ## Phase 4C.2 final review status (2026-10-11)
 
 - `docs/PHASE_4_IMPLEMENTATION_PLAN.md`, `docs/VALIDATION.md`, `docs/ROADMAP.md`, `README.md`, `docs/features/ANNOTATIONS.md`, `docs/features/READER.md`: 4C.2 recorded as implementation complete, independent Codex High review PASS, ready to merge; physical/manual UAT deferred to Phase 4F (phase-closure acceptance, not a blocker); 4C implementation complete once 4C.2 merges; Phase 4 not complete; 4D-4F not started. Documentation only: no code, tests, resources, schema or dependency change.

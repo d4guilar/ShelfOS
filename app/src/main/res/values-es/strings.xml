@@ -56,7 +56,6 @@
     </plurals>
 
     <!-- Marcadores de posición -->
-    <string name="placeholder_notes_body">Un lugar para tus notas de lectura. Las notas y anotaciones están planeadas para una fase posterior.</string>
     <string name="placeholder_shelves_body">Tus propias formas de organizar una biblioteca, como Investigación o Universidad. Una publicación puede estar en varios Estantes y conserva su categoría. Los Estantes están planeados para una fase posterior.</string>
     <string name="publication_unavailable_title">Publicación no disponible</string>
     <string name="publication_unavailable_body">Vuelve a la Biblioteca para elegir una publicación.</string>
@@ -65,7 +64,7 @@
     <string name="dialog_remove_title">¿Quitar de ShelfOS?</string>
     <string name="dialog_remove_body">Esto elimina la entrada, su posición de lectura y sus preferencias de lectura de ShelfOS. El archivo original no se ve afectado.</string>
     <string name="dialog_remove_private_copy_note">ShelfOS conserva su copia privada sin conexión (%1$s). Puedes eliminar copias sin usar en Ajustes.</string>
-    <string name="dialog_remove_annotations_intro">Esto también elimina de forma permanente tus elementos guardados de esta publicación:</string>
+    <string name="dialog_remove_annotations_intro">Esta publicación tiene elementos guardados en ShelfOS:</string>
     <plurals name="dialog_remove_bookmarks_line">
         <item quantity="one">%1$d marcador</item>
         <item quantity="other">%1$d marcadores</item>
@@ -372,4 +371,38 @@
     <!-- Nombres de las fuentes integradas (el id estable, builtin:serif/builtin:sans, no cambia) -->
     <string name="font_builtin_serif">Con serif</string>
     <string name="font_builtin_sans">Sin serif</string>
+
+    <!-- Global Notes hub and the keep/delete removal choice (Phase 4D) -->
+    <string name="dialog_remove_keep_explain">Conservar notas: permanecen en Notas, marcadas como de una publicación quitada. No pueden abrir el archivo original, y una copia añadida después nunca se vincula a ellas automáticamente.</string>
+    <string name="dialog_remove_delete_explain">Eliminar notas: estos elementos guardados se eliminan de forma permanente de ShelfOS.</string>
+    <string name="action_remove_keep_notes">Quitar y conservar notas</string>
+    <string name="action_remove_delete_notes">Quitar y eliminar notas</string>
+    <string name="notes_search_label">Buscar en notas</string>
+    <string name="notes_publication_all">Todas las publicaciones</string>
+    <string name="notes_publication_filter_label">Publicación: %1$s</string>
+    <string name="notes_publication_picker_title">Elige una publicación</string>
+    <string name="notes_publication_option">%1$s (%2$d)</string>
+    <string name="notes_publication_option_removed">%1$s (%2$d), quitada</string>
+    <string name="notes_publication_removed_untitled">Publicación quitada</string>
+    <string name="notes_sort_publication">Por publicación</string>
+    <string name="notes_sort_date">Más recientes primero</string>
+    <string name="notes_group_removed">Quitada de tu biblioteca. Sus notas se conservan aquí y no pueden abrir el original.</string>
+    <string name="notes_group_delete">Eliminar las notas de esta publicación quitada</string>
+    <string name="notes_group_delete_title">¿Eliminar las notas de esta publicación quitada?</string>
+    <plurals name="notes_group_delete_body">
+        <item quantity="one">Esto elimina de forma permanente %1$d elemento guardado de «%2$s» de ShelfOS. El archivo original no se modifica.</item>
+        <item quantity="other">Esto elimina de forma permanente %1$d elementos guardados de «%2$s» de ShelfOS. El archivo original no se modifica.</item>
+    </plurals>
+    <plurals name="notes_group_count">
+        <item quantity="one">%1$d elemento</item>
+        <item quantity="other">%1$d elementos</item>
+    </plurals>
+    <string name="notes_row_orphan">De una publicación quitada</string>
+    <string name="notes_open_source">Abrir</string>
+    <string name="content_desc_notes_open">Abrir %1$s en %2$s</string>
+    <string name="content_desc_notes_edit">Editar %1$s en %2$s</string>
+    <string name="content_desc_notes_delete">Eliminar %1$s en %2$s</string>
+    <string name="notes_delete_confirm_body">Se eliminará de ShelfOS. El archivo original de la publicación no se modifica.</string>
+    <string name="notes_load_failed">No se pudieron cargar las notas.</string>
+    <string name="notes_open_failed">No se pudo abrir ese lugar. La nota sigue guardada.</string>
 </resources>

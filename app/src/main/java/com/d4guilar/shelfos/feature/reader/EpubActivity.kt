@@ -63,6 +63,10 @@ import com.d4guilar.shelfos.domain.annotations.AnnotationKind
 import com.d4guilar.shelfos.domain.annotations.Annotation
 import com.d4guilar.shelfos.domain.library.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 
 /** Below this TOC size, a filter field adds a control without saving meaningful scanning effort. */
@@ -121,7 +125,7 @@ open class EpubActivity : AppCompatActivity() {
         val inlineSupport = InlineAnnotationCapability.evaluate(runCatching { createWebViewInfoProvider().current(this) }.getOrNull())
         setContent {
             val vm: EpubReaderViewModel = viewModel(factory = viewModelFactory { initializer {
-                EpubReaderViewModel(itemId, container.library, container.bookmarks, container.annotations, createEpubReaderFactory(container),
+                EpubReaderViewModel(itemId, container.library, container.annotations, createEpubReaderFactory(container),
                     container.backgroundScope, searchCursorOpener)
             } })
             val theme by container.themes.theme.collectAsStateWithLifecycle(initialValue = null as ThemeId?)
@@ -227,6 +231,16 @@ open class EpubActivity : AppCompatActivity() {
             if (controls) finish() else { controls = true; controlFocusRequests++ }
         }
         val annotationScope = rememberCoroutineScope()
+        // Opened from the Notes hub at one annotation: resolved once from the repository (the extra is an id, never a locator),
+        // verified and navigated exactly like a Notebook jump (selection-backed annotations only when PLACEABLE), and consumed
+        // once so rotation or recreation never jumps again. A failed jump explains itself and leaves the annotation intact.
+        val jumpTarget = intent.getStringExtra(EXTRA_ANNOTATION_ID)
+        var jumpHandled by rememberSaveable { mutableStateOf(jumpTarget == null) }
+        if (!jumpHandled && jumpTarget != null && session != null) LaunchedEffect(jumpTarget) {
+            val arrived = openAtAnnotation(vm, controller, jumpTarget)
+            jumpHandled = true
+            if (!arrived) vm.reportOpenFailed()
+        }
         // Marks are drawn only for selection-backed annotations whose text was verified in the current rendition.
         val marks = remember(state.annotations, state.anchors) {
             state.annotations.filter { state.anchors[it.id] == AnchorStatus.PLACEABLE }.mapNotNull { it.toMarkOrNull() }
@@ -594,7 +608,10 @@ open class EpubActivity : AppCompatActivity() {
 
     companion object {
         private const val EXTRA_ITEM_ID = "itemId"
-        fun intent(context: Context, itemId: String): Intent = Intent(context, EpubActivity::class.java).putExtra(EXTRA_ITEM_ID, itemId)
+        private const val EXTRA_ANNOTATION_ID = "annotationId"
+        /** [annotationId] (Notes hub) makes the reader open at that annotation once, after the usual verification. */
+        fun intent(context: Context, itemId: String, annotationId: String? = null): Intent =
+            Intent(context, EpubActivity::class.java).putExtra(EXTRA_ITEM_ID, itemId).apply { annotationId?.let { putExtra(EXTRA_ANNOTATION_ID, it) } }
     }
 }
 
@@ -645,4 +662,19 @@ private fun EpubNotebookPanel(
             onDelete = { id -> state.annotations.firstOrNull { it.id == id }?.let(onDelete) },
             modifier = if (fillHeight) Modifier.weight(1f) else Modifier, fillHeight = fillHeight)
     }
+}
+
+/** How long a Notes-hub jump waits for the anchor verdict and for the navigator to attach before giving up with a message. */
+private const val JUMP_ANCHOR_WAIT_MILLIS = 8_000L
+private const val JUMP_NAVIGATOR_WAIT_MILLIS = 8_000L
+
+/** True only when the reader really arrived at the annotation; every other outcome (gone, not placeable, malformed, timeout) is false. */
+private suspend fun openAtAnnotation(vm: EpubReaderViewModel, controller: EpubController, annotationId: String): Boolean {
+    val annotation = vm.annotation(annotationId) ?: return false
+    // A selection-backed annotation may only be jumped to once its text anchor was verified in this rendition.
+    val status = if (annotation.isSelectionBacked) withTimeoutOrNull(JUMP_ANCHOR_WAIT_MILLIS) {
+        vm.state.map { it.anchors[annotation.id] }.filterNotNull().first()
+    } else null
+    withTimeoutOrNull(JUMP_NAVIGATOR_WAIT_MILLIS) { while (controller.navigator == null) delay(50); true } ?: return false
+    return navigateToAnnotation(annotation, status, controller::jumpTo) == AnnotationNavigation.ARRIVED
 }

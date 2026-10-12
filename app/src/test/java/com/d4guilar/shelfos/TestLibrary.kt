@@ -26,7 +26,7 @@ class TestLibrary(items: List<LibraryItem> = testItems()) : LibraryRepository {
     }
     override suspend fun favorite(id: String) { publications.update { list -> list.map { if (it.id == id) it.copy(favorite = !it.favorite) else it } } }
     override suspend fun edit(id: String, title: String, creator: String, category: MediaCategory) { publications.update { list -> list.map { if (it.id == id) it.copy(title = title, creator = creator, category = category) else it } } }
-    override suspend fun remove(id: String) { publications.update { list -> list.filterNot { it.id == id } } }
+    override suspend fun remove(id: String, policy: com.d4guilar.shelfos.domain.annotations.KnowledgePolicy) { publications.update { list -> list.filterNot { it.id == id } } }
     override suspend fun available(id: String, available: Boolean) {}
     override suspend fun reading(id: String, locator: String, progress: Int) {}
     override suspend fun preferences(id: String, json: String) {}

@@ -18,8 +18,14 @@ interface LibraryRepository {
     suspend fun add(item: LibraryItem): String
     suspend fun favorite(id: String)
     suspend fun edit(id: String, title: String, creator: String, category: MediaCategory)
-    /** Removes ShelfOS's entry and state under [KnowledgePolicy.DELETE] (the only policy in Phase 4A): the entry, its reading state, preferences and every bookmark/highlight/note, atomically. Never deletes the source file or a private copy. */
-    suspend fun remove(id: String)
+    /**
+     * Removes ShelfOS's entry, reading state and preferences, atomically, under an explicit [policy]: [KnowledgePolicy.DELETE] also deletes
+     * the publication's annotations; [KnowledgePolicy.KEEP] keeps them as orphans with a display-only snapshot (plan 7.3). Never deletes
+     * the source file or a private copy.
+     */
+    suspend fun remove(id: String, policy: KnowledgePolicy)
+    /** [KnowledgePolicy.DELETE] removal, for maintenance and tests. User-facing removal always passes the user's explicit choice. */
+    suspend fun remove(id: String) = remove(id, KnowledgePolicy.DELETE)
     suspend fun available(id: String, available: Boolean)
     suspend fun reading(id: String, locator: String, progress: Int)
     suspend fun preferences(id: String, json: String)
@@ -29,13 +35,6 @@ interface LibraryRepository {
 interface PrivateCopyStore {
     suspend fun unusedPrivateCopies(): PrivateCopyUsage
     suspend fun deleteUnusedPrivateCopies(): PrivateCopyUsage
-}
-
-/** Discrete saved reading locations for one [LibraryItem], separate from its automatic resume position. */
-interface BookmarkRepository {
-    fun bookmarks(itemId: String): Flow<List<Bookmark>>
-    suspend fun addBookmark(itemId: String, locator: String, progress: Int, label: String? = null)
-    suspend fun deleteBookmark(id: String)
 }
 
 class RoomLibraryRepository(private val dao: LibraryDao, private val files: PublicationFiles? = null) : LibraryRepository, PrivateCopyStore {
@@ -51,10 +50,12 @@ class RoomLibraryRepository(private val dao: LibraryDao, private val files: Publ
     }
     override suspend fun favorite(id: String) = dao.favorite(id)
     override suspend fun edit(id: String, title: String, creator: String, category: MediaCategory) = dao.edit(id, title.trim(), creator.trim(), category.name)
-    override suspend fun remove(id: String) = remove(id, KnowledgePolicy.DELETE)
-    suspend fun remove(id: String, policy: KnowledgePolicy) {
+    override suspend fun remove(id: String, policy: KnowledgePolicy) {
         val removed = dao.byId(id) ?: return
-        when (policy) { KnowledgePolicy.DELETE -> dao.removeDeletingKnowledge(id) }
+        when (policy) {
+            KnowledgePolicy.DELETE -> dao.removeDeletingKnowledge(id)
+            KnowledgePolicy.KEEP -> dao.removeKeepingKnowledge(id)
+        }
         // Release platform access only when no remaining item needs it; files are never deleted here.
         withContext(Dispatchers.IO) { files?.releaseAccess(removed.sourceUri, dao.bySource(removed.sourceUri) != null) }
     }

@@ -254,10 +254,10 @@ fun AnnotationEditorDialog(
 }
 
 @Composable
-fun AnnotationDeleteConfirmDialog(onConfirm: () -> Unit, onCancel: () -> Unit) {
+fun AnnotationDeleteConfirmDialog(onConfirm: () -> Unit, onCancel: () -> Unit, @androidx.annotation.StringRes bodyRes: Int = R.string.annotation_delete_confirm_body) {
     AlertDialog(onDismissRequest = onCancel, modifier = Modifier.dismissOnShelfBack(onCancel),
         title = { Text(stringResource(R.string.annotation_delete_confirm_title)) },
-        text = { Text(stringResource(R.string.annotation_delete_confirm_body)) },
+        text = { Text(stringResource(bodyRes)) },
         dismissButton = { TextButton(onCancel) { Text(stringResource(R.string.action_cancel)) } },
         confirmButton = { TextButton(onConfirm, Modifier.testTag("annotation_delete_confirm")) { Text(stringResource(R.string.action_delete)) } })
 }

@@ -5,7 +5,6 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.d4guilar.shelfos.core.database.ShelfDatabase
 import com.d4guilar.shelfos.data.annotations.RoomAnnotationRepository
-import com.d4guilar.shelfos.data.annotations.RoomBookmarkRepository
 import com.d4guilar.shelfos.data.library.RoomLibraryRepository
 import com.d4guilar.shelfos.domain.annotations.*
 import com.d4guilar.shelfos.domain.annotations.Annotation
@@ -138,7 +137,7 @@ class AnnotationRepositoryTest {
         assertTrue(runCatching { repo.update("u-kind", AnnotationEdit(null, null, "x", null)) }.isFailure)
         assertEquals("unknown row left untouched", "b", sql.query("SELECT body FROM annotation WHERE id='u-kind'").use { it.moveToFirst(); it.getString(0) })
         // The legacy compat adapter lists only known bookmarks and does not crash.
-        assertEquals(listOf(known.id), RoomBookmarkRepository(repo).bookmarks(epub).first().map { it.id })
+        assertEquals(listOf(known.id), BookmarkTestView(repo).bookmarks(epub).first().map { it.id })
     }
 
     @Test fun countsReflectCanonicalRowsPerKind() = runBlocking<Unit> {
@@ -181,7 +180,7 @@ class AnnotationRepositoryTest {
     }
 
     @Test fun compatibilityAdapterPreservesLegacyContract() = runBlocking<Unit> {
-        val compat = RoomBookmarkRepository(repo)
+        val compat = BookmarkTestView(repo)
         compat.addBookmark(epub, "not a valid locator", 0)                  // legacy contract: opaque strings are stored
         compat.addBookmark(epub, readium, 150)                              // progress clamps like before
         compat.addBookmark(epub, readium, 10)                               // exact duplicate: no second row

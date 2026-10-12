@@ -35,6 +35,11 @@ import com.d4guilar.shelfos.core.input.shelfCommand
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import com.d4guilar.shelfos.core.theme.ThemeId
 import com.d4guilar.shelfos.feature.library.*
+import com.d4guilar.shelfos.feature.notes.NotesScreen
+import com.d4guilar.shelfos.feature.notes.NotesViewModel
+import androidx.lifecycle.createSavedStateHandle
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import com.d4guilar.shelfos.feature.settings.SettingsScreen
 import com.d4guilar.shelfos.feature.settings.SettingsViewModel
 import com.d4guilar.shelfos.AppContainer
@@ -169,6 +174,16 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
             pendingTransition = PendingCoverTransition(item, coverBounds, proceed)
         else proceed()
     }
+    // Opens the publication at one annotation from the Notes hub through the SAME reader entry points as opening a book:
+    // the EPUB activity gets the annotation id as an extra, the fixed reader route as a nav argument. The reader resolves
+    // the locator itself (strictly, never clamped), so a deleted or unplaceable annotation is reported there, not faked here.
+    fun openAnnotationSource(itemId: String, annotationId: String, format: PublicationFormat?) {
+        when (format) {
+            null -> Unit
+            PublicationFormat.EPUB -> context.startActivity(EpubActivity.intent(context, itemId, annotationId))
+            else -> nav.navigate("reader/$itemId?annotation=$annotationId") { launchSingleTop = true }
+        }
+    }
     BoxWithConstraints(Modifier.fillMaxSize().background(t.colors.canvas).padding(legacyPadding)
         .onGloballyPositioned { rootOrigin = it.boundsInWindow().topLeft }.onPreviewKeyEvent { event ->
         if (reading) return@onPreviewKeyEvent false
@@ -230,19 +245,21 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                         if (item != null) PublicationDetails(item, item.id in libraryState.favorites,
                             onFavorite = { library.toggleFavorite(item.id) }, modifier = Modifier.fillMaxWidth().testTag("details_screen"),
                             onRead = { openReader(item.id) }, onEdit = { title, creator, category -> library.edit(item.id, title, creator, category) },
-                            onRemove = { library.remove(item.id); nav.popBackStack() }, focusPrimaryAction = true,
+                            onRemove = { policy -> library.remove(item.id, policy); nav.popBackStack() }, focusPrimaryAction = true,
                             knowledgeCounts = rememberKnowledgeCounts(container, item.id))
                         else PlaceholderScreen(stringResource(R.string.publication_unavailable_title), stringResource(R.string.publication_unavailable_body))
                     }
-                    composable("reader/{id}") { backStack ->
+                    composable("reader/{id}?annotation={annotation}", arguments = listOf(navArgument("annotation") { type = NavType.StringType; nullable = true; defaultValue = null })) { backStack ->
                         val id = backStack.arguments?.getString("id").orEmpty()
+                        // Set only by the Notes hub; consumed once by FixedReaderScreen (see its jumpAnnotationId).
+                        val jumpAnnotationId = backStack.arguments?.getString("annotation")
                         val reader: FixedReaderViewModel = viewModel(factory = viewModelFactory { initializer {
                             FixedReaderViewModel(id, container.library, container.fixedReaders, container.backgroundScope)
                         } })
                         val annotations: FixedAnnotationViewModel = viewModel(factory = viewModelFactory { initializer {
                             FixedAnnotationViewModel(id, container.annotations)
                         } })
-                        FixedReaderScreen(reader, folds = folds, annotations = annotations) { nav.popBackStack() }
+                        FixedReaderScreen(reader, folds = folds, annotations = annotations, jumpAnnotationId = jumpAnnotationId) { nav.popBackStack() }
                     }
                     composable(Destination.SEARCH.route) {
                         Column(Modifier.fillMaxSize().padding(t.spacing.medium), verticalArrangement = Arrangement.spacedBy(t.spacing.medium)) {
@@ -264,7 +281,10 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                             }
                         }
                     }
-                    composable(Destination.NOTES.route) { PlaceholderScreen(stringResource(Destination.NOTES.labelRes), stringResource(R.string.placeholder_notes_body)) }
+                    composable(Destination.NOTES.route) {
+                        val notes: NotesViewModel = viewModel(factory = viewModelFactory { initializer { NotesViewModel(container.annotations, createSavedStateHandle()) } })
+                        NotesScreen(notes, onOpenSource = ::openAnnotationSource)
+                    }
                     composable(Destination.SHELVES.route) { PlaceholderScreen(stringResource(Destination.SHELVES.labelRes), stringResource(R.string.placeholder_shelves_body)) }
                     composable(Destination.SETTINGS.route) {
                         LaunchedEffect(Unit) { settings.refreshStorage() }

@@ -8,7 +8,8 @@ import com.d4guilar.shelfos.core.designsystem.UiMessage
 import com.d4guilar.shelfos.core.designsystem.readerMessage
 import com.d4guilar.shelfos.core.reader.*
 import com.d4guilar.shelfos.data.annotations.AnnotationRepository
-import com.d4guilar.shelfos.data.library.BookmarkRepository
+import com.d4guilar.shelfos.data.annotations.addEpubBookmark
+import com.d4guilar.shelfos.data.annotations.observeEpubBookmarks
 import com.d4guilar.shelfos.data.library.LibraryRepository
 import com.d4guilar.shelfos.domain.annotations.Annotation
 import com.d4guilar.shelfos.domain.annotations.AnnotationDraft
@@ -45,7 +46,7 @@ typealias EpubSearchCursorOpener = suspend (EpubSession, String) -> EpubSearchCu
 
 /** Owns one EPUB session for one title; it survives configuration changes and closes when cleared. */
 class EpubReaderViewModel(private val id: String, private val repository: LibraryRepository,
-    private val bookmarks: BookmarkRepository, private val annotations: AnnotationRepository,
+    private val annotations: AnnotationRepository,
     private val factory: EpubReaderFactory, private val appScope: CoroutineScope,
     private val openSearchCursor: EpubSearchCursorOpener = { session, query -> session.search(query) }) : ViewModel() {
     private val _state = MutableStateFlow(EpubReaderState())
@@ -68,7 +69,7 @@ class EpubReaderViewModel(private val id: String, private val repository: Librar
             }
         }
         // Independent of session opening, so bookmarks never gate or delay reader startup.
-        viewModelScope.launch { bookmarks.bookmarks(id).collect { list -> _state.update { it.copy(bookmarks = list) } } }
+        viewModelScope.launch { annotations.observeEpubBookmarks(id).collect { list -> _state.update { it.copy(bookmarks = list) } } }
         // Same independence for the canonical annotation list; stored annotations never wait for or gate the reader.
         viewModelScope.launch { annotations.observeForPublication(id).collect { listing -> _state.update { it.copy(annotations = listing.annotations) } } }
         // Stale-anchor protection: every selection-backed annotation is verified against the sanitized rendition before it is drawn.
@@ -130,12 +131,18 @@ class EpubReaderViewModel(private val id: String, private val repository: Librar
      * currentLocatorJson) into a new bookmark row. A bookmark at the exact same locator is a safe no-op, handled
      * by the repository, not here. */
     fun addBookmark(locator: String, progress: Int) = viewModelScope.launch {
-        try { bookmarks.addBookmark(id, locator, progress) } catch (e: CancellationException) { throw e }
+        try { annotations.addEpubBookmark(id, locator, progress) } catch (e: CancellationException) { throw e }
         catch (_: Exception) { _state.update { it.copy(error = UiMessage.Resource(R.string.bookmark_save_failed)) } }
     }
 
+    /** The annotation a Notes-hub jump names, or null when it is gone or belongs to another publication. */
+    suspend fun annotation(annotationId: String): Annotation? = annotations.get(annotationId)?.takeIf { it.libraryItemId == id }
+
+    /** Explains a Notes-hub jump that could not be completed; the annotation itself is untouched. */
+    fun reportOpenFailed() = notice(R.string.notes_open_failed)
+
     fun deleteBookmark(bookmarkId: String) = viewModelScope.launch {
-        try { bookmarks.deleteBookmark(bookmarkId) } catch (e: CancellationException) { throw e }
+        try { annotations.delete(bookmarkId, AnnotationKind.BOOKMARK) } catch (e: CancellationException) { throw e }
         catch (_: Exception) { _state.update { it.copy(error = UiMessage.Resource(R.string.bookmark_delete_failed)) } }
     }
 

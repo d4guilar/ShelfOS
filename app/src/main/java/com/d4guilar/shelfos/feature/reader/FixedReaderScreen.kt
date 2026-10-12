@@ -82,13 +82,24 @@ import kotlin.math.roundToInt
  */
 @Composable
 fun FixedReaderScreen(vm: FixedReaderViewModel, folds: List<ReaderFoldDescriptor> = emptyList(),
-    annotations: FixedAnnotationViewModel? = null, onBack: () -> Unit) {
+    annotations: FixedAnnotationViewModel? = null,
+    /** Set by the Notes hub: open at this annotation once. Strict (never clamped) and consumed once, so recreation does not jump again. */
+    jumpAnnotationId: String? = null, onBack: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     // Phase 4C.1: bookmarks, page notes and the Notebook exist only when an annotation ViewModel is supplied.
     val annotationState = annotations?.state?.collectAsStateWithLifecycle()?.value ?: FixedAnnotationState()
     var notebook by rememberSaveable { mutableStateOf(false) }
     var notebookFilterOrdinal by rememberSaveable { mutableIntStateOf(AnnotationFilter.ALL.ordinal) }
     var deleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    var jumpHandled by rememberSaveable { mutableStateOf(jumpAnnotationId == null) }
+    // The jump waits for the real page count (state.count > 0), resolves the annotation from the repository and uses the same
+    // strict decision as the Notebook: only a real page of THIS publication moves the reader; nothing is clamped or approximated.
+    if (!jumpHandled && jumpAnnotationId != null && annotations != null && state.count > 0) LaunchedEffect(jumpAnnotationId) {
+        val target = annotations.jumpTarget(jumpAnnotationId)
+        val decision = target?.let { fixedPageNavigation(it.locatorJson, state.count) }
+        if (decision is FixedPageNavigation.Navigable) vm.showPage(decision.page) else annotations.reportOpenFailed()
+        jumpHandled = true
+    }
     val t = LocalShelfTokens.current
     val item = state.item
     var controls by rememberSaveable { mutableStateOf(true) }

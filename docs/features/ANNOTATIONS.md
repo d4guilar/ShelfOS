@@ -4,8 +4,8 @@
 
 Merged and accepted (Phase 4B, PR #34 commit `71c1740`; Samsung manual UAT passed and independent review passed): in EPUB, text highlights, selection-anchored notes, position-anchored notes, EPUB bookmarks, an in-reader
 per-publication Notes list (jump, edit, delete), style and optional body on highlights, and restoration of inline marks after reopen, recreation and process death. Highlights and notes
-use the canonical `annotation` table (Room v4); the legacy `bookmark` table is inert. Inline marks need a WebView whose Chromium major version is at least 69; otherwise only bookmarks and position notes
-are offered (see `docs/VALIDATION.md`, Phase 4B). Phase 4C.1 is merged and accepted at `0040c52187e50515b7d20608e5ef8e71dacc7809`: PDF, CBZ and CBR page bookmarks, page notes, strict annotation navigation and the shared Notebook foundation. Phase 4C.2 is implementation complete with independent Codex High review PASS and ready to merge (physical UAT deferred to Phase 4F): the same Publication Notebook is a dialog below 840×480dp and an end-edge 320–400dp pane at or above it, across EPUB/PDF/CBZ/CBR. EPUB filters All, Notes, Highlights and Bookmarks; fixed readers omit Highlights. The global Notes hub (4D) and export (4E) remain unbuilt. The Phase 4 plan and model are in
+use the canonical `annotation` table (Room v4; v5 adds the display-only `annotation_source_snapshot` for kept orphans); the legacy `bookmark` table is inert. Inline marks need a WebView whose Chromium major version is at least 69; otherwise only bookmarks and position notes
+are offered (see `docs/VALIDATION.md`, Phase 4B). Phase 4C.1 is merged and accepted at `0040c52187e50515b7d20608e5ef8e71dacc7809`: PDF, CBZ and CBR page bookmarks, page notes, strict annotation navigation and the shared Notebook foundation. Phase 4C.2 is merged (PR #37, `ca47e3d`; physical UAT deferred to Phase 4F): the same Publication Notebook is a dialog below 840×480dp and an end-edge 320–400dp pane at or above it, across EPUB/PDF/CBZ/CBR. EPUB filters All, Notes, Highlights and Bookmarks; fixed readers omit Highlights. Phase 4D (IMPLEMENTED LOCALLY, ready for independent review; see the Global Notes hub section below) replaces the Notes placeholder with the global hub on Room v5; export (4E) remains unbuilt. The Phase 4 plan and model are in
 [`PHASE_4_IMPLEMENTATION_PLAN.md`](../PHASE_4_IMPLEMENTATION_PLAN.md) and [ADR-0025](../adr/0025-annotation-anchor-and-knowledge-model.md).
 
 Stale text: before a selection-backed annotation is drawn, ShelfOS verifies its stored text context against the same sanitized rendition it gives the reader. If the text cannot be found exactly, the
@@ -67,18 +67,40 @@ Annotation
   canonical documentation name); "Notes" remains the kind and filter name. Fixed readers show filters All, Notes and Bookmarks in a dialog.
   Phase 4C.2 adds the side-by-side presentation and ports EPUB highlights, notes and bookmarks onto the same panel.
 
-## Global Notes hub
+## Global Notes hub (Phase 4D; implemented locally, ready for independent review)
 
-Users should eventually browse:
+The **Notes** destination (`feature/notes`) lists every note, highlight and bookmark across the library. The reader-local
+list stays the **Publication Notebook** ("Notebook" in the UI); the two are different surfaces over the same `annotation` rows.
 
-- all notes
-- highlights
-- bookmarks
-- by title
-- by date
-- via search
-
-Selecting an annotation should jump to its source location where possible.
+- **Browse.** Compact rows: kind (and highlight style name, or "Note at position"), an optional user label, the selected excerpt,
+  the note body, the publication title and location (fixed: "Page N"; EPUB: a percentage, spoken as "N percent through book"), and
+  a text status for a removed publication or an unavailable original. Meaning is never colour-only.
+- **Filters.** All / Notes / Highlights / Bookmarks by kind (a highlight with a body stays a Highlight; Notes is NOTE only), plus a
+  publication filter that lists live and removed publications with their counts.
+- **Search.** A plain case-insensitive-for-ASCII `LIKE` (no FTS) over body, selected text, the user label, and the publication
+  title and creator (the live ones, or the removal snapshot's); `%`, `_` and `\` typed by the user are literal. It composes with the
+  kind and publication filters.
+- **Sort.** By publication (default; publications by title, each in reading order) or newest first. Publication headers appear in the
+  publication sort and once above a single-publication filter. No Series grouping, Smart Shelves or inferred grouping.
+- **Pages.** Keyset pages of 100 rows (`(createdAt, id)` for date; `(title, item, order, createdAt, id)` for publication), no Paging
+  dependency; a change reloads as many rows as are shown. Rows of a kind or locator format this build does not know stay stored and
+  are left out of every view.
+- **Open source.** For a publication still in the library, "Open" starts the same reader entry as opening the book, carrying only the
+  annotation id. EPUB selection-backed annotations move the reader only when their anchor is verified PLACEABLE; fixed pages only through
+  the strict `fixedPageNavigation` (never clamped). An UNPLACED or MALFORMED locator, a missing annotation or a page past the end shows
+  "That spot could not be opened. The note is still saved." and changes nothing. An orphan offers no Open action.
+- **Edit and delete.** Notes edit their body; highlights edit body and style; bookmarks have nothing to edit. Kind, locator and
+  publication never change by editing. Deleting an item asks first and never touches the original file.
+- **Removal choice.** Removing a publication that has saved items offers two explicit actions and no default: "Remove, keep notes" or
+  "Remove, delete notes". Keep retains the annotations as orphans and saves a four-field display snapshot (title, creator, category,
+  format) in `annotation_source_snapshot`; delete removes the annotations and any snapshot. With no saved items the dialog is unchanged.
+  The original file is untouched either way.
+- **Orphans.** An annotation whose library item no longer exists. Listed under its snapshot title (or "Removed publication" when no
+  snapshot exists), searchable, editable (notes, highlights), deletable, and never reattached: re-adding the same file creates a new
+  item and the old notes stay with the removed publication. "Delete notes for this removed publication" is an explicit confirmed action
+  that deletes the group and its snapshot; deleting the last orphan of a publication removes its snapshot. Nothing is garbage-collected.
+- **State.** Search text, kind filter, publication filter and sort survive recreation (saved state); edits are committed to Room.
+  An unsaved edit draft is not kept across process death.
 
 ## Export
 

@@ -39,6 +39,7 @@ import com.d4guilar.shelfos.core.designsystem.SectionTitle
 import com.d4guilar.shelfos.core.designsystem.shelfAction
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import com.d4guilar.shelfos.domain.annotations.AnnotationCounts
+import com.d4guilar.shelfos.domain.annotations.KnowledgePolicy
 import com.d4guilar.shelfos.domain.library.LibraryItem
 import com.d4guilar.shelfos.domain.library.LibraryFilter
 import com.d4guilar.shelfos.domain.library.MediaCategory
@@ -50,7 +51,7 @@ fun LibraryScreen(
     onFilter: (LibraryFilter) -> Unit, onSelect: (String) -> Unit,
     onOpen: (String) -> Unit, onFavorite: (String) -> Unit,
     // Rect is this cover's on-screen position, when known, for the reader-entry cover transition (CLASSIC_UI.md §12).
-    onRead: (String, Rect?) -> Unit, onEdit: (String, String, String, MediaCategory) -> Unit, onRemove: (String) -> Unit,
+    onRead: (String, Rect?) -> Unit, onEdit: (String, String, String, MediaCategory) -> Unit, onRemove: (String, KnowledgePolicy) -> Unit,
     knowledgeCounts: AnnotationCounts?, restoreFocus: Boolean = false,
 ) {
     val t = LocalShelfTokens.current
@@ -128,7 +129,7 @@ fun LibraryScreen(
             PublicationDetails(state.selected, state.selected.id in state.favorites,
                 onFavorite = { onFavorite(state.selected.id) }, modifier = Modifier.width(300.dp).testTag("detail_pane"),
                 onRead = { bounds -> onRead(state.selected.id, bounds) }, onEdit = { title, creator, category -> onEdit(state.selected.id, title, creator, category) },
-                onRemove = { onRemove(state.selected.id) }, knowledgeCounts = knowledgeCounts)
+                onRemove = { policy -> onRemove(state.selected.id, policy) }, knowledgeCounts = knowledgeCounts)
         }
     }
 }

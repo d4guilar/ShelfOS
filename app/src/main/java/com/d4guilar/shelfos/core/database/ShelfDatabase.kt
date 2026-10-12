@@ -26,7 +26,7 @@ interface AppearanceDao {
     suspend fun save(preference: AppearancePreference)
 }
 
-@Database(entities = [AppearancePreference::class, LibraryEntity::class, ReadingEntity::class, ReaderPreferenceEntity::class, BookmarkEntity::class, AnnotationEntity::class], version = 4, exportSchema = true)
+@Database(entities = [AppearancePreference::class, LibraryEntity::class, ReadingEntity::class, ReaderPreferenceEntity::class, BookmarkEntity::class, AnnotationEntity::class, AnnotationSourceSnapshotEntity::class], version = 5, exportSchema = true)
 abstract class ShelfDatabase : RoomDatabase() {
     abstract fun appearance(): AppearanceDao
     abstract fun library(): LibraryDao
@@ -78,8 +78,18 @@ abstract class ShelfDatabase : RoomDatabase() {
 
             private fun SupportSQLiteDatabase.scalar(sql: String): Long = query(sql).use { check(it.moveToFirst()); it.getLong(0) }
         }
+        /**
+         * v4 -> v5 (Phase 4D): purely additive. Creates `annotation_source_snapshot`, the display-only context kept for orphaned
+         * annotations after a keep-notes removal. No existing table, row or index is read or changed, so every library item,
+         * reading state, preference, legacy bookmark and annotation (locators included) is untouched. No destructive fallback.
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE `annotation_source_snapshot` (`libraryItemId` TEXT NOT NULL, `title` TEXT NOT NULL, `creator` TEXT NOT NULL, `category` TEXT NOT NULL, `format` TEXT NOT NULL, PRIMARY KEY(`libraryItemId`))")
+            }
+        }
         fun create(context: Context): ShelfDatabase = Room.databaseBuilder(
             context.applicationContext, ShelfDatabase::class.java, "shelfos.db",
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build()
     }
 }

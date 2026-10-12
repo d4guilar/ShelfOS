@@ -72,6 +72,7 @@ class FixedReaderFoldRenderGeometryUiTest {
         override suspend fun favorite(id: String) {}
         override suspend fun edit(id: String, title: String, creator: String, category: MediaCategory) {}
         override suspend fun remove(id: String) {}
+        override suspend fun remove(id: String, policy: com.d4guilar.shelfos.domain.annotations.KnowledgePolicy) {}
         override suspend fun available(id: String, available: Boolean) {}
         override suspend fun reading(id: String, locator: String, progress: Int) {}
         override suspend fun preferences(id: String, json: String) {}

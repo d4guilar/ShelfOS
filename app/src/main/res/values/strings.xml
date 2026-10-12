@@ -56,7 +56,6 @@
     </plurals>
 
     <!-- Placeholders -->
-    <string name="placeholder_notes_body">A place for your reading notes. Notes and annotations are planned for a later phase.</string>
     <string name="placeholder_shelves_body">Your own ways to organize a library, such as Research or University. A publication can sit on several Shelves and keeps its category. Shelves are planned for a later phase.</string>
     <string name="publication_unavailable_title">Publication unavailable</string>
     <string name="publication_unavailable_body">Return to the Library to choose a publication.</string>
@@ -65,7 +64,7 @@
     <string name="dialog_remove_title">Remove from ShelfOS?</string>
     <string name="dialog_remove_body">This removes the entry, its reading position and its reading preferences from ShelfOS. The original file stays untouched.</string>
     <string name="dialog_remove_private_copy_note">ShelfOS keeps its private offline copy (%1$s). You can delete unused copies in Settings.</string>
-    <string name="dialog_remove_annotations_intro">This also permanently deletes your saved items for this publication:</string>
+    <string name="dialog_remove_annotations_intro">This publication has saved items in ShelfOS:</string>
     <plurals name="dialog_remove_bookmarks_line">
         <item quantity="one">%1$d bookmark</item>
         <item quantity="other">%1$d bookmarks</item>
@@ -375,4 +374,38 @@
     <!-- Built-in font chip labels (the font's own stable id, builtin:serif/builtin:sans, is unchanged) -->
     <string name="font_builtin_serif">Serif</string>
     <string name="font_builtin_sans">Sans</string>
+
+    <!-- Global Notes hub and the keep/delete removal choice (Phase 4D) -->
+    <string name="dialog_remove_keep_explain">Keep notes: they stay in Notes, marked as from a removed publication. They cannot open the original file, and a copy added later is never linked to them automatically.</string>
+    <string name="dialog_remove_delete_explain">Delete notes: these saved items are permanently deleted from ShelfOS.</string>
+    <string name="action_remove_keep_notes">Remove, keep notes</string>
+    <string name="action_remove_delete_notes">Remove, delete notes</string>
+    <string name="notes_search_label">Search notes</string>
+    <string name="notes_publication_all">All publications</string>
+    <string name="notes_publication_filter_label">Publication: %1$s</string>
+    <string name="notes_publication_picker_title">Choose a publication</string>
+    <string name="notes_publication_option">%1$s (%2$d)</string>
+    <string name="notes_publication_option_removed">%1$s (%2$d), removed</string>
+    <string name="notes_publication_removed_untitled">Removed publication</string>
+    <string name="notes_sort_publication">By publication</string>
+    <string name="notes_sort_date">Newest first</string>
+    <string name="notes_group_removed">Removed from your library. Its notes are kept here, and they cannot open the original.</string>
+    <string name="notes_group_delete">Delete notes for this removed publication</string>
+    <string name="notes_group_delete_title">Delete notes for this removed publication?</string>
+    <plurals name="notes_group_delete_body">
+        <item quantity="one">This permanently deletes %1$d saved item for “%2$s” from ShelfOS. The original file is not changed.</item>
+        <item quantity="other">This permanently deletes %1$d saved items for “%2$s” from ShelfOS. The original file is not changed.</item>
+    </plurals>
+    <plurals name="notes_group_count">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
+    <string name="notes_row_orphan">From a removed publication</string>
+    <string name="notes_open_source">Open</string>
+    <string name="content_desc_notes_open">Open %1$s in %2$s</string>
+    <string name="content_desc_notes_edit">Edit %1$s in %2$s</string>
+    <string name="content_desc_notes_delete">Delete %1$s in %2$s</string>
+    <string name="notes_delete_confirm_body">This deletes it from ShelfOS. The original publication file is not changed.</string>
+    <string name="notes_load_failed">Notes could not be loaded.</string>
+    <string name="notes_open_failed">That spot could not be opened. The note is still saved.</string>
 </resources>
