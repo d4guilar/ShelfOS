@@ -42,7 +42,11 @@ class EpubController {
     private val ready get() = navigator?.takeIf { it.view != null }
     fun next() { ready?.goForward(animated = false) }
     fun previous() { ready?.goBackward(animated = false) }
-    fun chapter(session: EpubSession, href: String) { session.chapter(href)?.let { ready?.go(it, animated = false) } }
+    /** Returns the accepted chapter locator so the reader state can own the user's move immediately. */
+    fun chapter(session: EpubSession, href: String): String? {
+        val target = session.chapter(href) ?: return null
+        return if (ready?.go(target, animated = false) == true) target.toJSON().toString() else null
+    }
     /** Navigates to a bookmark's stored locator JSON through the same navigator this controller already owns —
      * no second navigator is created. Returns false, without crashing or touching any other bookmark, when the
      * locator is malformed/unparseable or the navigator isn't attached yet; the caller decides how to surface that. */

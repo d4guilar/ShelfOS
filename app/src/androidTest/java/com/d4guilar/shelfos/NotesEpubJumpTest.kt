@@ -145,8 +145,20 @@ class NotesEpubJumpTest {
             awaitUntil(p, 20_000, "chapter 1 start") { p.tokenVisible("quillfeather1x1") }
             scenario.recreate()
             val after = probe(scenario); awaitReader(after)
-            after.settle(2_500)
-            assertFalse("the reader stayed where the user left it", after.tokenVisible("quillfeather3x1"))
+            // The chapter marker follows the navigator's live locator and is stable across different page sizes.
+            compose.onNodeWithText("Chapters").performClick()
+            try {
+                compose.waitUntil(20_000) {
+                    compose.onAllNodesWithContentDescription("Chapter 1, current chapter").fetchSemanticsNodes().isNotEmpty()
+                }
+            } catch (_: androidx.compose.ui.test.ComposeTimeoutException) {
+                val current = (1..3).filter { chapter ->
+                    compose.onAllNodesWithContentDescription("Chapter $chapter, current chapter").fetchSemanticsNodes().isNotEmpty()
+                }
+                fail("expected chapter 1 after recreation; current chapters=$current, saved=${savedHref()}")
+            }
+            awaitUntil(after, 20_000, "the later position to reach durable persistence") { savedHref().contains("chapter1.xhtml") }
+            compose.onAllNodesWithContentDescription("Chapter 3, current chapter").assertCountEquals(0)
         }
     }
 }

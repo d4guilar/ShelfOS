@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.core.designsystem.UiMessage
+import com.d4guilar.shelfos.core.reader.EpubBookmarkPresentation
+import com.d4guilar.shelfos.core.reader.presentStoredEpubLocator
 import com.d4guilar.shelfos.data.annotations.AnnotationRepository
 import com.d4guilar.shelfos.data.annotations.NOTES_PAGE_SIZE
 import com.d4guilar.shelfos.domain.annotations.*
@@ -22,8 +24,10 @@ sealed interface NotesItem {
     val key: String
     /** A publication group header (publication sort, and once above a single-publication filter). [total] is the publication's overall count. */
     data class Header(val source: AnnotationSource, val total: Int) : NotesItem { override val key get() = "pub:${source.libraryItemId}" }
-    /** [page] is the 1-based fixed page, parsed once when the row is built (never per recomposition); null for EPUB rows. */
-    data class Row(val item: AnnotationWithSource, val page: Int?) : NotesItem { override val key get() = "note:${item.annotation.id}" }
+    /** Location presentation is parsed once when the row is built, never during Compose recomposition. */
+    data class Row(val item: AnnotationWithSource, val page: Int?, val epub: EpubBookmarkPresentation?) : NotesItem {
+        override val key get() = "note:${item.annotation.id}"
+    }
 }
 
 data class NotesUiState(
@@ -152,7 +156,9 @@ class NotesViewModel(private val annotations: AnnotationRepository, private val 
             if ((grouped || current.publicationId != null) && (if (grouped) id != last else last == null)) out += NotesItem.Header(row.source, totals[id] ?: 0)
             last = id
             val a = row.annotation
-            out += NotesItem.Row(row, if (a.locatorFormat == LocatorFormat.FIXED_PAGE_1) FixedPageLocator.parse(a.locatorJson)?.plus(1) else null)
+            out += NotesItem.Row(row,
+                page = if (a.locatorFormat == LocatorFormat.FIXED_PAGE_1) FixedPageLocator.parse(a.locatorJson)?.plus(1) else null,
+                epub = if (a.locatorFormat == LocatorFormat.READIUM_LOCATOR_1) presentStoredEpubLocator(a.locatorJson, a.progressSnapshot) else null)
         }
         // A single-publication filter keeps its header (and, for a removed publication, the group action) even when search matches nothing.
         if (rows.isEmpty()) _state.value.publications.firstOrNull { it.source.libraryItemId == current.publicationId }

@@ -43,6 +43,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -118,6 +119,7 @@ open class EpubActivity : AppCompatActivity() {
         removeRestoredEpubNavigator()
         enableEdgeToEdge()
         val itemId = intent.getStringExtra(EXTRA_ITEM_ID) ?: run { finish(); return }
+        val launchAnnotationId = intent.getStringExtra(EXTRA_ANNOTATION_ID)
         val container = (application as ShelfApplication).container
         // Resolve once without retaining this Activity in the configuration-surviving ViewModel.
         val searchCursorOpener = createSearchCursorOpener()
@@ -126,7 +128,7 @@ open class EpubActivity : AppCompatActivity() {
         setContent {
             val vm: EpubReaderViewModel = viewModel(factory = viewModelFactory { initializer {
                 EpubReaderViewModel(itemId, container.library, container.annotations, createEpubReaderFactory(container),
-                    container.backgroundScope, searchCursorOpener)
+                    container.backgroundScope, createSavedStateHandle(), launchAnnotationId, searchCursorOpener)
             } })
             val theme by container.themes.theme.collectAsStateWithLifecycle(initialValue = null as ThemeId?)
             // Wait for the saved theme instead of flashing Classic first.
@@ -234,11 +236,10 @@ open class EpubActivity : AppCompatActivity() {
         // Opened from the Notes hub at one annotation: resolved once from the repository (the extra is an id, never a locator),
         // verified and navigated exactly like a Notebook jump (selection-backed annotations only when PLACEABLE), and consumed
         // once so rotation or recreation never jumps again. A failed jump explains itself and leaves the annotation intact.
-        val jumpTarget = intent.getStringExtra(EXTRA_ANNOTATION_ID)
-        var jumpHandled by rememberSaveable { mutableStateOf(jumpTarget == null) }
-        if (!jumpHandled && jumpTarget != null && session != null) LaunchedEffect(jumpTarget) {
+        val jumpTarget = vm.pendingLaunchAnnotation()
+        if (jumpTarget != null && session != null) LaunchedEffect(jumpTarget) {
             val arrived = openAtAnnotation(vm, controller, jumpTarget)
-            jumpHandled = true
+            vm.consumeLaunchAnnotation()
             if (!arrived) vm.reportOpenFailed()
         }
         // Marks are drawn only for selection-backed annotations whose text was verified in the current rendition.
@@ -335,7 +336,7 @@ open class EpubActivity : AppCompatActivity() {
                     TextButton({ appearance = true }, enabled = session != null) { Text(stringResource(R.string.action_appearance)) }
                 }
                 if (session != null && item != null) {
-                    EpubSurface(this@EpubActivity, session, item.locator, state.preferences, tokens.dark, item.category, controller,
+                    EpubSurface(this@EpubActivity, session, state.currentLocator ?: item.locator, state.preferences, tokens.dark, item.category, controller,
                         Modifier.weight(1f).fillMaxWidth().testTag("epub_page")
                             // Center-tap-to-toggle is unchanged; this only adds an accessibility action, exposed
                             // exclusively while chrome is hidden, so TalkBack's instruction matches a real action.
@@ -434,7 +435,12 @@ open class EpubActivity : AppCompatActivity() {
                         // chapter's own title remains exact-matchable by anything that looks it up by title,
                         // current or not — matching how the existing Previous/Next hint keycaps sit beside their
                         // own Text rather than being folded into it.
-                        TextButton({ controller.chapter(session, chapter.href); chapters = false },
+                        TextButton({
+                            controller.chapter(session, chapter.href)?.let { locator ->
+                                vm.location(locator, locatorProgress(locator)); currentLocatorJson = locator
+                            }
+                            chapters = false
+                        },
                             Modifier.padding(start = (chapter.depth * 16).dp)
                                 .semantics { if (current) contentDescription = String.format(currentChapterDescription, chapter.title) }) {
                             if (current) Text("✓ ")

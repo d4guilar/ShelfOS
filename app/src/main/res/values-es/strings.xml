@@ -398,6 +398,8 @@
         <item quantity="other">%1$d elementos</item>
     </plurals>
     <string name="notes_row_orphan">De una publicación quitada</string>
+    <string name="notes_created">Creada el %1$s</string>
+    <string name="notes_updated">Actualizada el %1$s</string>
     <string name="notes_open_source">Abrir</string>
     <string name="content_desc_notes_open">Abrir %1$s en %2$s</string>
     <string name="content_desc_notes_edit">Editar %1$s en %2$s</string>

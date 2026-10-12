@@ -401,6 +401,8 @@
         <item quantity="other">%1$d items</item>
     </plurals>
     <string name="notes_row_orphan">From a removed publication</string>
+    <string name="notes_created">Created %1$s</string>
+    <string name="notes_updated">Updated %1$s</string>
     <string name="notes_open_source">Open</string>
     <string name="content_desc_notes_open">Open %1$s in %2$s</string>
     <string name="content_desc_notes_edit">Edit %1$s in %2$s</string>

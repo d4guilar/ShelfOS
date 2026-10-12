@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos.feature.notes
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,6 +13,11 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -24,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d4guilar.shelfos.R
+import com.d4guilar.shelfos.core.designsystem.PublicationCoverVisual
 import com.d4guilar.shelfos.core.designsystem.resolve
 import com.d4guilar.shelfos.core.designsystem.shelfAction
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
@@ -37,7 +44,11 @@ import com.d4guilar.shelfos.feature.reader.activateOnGamepadConfirm
 import com.d4guilar.shelfos.feature.reader.dismissOnShelfBack
 import com.d4guilar.shelfos.feature.reader.styleLabel
 import com.d4guilar.shelfos.core.reader.AnnotationStyles
+import com.d4guilar.shelfos.core.reader.bookmarkAccessibilityText
+import com.d4guilar.shelfos.core.reader.bookmarkDisplayText
 import kotlinx.coroutines.delay
+import java.text.DateFormat
+import java.util.Date
 
 /** Width at which the controls share one row instead of stacking (the existing 840dp adaptive threshold family; no window-size-class dependency). */
 private val WIDE_CONTROLS = 840.dp
@@ -107,7 +118,7 @@ fun NotesScreen(vm: NotesViewModel, onOpenSource: (libraryItemId: String, annota
                     items(state.items, key = { it.key }, contentType = { if (it is NotesItem.Header) 0 else 1 }) { item ->
                         when (item) {
                             is NotesItem.Header -> PublicationHeader(item, onDeleteGroup = { vm.requestDeleteOrphanGroup(item.source.libraryItemId) })
-                            is NotesItem.Row -> NoteRow(item, showPublication = state.sort == NotesSort.DATE,
+                            is NotesItem.Row -> NoteRow(item,
                                 onOpen = { onOpenSource(item.item.source.libraryItemId, item.item.annotation.id, item.item.source.format) },
                                 onEdit = { vm.beginEdit(item.item.annotation.id) }, onDelete = { vm.requestDelete(item.item.annotation.id) })
                         }
@@ -163,7 +174,7 @@ private fun PublicationHeader(header: NotesItem.Header, onDeleteGroup: () -> Uni
 }
 
 @Composable
-private fun NoteRow(row: NotesItem.Row, showPublication: Boolean, onOpen: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit) {
+private fun NoteRow(row: NotesItem.Row, onOpen: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit) {
     val t = LocalShelfTokens.current
     val a = row.item.annotation
     val source = row.item.source
@@ -177,11 +188,14 @@ private fun NoteRow(row: NotesItem.Row, showPublication: Boolean, onOpen: () -> 
     val body = a.body?.takeIf { it.isNotBlank() }
     // A user label (legacy bookmark labels; search matches it); user text is shown as written, never translated.
     val label = a.title?.takeIf { it.isNotBlank() }
-    // Visual and spoken forms stay separate (the 4C.2 rule): "42%" is shown, "42 percent" is spoken.
+    val locationPhrase = stringResource(R.string.bookmark_location)
+    val progressVisual = stringResource(R.string.reading_progress_visual)
+    val progressSpoken = stringResource(R.string.reading_progress_spoken)
+    // Visual and spoken forms stay separate (the 4C.2 rule): punctuation and "%" are not forced on speech.
     val locationVisual = row.page?.let { stringResource(R.string.notebook_row_page, it) }
-        ?: if (a.locatorFormat == LocatorFormat.READIUM_LOCATOR_1) stringResource(R.string.reading_progress_visual, a.progressSnapshot) else null
+        ?: row.epub?.let { bookmarkDisplayText(it, { n -> String.format(locationPhrase, n) }, { n -> String.format(progressVisual, n) }) }
     val locationSpoken = row.page?.let { stringResource(R.string.notebook_row_page, it) }
-        ?: if (a.locatorFormat == LocatorFormat.READIUM_LOCATOR_1) stringResource(R.string.reading_progress_spoken, a.progressSnapshot) else null
+        ?: row.epub?.let { bookmarkAccessibilityText(it, { n -> String.format(locationPhrase, n) }, { n -> String.format(progressSpoken, n) }) }
     val publication = publicationTitle(source)
     val status = when {
         !source.live -> stringResource(R.string.notes_row_orphan)
@@ -189,21 +203,38 @@ private fun NoteRow(row: NotesItem.Row, showPublication: Boolean, onOpen: () -> 
         else -> null
     }
     val canOpen = source.live && source.format != null
-    val spoken = listOfNotNull(style, label, a.selectedText?.takeIf { it.isNotBlank() }, body, publication, locationSpoken, status).joinToString(", ")
+    val locale = LocalConfiguration.current.locales[0]
+    val timeFormatter = remember(locale) { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT, locale) }
+    val created = stringResource(R.string.notes_created, remember(a.createdAt, timeFormatter) { timeFormatter.format(Date(a.createdAt)) })
+    val updated = if (a.updatedAt > a.createdAt) stringResource(R.string.notes_updated,
+        remember(a.updatedAt, timeFormatter) { timeFormatter.format(Date(a.updatedAt)) }) else null
+    val spoken = listOfNotNull(style, label, a.selectedText?.takeIf { it.isNotBlank() }, body, publication, locationSpoken,
+        created, updated, status).joinToString(", ")
     val rowDescription = String.format(stringResource(R.string.content_desc_annotation_row), kind, spoken.ifEmpty { kind })
     val openLabel = stringResource(R.string.content_desc_notes_open, kind, publication)
     val editLabel = stringResource(R.string.content_desc_notes_edit, kind, publication)
     val deleteLabel = stringResource(R.string.content_desc_notes_delete, kind, publication)
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("notes_row")) {
-        Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).shelfAction(enabled = canOpen, onClick = onOpen)
-            .semantics(mergeDescendants = true) { contentDescription = rowDescription }.padding(vertical = 4.dp)) {
-            Text(listOfNotNull(kind, style).joinToString(" · "), fontWeight = FontWeight.Bold)
-            label?.let { Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-            a.selectedText?.takeIf { it.isNotBlank() }?.let { Text(it, maxLines = 3, overflow = TextOverflow.Ellipsis) }
-            body?.let { Text(it, maxLines = 3, overflow = TextOverflow.Ellipsis, color = t.colors.secondary) }
-            val where = listOfNotNull(publication.takeIf { showPublication }, locationVisual).joinToString(" · ")
-            if (where.isNotEmpty()) Text(where, color = t.colors.secondary, style = t.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            status?.let { Text(it, color = t.colors.secondary, style = t.typography.labelSmall, modifier = Modifier.testTag("notes_row_status")) }
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).shelfAction(enabled = canOpen, onClick = onOpen)
+            .semantics(mergeDescendants = true) { contentDescription = rowDescription }.padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+            Box(Modifier.width(48.dp).testTag(if (source.live) "notes_cover" else "notes_cover_fallback")) {
+                PublicationCoverVisual(source.libraryItemId, publication, Modifier.fillMaxWidth())
+            }
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    AnnotationKindIcon(a.kind, Modifier.testTag("notes_kind_icon"))
+                    Text(listOfNotNull(kind, style).joinToString(" · "), fontWeight = FontWeight.Bold)
+                }
+                label?.let { Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                a.selectedText?.takeIf { it.isNotBlank() }?.let { Text(it, maxLines = 3, overflow = TextOverflow.Ellipsis) }
+                body?.let { Text(it, maxLines = 3, overflow = TextOverflow.Ellipsis, color = t.colors.secondary) }
+                Text(listOfNotNull(publication, locationVisual).joinToString(" · "), color = t.colors.secondary,
+                    style = t.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("notes_location"))
+                Text(created, color = t.colors.secondary, style = t.typography.labelSmall, modifier = Modifier.testTag("notes_created"))
+                updated?.let { Text(it, color = t.colors.secondary, style = t.typography.labelSmall, modifier = Modifier.testTag("notes_updated")) }
+                status?.let { Text(it, color = t.colors.secondary, style = t.typography.labelSmall, modifier = Modifier.testTag("notes_row_status")) }
+            }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             if (canOpen) TextButton(onOpen, Modifier.heightIn(min = 48.dp).testTag("notes_open").activateOnGamepadConfirm(onActivate = onOpen).semantics { contentDescription = openLabel }) {
@@ -214,6 +245,34 @@ private fun NoteRow(row: NotesItem.Row, showPublication: Boolean, onOpen: () -> 
             }
             TextButton(onDelete, Modifier.heightIn(min = 48.dp).testTag("notes_delete").activateOnGamepadConfirm(onActivate = onDelete).semantics { contentDescription = deleteLabel }) {
                 Text(stringResource(R.string.action_delete))
+            }
+        }
+    }
+}
+
+/** Small monochrome kind mark; the adjacent localized label carries the spoken meaning. */
+@Composable
+private fun AnnotationKindIcon(kind: AnnotationKind, modifier: Modifier = Modifier) {
+    val ink = LocalShelfTokens.current.colors.ink
+    Canvas(modifier.size(18.dp)) {
+        val stroke = Stroke(1.8.dp.toPx())
+        when (kind) {
+            AnnotationKind.BOOKMARK -> {
+                val path = Path().apply {
+                    moveTo(size.width * .25f, size.height * .12f); lineTo(size.width * .75f, size.height * .12f)
+                    lineTo(size.width * .75f, size.height * .88f); lineTo(size.width * .5f, size.height * .68f)
+                    lineTo(size.width * .25f, size.height * .88f); close()
+                }
+                drawPath(path, ink, style = stroke)
+            }
+            AnnotationKind.HIGHLIGHT -> {
+                drawRect(ink.copy(alpha = .22f), Offset(size.width * .12f, size.height * .25f), Size(size.width * .76f, size.height * .5f))
+                drawLine(ink, Offset(size.width * .12f, size.height * .78f), Offset(size.width * .88f, size.height * .78f), stroke.width)
+            }
+            AnnotationKind.NOTE -> {
+                drawRect(ink, Offset(size.width * .18f, size.height * .1f), Size(size.width * .64f, size.height * .8f), style = stroke)
+                drawLine(ink, Offset(size.width * .3f, size.height * .42f), Offset(size.width * .7f, size.height * .42f), stroke.width)
+                drawLine(ink, Offset(size.width * .3f, size.height * .62f), Offset(size.width * .62f, size.height * .62f), stroke.width)
             }
         }
     }

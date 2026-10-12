@@ -521,6 +521,15 @@ fun EpubSession.presentBookmark(locatorJson: String, progress: Int, positions: L
 }
 
 /**
+ * Presents a stored locator without opening its publication. Global Notes uses the locator's own accepted Readium
+ * title/position fields when present; missing fields remain missing, and the opaque JSON is never rewritten.
+ */
+fun presentStoredEpubLocator(locatorJson: String, progress: Int): EpubBookmarkPresentation {
+    val locator = runCatching { Locator.fromJSON(JSONObject(locatorJson)) }.getOrNull()
+    return EpubBookmarkPresentation(locator?.title?.takeIf { it.isNotBlank() }, locator?.locations?.position, progress)
+}
+
+/**
  * A bookmark row's visible text: a place in the book, not merely a progress meter. Never fabricates a location or
  * chapter that could not be determined (see [EpubBookmarkPresentation]), and never says "Page N" — a reflowable
  * EPUB's visual page count is unstable across typography, margins, screen size and orientation, unlike the

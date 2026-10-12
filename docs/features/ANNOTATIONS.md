@@ -5,7 +5,7 @@
 Merged and accepted (Phase 4B, PR #34 commit `71c1740`; Samsung manual UAT passed and independent review passed): in EPUB, text highlights, selection-anchored notes, position-anchored notes, EPUB bookmarks, an in-reader
 per-publication Notes list (jump, edit, delete), style and optional body on highlights, and restoration of inline marks after reopen, recreation and process death. Highlights and notes
 use the canonical `annotation` table (Room v4; v5 adds the display-only `annotation_source_snapshot` for kept orphans); the legacy `bookmark` table is inert. Inline marks need a WebView whose Chromium major version is at least 69; otherwise only bookmarks and position notes
-are offered (see `docs/VALIDATION.md`, Phase 4B). Phase 4C.1 is merged and accepted at `0040c52187e50515b7d20608e5ef8e71dacc7809`: PDF, CBZ and CBR page bookmarks, page notes, strict annotation navigation and the shared Notebook foundation. Phase 4C.2 is merged (PR #37, `ca47e3d`; physical UAT deferred to Phase 4F): the same Publication Notebook is a dialog below 840×480dp and an end-edge 320–400dp pane at or above it, across EPUB/PDF/CBZ/CBR. EPUB filters All, Notes, Highlights and Bookmarks; fixed readers omit Highlights. Phase 4D (IMPLEMENTED LOCALLY, ready for independent review; see the Global Notes hub section below) replaces the Notes placeholder with the global hub on Room v5; export (4E) remains unbuilt. The Phase 4 plan and model are in
+are offered (see `docs/VALIDATION.md`, Phase 4B). Phase 4C.1 is merged and accepted at `0040c52187e50515b7d20608e5ef8e71dacc7809`: PDF, CBZ and CBR page bookmarks, page notes, strict annotation navigation and the shared Notebook foundation. Phase 4C.2 is merged (PR #37, `ca47e3d`; physical UAT deferred to Phase 4F): the same Publication Notebook is a dialog below 840×480dp and an end-edge 320–400dp pane at or above it, across EPUB/PDF/CBZ/CBR. EPUB filters All, Notes, Highlights and Bookmarks; fixed readers omit Highlights. Phase 4D is **IMPLEMENTED LOCALLY / REMEDIATION COMPLETE / PENDING FOCUSED INDEPENDENT RE-REVIEW** (see the Global Notes hub section below) and replaces the Notes placeholder with the global hub on Room v5; export (4E) remains unbuilt. The Phase 4 plan and model are in
 [`PHASE_4_IMPLEMENTATION_PLAN.md`](../PHASE_4_IMPLEMENTATION_PLAN.md) and [ADR-0025](../adr/0025-annotation-anchor-and-knowledge-model.md).
 
 Stale text: before a selection-backed annotation is drawn, ShelfOS verifies its stored text context against the same sanitized rendition it gives the reader. If the text cannot be found exactly, the
@@ -67,14 +67,16 @@ Annotation
   canonical documentation name); "Notes" remains the kind and filter name. Fixed readers show filters All, Notes and Bookmarks in a dialog.
   Phase 4C.2 adds the side-by-side presentation and ports EPUB highlights, notes and bookmarks onto the same panel.
 
-## Global Notes hub (Phase 4D; implemented locally, ready for independent review)
+## Global Notes hub (Phase 4D; implemented locally, remediation complete, pending focused independent re-review)
 
 The **Notes** destination (`feature/notes`) lists every note, highlight and bookmark across the library. The reader-local
 list stays the **Publication Notebook** ("Notebook" in the UI); the two are different surfaces over the same `annotation` rows.
 
-- **Browse.** Compact rows: kind (and highlight style name, or "Note at position"), an optional user label, the selected excerpt,
-  the note body, the publication title and location (fixed: "Page N"; EPUB: a percentage, spoken as "N percent through book"), and
-  a text status for a removed publication or an unavailable original. Meaning is never colour-only.
+- **Browse.** Compact rows: the shared locally generated publication cover (a safe display-only fallback for an orphan), localized
+  kind label plus monochrome icon, highlight style name (or "Note at position"), optional user label, selected excerpt, note-body
+  preview, publication title, location (fixed: "Page N"; EPUB: stored chapter/title and/or "Location N", with percentage only as
+  supplemental/fallback presentation), and locale-aware Created/Updated times. A text status identifies a removed publication or an
+  unavailable original. Meaning is never colour-only; visual and spoken location forms remain separate.
 - **Filters.** All / Notes / Highlights / Bookmarks by kind (a highlight with a body stays a Highlight; Notes is NOTE only), plus a
   publication filter that lists live and removed publications with their counts.
 - **Search.** A plain case-insensitive-for-ASCII `LIKE` (no FTS) over body, selected text, the user label, and the publication

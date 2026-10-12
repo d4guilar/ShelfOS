@@ -35,7 +35,7 @@ class NotesHubUiTest {
     private val pdf by lazy { OriginalFixtures.pdf(context) }
     private val epub by lazy { OriginalFixtures.epub(context) }
     private val goneId = "hub-gone"
-    private val readium = """{"href":"c1.xhtml","type":"application/xhtml+xml","locations":{"progression":0.4,"totalProgression":0.4}}"""
+    private val readium = """{"href":"c1.xhtml","type":"application/xhtml+xml","title":"Opening Chapter","locations":{"progression":0.4,"position":7,"totalProgression":0.4}}"""
     private lateinit var pdfNote: Annotation
     private lateinit var pdfBookmark: Annotation
     private lateinit var pdfOutOfRange: Annotation
@@ -59,6 +59,7 @@ class NotesHubUiTest {
         pdfOutOfRange = a.create(fixed(98, AnnotationKind.NOTE, "hubmark out of range", 90)); settle()
         pdfMalformed = a.create(AnnotationDraft(pdf.id, AnnotationKind.NOTE, LocatorFormat.FIXED_PAGE_1, """{"version":1,"page":"x"}""", 10, body = "hubmark malformed"), validateLocator = false); settle()
         highlight = a.create(AnnotationDraft(epub.id, AnnotationKind.HIGHLIGHT, LocatorFormat.READIUM_LOCATOR_1, readium, 40, 0.4, selectedText = "hubmark highlighted words", styleKey = "amber")); settle()
+        highlight = requireNotNull(a.update(highlight.id, AnnotationEdit(highlight.title, highlight.selectedText, "hubmark highlight thoughts", highlight.styleKey))); settle()
         epubNote = a.create(AnnotationDraft(epub.id, AnnotationKind.NOTE, LocatorFormat.READIUM_LOCATOR_1, readium, 41, 0.41, body = "hubmark epub position note")); settle()
         epubBookmark = a.create(AnnotationDraft(epub.id, AnnotationKind.BOOKMARK, LocatorFormat.READIUM_LOCATOR_1, """{"href":"c2.xhtml","type":"application/xhtml+xml","locations":{"progression":0.1,"totalProgression":0.5}}""", 50, title = "hubmark bookmark label")); settle()
         orphanNote = a.create(AnnotationDraft(goneId, AnnotationKind.NOTE, LocatorFormat.READIUM_LOCATOR_1, readium, 77, 0.77, body = "hubmark orphan note"))
@@ -120,17 +121,27 @@ class NotesHubUiTest {
 
     @Test fun rowsShowKindPublicationLocationAndOrphanStatusWithoutColorOnlyMeaning() {
         openNotes()
-        // Fixed rows say "Page N" (1-based); EPUB rows say a percentage visually and "percent" in their spoken description.
+        // Fixed rows say "Page N" (1-based); EPUB rows prefer their stored chapter/title and Location N evidence.
         rowNode("hubmark pdf note").assertExists()
         described("hubmark pdf note", pdf.title, "Page 2").assertExists()
-        described("hubmark highlighted words", "Highlight", "Amber", "40 percent through book").assertExists()
-        compose.onAllNodes(hasText("40% through book"), useUnmergedTree = true).assertCountEquals(1)  // the visual form keeps the symbol
+        described("hubmark highlighted words", "Highlight", "Amber", "Opening Chapter", "Location 7", "40 percent through book").assertExists()
+        compose.onNode(row("hubmark highlighted words") and hasAnyDescendant(hasText("Opening Chapter", substring = true)), useUnmergedTree = true).assertExists()
+        compose.onNode(row("hubmark highlighted words") and hasAnyDescendant(hasText("Location 7", substring = true)), useUnmergedTree = true).assertExists()
         described("hubmark epub position note", "Note at position").assertExists()
         described("hubmark bookmark label", "Bookmark").assertExists()
         described("hubmark pdf bookmark", "Bookmark", "Page 3").assertExists()
         // The orphan row carries a text status and its publication title from the snapshot.
         described("hubmark orphan note", "Hub Gone Book", "From a removed publication").assertExists()
         compose.onNode(inRow("hubmark orphan note", "notes_row_status"), useUnmergedTree = true).assertTextContains("From a removed publication")
+        reveal("hubmark pdf note")
+        assertTrue(compose.onAllNodesWithTag("notes_cover", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+        assertTrue(compose.onAllNodesWithTag("notes_created", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+        reveal("hubmark orphan note")
+        assertTrue(compose.onAllNodesWithTag("notes_cover_fallback", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+        reveal("hubmark highlighted words")
+        assertTrue(compose.onAllNodesWithTag("notes_kind_icon", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+        assertTrue(compose.onAllNodesWithTag("notes_updated", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+        compose.onAllNodes(hasTestTag("notes_row") and hasAnyDescendant(hasContentDescription("test:hub-gone", substring = true))).assertCountEquals(0)
         // A removed publication cannot open anything; live ones can.
         rowButtons("hubmark orphan note", "notes_open").assertCountEquals(0)
         rowButtons("hubmark pdf note", "notes_open").assertCountEquals(1)
@@ -226,7 +237,7 @@ class NotesHubUiTest {
         // A highlight gains a body and keeps its kind, style and selected text.
         rowButton("hubmark highlighted words", "notes_edit").performClick()
         awaitTag("annotation_body")
-        compose.onNodeWithTag("annotation_body").performTextInput("added thoughts")
+        compose.onNodeWithTag("annotation_body").performTextReplacement("added thoughts")
         compose.onNodeWithTag("annotation_editor_save").performClick()
         awaitNoTag("annotation_body")
         val hl = requireNotNull(container.annotations.get(highlight.id))

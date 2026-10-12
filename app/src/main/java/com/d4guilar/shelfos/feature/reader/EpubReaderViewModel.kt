@@ -2,6 +2,7 @@
 package com.d4guilar.shelfos.feature.reader
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.core.designsystem.UiMessage
@@ -39,7 +40,9 @@ data class EpubReaderState(val item: LibraryItem? = null, val session: EpubSessi
     val anchors: Map<String, AnchorStatus> = emptyMap(),
     val editor: AnnotationEditorTarget? = null,
     /** A transient, localized annotation message (rejected selection, failed save). Cleared by [EpubReaderViewModel.dismissNotice]. */
-    val notice: UiMessage? = null)
+    val notice: UiMessage? = null,
+    /** Latest navigator-owned position. Saved synchronously so recreation never falls back to an older Room write. */
+    val currentLocator: String? = null)
 
 /** Injectable at the Activity factory boundary so lifecycle tests can observe cursor ownership deterministically. */
 typealias EpubSearchCursorOpener = suspend (EpubSession, String) -> EpubSearchCursor
@@ -48,9 +51,11 @@ typealias EpubSearchCursorOpener = suspend (EpubSession, String) -> EpubSearchCu
 class EpubReaderViewModel(private val id: String, private val repository: LibraryRepository,
     private val annotations: AnnotationRepository,
     private val factory: EpubReaderFactory, private val appScope: CoroutineScope,
+    private val saved: SavedStateHandle, launchAnnotationId: String?,
     private val openSearchCursor: EpubSearchCursorOpener = { session, query -> session.search(query) }) : ViewModel() {
-    private val _state = MutableStateFlow(EpubReaderState())
+    private val _state = MutableStateFlow(EpubReaderState(currentLocator = saved.get<String>(KEY_CURRENT_LOCATOR)))
     val state = _state.asStateFlow()
+    private var pendingLaunchAnnotationId = launchAnnotationId.takeUnless { saved.get<Boolean>(KEY_LAUNCH_ANNOTATION_HANDLED) == true }
     private val searchScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val searchCoordinator = EpubSearchCoordinator(searchScope)
     val searchState = searchCoordinator.state
@@ -116,7 +121,20 @@ class EpubReaderViewModel(private val id: String, private val repository: Librar
         }
     }
 
-    fun location(locator: String, progress: Int) = positions.save(locator to progress)
+    fun location(locator: String, progress: Int) {
+        saved[KEY_CURRENT_LOCATOR] = locator
+        _state.update { it.copy(currentLocator = locator) }
+        positions.save(locator to progress)
+    }
+
+    /** The Notes-hub destination is an initial request, not enduring navigation state. */
+    fun pendingLaunchAnnotation(): String? = pendingLaunchAnnotationId
+
+    /** Called only after the initial request either arrived or failed definitively. */
+    fun consumeLaunchAnnotation() {
+        pendingLaunchAnnotationId = null
+        saved[KEY_LAUNCH_ANNOTATION_HANDLED] = true
+    }
 
     fun applyAppearance(before: ReaderPreferences, after: ReaderPreferences, globally: Boolean) = persistPreferences {
         val current = _state.value
@@ -258,5 +276,10 @@ class EpubReaderViewModel(private val id: String, private val repository: Librar
             searchScope.cancel()
             session?.close()
         }
+    }
+
+    private companion object {
+        const val KEY_CURRENT_LOCATOR = "epub.currentLocator"
+        const val KEY_LAUNCH_ANNOTATION_HANDLED = "epub.launchAnnotationHandled"
     }
 }

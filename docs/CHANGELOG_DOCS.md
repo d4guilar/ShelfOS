@@ -1,5 +1,11 @@
 # Documentation Changelog
 
+## Phase 4D focused remediation recorded (2026-10-12)
+
+- `docs/VALIDATION.md`: records the independent Codex High FAIL, H1 reproduction on RP5 and API 24, the dual lifecycle/position-authority root cause, the narrow saved-state remediation, M1's completed §11 Notes-row contract, focused per-device XML results, the one-time 10,000-row recheck and the RP5 authorization limitation. Status is **IMPLEMENTED LOCALLY / REMEDIATION COMPLETE / PENDING FOCUSED INDEPENDENT RE-REVIEW**; no final PASS, merge, Samsung UAT or Phase 4 completion is claimed.
+- `docs/PHASE_4_IMPLEMENTATION_PLAN.md`, `docs/features/ANNOTATIONS.md`, `docs/features/READER.md`: reconcile the same pending-re-review status and describe the accepted one-shot EPUB source-jump lifecycle plus complete row presentation without narrowing §11.
+- Code in the same remediation stays limited to those two findings: saved latest EPUB locator/launch consumption, shared generated cover presentation, stored EPUB location presentation, localized row timestamps and focused regressions. No schema, migration, query, dependency, source-file or second-navigator change.
+
 ## Phase 4D implemented locally: global Notes hub (2026-10-12)
 
 - `docs/PHASE_4_IMPLEMENTATION_PLAN.md`: header status reconciled (4C merged: 4C.1 at `0040c52`, 4C.2 in PR #37 at `ca47e3d`, 4C.2 physical UAT deferred to 4F; 4D IMPLEMENTED LOCALLY / READY FOR INDEPENDENT REVIEW; 4E and 4F not started; Phase 4 not complete). Section 7.3 records the owner rule that keep-notes is never implicit (two default-free actions) instead of the earlier "default KEEP"; section 8.4 records the retirement of the `BookmarkRepository` adapter; new section 13.4.1 (4D implementation record and administrator decisions).
