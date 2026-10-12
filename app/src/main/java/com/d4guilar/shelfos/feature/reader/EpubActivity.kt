@@ -608,10 +608,11 @@ private fun EpubNotebookPanel(
 ) {
     val locationTemplate = stringResource(R.string.bookmark_location)
     val progressTemplate = stringResource(R.string.reading_progress_visual)
+    val spokenTemplate = stringResource(R.string.reading_progress_spoken)
     val unavailable = UiMessage.Resource(R.string.annotation_location_unavailable)
     val positionNoteLabel = stringResource(R.string.annotation_kind_note_position)
     val styleNames = AnnotationStyles.keys.associateWith { styleLabel(it) }
-    val entries = remember(state.annotations, state.anchors, state.epubPositions, session, locationTemplate, progressTemplate, styleNames, positionNoteLabel) {
+    val entries = remember(state.annotations, state.anchors, state.epubPositions, session, locationTemplate, progressTemplate, spokenTemplate, styleNames, positionNoteLabel) {
         state.annotations.map { annotation ->
             val anchor = state.anchors[annotation.id]
             val jump = when {
@@ -627,7 +628,8 @@ private fun EpubNotebookPanel(
                 excerpt = annotation.selectedText,
                 style = if (annotation.kind == AnnotationKind.HIGHLIGHT) styleNames[annotation.styleKey] ?: styleNames.values.firstOrNull() else null,
                 location = bookmarkDisplayText(presentation, { String.format(locationTemplate, it) }, { String.format(progressTemplate, it) }).replace('\n', ' '),
-                kindLabel = if (annotation.kind == AnnotationKind.NOTE && annotation.selectedText == null) positionNoteLabel else null)
+                kindLabel = if (annotation.kind == AnnotationKind.NOTE && annotation.selectedText == null) positionNoteLabel else null,
+                spokenLocation = bookmarkAccessibilityText(presentation, { String.format(locationTemplate, it) }, { String.format(spokenTemplate, it) }))
         }
     }
     Column(modifier) {

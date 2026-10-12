@@ -830,7 +830,7 @@ carries the spike entry). ADR-0025 is unchanged and none of its decisions was co
   5. The selection is cleared when the note editor opens (the draft is already captured), not after Save; Cancel creates nothing. The unsaved draft survives rotation (ViewModel) but not process death.
   6. A new HIGHLIGHT whose text cannot be verified against the rendition is refused with a message instead of being stored unplaceable; a note on such a selection is also refused (it could never be drawn).
   7. Search results and the legacy Bookmarks dialog still use the single `goTo`; only the Notes list uses the deterministic `jumpTo`.
-- **Current status:** ACCEPTED AND MERGED (PR #34, commit `71c1740`). Acceptance evidence at merge time: Samsung manual UAT PASS with a non-blocking repeated-rotation harness timeout; independent Codex High review PASS. Remaining Phase 4 work: 4C (4C.1 accepted and not yet merged; 4C.2 planned in section 13.3), then 4D-4F.
+- **Current status:** ACCEPTED AND MERGED (PR #34, commit `71c1740`). Acceptance evidence at merge time: Samsung manual UAT PASS with a non-blocking repeated-rotation harness timeout; independent Codex High review PASS. Remaining Phase 4 work: 4C (4C.1 merged and accepted at `0040c52`; 4C.2 implemented locally, remediation complete, pending re-review; section 13.3), then 4D-4F.
 
 ### 13.3 4C — Fixed-layout notes, bookmark polish and the reader-local Publication Notebook
 

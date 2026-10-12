@@ -1,5 +1,9 @@
 # Documentation Changelog
 
+## Phase 4C.2 remediation: EPUB Notebook accessibility semantics (2026-10-11)
+
+- `docs/VALIDATION.md`: records review findings H1 (EPUB spoken semantics lost in the shared Notebook row) and M1 (self-contradiction) and their fix; the 4C.1 acceptance block is labelled a HISTORICAL SNAPSHOT (pre-merge) with current status stated separately (4C.1 MERGED + ACCEPTED at `0040c52`; 4C.2 implemented locally, remediation complete, pending re-review). `docs/PHASE_4_IMPLEMENTATION_PLAN.md` stale "not yet merged / 4C.2 planned" wording corrected. No acceptance of 4C.2 is claimed.
+
 ## Phase 4C.1 accepted (2026-10-11)
 
 - `docs/VALIDATION.md`: "PHASE 4C.1" status changed from REMEDIATED LOCALLY / FINAL INDEPENDENT REVIEW PENDING to **ACCEPTED (not merged, not in a PR)**. Added the independent-review/controller evidence table (Codex High final re-review PASS; RP5 `FixedReaderAnnotationsUiTest` 18/18; shared EPUB editor Save/Cancel and Back/Escape/gamepad-B cancellation regression; Bookmark traversal + sourced gamepad A; known unrelated `EpubBookmarkTest` 8/9 baseline) and the Samsung SM-T580 manual UAT evidence block (device Android 8.1 / API 27 / 2 GB RAM, APK `ShelfOS-Phase4C1-UAT.apk` 25,139,650 bytes, SHA-256 `9F9FB09F75005108E9455DE5858579DF13AF8D2119C1F69A805E52D59160707B`, built from HEAD `55a7b518`). Per-flow results recorded: PDF, CBZ, CBR, Bookmarks, Notes, Notebook filters, Back, Rotation, SPREAD source-page identity, Portrait UI, Landscape UI, old-device performance and reopen persistence all PASS; Keyboard B and Escape/gamepad B **NOT TESTED on Samsung** (covered by RP5 sourced-key automation, not blockers); nothing weird reported. The temporary LAN IP/URL is deliberately not recorded as project evidence because DHCP addresses change. Physical TalkBack remains unverified and stylus/S Pen is recorded as NOT TESTED (no compatible hardware; pen scope remains future work). Historical entries and run tables left unchanged.

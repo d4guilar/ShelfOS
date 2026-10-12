@@ -281,6 +281,10 @@ class EpubAnnotationsTest {
             compose.onNode(hasContentDescription("Highlight, Amber, quillfeather1x1", substring = true) and hasClickAction()).assertExists()
             compose.onNode(hasContentDescription("Note, quillfeather1x3, note body text", substring = true) and hasClickAction()).assertExists()
             compose.onNode(hasContentDescription("Bookmark, ", substring = true) and hasClickAction()).assertExists()
+            // Accepted 4B separation: the row SHOWS "N% through book" but SPEAKS "N percent through book".
+            compose.onNode(hasText("% through book", substring = true) and hasContentDescription("Bookmark, ", substring = true) and hasClickAction()).assertExists()
+            compose.onNode(hasContentDescription("Bookmark, ", substring = true) and hasContentDescription(" percent through book", substring = true) and hasClickAction()).assertExists()
+            compose.onAllNodes(hasContentDescription("%", substring = true)).assertCountEquals(0)
             // Filters.
             compose.onNode(hasText("Highlights") and hasClickAction()).performClick(); compose.waitUntil(5_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size == 1 }
             compose.onNodeWithTag("notebook_filter_bookmarks").performClick(); compose.waitUntil(5_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size == 1 }

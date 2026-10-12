@@ -68,6 +68,8 @@ data class NotebookEntry(
     val id: String, val kind: AnnotationKind, val page: Int?, val body: String?,
     val jump: NotebookJump, val unavailableReason: UiMessage?, val editable: Boolean,
     val excerpt: String? = null, val style: String? = null, val location: String? = null, val kindLabel: String? = null,
+    /** Spoken form of [location] for the row's contentDescription; never shown. Falls back to the visual location/page. */
+    val spokenLocation: String? = null,
 )
 
 /** Maps canonical fixed-page annotations (already in reading order) to rows. Strict: only [FixedPageNavigation.Navigable] may jump. */
@@ -130,7 +132,7 @@ fun NotebookPanel(
                 val kind = entry.kindLabel ?: stringResource(entry.kind.labelRes())
                 val where = entry.location ?: entry.page?.let { String.format(pageTemplate, it) }
                 val reason = entry.unavailableReason?.resolve()
-                val details = listOfNotNull(entry.style, entry.excerpt, entry.body, where, reason).joinToString(", ")
+                val details = listOfNotNull(entry.style, entry.excerpt, entry.body, entry.spokenLocation ?: where, reason).joinToString(", ")
                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("notebook_row"), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f).heightIn(min = 48.dp).activateOnGamepadConfirm(entry.jump == NotebookJump.AVAILABLE) { onJump(entry.id) }
                         .clickable(enabled = entry.jump == NotebookJump.AVAILABLE, role = Role.Button) { onJump(entry.id) }
