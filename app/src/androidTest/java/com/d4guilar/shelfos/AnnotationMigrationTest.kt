@@ -9,7 +9,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.d4guilar.shelfos.LegacyDatabases.V3Bookmark
 import com.d4guilar.shelfos.core.database.ShelfDatabase
 import com.d4guilar.shelfos.data.annotations.RoomAnnotationRepository
-import com.d4guilar.shelfos.data.annotations.RoomBookmarkRepository
 import com.d4guilar.shelfos.domain.annotations.AnnotationLocatorValidator
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -17,7 +16,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 /**
- * Phase 4A: Room v3 -> v4 (bookmark -> annotation). Every database here is a REAL older file built with raw SQL
+ * Phase 4A: Room v3 -> v4 (bookmark -> annotation), then the v5 additive step. Every database here is a REAL older file built with raw SQL
  * matching the exported schemas, opened through Room with the real migration chain (no `MigrationTestHelper`, the
  * repo convention; see [BookmarkPersistenceTest]). This is a data-safety test: it asserts zero bookmark loss, exact
  * field preservation, legacy-table retention, and that a failed migration rolls back instead of rebuilding.
@@ -95,11 +94,11 @@ class AnnotationMigrationTest {
             raw.use {
                 for ((table, order) in listOf("library_item" to "id", "reading_state" to "itemId", "reader_preference" to "itemId", "bookmark" to "id", "appearance_preference" to "id"))
                     assertEquals("$table must be unchanged by the migration", tables.getValue(table), LegacyDatabases.dump(it, table, order))
-                assertEquals(4, it.version)
+                assertEquals(5, it.version)
             }
 
             // The compatibility BookmarkRepository returns equivalent data in the exact legacy order.
-            val compat = RoomBookmarkRepository(RoomAnnotationRepository(db.annotations(), neverValidated))
+            val compat = BookmarkTestView(RoomAnnotationRepository(db.annotations(), neverValidated))
             val epub = compat.bookmarks("item-epub").first()
             assertEquals(legacyOrder, epub.map { it.id })
             val source = bookmarks.associateBy { it.id }
@@ -119,7 +118,7 @@ class AnnotationMigrationTest {
     }
 
     @Test fun migratedAnnotationSqlMatchesWhatRoomExpectsAndReopensCleanly() = runBlocking<Unit> {
-        // Room validates the migrated tables/indices against the generated v4 schema when it opens; a second open
+        // Room validates the migrated tables/indices against the generated v5 schema when it opens; a second open
         // (no migration this time) must also pass, and the indices must exist under their exact names.
         val name = "annotation-migration-reopen.db"
         LegacyDatabases.createV3(context, name, items, bookmarks)
@@ -186,7 +185,7 @@ class AnnotationMigrationTest {
         }
         assertFailsAndStaysV3(name, bookmarks.size) {
             Room.databaseBuilder(context, ShelfDatabase::class.java, name)
-                .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3, failingLate).build()
+                .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3, failingLate, ShelfDatabase.MIGRATION_4_5).build()
         }
         // And the real migration still succeeds on that same untouched file afterwards.
         val db = LegacyDatabases.open(context, name)

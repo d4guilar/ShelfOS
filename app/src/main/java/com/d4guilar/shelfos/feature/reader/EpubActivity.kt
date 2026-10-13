@@ -43,6 +43,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -63,6 +64,10 @@ import com.d4guilar.shelfos.domain.annotations.AnnotationKind
 import com.d4guilar.shelfos.domain.annotations.Annotation
 import com.d4guilar.shelfos.domain.library.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 
 /** Below this TOC size, a filter field adds a control without saving meaningful scanning effort. */
@@ -114,6 +119,7 @@ open class EpubActivity : AppCompatActivity() {
         removeRestoredEpubNavigator()
         enableEdgeToEdge()
         val itemId = intent.getStringExtra(EXTRA_ITEM_ID) ?: run { finish(); return }
+        val launchAnnotationId = intent.getStringExtra(EXTRA_ANNOTATION_ID)
         val container = (application as ShelfApplication).container
         // Resolve once without retaining this Activity in the configuration-surviving ViewModel.
         val searchCursorOpener = createSearchCursorOpener()
@@ -121,8 +127,8 @@ open class EpubActivity : AppCompatActivity() {
         val inlineSupport = InlineAnnotationCapability.evaluate(runCatching { createWebViewInfoProvider().current(this) }.getOrNull())
         setContent {
             val vm: EpubReaderViewModel = viewModel(factory = viewModelFactory { initializer {
-                EpubReaderViewModel(itemId, container.library, container.bookmarks, container.annotations, createEpubReaderFactory(container),
-                    container.backgroundScope, searchCursorOpener)
+                EpubReaderViewModel(itemId, container.library, container.annotations, createEpubReaderFactory(container),
+                    container.backgroundScope, createSavedStateHandle(), launchAnnotationId, searchCursorOpener)
             } })
             val theme by container.themes.theme.collectAsStateWithLifecycle(initialValue = null as ThemeId?)
             // Wait for the saved theme instead of flashing Classic first.
@@ -227,6 +233,15 @@ open class EpubActivity : AppCompatActivity() {
             if (controls) finish() else { controls = true; controlFocusRequests++ }
         }
         val annotationScope = rememberCoroutineScope()
+        // Opened from the Notes hub at one annotation: resolved once from the repository (the extra is an id, never a locator),
+        // verified and navigated exactly like a Notebook jump (selection-backed annotations only when PLACEABLE), and consumed
+        // once so rotation or recreation never jumps again. A failed jump explains itself and leaves the annotation intact.
+        val jumpTarget = vm.pendingLaunchAnnotation()
+        if (jumpTarget != null && session != null) LaunchedEffect(jumpTarget) {
+            val arrived = openAtAnnotation(vm, controller, jumpTarget)
+            vm.consumeLaunchAnnotation()
+            if (!arrived) vm.reportOpenFailed()
+        }
         // Marks are drawn only for selection-backed annotations whose text was verified in the current rendition.
         val marks = remember(state.annotations, state.anchors) {
             state.annotations.filter { state.anchors[it.id] == AnchorStatus.PLACEABLE }.mapNotNull { it.toMarkOrNull() }
@@ -321,7 +336,7 @@ open class EpubActivity : AppCompatActivity() {
                     TextButton({ appearance = true }, enabled = session != null) { Text(stringResource(R.string.action_appearance)) }
                 }
                 if (session != null && item != null) {
-                    EpubSurface(this@EpubActivity, session, item.locator, state.preferences, tokens.dark, item.category, controller,
+                    EpubSurface(this@EpubActivity, session, state.currentLocator ?: item.locator, state.preferences, tokens.dark, item.category, controller,
                         Modifier.weight(1f).fillMaxWidth().testTag("epub_page")
                             // Center-tap-to-toggle is unchanged; this only adds an accessibility action, exposed
                             // exclusively while chrome is hidden, so TalkBack's instruction matches a real action.
@@ -420,7 +435,12 @@ open class EpubActivity : AppCompatActivity() {
                         // chapter's own title remains exact-matchable by anything that looks it up by title,
                         // current or not — matching how the existing Previous/Next hint keycaps sit beside their
                         // own Text rather than being folded into it.
-                        TextButton({ controller.chapter(session, chapter.href); chapters = false },
+                        TextButton({
+                            controller.chapter(session, chapter.href)?.let { locator ->
+                                vm.location(locator, locatorProgress(locator)); currentLocatorJson = locator
+                            }
+                            chapters = false
+                        },
                             Modifier.padding(start = (chapter.depth * 16).dp)
                                 .semantics { if (current) contentDescription = String.format(currentChapterDescription, chapter.title) }) {
                             if (current) Text("✓ ")
@@ -594,7 +614,10 @@ open class EpubActivity : AppCompatActivity() {
 
     companion object {
         private const val EXTRA_ITEM_ID = "itemId"
-        fun intent(context: Context, itemId: String): Intent = Intent(context, EpubActivity::class.java).putExtra(EXTRA_ITEM_ID, itemId)
+        private const val EXTRA_ANNOTATION_ID = "annotationId"
+        /** [annotationId] (Notes hub) makes the reader open at that annotation once, after the usual verification. */
+        fun intent(context: Context, itemId: String, annotationId: String? = null): Intent =
+            Intent(context, EpubActivity::class.java).putExtra(EXTRA_ITEM_ID, itemId).apply { annotationId?.let { putExtra(EXTRA_ANNOTATION_ID, it) } }
     }
 }
 
@@ -645,4 +668,19 @@ private fun EpubNotebookPanel(
             onDelete = { id -> state.annotations.firstOrNull { it.id == id }?.let(onDelete) },
             modifier = if (fillHeight) Modifier.weight(1f) else Modifier, fillHeight = fillHeight)
     }
+}
+
+/** How long a Notes-hub jump waits for the anchor verdict and for the navigator to attach before giving up with a message. */
+private const val JUMP_ANCHOR_WAIT_MILLIS = 8_000L
+private const val JUMP_NAVIGATOR_WAIT_MILLIS = 8_000L
+
+/** True only when the reader really arrived at the annotation; every other outcome (gone, not placeable, malformed, timeout) is false. */
+private suspend fun openAtAnnotation(vm: EpubReaderViewModel, controller: EpubController, annotationId: String): Boolean {
+    val annotation = vm.annotation(annotationId) ?: return false
+    // A selection-backed annotation may only be jumped to once its text anchor was verified in this rendition.
+    val status = if (annotation.isSelectionBacked) withTimeoutOrNull(JUMP_ANCHOR_WAIT_MILLIS) {
+        vm.state.map { it.anchors[annotation.id] }.filterNotNull().first()
+    } else null
+    withTimeoutOrNull(JUMP_NAVIGATOR_WAIT_MILLIS) { while (controller.navigator == null) delay(50); true } ?: return false
+    return navigateToAnnotation(annotation, status, controller::jumpTo) == AnnotationNavigation.ARRIVED
 }

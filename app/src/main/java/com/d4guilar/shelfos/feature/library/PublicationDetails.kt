@@ -24,6 +24,8 @@ import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.core.designsystem.shelfAction
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import com.d4guilar.shelfos.domain.annotations.AnnotationCounts
+import com.d4guilar.shelfos.domain.annotations.KnowledgePolicy
+import com.d4guilar.shelfos.feature.reader.activateOnGamepadConfirm
 import com.d4guilar.shelfos.domain.library.LibraryItem
 import com.d4guilar.shelfos.domain.library.MediaCategory
 import com.d4guilar.shelfos.feature.importing.PublicationEditor
@@ -37,8 +39,8 @@ import com.d4guilar.shelfos.feature.importing.originLabel
  */
 @Composable
 fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> Unit, modifier: Modifier = Modifier,
-    onRead: (Rect?) -> Unit, onEdit: (String, String, MediaCategory) -> Unit, onRemove: () -> Unit, focusPrimaryAction: Boolean = false,
-    /** Canonical annotation counts for this item; null while still loading, which keeps removal unconfirmable (never delete undisclosed data). */
+    onRead: (Rect?) -> Unit, onEdit: (String, String, MediaCategory) -> Unit, onRemove: (KnowledgePolicy) -> Unit, focusPrimaryAction: Boolean = false,
+    /** Canonical annotation counts for this item; null while still loading, which keeps removal unconfirmable (never remove with an undisclosed choice). */
     knowledgeCounts: AnnotationCounts?) {
     val t = LocalShelfTokens.current
     var details by rememberSaveable(item.id) { mutableStateOf(false) }
@@ -51,18 +53,30 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
     if (editing) PublicationEditor(item, stringResource(R.string.action_save_changes), { editing = false }, { title, creator, category ->
         onEdit(title, creator, category); editing = false
     })
+    val hasKnowledge = knowledgeCounts != null && knowledgeCounts.total > 0
     if (removing) AlertDialog(onDismissRequest = { removing = false }, title = { Text(stringResource(R.string.dialog_remove_title)) },
         text = {
             val body = stringResource(R.string.dialog_remove_body)
             val copyNote = item.managedPath?.let { stringResource(R.string.dialog_remove_private_copy_note, formatSize(item.byteSize)) }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(body)
-                if (knowledgeCounts != null && knowledgeCounts.total > 0) KnowledgeDeletionNote(knowledgeCounts)
+                if (hasKnowledge && knowledgeCounts != null) KnowledgeRemovalChoice(knowledgeCounts)
                 if (copyNote != null) Text(copyNote)
             }
         },
-        confirmButton = { TextButton({ removing = false; onRemove() }, Modifier.testTag("confirm_remove"), enabled = knowledgeCounts != null) { Text(stringResource(R.string.action_remove)) } },
-        dismissButton = { TextButton({ removing = false }) { Text(stringResource(R.string.action_cancel)) } })
+        confirmButton = {
+            // With saved items the choice is explicit and has no default: two distinct actions, neither implied by the other.
+            if (hasKnowledge) Column(horizontalAlignment = Alignment.End) {
+                val keep = { removing = false; onRemove(KnowledgePolicy.KEEP) }
+                val delete = { removing = false; onRemove(KnowledgePolicy.DELETE) }
+                TextButton(keep, Modifier.testTag("confirm_remove_keep").activateOnGamepadConfirm(onActivate = keep)) { Text(stringResource(R.string.action_remove_keep_notes)) }
+                TextButton(delete, Modifier.testTag("confirm_remove_delete").activateOnGamepadConfirm(onActivate = delete)) { Text(stringResource(R.string.action_remove_delete_notes)) }
+            } else {
+                val remove = { removing = false; onRemove(KnowledgePolicy.DELETE) }
+                TextButton(remove, Modifier.testTag("confirm_remove").activateOnGamepadConfirm(knowledgeCounts != null, remove), enabled = knowledgeCounts != null) { Text(stringResource(R.string.action_remove)) }
+            }
+        },
+        dismissButton = { val cancel = { removing = false }; TextButton(cancel, Modifier.testTag("cancel_remove").activateOnGamepadConfirm(onActivate = cancel)) { Text(stringResource(R.string.action_cancel)) } })
     BoxWithConstraints(modifier.fillMaxHeight()) {
         // The cover yields height first so the primary Read action stays in view on compact windows.
         val coverWidth = minOf(240.dp, maxHeight * 0.4f * 0.68f)
@@ -105,14 +119,17 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
     }
 }
 
-/** Discloses what removal also deletes (canonical annotation rows, per kind); only shown when the total is not 0. */
+/** Discloses the saved items removal affects and what each explicit choice does; only shown when the total is not 0. */
 @Composable
-private fun KnowledgeDeletionNote(counts: AnnotationCounts) {
+private fun KnowledgeRemovalChoice(counts: AnnotationCounts) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(stringResource(R.string.dialog_remove_annotations_intro))
         if (counts.bookmarks > 0) Text(pluralStringResource(R.plurals.dialog_remove_bookmarks_line, counts.bookmarks, counts.bookmarks))
         if (counts.highlights > 0) Text(pluralStringResource(R.plurals.dialog_remove_highlights_line, counts.highlights, counts.highlights))
         if (counts.notes > 0) Text(pluralStringResource(R.plurals.dialog_remove_notes_line, counts.notes, counts.notes))
         if (counts.other > 0) Text(pluralStringResource(R.plurals.dialog_remove_other_saved_line, counts.other, counts.other))
+        Spacer(Modifier.height(6.dp))
+        Text(stringResource(R.string.dialog_remove_keep_explain))
+        Text(stringResource(R.string.dialog_remove_delete_explain))
     }
 }

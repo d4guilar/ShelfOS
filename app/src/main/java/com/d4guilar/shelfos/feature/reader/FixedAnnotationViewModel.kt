@@ -11,6 +11,7 @@ import com.d4guilar.shelfos.domain.annotations.Annotation
 import com.d4guilar.shelfos.domain.annotations.AnnotationEdit
 import com.d4guilar.shelfos.domain.annotations.AnnotationKind
 import com.d4guilar.shelfos.domain.annotations.AnnotationLimits
+import com.d4guilar.shelfos.domain.annotations.LocatorFormat
 import com.d4guilar.shelfos.domain.annotations.fixedBookmarkIdsAt
 import com.d4guilar.shelfos.domain.annotations.fixedBookmarkedPages
 import com.d4guilar.shelfos.domain.annotations.fixedPageDraft
@@ -59,6 +60,13 @@ class FixedAnnotationViewModel(private val id: String, private val annotations: 
             }
         }
     }
+
+    /** The annotation a Notes-hub jump names, or null when it is gone, belongs to another publication or is not a fixed-page anchor. */
+    suspend fun jumpTarget(annotationId: String): Annotation? =
+        annotations.get(annotationId)?.takeIf { it.libraryItemId == id && it.locatorFormat == LocatorFormat.FIXED_PAGE_1 }
+
+    /** Explains a Notes-hub jump that could not be completed; the annotation itself is untouched. */
+    fun reportOpenFailed() = notice(R.string.notes_open_failed)
 
     private fun notice(resource: Int, vararg args: Any) { _state.update { it.copy(notice = UiMessage.Resource(resource, args.toList())) } }
     fun dismissNotice() { _state.update { it.copy(notice = null) } }

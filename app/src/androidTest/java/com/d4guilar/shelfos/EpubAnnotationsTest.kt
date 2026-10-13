@@ -470,7 +470,7 @@ class EpubAnnotationsTest {
     @Test fun aMalformedPersistedLocatorFailsTheJumpWithAMessageAndStaysDeletable() {
         launch().use { scenario ->
             val p = probe(scenario); awaitReader(p)
-            runBlocking { container.bookmarks.addBookmark(id, "this is not a locator", 10) }
+            runBlocking { BookmarkTestView(container.annotations).addBookmark(id, "this is not a locator", 10) }
             compose.onNodeWithTag("epub_notes").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("notebook_row").fetchSemanticsNodes().size == 1 }
             compose.onNode(hasContentDescription("Bookmark, ", substring = true) and hasClickAction()).performClick()

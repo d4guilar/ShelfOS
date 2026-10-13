@@ -5,7 +5,6 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.d4guilar.shelfos.core.database.AnnotationEntity
 import com.d4guilar.shelfos.data.annotations.RoomAnnotationRepository
-import com.d4guilar.shelfos.data.annotations.RoomBookmarkRepository
 import com.d4guilar.shelfos.domain.annotations.DefaultAnnotationLocatorValidator
 import com.d4guilar.shelfos.core.database.ShelfDatabase
 import com.d4guilar.shelfos.data.library.RoomLibraryRepository
@@ -25,7 +24,7 @@ class BookmarkPersistenceTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
     /** Phase 4A: bookmarks are now the BOOKMARK kind of the canonical annotation table, behind the unchanged BookmarkRepository contract. */
-    private fun bookmarks(db: ShelfDatabase) = RoomBookmarkRepository(RoomAnnotationRepository(db.annotations(), DefaultAnnotationLocatorValidator { true }))
+    private fun bookmarks(db: ShelfDatabase) = BookmarkTestView(RoomAnnotationRepository(db.annotations(), DefaultAnnotationLocatorValidator { true }))
 
     /** Bootstraps a real v2 database (matching app/schemas/.../2.json exactly) with one pre-existing library item,
      * its resume state and its preferences, then migrates it to v3 and verifies nothing pre-existing was lost. */
@@ -46,7 +45,7 @@ class BookmarkPersistenceTest {
             db.version = 2
         }
         fun open() = Room.databaseBuilder(context, ShelfDatabase::class.java, name)
-            .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3, ShelfDatabase.MIGRATION_3_4).build()
+            .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3, ShelfDatabase.MIGRATION_3_4, ShelfDatabase.MIGRATION_4_5).build()
         try {
             val db = open()
             try {
@@ -112,7 +111,7 @@ class BookmarkPersistenceTest {
 
     /** When progress and createdAt are both identical (e.g. two bookmarks added in the same millisecond), id is the
      * final deterministic tie-breaker rather than unspecified SQLite row order. Uses explicit deterministic ids and
-     * an explicit shared createdAt inserted directly through the DAO — not [RoomBookmarkRepository.addBookmark],
+     * an explicit shared createdAt inserted directly through the DAO — not [BookmarkTestView.addBookmark],
      * which always generates a random UUID and the current time — so the expected order is explicit, not incidental. */
     @Test fun bookmarksWithIdenticalProgressAndCreatedAtStillSortDeterministicallyById() = runBlocking<Unit> {
         val db = Room.inMemoryDatabaseBuilder(context, ShelfDatabase::class.java).build()

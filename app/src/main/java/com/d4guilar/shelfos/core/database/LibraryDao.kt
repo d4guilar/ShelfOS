@@ -63,7 +63,24 @@ abstract class LibraryDao {
      * the whole removal back). The legacy `bookmark` table keeps its own cascade foreign key and is cleared by the
      * item delete; nothing reads it any more. This is the only code path that removes a `library_item` row.
      */
-    @Transaction open suspend fun removeDeletingKnowledge(id: String) { deletePreferences(id); deleteReading(id); deleteAnnotations(id); deleteItem(id) }
+    @Transaction open suspend fun removeDeletingKnowledge(id: String) { deletePreferences(id); deleteReading(id); deleteAnnotations(id); deleteSnapshot(id); deleteItem(id) }
+
+    @Query("SELECT COUNT(*) FROM annotation WHERE libraryItemId = :id") protected abstract suspend fun annotationCount(id: String): Int
+    @Query("DELETE FROM annotation_source_snapshot WHERE libraryItemId = :id") protected abstract suspend fun deleteSnapshot(id: String)
+    // Copies only the four display fields; the source URI, private-copy path and file name are never read here.
+    @Query("INSERT OR REPLACE INTO annotation_source_snapshot (libraryItemId, title, creator, category, format) SELECT id, title, creator, category, format FROM library_item WHERE id = :id")
+    protected abstract suspend fun saveSnapshot(id: String)
+
+    /**
+     * Removal under `KnowledgePolicy.KEEP`, atomically: when the item owns annotations its display snapshot is saved (replacing any
+     * older one), then preferences, reading state and the item are deleted and every annotation row stays untouched, becoming
+     * an orphan. An item with no annotations gets no snapshot (no stale row for zero retained knowledge). Never reattaches
+     * anything and never touches source files.
+     */
+    @Transaction open suspend fun removeKeepingKnowledge(id: String) {
+        if (annotationCount(id) > 0) saveSnapshot(id) else deleteSnapshot(id)
+        deletePreferences(id); deleteReading(id); deleteItem(id)
+    }
     @Upsert abstract suspend fun saveReading(state: ReadingEntity)
     @Upsert abstract suspend fun savePreferences(state: ReaderPreferenceEntity)
     @Query("SELECT json FROM reader_preference WHERE itemId = ''") abstract fun globalPreferences(): Flow<String?>

@@ -4,6 +4,10 @@ package com.d4guilar.shelfos.data.annotations
 import com.d4guilar.shelfos.core.database.AnnotationDao
 import com.d4guilar.shelfos.core.database.AnnotationEntity
 import com.d4guilar.shelfos.core.database.AnnotationKindCount
+import com.d4guilar.shelfos.core.database.NotePublicationEntity
+import com.d4guilar.shelfos.core.database.NoteRowEntity
+import com.d4guilar.shelfos.domain.library.MediaCategory
+import com.d4guilar.shelfos.domain.library.PublicationFormat
 import com.d4guilar.shelfos.domain.annotations.*
 import com.d4guilar.shelfos.domain.annotations.Annotation
 import kotlinx.coroutines.flow.Flow
@@ -21,7 +25,7 @@ interface AnnotationRepository {
     /**
      * Validates kind invariants and, unless [validateLocator] is false, the locator for its format; then inserts. A
      * BOOKMARK at the exact locator string the item already has returns the existing annotation (no second row).
-     * [validateLocator] = false exists only for the legacy `BookmarkRepository` adapter, whose contract has always
+     * [validateLocator] = false exists only for EPUB bookmark creation (`addEpubBookmark`), whose contract has always
      * accepted opaque locator strings (a malformed one is shown as an unopenable bookmark that can still be deleted).
      * @throws InvalidAnnotationException on a violated invariant; IllegalArgumentException for an unknown library item.
      */
@@ -32,7 +36,7 @@ interface AnnotationRepository {
     suspend fun update(id: String, edit: AnnotationEdit): Annotation?
     /** Deletes one annotation of any kind (or only of [kind], when given). Returns whether a row was deleted. */
     suspend fun delete(id: String, kind: AnnotationKind? = null): Boolean
-    /** Deletes every annotation of a publication; only [KnowledgePolicy.DELETE] exists. Returns the number deleted. */
+    /** Deletes every annotation of a publication under [KnowledgePolicy.DELETE] (returns the number deleted); [KnowledgePolicy.KEEP] deletes nothing and returns 0. */
     suspend fun deleteForPublication(libraryItemId: String, policy: KnowledgePolicy): Int
     /** One publication's annotations, optionally limited to [kinds], in a deterministic [order]. Rows with an unknown kind or format are skipped and counted, never reinterpreted. */
     fun observeForPublication(libraryItemId: String, kinds: Set<AnnotationKind>? = null, order: AnnotationOrder = AnnotationOrder.READING): Flow<AnnotationListing>
@@ -40,8 +44,18 @@ interface AnnotationRepository {
     fun observeRecent(): Flow<AnnotationListing>
     /** Canonical annotation rows per kind for one publication (what removal will delete). */
     fun counts(libraryItemId: String): Flow<AnnotationCounts>
-    /** Integrity check: annotations whose library item is missing. Must be 0 under [KnowledgePolicy.DELETE]. */
+    /** Annotations whose library item no longer exists: 0 unless the user chose [KnowledgePolicy.KEEP] on a removal. */
     suspend fun countOrphans(): Int
+    /** One bounded page of the global Notes list in [NotesQuery.sort] order; pass [NotesPage.next] as [after] for the next page. Rows of an unknown kind or format are left out. */
+    suspend fun notes(query: NotesQuery, after: NotesCursor? = null, limit: Int = NOTES_PAGE_SIZE): NotesPage
+    /** How many annotations match [query] (ignoring paging), for the result count. */
+    suspend fun countNotes(query: NotesQuery): Int
+    /** Emits whenever annotations, removal snapshots or library items change; the value carries no meaning. Use it to refresh [notes]. */
+    fun observeChanges(): Flow<Int>
+    /** Every publication (live or removed) that owns annotations, by title, in one grouped read. */
+    fun observePublications(): Flow<List<NotesPublication>>
+    /** Explicit user action: deletes every annotation of a REMOVED publication and its snapshot. Refuses (returns 0) while the library item still exists. */
+    suspend fun deleteOrphanedPublication(libraryItemId: String): Int
 }
 
 class RoomAnnotationRepository(
@@ -76,6 +90,7 @@ class RoomAnnotationRepository(
 
     override suspend fun deleteForPublication(libraryItemId: String, policy: KnowledgePolicy) = when (policy) {
         KnowledgePolicy.DELETE -> dao.deleteForItem(libraryItemId)
+        KnowledgePolicy.KEEP -> 0
     }
 
     override fun observeForPublication(libraryItemId: String, kinds: Set<AnnotationKind>?, order: AnnotationOrder): Flow<AnnotationListing> {
@@ -92,6 +107,31 @@ class RoomAnnotationRepository(
 
     override fun counts(libraryItemId: String) = dao.observeKindCounts(libraryItemId).map(::counts)
     override suspend fun countOrphans() = dao.countOrphans()
+
+    override suspend fun notes(query: NotesQuery, after: NotesCursor?, limit: Int): NotesPage {
+        require(limit > 0) { "limit must be positive" }
+        val all = if (query.kinds == null) 1 else 0
+        val kinds = query.kinds.orEmpty().map { it.name }
+        val pattern = likePattern(query.text)
+        val has = if (after == null) 0 else 1
+        // One extra row tells whether more follow, so [NotesPage.next] is null exactly on the last page.
+        val fetched = when (query.sort) {
+            NotesSort.DATE -> dao.notesByDate(all, kinds, query.publicationId, pattern, has, after?.createdAt ?: 0L, after?.id.orEmpty(), limit + 1)
+            NotesSort.PUBLICATION -> dao.notesByPublication(all, kinds, query.publicationId, pattern, has, after?.sortTitle.orEmpty(),
+                after?.libraryItemId.orEmpty(), after?.order ?: 0.0, after?.createdAt ?: 0L, after?.id.orEmpty(), limit + 1)
+        }
+        val rows = fetched.take(limit)
+        val last = rows.lastOrNull()
+        val next = if (fetched.size > limit && last != null) NotesCursor(last.sortTitle, last.annotation.libraryItemId, last.sortOrder, last.annotation.createdAt, last.annotation.id) else null
+        return NotesPage(rows.mapNotNull { row -> row.annotation.toDomainOrNull()?.let { AnnotationWithSource(it, row.toSource()) } }, next)
+    }
+
+    override suspend fun countNotes(query: NotesQuery) =
+        dao.countNotes(if (query.kinds == null) 1 else 0, query.kinds.orEmpty().map { it.name }, query.publicationId, likePattern(query.text))
+
+    override fun observeChanges() = dao.observeChanges()
+    override fun observePublications() = dao.observePublications().map { rows -> rows.map { NotesPublication(it.toSource(), it.total) } }
+    override suspend fun deleteOrphanedPublication(libraryItemId: String) = dao.deleteOrphanGroup(libraryItemId)
 
     private fun listing(rows: List<AnnotationEntity>): AnnotationListing {
         val known = rows.mapNotNull { it.toDomainOrNull() }
@@ -119,3 +159,22 @@ private fun AnnotationEntity.toDomainOrNull(): Annotation? {
     val f = locatorFormat.toFormat() ?: return null
     return Annotation(id, libraryItemId, k, f, locatorJson, progressSnapshot, orderKey, title, selectedText, body, styleKey, createdAt, updatedAt)
 }
+
+/** Default number of rows per global Notes page. */
+const val NOTES_PAGE_SIZE = 100
+
+/** `%text%` with LIKE metacharacters escaped (`\`, `%`, `_`), or null for a blank query. Pairs with `ESCAPE '\'` in the DAO. */
+internal fun likePattern(text: String): String? {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) return null
+    val escaped = buildString { for (c in trimmed) { if (c == '\\' || c == '%' || c == '_') append('\\'); append(c) } }
+    return "%$escaped%"
+}
+
+private fun NoteRowEntity.toSource() = source(annotation.libraryItemId, srcTitle, srcCreator, srcCategory, srcFormat, live, available)
+private fun NotePublicationEntity.toSource() = source(libraryItemId, srcTitle, srcCreator, srcCategory, srcFormat, live, available)
+
+// Category and format are persisted by name; an unknown value (never expected) becomes null rather than failing the list.
+private fun source(id: String, title: String?, creator: String?, category: String?, format: String?, live: Boolean, available: Boolean) =
+    AnnotationSource(id, title, creator, MediaCategory.entries.firstOrNull { it.name == category },
+        PublicationFormat.entries.firstOrNull { it.name == format }, live, available)

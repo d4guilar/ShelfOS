@@ -1,5 +1,25 @@
 # Documentation Changelog
 
+## Phase 4D final Codex status (2026-10-12)
+
+- Independent Codex High final re-review: **PASS WITH NOTES**, with no BLOCKER, HIGH or MEDIUM findings. H1 and M1 are RESOLVED; 4D is **IMPLEMENTATION COMPLETE / REMEDIATION COMPLETE / CODEX HIGH PASS WITH NOTES / READY FOR PR**. Physical/manual UAT remains deferred to Phase 4F; Phase 4 is not complete or accepted, and 4E/4F have not started.
+- `docs/VALIDATION.md` corrects the sole LOW documentation note: Chapter 1 is proven current before recreation while durable Room persistence is checked after recreation; API 24's modern-WebView `AssumptionViolatedException` is recorded exactly as one XML failure, zero errors and zero skipped despite successful Gradle execution; stale locator authority is the reproduced root cause, while moving one-shot launch consumption into ViewModel saved state is lifecycle-correct ownership supplied by the remediation.
+- Status was reconciled in the Phase 4 plan, annotation/reader specifications, roadmap and README. Documentation only: no production code, tests, resources, schema/migration, Gradle or dependency change; no Samsung UAT, Phase 4E work, PR or merge.
+
+## Phase 4D focused remediation recorded (2026-10-12)
+
+- `docs/VALIDATION.md`: records the independent Codex High FAIL, H1 reproduction on RP5 and API 24, stale locator authority across recreation, lifecycle-correct one-shot ownership supplied by the saved-state remediation, M1's completed §11 Notes-row contract, focused per-device XML results, the one-time 10,000-row recheck and the RP5 authorization limitation. At that checkpoint the final re-review was still pending; the final status is recorded above.
+- `docs/PHASE_4_IMPLEMENTATION_PLAN.md`, `docs/features/ANNOTATIONS.md`, `docs/features/READER.md`: reconcile the same pending-re-review status and describe the accepted one-shot EPUB source-jump lifecycle plus complete row presentation without narrowing §11.
+- Code in the same remediation stays limited to those two findings: saved latest EPUB locator/launch consumption, shared generated cover presentation, stored EPUB location presentation, localized row timestamps and focused regressions. No schema, migration, query, dependency, source-file or second-navigator change.
+
+## Phase 4D implemented locally: global Notes hub (2026-10-12)
+
+- `docs/PHASE_4_IMPLEMENTATION_PLAN.md`: header status reconciled (4C merged: 4C.1 at `0040c52`, 4C.2 in PR #37 at `ca47e3d`, 4C.2 physical UAT deferred to 4F; 4D IMPLEMENTED LOCALLY / READY FOR INDEPENDENT REVIEW; 4E and 4F not started; Phase 4 not complete). Section 7.3 records the owner rule that keep-notes is never implicit (two default-free actions) instead of the earlier "default KEEP"; section 8.4 records the retirement of the `BookmarkRepository` adapter; new section 13.4.1 (4D implementation record and administrator decisions).
+- `docs/VALIDATION.md`: new "PHASE 4D" section with per-class, per-device counts, the RP5 authorization loss (all later evidence emulator-only), the 10,000-annotation measurements and `EXPLAIN QUERY PLAN`, what was not run, and the first things a hardware device must run.
+- `docs/features/ANNOTATIONS.md` (status plus the "Global Notes hub" section), `docs/features/READER.md` (open-at-annotation entry points), `docs/ROADMAP.md`, `README.md`: 4C recorded as merged, 4D as implemented locally, Notes no longer a placeholder.
+- `docs/adr/0025-annotation-anchor-and-knowledge-model.md`: two one-line clarifications only (adapter retired in 4D; keep policy implemented as explicit default-free actions with a display-only snapshot). No decision changed.
+- Code in the same change: Room v5 (`annotation_source_snapshot`), `KnowledgePolicy.KEEP`, `feature/notes`, keyset queries, open-at-annotation for EPUB and fixed readers. No dependency or Gradle change, no export/import/FTS.
+
 ## Phase 4C.2 final review status (2026-10-11)
 
 - `docs/PHASE_4_IMPLEMENTATION_PLAN.md`, `docs/VALIDATION.md`, `docs/ROADMAP.md`, `README.md`, `docs/features/ANNOTATIONS.md`, `docs/features/READER.md`: 4C.2 recorded as implementation complete, independent Codex High review PASS, ready to merge; physical/manual UAT deferred to Phase 4F (phase-closure acceptance, not a blocker); 4C implementation complete once 4C.2 merges; Phase 4 not complete; 4D-4F not started. Documentation only: no code, tests, resources, schema or dependency change.

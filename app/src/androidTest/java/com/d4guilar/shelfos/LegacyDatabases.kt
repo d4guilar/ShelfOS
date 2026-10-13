@@ -6,6 +6,8 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
 import com.d4guilar.shelfos.core.database.ShelfDatabase
+import com.d4guilar.shelfos.data.annotations.addEpubBookmark
+import com.d4guilar.shelfos.data.annotations.observeEpubBookmarks
 
 /**
  * Raw-SQL builders for REAL pre-4A database files, matching the exported schemas 1.json..3.json statement for
@@ -70,6 +72,25 @@ object LegacyDatabases {
         }
     }
 
+    const val ANNOTATION_V4 = "CREATE TABLE annotation (id TEXT NOT NULL, libraryItemId TEXT NOT NULL, kind TEXT NOT NULL, locatorFormat TEXT NOT NULL, locatorJson TEXT NOT NULL, progressSnapshot INTEGER NOT NULL, orderKey REAL, title TEXT, selectedText TEXT, body TEXT, styleKey TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, PRIMARY KEY(id))"
+
+    /** An annotation row for a v4 database (the exact columns of 4.json). */
+    data class V4Annotation(val id: String, val itemId: String, val kind: String, val format: String, val locator: String, val progress: Int,
+        val orderKey: Double?, val title: String?, val selectedText: String?, val body: String?, val styleKey: String?, val createdAt: Long, val updatedAt: Long)
+
+    /** Creates a real v4 database (everything v3 has, the legacy bookmark table, plus the annotation table and its two indices). */
+    fun createV4(context: Context, name: String, items: List<Pair<String, String>>, annotations: List<V4Annotation>) {
+        createV3(context, name, items, emptyList())
+        context.openOrCreateDatabase(name, 0, null).use { db ->
+            db.execSQL(ANNOTATION_V4)
+            db.execSQL("CREATE INDEX index_annotation_libraryItemId_kind_createdAt ON annotation (libraryItemId, kind, createdAt)")
+            db.execSQL("CREATE INDEX index_annotation_createdAt_id ON annotation (createdAt, id)")
+            for (a in annotations) db.execSQL("INSERT INTO annotation VALUES(${q(a.id)}, ${q(a.itemId)}, ${q(a.kind)}, ${q(a.format)}, ${q(a.locator)}, ${a.progress}, " +
+                "${a.orderKey ?: "NULL"}, ${q(a.title)}, ${q(a.selectedText)}, ${q(a.body)}, ${q(a.styleKey)}, ${a.createdAt}, ${a.updatedAt})")
+            db.version = 4
+        }
+    }
+
     /** All rows of [table] as lists of column values, ordered by [orderBy], read through a raw SQLite connection. */
     fun dump(db: SQLiteDatabase, table: String, orderBy: String): List<List<String?>> =
         db.rawQuery("SELECT * FROM $table ORDER BY $orderBy", null).use(::rows)
@@ -84,5 +105,16 @@ object LegacyDatabases {
         db.rawQuery("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", arrayOf(table)).use { it.moveToFirst(); it.getInt(0) == 1 }
 
     fun open(context: Context, name: String) = Room.databaseBuilder(context, ShelfDatabase::class.java, name)
-        .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3, ShelfDatabase.MIGRATION_3_4).build()
+        .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3, ShelfDatabase.MIGRATION_3_4, ShelfDatabase.MIGRATION_4_5).build()
+}
+
+/**
+ * Test-side view of the EPUB bookmark helpers (`observeEpubBookmarks`, `addEpubBookmark`, kind-scoped delete) that replaced
+ * the retired `BookmarkRepository` adapter. The behavior under test is the production code; this only keeps the old call shape.
+ */
+class BookmarkTestView(private val annotations: com.d4guilar.shelfos.data.annotations.AnnotationRepository) {
+    fun bookmarks(itemId: String) = annotations.observeEpubBookmarks(itemId)
+    suspend fun addBookmark(itemId: String, locator: String, progress: Int, label: String? = null) =
+        annotations.addEpubBookmark(itemId, locator, progress, label)
+    suspend fun deleteBookmark(id: String) { annotations.delete(id, com.d4guilar.shelfos.domain.annotations.AnnotationKind.BOOKMARK) }
 }

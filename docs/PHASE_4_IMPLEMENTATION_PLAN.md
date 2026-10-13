@@ -1,6 +1,6 @@
 # Phase 4 Implementation Plan — Notes and Knowledge Layer
 
-Status (reconciled 2026-10-11): **Phase 4A and 4B are merged; 4C.1 is MERGED + ACCEPTED on `main` at `0040c52187e50515b7d20608e5ef8e71dacc7809`. 4C.2 on `phase-4/4c2-adaptive-notebook` is IMPLEMENTATION COMPLETE with independent Codex High review PASS and is READY TO MERGE (not yet merged); physical/manual UAT is deferred to Phase 4F. 4C is implementation complete once 4C.2 merges. Phases 4D–4F have not started.** Phase 4 as a whole is NOT complete. Room remains v4 and 4C adds no migration or dependency.
+Status (reconciled 2026-10-12): **Phase 4A, 4B and 4C are merged: 4C.1 is MERGED + ACCEPTED on `main` at `0040c52187e50515b7d20608e5ef8e71dacc7809`; 4C.2 (the adaptive Publication Notebook) was merged in PR #37 at `ca47e3d1bee2c3d5426996ab6c76204cd5920131` with independent Codex High review PASS, so 4C is implementation complete; physical/manual UAT for 4C.2 is deferred to Phase 4F. 4D (the global Notes hub) is IMPLEMENTATION COMPLETE / REMEDIATION COMPLETE / CODEX HIGH PASS WITH NOTES / READY FOR PR on `phase-4/4d-global-notes-hub` (not merged; physical/manual UAT deferred to 4F). Phases 4E and 4F have not started.** Phase 4 as a whole is NOT complete or accepted. 4D takes Room to v5 (additive `annotation_source_snapshot`) and adds no dependency.
 
 Anything marked **(proposed)** is a recommendation for review, not an accepted design.
 Anything marked **(verified)** was checked against the repository or the pinned
@@ -324,9 +324,7 @@ Today removal deletes bookmarks silently (§2.2). Proposed policy:
   yet), **and the confirmation dialog now discloses the count** ("This also deletes N
   bookmarks, highlights and notes."), fixing the copy conflict in §2.5. When the count is
   0 the dialog is unchanged.
-- **4D enables `KEEP`** ("Remove from library, keep notes" vs "Remove including notes",
-  default `KEEP` when annotations exist, because user-authored knowledge is more valuable
-  than reading position and the project's rule is non-destructive by default). Kept
+- **4D enables `KEEP`** ("Remove, keep notes" vs "Remove, delete notes"). **Implementation decision (4D, owner rule):** when annotations exist the choice is two explicit actions with NO default and nothing implied, so `KEEP` is never implicit and the existing destructive behavior is not silently changed; with no annotations the dialog is the single unchanged action. Kept
   annotations become **orphans**: rows whose `libraryItemId` no longer matches a
   `library_item`. They appear in the Notes hub grouped under a publication snapshot (title,
   creator, format, category captured at removal into a small additive table, proposed
@@ -447,7 +445,7 @@ the 4F acceptance checklist.
   bookmark order is unchanged during the transition.
 - Retirement: 4B/4C consume `AnnotationRepository` directly for new surfaces; the
   `BookmarkRepository` adapter is removed when the last caller (EPUB dialog) moves, no
-  later than 4D. The legacy table is dropped after 4F acceptance (see §8.3 item 4).
+  later than 4D. **Done in 4D:** `BookmarkRepository` and `RoomBookmarkRepository` are deleted; `EpubReaderViewModel` uses `observeEpubBookmarks`/`addEpubBookmark` (extension functions over `AnnotationRepository`, same order, opaque-locator and dedupe rules) and `AnnotationRepository.delete(id, BOOKMARK)`. The legacy table is dropped after 4F acceptance (see §8.3 item 4).
 
 ### 8.5 Migration test design (instrumented, repo convention)
 
@@ -1097,7 +1095,7 @@ Implemented on `phase-4/4c1-fixed-annotations`, accepted after independent High 
 - Drafts survive rotation (ViewModel target plus `rememberSaveable` body) and are never auto-saved. They do NOT survive process death (D5); committed annotations do (verified, see VALIDATION).
 - Delivered by 4C.2: adaptive side-by-side, `notebookPresentation`, EPUB port onto the panel, EPUB `TOGGLE_BOOKMARK`, and highlights in the Notebook. The 4D hub, export, ink, OCR and PDF text selection remain future work.
 
-#### 13.3.16 4C.2 implementation record (2026-10-11; IMPLEMENTATION COMPLETE, CODEX HIGH PASS, READY TO MERGE)
+#### 13.3.16 4C.2 implementation record (2026-10-11; IMPLEMENTATION COMPLETE, CODEX HIGH PASS; MERGED in PR #37 at `ca47e3d1bee2c3d5426996ab6c76204cd5920131`, reconciled 2026-10-12)
 
 **Final status.** Original implementation `953e9c03fbea854ce1e5562386bded74ae6ce45a`; accessibility/docs remediation `a3d74cba52503b79f753234959416c071617c01e`. Independent Codex High found H1 (EPUB Notebook spoken accessibility semantics lost; restored through separate visual and spoken location representations) and M1 (validation documentation status contradiction; corrected); the final Codex High re-review is **PASS**. Workflow decision: physical/manual UAT is performed once at phase closure, so the Samsung UAT for 4C.2 is **deferred to Phase 4F**, which owns the comprehensive hardware acceptance matrix over the accumulated 4A, 4B, 4C.1, 4C.2, 4D and 4E behavior (checklist not yet written). It is not a merge blocker and no Samsung 4C.2 PASS is claimed. Phase 4 as a whole is NOT complete or accepted until 4D, 4E and 4F finish.
 
@@ -1115,6 +1113,21 @@ The implementation adds the pure 840×480dp adaptive policy with a 36% pane clam
 - **Acceptance:** §11 behaviors; an unavailable-source annotation remains listed and its jump explains itself; keep-notes removal leaves orphans visible and exportable data intact; large collection stays responsive on the SM-T580/RP5.
 - **Risks:** removal-path data semantics; hub query cost; deep-link argument wiring across the EPUB Activity and nav route.
 - **Codex High review: yes** for the removal/orphan/migration part; the UI-only portion could be reviewed at standard level — recommend one High review over the slice.
+
+#### 13.4.1 4D implementation record (2026-10-12; IMPLEMENTATION COMPLETE / REMEDIATION COMPLETE / CODEX HIGH PASS WITH NOTES / READY FOR PR)
+
+Implemented on `phase-4/4d-global-notes-hub` from `main` at `ca47e3d1bee2c3d5426996ab6c76204cd5920131` (4C.2, PR #37, merged). Not merged and not in a PR; no physical/manual UAT (Phase 4F); 4E not started; Phase 4 is NOT complete. Evidence and its device limits (including intermittent RP5 ADB authorization) are in `docs/VALIDATION.md`.
+
+Independent Codex High review returned FAIL with exactly H1 (a stale locator could remain authoritative across Activity recreation) and M1 (rows omitted the §11 cover/timestamps and reduced EPUB location to percentage). The narrow remediation gives the ViewModel saved-state ownership of one-shot launch consumption and the latest accepted locator, and completes the existing row contract with the shared generated cover visual, kind icon/label, stored chapter/Location presentation and locale-aware Created/Updated labels. Final Codex High re-review returned **PASS WITH NOTES**, with no BLOCKER, HIGH or MEDIUM findings; its sole LOW documentation note corrected the recreation-test, API 24 assumption and root-cause wording in `docs/VALIDATION.md`. H1 and M1 are RESOLVED. No accepted 4D area, schema, query, migration, dependency, exact-anchor rule, fixed navigation or reader session architecture changed. 4D is ready for PR but is not merged or accepted; physical/manual UAT remains deferred to Phase 4F.
+
+- **Schema.** Room v5, additive hand-written `MIGRATION_4_5`; table `annotation_source_snapshot(libraryItemId PK, title, creator, category, format)` created for keep-notes removals; no foreign key; no URI/path/hash. `5.json` committed. Migration tests use the repository's real-file raw-SQL pattern (no new test dependency).
+- **Removal.** `LibraryRepository.remove(id, policy)`; `KnowledgePolicy.KEEP` added. With saved items the removal dialog shows two explicit actions ("Remove, keep notes" / "Remove, delete notes") and no default (this refines the plan's earlier "default KEEP" wording to the owner rule that KEEP is never implicit); with none it is the unchanged single action. KEEP runs in one transaction: snapshot (only when annotations exist), delete preferences/reading state/item, annotations untouched. DELETE deletes the annotations and any stale snapshot. The last orphan deleted removes its snapshot; "delete notes for this removed publication" is explicit and refuses while the item exists.
+- **Hub.** `feature/notes` (`NotesViewModel`, `NotesScreen`); `ShelfApp` only routes. Keyset pages of 100 (no Paging dependency), result count, escaped `LIKE` search over body/selected text/label/publication and snapshot title/creator, kind and publication filters, publication/date sorts with group headers, orphan rows and group delete, edit through the shared `AnnotationEditorDialog`, delete through the shared confirmation. Controls survive recreation (saved state); a new filter/sort/search returns to the top.
+- **Open source.** EPUB: optional `annotationId` extra on `EpubActivity` (the existing opening mechanism); the reader resolves the annotation, waits for the anchor verdict of selection-backed ones, and calls the existing `navigateToAnnotation`/`jumpTo` (PLACEABLE only). Fixed readers: optional `annotation` argument on the existing `reader/{id}` route; `FixedReaderScreen` waits for the real page count and uses the strict `fixedPageNavigation` through `showPage` (never `restorePage`'s clamp). Failures show "That spot could not be opened. The note is still saved." and change nothing; the jump is consumed once per open. Orphans offer no Open action.
+- **Adapter retirement.** `BookmarkRepository` and `RoomBookmarkRepository` are deleted; the EPUB view model uses `observeEpubBookmarks`/`addEpubBookmark` (extension functions over `AnnotationRepository` keeping the `progress, createdAt, id` order, opaque-locator storage and exact-locator dedupe) and `delete(id, BOOKMARK)`. No reader redesign was needed.
+- **Not touched** (per the slice rules): `FixedReaderViewModel`, `showPage`/`restorePage`/`pageLocator`, spread/page identity, `sanitizeEpubHtml`, notebook presentation thresholds, `EpubSurface` host structure. No export, import, FTS, Series/Smart Shelves grouping, metadata work, reattachment, fingerprinting, sync or account code.
+- **Decisions for the administrator.** (1) The publication sort uses a temp B-tree per page (about 30 ms per page at 10,000 rows on a fast host); whether that is acceptable on the SM-T580 is a 4F measurement, and the fallback (a stored lower-cased sort title or a cheaper default sort) would be a later migration. (2) Global listings skip rows of an unknown kind/format without counting them (the per-publication readers still count); say if the hub should surface that count. (3) Hub rows hold full note bodies (up to 20,000 characters each) in memory for the loaded pages. (4) The legacy `bookmark` table is still not dropped (after 4F).
+
 
 ### 13.5 4E — Portable knowledge and research
 

@@ -57,7 +57,7 @@ ShelfOS's setup is unproven.
    is retained, unwritten, until physical acceptance confirms zero loss, and is dropped in
    a later small migration. The existing `BookmarkRepository` interface is kept as a
    compatibility adapter over the new table during the transition so current bookmark
-   behavior is unchanged, then retired.
+   behavior is unchanged, then retired (done in Phase 4D: the EPUB reader uses `AnnotationRepository` directly).
 7. **Missing source preserves knowledge.** A source that is unavailable, moved or has lost
    its permission never deletes or hides annotations. They remain listable, editable,
    searchable and exportable; only jump-to-source can fail, with an explanatory message.
@@ -66,7 +66,9 @@ ShelfOS's setup is unproven.
    the annotations in the same transaction, or (once the Notes hub can display them) keep
    them as orphans under a captured publication snapshot. The removal confirmation states
    the consequence and count. Nothing deletes annotations automatically or as a side effect
-   of source problems.
+   of source problems. Phase 4D implements the keep policy as two explicit, default-free
+   removal actions (keep notes / delete notes); the snapshot holds only display fields and
+   never a URI, path or hash.
 9. **No invisible remapping.** ShelfOS has no content fingerprint. Re-importing a removed
    publication creates a new item and does not re-associate old annotations; a replaced
    file behind an existing item keeps its annotations and reports ones that can no longer be

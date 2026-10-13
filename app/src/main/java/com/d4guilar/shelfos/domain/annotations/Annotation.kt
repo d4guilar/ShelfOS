@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos.domain.annotations
 
+import com.d4guilar.shelfos.domain.library.MediaCategory
+import com.d4guilar.shelfos.domain.library.PublicationFormat
+
 /** What an annotation is. A kind never changes implicitly: adding a body to a [HIGHLIGHT] keeps it a highlight. */
 enum class AnnotationKind { BOOKMARK, HIGHLIGHT, NOTE }
 
@@ -13,10 +16,11 @@ enum class LocatorFormat {
 }
 
 /**
- * What happens to a library item's annotations when the item is removed. Only [DELETE] exists in Phase 4A; a keep
- * policy needs the Notes hub to be able to show orphans (ADR-0025, plan section 7.3) and is deliberately absent.
+ * What happens to a library item's annotations when the item is removed. The choice is always explicit, never implicit.
+ * [DELETE] removes them with the item. [KEEP] (Phase 4D, plan section 7.3) retains them as orphans under a publication
+ * snapshot (display title, creator, category and format only) that the Notes hub presents; orphans are never reattached.
  */
-enum class KnowledgePolicy { DELETE }
+enum class KnowledgePolicy { DELETE, KEEP }
 
 /**
  * One saved reading place, highlight or note. [locatorJson] is the sole authority on where it points; [progressSnapshot]
@@ -129,3 +133,38 @@ object AnnotationRules {
 
     private fun fail(message: String): Nothing = throw InvalidAnnotationException(message)
 }
+
+/** Ordering of the global Notes list. */
+enum class NotesSort {
+    /** Grouped by publication (title, then item id), each group in reading order: `COALESCE(orderKey, progressSnapshot / 100.0), createdAt, id`. */
+    PUBLICATION,
+    /** Newest first: `createdAt DESC, id DESC`. */
+    DATE,
+}
+
+/** A global Notes read. [kinds] null means every kind; [text] matches literally (case-insensitive for ASCII); blank means no text filter. */
+data class NotesQuery(
+    val kinds: Set<AnnotationKind>? = null, val publicationId: String? = null, val text: String = "", val sort: NotesSort = NotesSort.PUBLICATION,
+)
+
+/**
+ * Where a retained annotation came from. A [live] source is a current library item; otherwise the annotation is an orphan
+ * whose [title]/[creator] come from the removal snapshot (null when no snapshot exists). Never carries a URI, path or
+ * any way to reach the original file.
+ */
+data class AnnotationSource(
+    val libraryItemId: String, val title: String?, val creator: String?, val category: MediaCategory?, val format: PublicationFormat?,
+    val live: Boolean, val available: Boolean,
+)
+
+/** An annotation with its publication context, as shown by the global Notes list. */
+data class AnnotationWithSource(val annotation: Annotation, val source: AnnotationSource)
+
+/** Opaque keyset position of a row; only the repository interprets it. */
+data class NotesCursor(val sortTitle: String, val libraryItemId: String, val order: Double, val createdAt: Long, val id: String)
+
+/** One bounded page of the global Notes list; [next] is non-null exactly when more rows follow. */
+data class NotesPage(val rows: List<AnnotationWithSource>, val next: NotesCursor?)
+
+/** A publication (live or removed) that owns at least one annotation, for the publication filter and group headers. */
+data class NotesPublication(val source: AnnotationSource, val total: Int)

@@ -19,7 +19,7 @@ import org.junit.Test
 
 /**
  * Phase 4C.1: fixed-page bookmarks and notes through the canonical [RoomAnnotationRepository] over a real in-memory
- * Room v4 database, for PDF, CBZ and CBR items (the annotation layer is format-agnostic: only the item's format differs).
+ * Room database, for PDF, CBZ and CBR items (the annotation layer is format-agnostic: only the item's format differs).
  */
 class FixedAnnotationRepositoryTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
@@ -38,8 +38,9 @@ class FixedAnnotationRepositoryTest {
 
     private suspend fun list(item: String) = repo.observeForPublication(item).first().annotations
 
-    @Test fun roomStaysAtVersionFourWithNoSchemaChange() {
-        assertEquals(4, db.openHelper.readableDatabase.version)
+    /** 4C added no schema change after v4; 4D's additive snapshot table makes the current version 5 (see NotesSnapshotMigrationTest). */
+    @Test fun roomIsAtTheCurrentSchemaVersionFive() {
+        assertEquals(5, db.openHelper.readableDatabase.version)
     }
 
     @Test fun canonicalLocatorMatchesTheReadersOwnPageLocatorOnDevice() {

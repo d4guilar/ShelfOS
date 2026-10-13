@@ -5,6 +5,7 @@ import androidx.lifecycle.*
 import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.core.designsystem.UiMessage
 import com.d4guilar.shelfos.data.library.LibraryRepository
+import com.d4guilar.shelfos.domain.annotations.KnowledgePolicy
 import com.d4guilar.shelfos.domain.library.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.*
@@ -38,7 +39,7 @@ class LibraryViewModel(val repository: LibraryRepository, private val saved: Sav
     fun searchResults(query: String) = records.value.filter { it.title.contains(query.trim(), true) || it.creator.contains(query.trim(), true) }
     fun publication(id: String?) = records.value.find { it.id == id }
     fun toggleFavorite(id: String) = action { repository.favorite(id) }
-    fun remove(id: String) = action { repository.remove(id) }
+    fun remove(id: String, policy: KnowledgePolicy) = action { repository.remove(id, policy) }
     fun edit(id: String, title: String, creator: String, category: MediaCategory) = action {
         require(title.isNotBlank())
         repository.edit(id, title, creator, category)
