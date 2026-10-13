@@ -302,7 +302,7 @@ forward and are **implemented and accepted as part of Phase 1** (ADR-0017,
 2026-09-24). Advanced spreads, thumbnails, foldable-aware pairing and native CBR
 support were completed here in Phase 3. The original inventory below is retained
 for coverage; delivered items are marked accordingly. ShelfOS as a whole is not
-finished: Phase 4 (Notes and Knowledge Layer) is the next roadmap area — 4A through 4D are merged, with 4D (the global Notes hub) merged in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`; 4E — Portable Knowledge & Restore planning is remediated and pending focused Codex High planning re-review, but implementation has not started; 4F has not started.
+finished: Phase 4 (Notes and Knowledge Layer) is the next roadmap area — 4A through 4D are merged, with 4D (the global Notes hub) merged in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`; 4E — Portable Knowledge & Restore planning is complete with an independent Codex High PASS and is ready for PR, but implementation has not started; 4F has not started.
 
 ### Goal
 Make image-sequence media first-class.
@@ -347,7 +347,7 @@ A user can comfortably read a CBZ comic or manga entirely with touch, keyboard, 
 
 ### Current status
 
-Phase 4 has started. 4A through 4D are merged and implementation complete; 4D, the Room-v5 global Notes hub, merged in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`. Physical/manual acceptance remains deferred to Phase 4F. **4E — Portable Knowledge & Restore is PLANNING REMEDIATED / IMPLEMENTATION NOT STARTED / PENDING FOCUSED CODEX HIGH PLANNING RE-REVIEW; no planning PASS is claimed:** Markdown is human-readable export, while canonical ShelfOS JSON is the only versioned round-trip import/restore format. It restores unmatched groups as orphans, is strictly additive and never guesses publication identity or includes publication binaries. 4F is NOT STARTED. Phase 4 is NOT complete or accepted. Evidence is in [`VALIDATION.md`](VALIDATION.md) and the plan in [`PHASE_4_IMPLEMENTATION_PLAN.md`](PHASE_4_IMPLEMENTATION_PLAN.md).
+Phase 4 has started. 4A through 4D are merged and implementation complete; 4D, the Room-v5 global Notes hub, merged in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`. Physical/manual acceptance remains deferred to Phase 4F. **4E — Portable Knowledge & Restore is PLANNING COMPLETE / CODEX HIGH PASS / IMPLEMENTATION NOT STARTED / READY FOR PR:** Markdown is human-readable export, while canonical ShelfOS JSON is the only versioned round-trip import/restore format. It restores unmatched groups as orphans, is strictly additive and never guesses publication identity or includes publication binaries. 4F is NOT STARTED. Phase 4 is NOT complete or accepted. Evidence is in [`VALIDATION.md`](VALIDATION.md) and the plan in [`PHASE_4_IMPLEMENTATION_PLAN.md`](PHASE_4_IMPLEMENTATION_PLAN.md).
 
 ### Goal
 ShelfOS becomes useful for active reading and study.

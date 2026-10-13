@@ -1,11 +1,22 @@
 # Documentation Changelog
 
+## Phase 4E planning finalized after Codex High PASS (2026-10-12)
+
+- Final focused independent planning re-review: **PASS**, with no BLOCKER, HIGH,
+  MEDIUM or LOW findings, no remediation notes and no remaining administrator decision.
+- Phase 4E — Portable Knowledge & Restore is **PLANNING COMPLETE / CODEX HIGH PASS /
+  IMPLEMENTATION NOT STARTED / READY FOR PR**. Phase 4F remains NOT STARTED; Phase 4
+  remains NOT COMPLETE / NOT ACCEPTED; physical/manual portability UAT remains deferred
+  to Phase 4F.
+- Documentation-only status finalization. The approved Phase 4E contract is unchanged;
+  no production code, tests, resources, schema/migration, Gradle or dependencies changed.
+
 ## Phase 4E planning contract hardened after Codex High review (2026-10-12)
 
 - Review result: FAIL — PLANNING REMEDIATION REQUIRED, with six MEDIUM contract issues
   and two LOW clarifications; no BLOCKER or HIGH finding. Status is now **PLANNING
-  REMEDIATED / IMPLEMENTATION NOT STARTED / PENDING FOCUSED CODEX HIGH PLANNING
-  RE-REVIEW**. No planning PASS is claimed.
+  COMPLETE / CODEX HIGH PASS / IMPLEMENTATION NOT STARTED / READY FOR PR** after the
+  final focused independent planning re-review.
 - JSON v1 now rejects repeated publication groups and intra-document annotation ids,
   preserves domain-valid unknown-palette style keys, compares all persisted annotation
   fields exactly, orders groups/annotations by canonical ids, and ignores only unknown

@@ -1,10 +1,12 @@
 # Validation
 
-## PHASE 4E — PORTABLE KNOWLEDGE & RESTORE PLANNING REMEDIATION (2026-10-12)
+## PHASE 4E — PORTABLE KNOWLEDGE & RESTORE PLANNING FINALIZATION (2026-10-12)
 
-Status: **PLANNING REMEDIATED / IMPLEMENTATION NOT STARTED / PENDING FOCUSED CODEX
-HIGH PLANNING RE-REVIEW.** No planning PASS is claimed. Phase 4D is MERGED /
-IMPLEMENTATION COMPLETE in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`.
+Status: **PLANNING COMPLETE / CODEX HIGH PASS / IMPLEMENTATION NOT STARTED / READY
+FOR PR.** The final focused independent planning re-review passed with no BLOCKER, HIGH,
+MEDIUM or LOW findings, no remediation notes and no remaining administrator decision.
+Phase 4D is MERGED / IMPLEMENTATION COMPLETE in PR #38 at
+`90b9f1c7fe827c996247a60bcd8cbc224afc72d3`.
 Phase 4F is NOT STARTED; Phase 4 is NOT complete or accepted.
 
 This is documentation-only planning evidence. No production code, tests, resources,
@@ -20,8 +22,8 @@ canonical id ordering and all-pages filtered export; makes restore strictly addi
 separates invalid documents, valid local conflicts and stale previews; specifies bounded
 three-pass processing with 64 MiB / 10,000-group / 100,000-annotation guards; and expands
 adversarial tests for identity, snapshots, resources, unknown members and failed-export
-cleanup. A focused Codex High planning re-review is required next. Physical/manual
-portability acceptance remains Phase 4F.
+cleanup. The approved planning contract is unchanged by this status finalization.
+Physical/manual portability acceptance remains deferred to Phase 4F.
 
 ## PHASE 4D — GLOBAL NOTES HUB (2026-10-12)
 
