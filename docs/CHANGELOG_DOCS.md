@@ -1,8 +1,14 @@
 # Documentation Changelog
 
+## Phase 4D final Codex status (2026-10-12)
+
+- Independent Codex High final re-review: **PASS WITH NOTES**, with no BLOCKER, HIGH or MEDIUM findings. H1 and M1 are RESOLVED; 4D is **IMPLEMENTATION COMPLETE / REMEDIATION COMPLETE / CODEX HIGH PASS WITH NOTES / READY FOR PR**. Physical/manual UAT remains deferred to Phase 4F; Phase 4 is not complete or accepted, and 4E/4F have not started.
+- `docs/VALIDATION.md` corrects the sole LOW documentation note: Chapter 1 is proven current before recreation while durable Room persistence is checked after recreation; API 24's modern-WebView `AssumptionViolatedException` is recorded exactly as one XML failure, zero errors and zero skipped despite successful Gradle execution; stale locator authority is the reproduced root cause, while moving one-shot launch consumption into ViewModel saved state is lifecycle-correct ownership supplied by the remediation.
+- Status was reconciled in the Phase 4 plan, annotation/reader specifications, roadmap and README. Documentation only: no production code, tests, resources, schema/migration, Gradle or dependency change; no Samsung UAT, Phase 4E work, PR or merge.
+
 ## Phase 4D focused remediation recorded (2026-10-12)
 
-- `docs/VALIDATION.md`: records the independent Codex High FAIL, H1 reproduction on RP5 and API 24, the dual lifecycle/position-authority root cause, the narrow saved-state remediation, M1's completed §11 Notes-row contract, focused per-device XML results, the one-time 10,000-row recheck and the RP5 authorization limitation. Status is **IMPLEMENTED LOCALLY / REMEDIATION COMPLETE / PENDING FOCUSED INDEPENDENT RE-REVIEW**; no final PASS, merge, Samsung UAT or Phase 4 completion is claimed.
+- `docs/VALIDATION.md`: records the independent Codex High FAIL, H1 reproduction on RP5 and API 24, stale locator authority across recreation, lifecycle-correct one-shot ownership supplied by the saved-state remediation, M1's completed §11 Notes-row contract, focused per-device XML results, the one-time 10,000-row recheck and the RP5 authorization limitation. At that checkpoint the final re-review was still pending; the final status is recorded above.
 - `docs/PHASE_4_IMPLEMENTATION_PLAN.md`, `docs/features/ANNOTATIONS.md`, `docs/features/READER.md`: reconcile the same pending-re-review status and describe the accepted one-shot EPUB source-jump lifecycle plus complete row presentation without narrowing §11.
 - Code in the same remediation stays limited to those two findings: saved latest EPUB locator/launch consumption, shared generated cover presentation, stored EPUB location presentation, localized row timestamps and focused regressions. No schema, migration, query, dependency, source-file or second-navigator change.
 
