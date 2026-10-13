@@ -1,5 +1,25 @@
 # Documentation Changelog
 
+## Phase 4E planning contract hardened after Codex High review (2026-10-12)
+
+- Review result: FAIL — PLANNING REMEDIATION REQUIRED, with six MEDIUM contract issues
+  and two LOW clarifications; no BLOCKER or HIGH finding. Status is now **PLANNING
+  REMEDIATED / IMPLEMENTATION NOT STARTED / PENDING FOCUSED CODEX HIGH PLANNING
+  RE-REVIEW**. No planning PASS is claimed.
+- JSON v1 now rejects repeated publication groups and intra-document annotation ids,
+  preserves domain-valid unknown-palette style keys, compares all persisted annotation
+  fields exactly, orders groups/annotations by canonical ids, and ignores only unknown
+  object member names—not unknown semantic values.
+- Filtered export walks every keyset page. Restore is additive only; local absence never
+  means deletion. Valid local conflicts are skipped while NEW rows import atomically;
+  stale preview classifications abort with zero writes. Snapshot collision and live-item
+  authority rules are explicit.
+- Import uses bounded streaming/revalidation with guards of 64 MiB, 10,000 publication
+  groups and 100,000 annotations. The targeted plan adds every requested adversarial case,
+  including failed-export cleanup. Export is never truncated to an import guard.
+- Documentation only: no production code, tests, resources, schema/migration, Gradle or
+  dependency changes; no automated/manual UAT, push or PR.
+
 ## Phase 4E portable-knowledge planning reconciled (2026-10-12)
 
 - Administrator decision recorded: Phase 4E is **Portable Knowledge & Restore**, with

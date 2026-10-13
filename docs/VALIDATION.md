@@ -1,11 +1,11 @@
 # Validation
 
-## PHASE 4E — PORTABLE KNOWLEDGE & RESTORE PLANNING (2026-10-12)
+## PHASE 4E — PORTABLE KNOWLEDGE & RESTORE PLANNING REMEDIATION (2026-10-12)
 
-Status: **PLANNING RECONCILED / IMPLEMENTATION NOT STARTED.** Phase 4D is MERGED /
-IMPLEMENTATION COMPLETE in PR #38 at
-`90b9f1c7fe827c996247a60bcd8cbc224afc72d3`. Phase 4F is NOT STARTED; Phase 4 is
-NOT complete or accepted.
+Status: **PLANNING REMEDIATED / IMPLEMENTATION NOT STARTED / PENDING FOCUSED CODEX
+HIGH PLANNING RE-REVIEW.** No planning PASS is claimed. Phase 4D is MERGED /
+IMPLEMENTATION COMPLETE in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`.
+Phase 4F is NOT STARTED; Phase 4 is NOT complete or accepted.
 
 This is documentation-only planning evidence. No production code, tests, resources,
 schema/migration, Gradle or dependency changed; no build, automated validation or manual
@@ -13,8 +13,15 @@ UAT was required or run. The approved plan makes Markdown human-readable export 
 canonical ShelfOS JSON the versioned export/import format. It defines exact-id live
 association, unmatched-group orphan restore, idempotent duplicate handling, no-overwrite
 conflicts, whole-document validation and one-transaction Room v5 commit. A fresh independent
-Codex High review is required after implementation. Physical/manual portability acceptance
-remains Phase 4F.
+Codex High planning review found six MEDIUM contract gaps and two LOW clarifications; this
+remediation addresses only those findings. The contract now rejects repeated publication
+groups and intra-document annotation ids; preserves every domain-valid style key; fixes
+canonical id ordering and all-pages filtered export; makes restore strictly additive;
+separates invalid documents, valid local conflicts and stale previews; specifies bounded
+three-pass processing with 64 MiB / 10,000-group / 100,000-annotation guards; and expands
+adversarial tests for identity, snapshots, resources, unknown members and failed-export
+cleanup. A focused Codex High planning re-review is required next. Physical/manual
+portability acceptance remains Phase 4F.
 
 ## PHASE 4D — GLOBAL NOTES HUB (2026-10-12)
 

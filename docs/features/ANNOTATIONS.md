@@ -5,7 +5,7 @@
 Merged and accepted (Phase 4B, PR #34 commit `71c1740`; Samsung manual UAT passed and independent review passed): in EPUB, text highlights, selection-anchored notes, position-anchored notes, EPUB bookmarks, an in-reader
 per-publication Notes list (jump, edit, delete), style and optional body on highlights, and restoration of inline marks after reopen, recreation and process death. Highlights and notes
 use the canonical `annotation` table (Room v4; v5 adds the display-only `annotation_source_snapshot` for kept orphans); the legacy `bookmark` table is inert. Inline marks need a WebView whose Chromium major version is at least 69; otherwise only bookmarks and position notes
-are offered (see `docs/VALIDATION.md`, Phase 4B). Phase 4C.1 is merged and accepted at `0040c52187e50515b7d20608e5ef8e71dacc7809`: PDF, CBZ and CBR page bookmarks, page notes, strict annotation navigation and the shared Notebook foundation. Phase 4C.2 is merged (PR #37, `ca47e3d`; physical UAT deferred to Phase 4F): the same Publication Notebook is a dialog below 840×480dp and an end-edge 320–400dp pane at or above it, across EPUB/PDF/CBZ/CBR. EPUB filters All, Notes, Highlights and Bookmarks; fixed readers omit Highlights. Phase 4D is **MERGED / IMPLEMENTATION COMPLETE** in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3` and replaces the Notes placeholder with the global hub on Room v5; physical/manual UAT remains deferred to Phase 4F. Phase 4E — Portable Knowledge & Restore is **PLANNING RECONCILED / IMPLEMENTATION NOT STARTED**; 4F is not started and Phase 4 is not complete or accepted. The Phase 4 plan and model are in
+are offered (see `docs/VALIDATION.md`, Phase 4B). Phase 4C.1 is merged and accepted at `0040c52187e50515b7d20608e5ef8e71dacc7809`: PDF, CBZ and CBR page bookmarks, page notes, strict annotation navigation and the shared Notebook foundation. Phase 4C.2 is merged (PR #37, `ca47e3d`; physical UAT deferred to Phase 4F): the same Publication Notebook is a dialog below 840×480dp and an end-edge 320–400dp pane at or above it, across EPUB/PDF/CBZ/CBR. EPUB filters All, Notes, Highlights and Bookmarks; fixed readers omit Highlights. Phase 4D is **MERGED / IMPLEMENTATION COMPLETE** in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3` and replaces the Notes placeholder with the global hub on Room v5; physical/manual UAT remains deferred to Phase 4F. Phase 4E — Portable Knowledge & Restore is **PLANNING REMEDIATED / IMPLEMENTATION NOT STARTED / PENDING FOCUSED CODEX HIGH PLANNING RE-REVIEW**; no planning PASS is claimed. 4F is not started and Phase 4 is not complete or accepted. The Phase 4 plan and model are in
 [`PHASE_4_IMPLEMENTATION_PLAN.md`](../PHASE_4_IMPLEMENTATION_PLAN.md) and [ADR-0025](../adr/0025-annotation-anchor-and-knowledge-model.md).
 
 Stale text: before a selection-backed annotation is drawn, ShelfOS verifies its stored text context against the same sanitized rendition it gives the reader. If the text cannot be found exactly, the
@@ -114,10 +114,21 @@ under the safe source snapshot, with no Open-source action and no fake publicati
 Identical annotation ids/content are skipped; divergent content under an existing id is a
 reported conflict and never overwrites or duplicates the saved annotation.
 
+One JSON document has one group per `libraryItemId` and one occurrence of each annotation
+id; repetition makes the whole document invalid. Canonical equality is exact across every
+persisted annotation field, including source id, opaque locator, style and timestamps.
+Every domain-valid persisted style key round-trips unchanged even when the current UI
+palette does not know it. Unknown object members are ignored safely; unknown enum values
+are rejected.
+
 The operation is explicit, offline and SAF-based. It exports no publication bytes, source
 URI/path or cover bytes and does not claim full backup/device migration. Parse, validate
-and classify the whole JSON before one transactional Room v5 commit. Markdown is never
-imported. See Phase 4 plan §12 for the schema and validation contract.
+and classify the whole JSON with bounded streaming before one transactional Room v5
+commit. Import is additive only: file absence never deletes local knowledge or state;
+duplicates/conflicts are skipped and reported while valid NEW rows import atomically.
+Current-filter export walks every keyset page, and canonical JSON orders groups/annotations
+by id. Markdown is never imported. See Phase 4 plan §12 for the schema and validation
+contract.
 
 ## PDF modes, Series and source revisions
 

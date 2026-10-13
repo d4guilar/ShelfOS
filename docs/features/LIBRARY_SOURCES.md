@@ -126,7 +126,14 @@ When an exported `libraryItemId` exactly equals a current live item id, annotati
 remain associated with that item and its live metadata stays authoritative. Otherwise the
 annotations are restored as orphan knowledge under the imported display-only snapshot.
 Title, creator, filename, size, category and format are never identity evidence, and no
-fake `LibraryItem` is created.
+fake `LibraryItem` is created. The JSON `sourceRemoved` value is informational export-time
+context only; current Room state decides live versus orphan regardless of that value.
+
+Import is additive and absence never deletes local data. For an existing orphan snapshot,
+matching context reuses it; differing imported context produces a warning while the local
+snapshot wins and eligible NEW annotations may still import. For an exact live item, live
+metadata wins, any stale snapshot is ignored, and import neither updates nor cleans it.
+Normal later KEEP/DELETE removal remains the sole owner of snapshot lifecycle.
 
 The format contains no publication bytes, SAF URI, private-copy path, cover binary or
 fingerprint. It is therefore knowledge-only portability, not a full library/device backup,
