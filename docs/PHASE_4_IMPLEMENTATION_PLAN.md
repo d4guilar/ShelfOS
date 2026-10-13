@@ -1,6 +1,6 @@
 # Phase 4 Implementation Plan — Notes and Knowledge Layer
 
-Status (finalized 2026-10-12): **Phase 4A, 4B, 4C and 4D are merged. Phase 4D is MERGED / IMPLEMENTATION COMPLETE in PR #38 on `main` at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`. Phase 4E — Portable Knowledge & Restore is PLANNING COMPLETE / CODEX HIGH PASS / IMPLEMENTATION NOT STARTED / READY FOR PR. Phase 4F is NOT STARTED.** Phase 4 as a whole is NOT complete or accepted. Room remains at v5 (`annotation` plus additive `annotation_source_snapshot`); the external JSON `schemaVersion` is unrelated to the Room version. Physical/manual portability UAT remains deferred to Phase 4F.
+Status (updated 2026-10-13): **Phase 4A, 4B, 4C and 4D are merged. Phase 4D is MERGED / IMPLEMENTATION COMPLETE in PR #38 on `main` at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`. Phase 4E — Portable Knowledge & Restore is IMPLEMENTED LOCALLY / PENDING INDEPENDENT CODEX HIGH REVIEW. Phase 4F is NOT STARTED.** Phase 4 as a whole is NOT complete or accepted. Room remains at v5 (`annotation` plus additive `annotation_source_snapshot`); the external JSON `schemaVersion` is unrelated to the Room version. Physical/manual portability UAT remains deferred to Phase 4F.
 
 Anything marked **(proposed)** is a recommendation for review, not an accepted design.
 Anything marked **(verified)** was checked against the repository or the pinned
@@ -1290,7 +1290,7 @@ The implementation adds the pure 840×480dp adaptive policy with a 36% pane clam
 
 #### 13.4.1 4D implementation record (2026-10-12; MERGED / IMPLEMENTATION COMPLETE)
 
-Implemented on `phase-4/4d-global-notes-hub` from `main` at `ca47e3d1bee2c3d5426996ab6c76204cd5920131` (4C.2, PR #37), then merged in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`. No physical/manual UAT was run; that remains Phase 4F. Phase 4E planning is complete with an independent Codex High PASS and is ready for PR, but implementation has not started; Phase 4F has not started, and Phase 4 is NOT complete or accepted. Evidence and its device limits (including intermittent RP5 ADB authorization) are in `docs/VALIDATION.md`.
+Implemented on `phase-4/4d-global-notes-hub` from `main` at `ca47e3d1bee2c3d5426996ab6c76204cd5920131` (4C.2, PR #37), then merged in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`. No physical/manual UAT was run; that remains Phase 4F. Phase 4E is implemented locally and pending independent Codex High review; Phase 4F has not started, and Phase 4 is NOT complete or accepted. Evidence and its device limits (including intermittent RP5 ADB authorization) are in `docs/VALIDATION.md`.
 
 Independent Codex High review returned FAIL with exactly H1 (a stale locator could remain authoritative across Activity recreation) and M1 (rows omitted the §11 cover/timestamps and reduced EPUB location to percentage). The narrow remediation gives the ViewModel saved-state ownership of one-shot launch consumption and the latest accepted locator, and completes the existing row contract with the shared generated cover visual, kind icon/label, stored chapter/Location presentation and locale-aware Created/Updated labels. Final Codex High re-review returned **PASS WITH NOTES**, with no BLOCKER, HIGH or MEDIUM findings; its sole LOW documentation note corrected the recreation-test, API 24 assumption and root-cause wording in `docs/VALIDATION.md`. H1 and M1 are RESOLVED. No accepted 4D area, schema, query, migration, dependency, exact-anchor rule, fixed navigation or reader session architecture changed. Physical/manual UAT remains deferred to Phase 4F.
 
@@ -1305,7 +1305,17 @@ Independent Codex High review returned FAIL with exactly H1 (a stale locator cou
 
 ### 13.5 4E — Portable Knowledge & Restore
 
-**Status: PLANNING COMPLETE / CODEX HIGH PASS / IMPLEMENTATION NOT STARTED / READY FOR PR.**
+**Status: IMPLEMENTED LOCALLY / PENDING INDEPENDENT CODEX HIGH REVIEW.**
+
+Implementation uses a dependency-free UTF-8 streaming codec and bounded record inventory,
+walks all keyset pages for every export scope, reopens and revalidates the selected SAF
+document, binds confirmation to the previewed document, and reclassifies Room truth inside
+one v5 transaction before exact-id inserts. The Global Notes hub owns the compact export,
+import, preview and result flow. No schema, migration or dependency changed.
+
+The excerpt-to-note audit found the accepted highlight-with-optional-body and
+selection-anchored-note flows already satisfy the need: **NO PRODUCTION CHANGES REQUIRED**.
+Physical/manual portability acceptance remains Phase 4F.
 
 - **Goal:** human-readable Markdown export plus lossless canonical ShelfOS JSON export and
   safe JSON import/restore through SAF, all offline and user initiated.

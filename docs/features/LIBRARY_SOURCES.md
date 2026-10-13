@@ -121,6 +121,11 @@ other item/operation needs it. It never deletes the user's files.
 
 ## Phase 4E knowledge restore is not publication restore
 
+Implementation status: **IMPLEMENTED LOCALLY / PENDING INDEPENDENT CODEX HIGH REVIEW**.
+Room remains v5 and the implementation adds no Source record, source permission history,
+publication matching signal or publication-file write. Phase 4F remains NOT STARTED and
+owns physical/manual portability acceptance.
+
 Phase 4E — Portable Knowledge & Restore imports only canonical ShelfOS knowledge JSON.
 When an exported `libraryItemId` exactly equals a current live item id, annotations may
 remain associated with that item and its live metadata stays authoritative. Otherwise the

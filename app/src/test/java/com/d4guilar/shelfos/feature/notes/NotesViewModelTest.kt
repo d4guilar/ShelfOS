@@ -8,6 +8,8 @@ import com.d4guilar.shelfos.domain.annotations.Annotation
 import com.d4guilar.shelfos.domain.library.MediaCategory
 import com.d4guilar.shelfos.domain.library.PublicationFormat
 import com.d4guilar.shelfos.feature.reader.AnnotationFilter
+import com.d4guilar.shelfos.data.annotations.PortableExportFormat
+import com.d4guilar.shelfos.domain.annotations.portable.PortableMarkdownLabels
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.test.*
@@ -194,5 +196,16 @@ class NotesViewModelTest {
         assertTrue(repo.groupsDeleted.isEmpty())
         vm.requestDeleteOrphanGroup("g"); vm.confirmDeleteOrphanGroup(); advanceUntilIdle()
         assertEquals(listOf("g"), repo.groupsDeleted)
+    }
+
+    @Test fun cancellingSafPickersIsANoOpNotAnError() = runTest {
+        val vm = viewModel(FakeRepo(sample)); advanceUntilIdle()
+        val labels = PortableMarkdownLabels("", "", "", "", "", { "" }, { "" }, { "" }, { "" })
+        vm.showExportOptions(); assertTrue(vm.state.value.exportOptions)
+        vm.export(null, PortableExportFormat.JSON, PortableExportScope.ALL, labels)
+        vm.previewImport(null)
+        assertFalse(vm.state.value.exportOptions)
+        assertNull(vm.state.value.notice)
+        assertNull(vm.state.value.importPreview)
     }
 }

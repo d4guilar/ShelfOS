@@ -1,5 +1,23 @@
 # Documentation Changelog
 
+## Phase 4E Portable Knowledge & Restore implemented locally (2026-10-13)
+
+- Phase 4E is **IMPLEMENTED LOCALLY / PENDING INDEPENDENT CODEX HIGH REVIEW**.
+  Phase 4D remains MERGED / IMPLEMENTATION COMPLETE; Phase 4F is NOT STARTED and
+  Phase 4 remains NOT COMPLETE / NOT ACCEPTED.
+- Added canonical `shelfos.knowledge` JSON v1 export/import, deterministic id ordering,
+  opaque locator and timestamp fidelity, bounded streaming validation, additive exact-id
+  classification, stale-preview protection and one-transaction Room v5 restore.
+- Added human-readable Markdown export, all/one-publication/current-filter scopes that
+  exhaust keyset pages, explicit SAF CreateDocument/OpenDocument flows, preview/result UI,
+  localized EN/ES/PT-BR messaging and focused JVM/Room/SAF/UI evidence.
+- Excerpt-to-note audit: the existing highlight-with-body and selection-note flows already
+  satisfy the planned need; **NO PRODUCTION CHANGES REQUIRED**. Added the docs-only future
+  dictionary/provider boundary. No schema, migration, dependency, cloud/account/sync,
+  fingerprint/relink, OCR/ink, publication-byte backup or source mutation was added.
+- Physical/manual portability UAT remains deferred to Phase 4F. No implementation-review
+  PASS, merge, Phase 4 completion or physical Samsung result is claimed.
+
 ## Phase 4E planning finalized after Codex High PASS (2026-10-12)
 
 - Final focused independent planning re-review: **PASS**, with no BLOCKER, HIGH,

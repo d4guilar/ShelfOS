@@ -5,6 +5,8 @@ import android.app.Application
 import com.d4guilar.shelfos.core.database.ShelfDatabase
 import com.d4guilar.shelfos.data.library.RoomLibraryRepository
 import com.d4guilar.shelfos.data.annotations.RoomAnnotationRepository
+import com.d4guilar.shelfos.data.annotations.PortableKnowledgeFiles
+import com.d4guilar.shelfos.data.annotations.RoomPortableKnowledgeRepository
 import com.d4guilar.shelfos.core.reader.isReadiumLocatorJson
 import com.d4guilar.shelfos.domain.annotations.DefaultAnnotationLocatorValidator
 import com.d4guilar.shelfos.core.files.PublicationFiles
@@ -31,6 +33,10 @@ class AppContainer(application: Application) {
     val library by lazy { RoomLibraryRepository(database.library(), files) }
     /** Canonical annotation store; the single owner of knowledge persistence (ADR-0025). */
     val annotations by lazy { RoomAnnotationRepository(database.annotations(), DefaultAnnotationLocatorValidator(::isReadiumLocatorJson)) }
+    val portableKnowledge by lazy {
+        val version = application.packageManager.getPackageInfo(application.packageName, 0).versionName ?: "unknown"
+        PortableKnowledgeFiles(application.contentResolver, annotations, RoomPortableKnowledgeRepository(database), version)
+    }
     val fixedReaders = FixedReaderFactory(files)
     val fonts = ManagedFontRepository(application)
     val epubs = EpubReaderFactory(application, files, fonts::epubResources)

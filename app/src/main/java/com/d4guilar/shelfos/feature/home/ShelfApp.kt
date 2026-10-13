@@ -282,7 +282,9 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                         }
                     }
                     composable(Destination.NOTES.route) {
-                        val notes: NotesViewModel = viewModel(factory = viewModelFactory { initializer { NotesViewModel(container.annotations, createSavedStateHandle()) } })
+                        val notes: NotesViewModel = viewModel(factory = viewModelFactory { initializer {
+                            NotesViewModel(container.annotations, createSavedStateHandle(), container.portableKnowledge)
+                        } })
                         NotesScreen(notes, onOpenSource = ::openAnnotationSource)
                     }
                     composable(Destination.SHELVES.route) { PlaceholderScreen(stringResource(Destination.SHELVES.labelRes), stringResource(R.string.placeholder_shelves_body)) }

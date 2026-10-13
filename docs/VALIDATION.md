@@ -1,5 +1,59 @@
 # Validation
 
+## PHASE 4E — PORTABLE KNOWLEDGE & RESTORE IMPLEMENTATION (2026-10-13)
+
+Status: **IMPLEMENTED LOCALLY / PENDING INDEPENDENT CODEX HIGH REVIEW.** Phase 4D
+remains MERGED / IMPLEMENTATION COMPLETE. Phase 4F is NOT STARTED; Phase 4 is NOT
+complete or accepted. No physical/manual Samsung UAT was run; portability acceptance
+remains Phase 4F.
+
+**Implementation.** Canonical `shelfos.knowledge` JSON v1 preserves every current
+annotation field, opaque known-format locator strings, epoch-millisecond timestamps as
+UTC ISO-8601 with three fractional digits, and domain-valid unknown-palette style keys.
+The dependency-free UTF-8 reader byte-counts an unknown-length stream, incrementally
+parses known records, ignores unknown object member names, rejects unknown enum values,
+enforces unique group/annotation ids and the 64 MiB / 10,000 / 100,000 guards. Writers
+stream JSON or clean localized Markdown and order groups/rows by ordinal ids. Filtered
+export exhausts every 100-row keyset page.
+
+Import reopens and revalidates the active SAF URI, verifies the document still equals the
+previewed inventory, then reclassifies all ids and snapshot states inside one Room v5
+transaction. NEW rows retain exact ids/timestamps; duplicates and conflicts are skipped;
+unmatched ids create orphan snapshots, local snapshot context wins with a warning, exact
+live ids use live metadata, and absence never deletes or changes local data. No URI is
+persisted. Failed CreateDocument writes attempt destination deletion and never publish a
+success state. No schema, migration, table, dependency, FTS, fingerprint/relink, cloud,
+account, sync, OCR, ink or source-publication write was added.
+
+**Focused automated evidence.** JVM `PortableKnowledgeTest` 7/7 and
+`NotesViewModelTest` 12/12 passed: schema/round trip, all kinds, malformed opaque locator,
+timestamps/order/style/Unicode/emoji/RTL/hostile text, deterministic order and re-export,
+unknown members/enums, structural duplicates, invalid/domain-invalid input, byte-count
+seam, actual 10,001-group and 100,001-annotation rejection, classification, Markdown and
+SAF-cancel behavior. API 24 emulator (`shelfos-api24`) classes were invoked separately and
+their XML showed zero failures/errors/skips: `PortableKnowledgeRepositoryTest` 2/2,
+`PortableKnowledgeExportTest` 1/1, `PortableKnowledgeSafTest` 2/2 and
+`PortableKnowledgeUiTest` 1/1. These cover atomic stale-preview rollback, additive
+idempotent restore, snapshot collisions/live-plus-stale behavior, a 205-row filtered walk,
+streamed provider read/write and cleanup failure seam, changed-document rejection, invalid
+input zero mutation, source-publication SHA-256 equality before and after export attempts,
+and accessible keyboard/touch Notes controls. The API 24 emulator is not physical-device
+or provider-diversity evidence.
+
+**Final build gate (final source state).** `:app:assembleDebug`,
+`:app:assembleDebugAndroidTest` and `:app:lintDebug` passed together. Lint reported
+0 errors and 60 warnings (all in the existing warning families: dependency/tool updates,
+plural/localization candidates, test/debug-provider export, test text, KTX suggestions,
+one unused resource and WebView API availability); the Phase 4E URI KTX warnings found in
+an earlier progressive run were removed before this final gate. The host also printed its
+known duplicate `platforms;android-37.0` SDK-location warning and could not initialize
+optional metrics under sandbox path `C:\.android`; neither affected the build outputs.
+
+**Audits.** Existing selection-anchored NOTE and HIGHLIGHT-with-optional-body behavior
+already provides excerpt-to-note semantics: **NO PRODUCTION CHANGES REQUIRED**. The future
+dictionary/provider boundary is docs-only, offline-first, privacy-explicit and forbids
+embedding provider credentials in the open-source APK.
+
 ## PHASE 4E — PORTABLE KNOWLEDGE & RESTORE PLANNING FINALIZATION (2026-10-12)
 
 Status: **PLANNING COMPLETE / CODEX HIGH PASS / IMPLEMENTATION NOT STARTED / READY

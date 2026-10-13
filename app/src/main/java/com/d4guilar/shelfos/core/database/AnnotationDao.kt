@@ -47,6 +47,11 @@ data class NotePublicationEntity(
     val live: Boolean, val available: Boolean, val total: Int,
 )
 
+/** Safe publication context for portable knowledge. Deliberately excludes every source/file field. */
+data class PortableLibraryContextEntity(
+    val id: String, val title: String, val creator: String, val category: String, val format: String,
+)
+
 // The global Notes read surface. Rows of a kind or locator format this build does not know are left out (they stay in the
 // table untouched). Search is a plain LIKE over the user-visible knowledge fields and the publication title/creator; the
 // pattern is built and escaped by the repository (ESCAPE '\'). No FTS (plan section 11).
@@ -135,6 +140,16 @@ abstract class AnnotationDao {
 
     @Query("SELECT COUNT(*) FROM annotation_source_snapshot s WHERE NOT EXISTS (SELECT 1 FROM annotation a WHERE a.libraryItemId = s.libraryItemId)")
     abstract suspend fun countUnusedSnapshots(): Int
+
+    @Query("SELECT * FROM annotation") abstract suspend fun portableAnnotations(): List<AnnotationEntity>
+    @Query("SELECT id, title, creator, category, format FROM library_item")
+    abstract suspend fun portableLibraryContexts(): List<PortableLibraryContextEntity>
+    @Query("SELECT * FROM annotation_source_snapshot")
+    abstract suspend fun portableSnapshots(): List<AnnotationSourceSnapshotEntity>
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    abstract suspend fun insertPortableAnnotations(rows: List<AnnotationEntity>)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    abstract suspend fun insertPortableSnapshots(rows: List<AnnotationSourceSnapshotEntity>)
 
     /** Fires on any write to annotations, snapshots or library items; the value itself is meaningless. */
     @Query("SELECT (SELECT COUNT(*) FROM annotation) + (SELECT COUNT(*) FROM annotation_source_snapshot) + (SELECT COUNT(*) FROM library_item)")

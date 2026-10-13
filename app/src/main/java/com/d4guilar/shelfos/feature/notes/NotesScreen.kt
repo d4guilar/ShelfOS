@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos.feature.notes
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -36,7 +38,9 @@ import com.d4guilar.shelfos.core.designsystem.shelfAction
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import com.d4guilar.shelfos.domain.annotations.*
 import com.d4guilar.shelfos.domain.annotations.Annotation
+import com.d4guilar.shelfos.domain.annotations.portable.*
 import com.d4guilar.shelfos.domain.library.PublicationFormat
+import com.d4guilar.shelfos.data.annotations.PortableExportFormat
 import com.d4guilar.shelfos.feature.reader.AnnotationDeleteConfirmDialog
 import com.d4guilar.shelfos.feature.reader.AnnotationEditorDialog
 import com.d4guilar.shelfos.feature.reader.AnnotationFilter
@@ -67,6 +71,29 @@ fun NotesScreen(vm: NotesViewModel, onOpenSource: (libraryItemId: String, annota
     val t = LocalShelfTokens.current
     val listState = rememberLazyListState()
     var picking by rememberSaveable { mutableStateOf(false) }
+    var exportFormat by rememberSaveable { mutableStateOf(PortableExportFormat.JSON) }
+    var exportScope by rememberSaveable { mutableStateOf(PortableExportScope.ALL) }
+    val locale = LocalConfiguration.current.locales[0]
+    val dateFormatter = remember(locale) { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT, locale) }
+    val pagePattern = stringResource(R.string.notebook_row_page)
+    val progressPattern = stringResource(R.string.reading_progress_visual)
+    val createdPattern = stringResource(R.string.notes_created)
+    val updatedPattern = stringResource(R.string.notes_updated)
+    val markdownLabels = PortableMarkdownLabels(
+        stringResource(R.string.knowledge_markdown_title), stringResource(R.string.knowledge_source_removed),
+        stringResource(R.string.annotation_kind_bookmark), stringResource(R.string.annotation_kind_highlight), stringResource(R.string.annotation_kind_note),
+        { String.format(locale, pagePattern, it) },
+        { String.format(locale, progressPattern, it) },
+        { String.format(locale, createdPattern, dateFormatter.format(Date(it))) },
+        { String.format(locale, updatedPattern, dateFormatter.format(Date(it))) },
+    )
+    val jsonExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) {
+        vm.export(it, PortableExportFormat.JSON, exportScope, markdownLabels)
+    }
+    val markdownExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/markdown")) {
+        vm.export(it, PortableExportFormat.MARKDOWN, exportScope, markdownLabels)
+    }
+    val importFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { vm.previewImport(it) }
     state.notice?.let { notice -> LaunchedEffect(notice) { delay(6_000); vm.dismissNotice() } }
     // A new filter, sort, publication or search starts at the top of the new result; recreation keeps the saved position.
     val criteria = listOf(state.query.trim(), state.filter.name, state.publicationId, state.sort.name).joinToString("|")
@@ -108,6 +135,17 @@ fun NotesScreen(vm: NotesViewModel, onOpenSource: (libraryItemId: String, annota
             }
             if (state.loaded) Text(pluralStringResource(R.plurals.annotations_count, state.total, state.total), color = t.colors.secondary, style = t.typography.labelSmall,
                 modifier = Modifier.testTag("notes_count"))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(vm::showExportOptions, enabled = !state.portableBusy,
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("knowledge_export").activateOnGamepadConfirm(onActivate = vm::showExportOptions)) {
+                    Text(stringResource(R.string.knowledge_export))
+                }
+                OutlinedButton({ importFile.launch(arrayOf("application/json", "application/octet-stream", "text/json", "text/plain")) }, enabled = !state.portableBusy,
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("knowledge_import").activateOnGamepadConfirm(onActivate = { importFile.launch(arrayOf("application/json", "application/octet-stream", "text/json", "text/plain")) })) {
+                    Text(stringResource(R.string.knowledge_import))
+                }
+            }
+            if (state.portableBusy) LinearProgressIndicator(Modifier.fillMaxWidth().testTag("knowledge_busy"))
             state.notice?.let { notice -> Text(notice.resolve(), Modifier.fillMaxWidth().clickable { vm.dismissNotice() }.padding(vertical = 8.dp).testTag("notes_notice"),
                 color = MaterialTheme.colorScheme.error) }
             when {
@@ -128,6 +166,15 @@ fun NotesScreen(vm: NotesViewModel, onOpenSource: (libraryItemId: String, annota
         }
     }
     if (picking) PublicationPicker(state.publications, state.publicationId, onSelect = { vm.selectPublication(it); picking = false }, onDismiss = { picking = false })
+    if (state.exportOptions) ExportKnowledgeDialog(state.publicationId != null, exportFormat, exportScope,
+        onFormat = { exportFormat = it }, onScope = { exportScope = it }, onDismiss = vm::closeExportOptions,
+        onConfirm = {
+            vm.closeExportOptions()
+            val name = if (exportFormat == PortableExportFormat.JSON) "shelfos-knowledge.json" else "shelfos-knowledge.md"
+            if (exportFormat == PortableExportFormat.JSON) jsonExport.launch(name) else markdownExport.launch(name)
+        })
+    state.importPreview?.let { ImportPreviewDialog(it, vm::confirmImport, vm::cancelImportPreview, state.portableBusy) }
+    state.importResult?.let { ImportResultDialog(it, vm::dismissPortableResult) }
     state.editing?.let { annotation ->
         AnnotationEditorDialog("notes-edit-${annotation.id}",
             stringResource(if (annotation.kind == AnnotationKind.HIGHLIGHT) R.string.annotation_editor_highlight else R.string.annotation_editor_note),
@@ -146,6 +193,71 @@ fun NotesScreen(vm: NotesViewModel, onOpenSource: (libraryItemId: String, annota
             dismissButton = { TextButton(cancel, Modifier.activateOnGamepadConfirm(onActivate = cancel)) { Text(stringResource(R.string.action_cancel)) } },
             confirmButton = { TextButton(confirm, Modifier.testTag("notes_group_delete_confirm").activateOnGamepadConfirm(onActivate = confirm)) { Text(stringResource(R.string.action_delete)) } })
     }
+}
+
+@Composable
+private fun ExportKnowledgeDialog(
+    publicationAvailable: Boolean,
+    format: PortableExportFormat,
+    scope: PortableExportScope,
+    onFormat: (PortableExportFormat) -> Unit,
+    onScope: (PortableExportScope) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(onDismissRequest = onDismiss, modifier = Modifier.dismissOnShelfBack(onDismiss),
+        title = { Text(stringResource(R.string.knowledge_export_title)) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.knowledge_format_label), fontWeight = FontWeight.Bold)
+            PortableExportFormat.entries.forEach { value ->
+                ChoiceChip("knowledge_format_${value.name.lowercase()}", stringResource(if (value == PortableExportFormat.JSON)
+                    R.string.knowledge_format_json else R.string.knowledge_format_markdown), format == value) { onFormat(value) }
+            }
+            Text(stringResource(R.string.knowledge_scope_label), fontWeight = FontWeight.Bold)
+            val scopes = if (publicationAvailable) PortableExportScope.entries else PortableExportScope.entries.filter { it != PortableExportScope.PUBLICATION }
+            scopes.forEach { value -> ChoiceChip("knowledge_scope_${value.name.lowercase()}", stringResource(when (value) {
+                PortableExportScope.ALL -> R.string.knowledge_scope_all
+                PortableExportScope.PUBLICATION -> R.string.knowledge_scope_publication
+                PortableExportScope.FILTER -> R.string.knowledge_scope_filter
+            }), scope == value) { onScope(value) } }
+        } },
+        dismissButton = { TextButton(onDismiss, Modifier.activateOnGamepadConfirm(onActivate = onDismiss)) { Text(stringResource(R.string.action_cancel)) } },
+        confirmButton = { TextButton(onConfirm, enabled = publicationAvailable || scope != PortableExportScope.PUBLICATION,
+            modifier = Modifier.testTag("knowledge_export_confirm").activateOnGamepadConfirm(onActivate = onConfirm)) {
+            Text(stringResource(R.string.knowledge_choose_destination))
+        } })
+}
+
+@Composable
+private fun ImportPreviewDialog(preview: PortableImportPreview, onConfirm: () -> Unit, onDismiss: () -> Unit, busy: Boolean) {
+    AlertDialog(onDismissRequest = onDismiss, modifier = Modifier.dismissOnShelfBack(onDismiss).testTag("knowledge_import_preview"),
+        title = { Text(stringResource(R.string.knowledge_import_preview_title)) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(stringResource(R.string.knowledge_preview_publications, preview.publicationCount))
+            Text(stringResource(R.string.knowledge_preview_annotations, preview.annotationCount))
+            Text(stringResource(R.string.knowledge_preview_new, preview.newCount))
+            Text(stringResource(R.string.knowledge_preview_duplicates, preview.duplicateCount))
+            Text(stringResource(R.string.knowledge_preview_conflicts, preview.conflictCount))
+            Text(stringResource(R.string.knowledge_preview_orphans, preview.orphanGroupsToCreate))
+            if (preview.sourceContextWarnings > 0) Text(stringResource(R.string.knowledge_preview_warnings, preview.sourceContextWarnings), color = MaterialTheme.colorScheme.error)
+        } },
+        dismissButton = { TextButton(onDismiss, enabled = !busy, modifier = Modifier.activateOnGamepadConfirm(onActivate = onDismiss)) { Text(stringResource(R.string.action_cancel)) } },
+        confirmButton = { TextButton(onConfirm, enabled = !busy,
+            modifier = Modifier.testTag("knowledge_import_confirm").activateOnGamepadConfirm(onActivate = onConfirm)) { Text(stringResource(R.string.knowledge_import_confirm)) } })
+}
+
+@Composable
+private fun ImportResultDialog(result: PortableImportResult, onDismiss: () -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss, modifier = Modifier.dismissOnShelfBack(onDismiss).testTag("knowledge_import_result"),
+        title = { Text(stringResource(R.string.knowledge_import_result_title)) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(stringResource(R.string.knowledge_result_imported, result.imported))
+            Text(stringResource(R.string.knowledge_result_duplicates, result.duplicates))
+            Text(stringResource(R.string.knowledge_result_conflicts, result.conflicts))
+            Text(stringResource(R.string.knowledge_result_orphans, result.orphanGroups))
+            if (result.sourceContextWarnings > 0) Text(stringResource(R.string.knowledge_result_warnings, result.sourceContextWarnings))
+        } },
+        confirmButton = { TextButton(onDismiss, Modifier.activateOnGamepadConfirm(onActivate = onDismiss)) { Text(stringResource(R.string.action_close)) } })
 }
 
 @Composable
