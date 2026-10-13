@@ -87,11 +87,14 @@ ShelfOS's setup is unproven.
     never change it. A page beyond the current page count fails the jump with a message
     instead of silently clamping. CBZ/CBR logical order is the existing natural-sort order,
     which must not change without anchor migration.
-13. **Export boundary.** Users can export their knowledge, never the publication, as
-    canonical versioned JSON (`schemaVersion`, publication reference fields, annotations
-    with kind, locator, excerpt, body, style and timestamps) and as human-readable Markdown,
-    through user-selected SAF documents and with no network. Import/round-trip and portable
-    backup are not part of this decision.
+13. **Portable knowledge boundary.** Users can export their knowledge, never the
+    publication, as canonical versioned ShelfOS JSON and as human-readable Markdown through
+    user-selected SAF documents with no network. Markdown is export-only. Canonical JSON
+    round-trips annotation ids, opaque locator strings, content and timestamps and is the
+    only Phase 4 import format. Import associates only an exact current `LibraryItem` id;
+    otherwise it restores an orphan snapshot. It never guesses identity, overwrites an id
+    conflict, imports publication bytes, or claims to be a full backup. Detailed v1
+    validation, duplicate/conflict and atomicity rules are in plan §12.
 14. **Search and scale.** Notes search uses an ordinary repository `LIKE` boundary and
     keyset pagination without adding a dependency; full-text search is reconsidered only
     against measured thresholds on the project's slowest device.
@@ -136,5 +139,6 @@ ShelfOS's setup is unproven.
 OCR; AI features; cloud sync, accounts and collaboration; ink, freeform drawing, comic
 panel regions and coordinate PDF markup; Adapted PDF/SourceMap-anchored annotations;
 Series/omnibus note aggregation; content fingerprints and fingerprint-based re-association;
-backup/restore and export import; online dictionary/provider integration (research only);
+complete device/library backup, publication-binary backup and non-ShelfOS import adapters;
+automatic or manual relink; online dictionary/provider integration (research only);
 full-text search; tombstones; merging overlapping highlights.

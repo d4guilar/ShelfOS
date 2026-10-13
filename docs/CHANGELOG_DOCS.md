@@ -1,5 +1,20 @@
 # Documentation Changelog
 
+## Phase 4E portable-knowledge planning reconciled (2026-10-12)
+
+- Administrator decision recorded: Phase 4E is **Portable Knowledge & Restore**, with
+  human-readable Markdown export and canonical versioned ShelfOS JSON export/import.
+- JSON v1 now specifies the smallest safe publication snapshot, byte-exact opaque locators,
+  exact-id live association, orphan restore, preserved annotation ids/timestamps,
+  idempotent duplicates, no-overwrite conflicts, whole-document validation and one Room-v5
+  transaction. It excludes publication bytes/paths/URIs, identity guessing, full-backup
+  claims and non-ShelfOS adapters.
+- Status reconciled: Phase 4D merged/implementation complete in PR #38 at `90b9f1c`; 4E
+  planning reconciled/implementation not started; 4F not started; Phase 4 not complete or
+  accepted. Physical UAT remains 4F and implementation requires a fresh Codex High review.
+- Documentation only: no production code, tests, resources, schema/migration, Gradle or
+  dependency changes; no manual UAT, push or PR.
+
 ## Phase 4D final Codex status (2026-10-12)
 
 - Independent Codex High final re-review: **PASS WITH NOTES**, with no BLOCKER, HIGH or MEDIUM findings. H1 and M1 are RESOLVED; 4D is **IMPLEMENTATION COMPLETE / REMEDIATION COMPLETE / CODEX HIGH PASS WITH NOTES / READY FOR PR**. Physical/manual UAT remains deferred to Phase 4F; Phase 4 is not complete or accepted, and 4E/4F have not started.

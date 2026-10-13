@@ -1,11 +1,11 @@
 # Annotation and Notes Specification
 
-## Current status (2026-10-11)
+## Current status (2026-10-12)
 
 Merged and accepted (Phase 4B, PR #34 commit `71c1740`; Samsung manual UAT passed and independent review passed): in EPUB, text highlights, selection-anchored notes, position-anchored notes, EPUB bookmarks, an in-reader
 per-publication Notes list (jump, edit, delete), style and optional body on highlights, and restoration of inline marks after reopen, recreation and process death. Highlights and notes
 use the canonical `annotation` table (Room v4; v5 adds the display-only `annotation_source_snapshot` for kept orphans); the legacy `bookmark` table is inert. Inline marks need a WebView whose Chromium major version is at least 69; otherwise only bookmarks and position notes
-are offered (see `docs/VALIDATION.md`, Phase 4B). Phase 4C.1 is merged and accepted at `0040c52187e50515b7d20608e5ef8e71dacc7809`: PDF, CBZ and CBR page bookmarks, page notes, strict annotation navigation and the shared Notebook foundation. Phase 4C.2 is merged (PR #37, `ca47e3d`; physical UAT deferred to Phase 4F): the same Publication Notebook is a dialog below 840×480dp and an end-edge 320–400dp pane at or above it, across EPUB/PDF/CBZ/CBR. EPUB filters All, Notes, Highlights and Bookmarks; fixed readers omit Highlights. Phase 4D is **IMPLEMENTATION COMPLETE / REMEDIATION COMPLETE / CODEX HIGH PASS WITH NOTES / READY FOR PR** (see the Global Notes hub section below) and replaces the Notes placeholder with the global hub on Room v5; physical/manual UAT remains deferred to Phase 4F and export (4E) remains unbuilt. The Phase 4 plan and model are in
+are offered (see `docs/VALIDATION.md`, Phase 4B). Phase 4C.1 is merged and accepted at `0040c52187e50515b7d20608e5ef8e71dacc7809`: PDF, CBZ and CBR page bookmarks, page notes, strict annotation navigation and the shared Notebook foundation. Phase 4C.2 is merged (PR #37, `ca47e3d`; physical UAT deferred to Phase 4F): the same Publication Notebook is a dialog below 840×480dp and an end-edge 320–400dp pane at or above it, across EPUB/PDF/CBZ/CBR. EPUB filters All, Notes, Highlights and Bookmarks; fixed readers omit Highlights. Phase 4D is **MERGED / IMPLEMENTATION COMPLETE** in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3` and replaces the Notes placeholder with the global hub on Room v5; physical/manual UAT remains deferred to Phase 4F. Phase 4E — Portable Knowledge & Restore is **PLANNING RECONCILED / IMPLEMENTATION NOT STARTED**; 4F is not started and Phase 4 is not complete or accepted. The Phase 4 plan and model are in
 [`PHASE_4_IMPLEMENTATION_PLAN.md`](../PHASE_4_IMPLEMENTATION_PLAN.md) and [ADR-0025](../adr/0025-annotation-anchor-and-knowledge-model.md).
 
 Stale text: before a selection-backed annotation is drawn, ShelfOS verifies its stored text context against the same sanitized rendition it gives the reader. If the text cannot be found exactly, the
@@ -67,7 +67,7 @@ Annotation
   canonical documentation name); "Notes" remains the kind and filter name. Fixed readers show filters All, Notes and Bookmarks in a dialog.
   Phase 4C.2 adds the side-by-side presentation and ports EPUB highlights, notes and bookmarks onto the same panel.
 
-## Global Notes hub (Phase 4D; implementation and remediation complete, Codex High PASS WITH NOTES, ready for PR)
+## Global Notes hub (Phase 4D; merged and implementation complete)
 
 The **Notes** destination (`feature/notes`) lists every note, highlight and bookmark across the library. The reader-local
 list stays the **Publication Notebook** ("Notebook" in the UI); the two are different surfaces over the same `annotation` rows.
@@ -104,11 +104,20 @@ list stays the **Publication Notebook** ("Notebook" in the UI); the two are diff
 - **State.** Search text, kind filter, publication filter and sort survive recreation (saved state); edits are committed to Room.
   An unsaved edit draft is not kept across process death.
 
-## Export
+## Portable Knowledge & Restore (Phase 4E; planned, not implemented)
 
-Later support export to a portable format.
+Markdown is a human-readable export only. Canonical versioned ShelfOS JSON is the sole
+Phase 4E round-trip format: it preserves annotation ids, exact opaque locator strings,
+content and timestamps. Import associates a publication only when `libraryItemId` exactly
+matches a live item; otherwise it restores searchable/editable/exportable orphan knowledge
+under the safe source snapshot, with no Open-source action and no fake publication row.
+Identical annotation ids/content are skipped; divergent content under an existing id is a
+reported conflict and never overwrites or duplicates the saved annotation.
 
-Avoid locking notes into an opaque proprietary database forever.
+The operation is explicit, offline and SAF-based. It exports no publication bytes, source
+URI/path or cover bytes and does not claim full backup/device migration. Parse, validate
+and classify the whole JSON before one transactional Room v5 commit. Markdown is never
+imported. See Phase 4 plan §12 for the schema and validation contract.
 
 ## PDF modes, Series and source revisions
 

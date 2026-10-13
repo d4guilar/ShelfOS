@@ -39,14 +39,14 @@ caveats (including API 24/25 legacy-PDF handling that the owner's API 27 test
 device does not exercise).
 
 This is not a release: ShelfOS remains an early development prototype. The next
-roadmap area is Phase 4 (Notes and Knowledge Layer), which has started: 4A, 4B
-and 4C are merged (4C.1 fixed-layout bookmarks and page notes; 4C.2 the adaptive
-cross-format Publication Notebook, PR #37; 4C.2 physical UAT is deferred to 4F);
-4D, the global Notes hub, is implementation/remediation complete, Codex High PASS WITH NOTES, and ready for PR;
-4E and 4F have not started.
+roadmap area is Phase 4 (Notes and Knowledge Layer), which has started: 4A through
+4D are merged, including the Room-v5 global Notes hub in PR #38. Phase 4E —
+Portable Knowledge & Restore has reconciled planning but implementation has not
+started; 4F has not started. Phase 4 is not complete or accepted, and physical
+acceptance remains deferred to 4F.
 
 Global destinations are Library, Search, Notes, Shelves and Settings. Notes is a real
-cross-library hub (Phase 4D, Codex High PASS WITH NOTES, ready for PR); Shelves is a
+cross-library hub (Phase 4D, merged and implementation complete); Shelves is a
 placeholder and its functionality is not implemented. See the [Phase 1 plan](docs/PHASE_1_PLAN.md)
 and [roadmap](docs/ROADMAP.md) for current gaps and completion gates.
 

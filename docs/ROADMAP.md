@@ -302,7 +302,7 @@ forward and are **implemented and accepted as part of Phase 1** (ADR-0017,
 2026-09-24). Advanced spreads, thumbnails, foldable-aware pairing and native CBR
 support were completed here in Phase 3. The original inventory below is retained
 for coverage; delivered items are marked accordingly. ShelfOS as a whole is not
-finished: Phase 4 (Notes and Knowledge Layer) is the next roadmap area — 4A, 4B and 4C are merged (4C.1 at `0040c52187e50515b7d20608e5ef8e71dacc7809`, 4C.2 in PR #37 at `ca47e3d`; 4C.2 physical UAT is deferred to 4F); 4D (the global Notes hub) is implementation/remediation complete, Codex High PASS WITH NOTES and ready for PR; 4E and 4F have not started.
+finished: Phase 4 (Notes and Knowledge Layer) is the next roadmap area — 4A through 4D are merged, with 4D (the global Notes hub) merged in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`; 4E — Portable Knowledge & Restore has reconciled planning but implementation has not started; 4F has not started.
 
 ### Goal
 Make image-sequence media first-class.
@@ -347,7 +347,7 @@ A user can comfortably read a CBZ comic or manga entirely with touch, keyboard, 
 
 ### Current status
 
-Phase 4 has started. 4A and 4B are merged; 4C is merged and implementation complete (4C.1 fixed-layout annotation capability at `0040c52187e50515b7d20608e5ef8e71dacc7809`; 4C.2 adaptive Publication Notebook in PR #37 at `ca47e3d`; physical/manual UAT is deferred to the Phase 4F phase-closure acceptance): one shared current-publication panel across EPUB/PDF/CBZ/CBR, dialog on compact hosts and an end-edge pane on hosts at least 840×480dp. The polished book/tabletop posture and deeper document-plus-notes work remain later foldable work. **4D, the global Notes hub, is IMPLEMENTATION COMPLETE / REMEDIATION COMPLETE / CODEX HIGH PASS WITH NOTES / READY FOR PR** (Room v5, keep-or-delete removal choice, orphan presentation, Notes browsing/search/filter/edit/delete/open-source; not merged; physical/manual UAT deferred to Phase 4F). 4E (export) and 4F (acceptance) have not started. Phase 4 is NOT complete or accepted. Evidence is in [`VALIDATION.md`](VALIDATION.md) and the plan in [`PHASE_4_IMPLEMENTATION_PLAN.md`](PHASE_4_IMPLEMENTATION_PLAN.md).
+Phase 4 has started. 4A through 4D are merged and implementation complete; 4D, the Room-v5 global Notes hub, merged in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`. Physical/manual acceptance remains deferred to Phase 4F. **4E — Portable Knowledge & Restore is PLANNING RECONCILED / IMPLEMENTATION NOT STARTED:** Markdown is human-readable export, while canonical ShelfOS JSON is the only versioned round-trip import/restore format. It restores unmatched groups as orphans and never guesses publication identity or includes publication binaries. 4F is NOT STARTED. Phase 4 is NOT complete or accepted. Evidence is in [`VALIDATION.md`](VALIDATION.md) and the plan in [`PHASE_4_IMPLEMENTATION_PLAN.md`](PHASE_4_IMPLEMENTATION_PLAN.md).
 
 ### Goal
 ShelfOS becomes useful for active reading and study.
@@ -362,13 +362,16 @@ ShelfOS becomes useful for active reading and study.
 - annotations grouped by library item
 - jump from annotation to source location
 - annotation search
-- basic export format
+- human-readable Markdown knowledge export
+- canonical versioned ShelfOS JSON knowledge export/import/restore
 - excerpt-to-note workflow
 - dictionary/provider architecture research
 
 ### Done when
 
-A student can use ShelfOS to highlight and annotate a supported publication and review those notes from one central screen.
+A student can highlight and annotate a supported publication, review that knowledge from
+one central screen, export it as readable Markdown or canonical ShelfOS JSON, and safely
+restore the JSON without publication-identity guessing.
 
 ---
 

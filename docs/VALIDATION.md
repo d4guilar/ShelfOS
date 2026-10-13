@@ -1,8 +1,24 @@
 # Validation
 
+## PHASE 4E — PORTABLE KNOWLEDGE & RESTORE PLANNING (2026-10-12)
+
+Status: **PLANNING RECONCILED / IMPLEMENTATION NOT STARTED.** Phase 4D is MERGED /
+IMPLEMENTATION COMPLETE in PR #38 at
+`90b9f1c7fe827c996247a60bcd8cbc224afc72d3`. Phase 4F is NOT STARTED; Phase 4 is
+NOT complete or accepted.
+
+This is documentation-only planning evidence. No production code, tests, resources,
+schema/migration, Gradle or dependency changed; no build, automated validation or manual
+UAT was required or run. The approved plan makes Markdown human-readable export only and
+canonical ShelfOS JSON the versioned export/import format. It defines exact-id live
+association, unmatched-group orphan restore, idempotent duplicate handling, no-overwrite
+conflicts, whole-document validation and one-transaction Room v5 commit. A fresh independent
+Codex High review is required after implementation. Physical/manual portability acceptance
+remains Phase 4F.
+
 ## PHASE 4D — GLOBAL NOTES HUB (2026-10-12)
 
-Status: **IMPLEMENTATION COMPLETE / REMEDIATION COMPLETE / INDEPENDENT CODEX HIGH PASS WITH NOTES / READY FOR PR** on `phase-4/4d-global-notes-hub` (from `main` at `ca47e3d1bee2c3d5426996ab6c76204cd5920131`, PR #37 = 4C.2 merged). The first independent Codex High review returned **FAIL — REMEDIATION REQUIRED** for H1 (an EPUB annotation source jump could win again after Activity recreation) and M1 (global Notes rows did not satisfy the approved §11 content contract); both are resolved. The final independent re-review returned **PASS WITH NOTES**, with no BLOCKER, HIGH or MEDIUM findings. Its sole LOW documentation note is corrected below. Not merged and not yet in a PR; no physical/manual UAT (deferred to Phase 4F). 4E and 4F have not started; Phase 4 is NOT complete or accepted.
+Status: **MERGED / IMPLEMENTATION COMPLETE** in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`. This section retains the implementation-time validation record from `phase-4/4d-global-notes-hub` (from `main` at `ca47e3d1bee2c3d5426996ab6c76204cd5920131`, PR #37 = 4C.2 merged). The first independent Codex High review returned **FAIL — REMEDIATION REQUIRED** for H1 (an EPUB annotation source jump could win again after Activity recreation) and M1 (global Notes rows did not satisfy the approved §11 content contract); both are resolved. The final independent re-review returned **PASS WITH NOTES**, with no BLOCKER, HIGH or MEDIUM findings. Its sole LOW documentation note is corrected below. No physical/manual UAT was run (deferred to Phase 4F). Phase 4 is NOT complete or accepted.
 
 **Environment, stated plainly.** The Retroid Pocket 5 (`d8f7f1b6`) had intermittent ADB authorization: it was available for the final H1 `NotesEpubJumpTest`, became unauthorized for the first `EpubRecreationTest` attempt, then reauthorized for the final two RP5 regression classes. The API 24 emulator (`emulator-5554`, `shelfos-api24`, WebView 52) supplied the other remediation evidence. Its phone viewport is 1080x1920 at 420 dpi; the tablet run used `wm size 1920x1200` / `wm density 240` and both overrides were reset. The emulator has no inline EPUB annotations (the documented WebView 52 limit), is a fast x86 host, and is not a low-memory device. No Samsung SM-T580 evidence exists. Every claim below names its device.
 
