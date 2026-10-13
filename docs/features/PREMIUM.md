@@ -20,7 +20,8 @@ One Google Play application.
 
 Free install.
 
-Optional permanent in-app purchase for ShelfOS Plus and premium theme packs later.
+Optional permanent in-app purchase for individual premium themes, premium theme packs
+and ShelfOS Plus later.
 
 No ShelfOS login required.
 
@@ -55,14 +56,14 @@ with overlapping paid products. There is no monthly or yearly Plus, no Bronze/Si
 Gold tier ladder, no per-theme microtransactions and no Store tab.
 
 Launch direction: **ShelfOS Plus — Lifetime**, target launch/founding price
-**$14.99 USD**, one-time. No subscription is used for local cosmetic or personalization
+**$29.99 USD**, one-time. No subscription is used for local cosmetic or personalization
 functionality.
 
 Plus includes:
 
-- every current official premium theme pack
-- every future **ShelfOS-created** premium theme, with its standard curated accents and
-  standard theme effects
+- every current official premium theme and premium theme pack
+- every future **ShelfOS-created** (first-party) premium theme, with its standard
+  curated accents and standard theme effects
 - future local personalization extras explicitly released as Plus features
 - Labs / experimental early access while that program exists
 
@@ -73,31 +74,49 @@ Positioning: **Support ShelfOS once. Keep the fun stuff.** Core ShelfOS reading 
 library functionality remains free. Avoid fake countdowns, artificial urgency and
 manipulative upgrade language.
 
-## Premium theme packs
+## Premium themes and theme packs
 
 Users who want one aesthetic family should not have to buy all of Plus. Premium themes
-therefore ship as packs:
+therefore ship individually and as packs:
 
-- **$4.99 USD** each, one-time
-- 4–5 themes per pack
-- includes each theme's standard curated accents and standard theme effects
+- individual premium theme — **$4.99 USD**, one-time
+- four-theme pack — **$11.99 USD**, one-time (versus **$19.96** for the same four
+  themes bought individually, a meaningful bundle discount)
+- every pack contains exactly **4 themes**
+- each includes that theme's standard curated accents and standard theme effects
 
-Launch packs, 13 themes total: **Retro Systems** (5), **Pop & Print** (4),
-**Dream Internet** (4). Theme names, directions, inspiration guardrails and effect
-rules live in [Themes](../design/THEMES.md).
+Launch structure: **four paid packs, 16 premium themes total** —
 
-Do not sell every premium theme as an individual microtransaction initially. Buying all
-three packs costs $14.97, which makes Plus at $14.99 the natural choice for a user who
-wants the full official collection and future official themes.
+| Pack | Themes |
+|---|---|
+| **Retro Systems** | Terminal, Pagestation, ShelfXP, MonoDot |
+| **Pop & Print** | Sprite Clash, Halftone Hero, Pocket Pixel, Manga Print |
+| **Dream Internet** | AeroBloom, Neo Shibuya, Sakura Mist, ClipPop 2000 |
+| **Interface Futures** | Deckwave, Orbitline, Softshell, Gridframe |
 
-## Theme-pack → Plus upgrade principle
+Theme names, directions, inspiration guardrails and effect rules live in
+[Themes](../design/THEMES.md).
 
-> **Avoid double-charging existing theme-pack supporters when upgrading to ShelfOS Plus
-> where platform billing capabilities allow a clean upgrade path.**
+A premium theme is a full presentation experience — custom visual identity, accent
+language, ambient/background animation, optional startup sequence, themed assets and
+themed empty states — not a simple color swap.
 
-One purchased pack should be accounted for in a Plus upgrade; two packs should account
-for both. Do not hard-code a billing mechanism until Android/iOS platform billing
+Buying all four packs costs $47.96, and all 16 themes individually cost $79.84, which
+makes Plus Lifetime at $29.99 the natural choice for a user who wants the full official
+collection and future official themes.
+
+## Theme / pack → Plus upgrade principle
+
+> **Avoid double-charging existing theme and pack supporters when upgrading to ShelfOS
+> Plus where platform billing capabilities allow a clean upgrade path.**
+
+One purchased theme or pack should be accounted for in a Plus upgrade; two packs should
+account for both. Do not hard-code a billing mechanism until Android/iOS platform billing
 capabilities are validated.
+
+Prices above are the current launch/product direction. They are documentation intent,
+not implemented storefront behavior, and remain subject to change until the storefront
+is finalized.
 
 ## Paid scope beyond themes
 
@@ -131,8 +150,8 @@ eventually becomes free.
 
 ## Lifetime promise boundary
 
-ShelfOS Plus Lifetime includes future ShelfOS-created premium themes, their standard
-curated accents and standard cosmetic effects, and local supporter/personalization
+ShelfOS Plus Lifetime includes future first-party (ShelfOS-created) premium themes, their
+standard curated accents and standard cosmetic effects, and local supporter/personalization
 features explicitly designated as Plus features.
 
 It does **not automatically include** third-party licensed collaborations, licensed
@@ -155,6 +174,7 @@ anywhere in these docs.
 ```text
 ShelfOS Free         → complete local-first app
 ShelfOS Plus         → lifetime official personalization / supporter benefits
+Premium theme / pack  → optional one-time purchase for one aesthetic family
 Bring your own cloud → potentially free, because the user supplies the storage
 ShelfOS Cloud        → optional paid managed convenience, because ShelfOS operates
                        recurring infrastructure

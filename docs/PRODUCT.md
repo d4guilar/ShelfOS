@@ -261,10 +261,13 @@ Plus/Premium theme. Details: [themes](design/THEMES.md).
 
 ### Premium themes
 
-Premium themes are optional expressive experiences delivered as **theme packs**
-($4.99 each, 4–5 themes) or through **ShelfOS Plus** ($14.99 lifetime launch
-direction): Retro Systems (5), Pop & Print (4) and Dream Internet (4) — 13 themes total.
-They may introduce stronger motion, custom library presentation, optional effects and
+Premium themes are optional expressive experiences delivered **individually** ($4.99 each)
+or as **four-theme packs** ($11.99 each) or through **ShelfOS Plus** ($29.99 lifetime
+launch direction). The launch lineup is four paid packs — Retro Systems, Pop & Print,
+Dream Internet and Interface Futures — 16 premium themes total. A premium theme is a full
+presentation experience with its own visual identity, accents, ambient animation, optional
+startup sequence, themed assets and empty states, not a simple color swap. They may
+introduce stronger motion, custom library presentation, optional effects and
 alternate focus language, while the reader itself remains calm and accessible.
 
 None of them gates core reading, and none of the five free themes is a Plus theme.
@@ -293,10 +296,16 @@ purchases rather than separate Free and Pro applications.
 
 ShelfOS Free is the complete core product: reading, organization, accessibility,
 reliability and format support are never intentionally limited, and there are no ads.
-Paid scope is primarily personalization — official premium themes through theme packs
-($4.99) or ShelfOS Plus ($14.99 lifetime launch direction), curated accents, optional
+Paid scope is primarily personalization — individual premium themes ($4.99 each),
+four-theme packs ($11.99 each) or ShelfOS Plus ($29.99 lifetime launch direction) for the
+full current and future first-party premium collection, curated accents, optional
 theme effects, cosmetic extras and Labs/early access. A separate "Theme Pass" is not part
 of the model, and no local cosmetic functionality is subscription-gated.
+
+Plus adds customization and supports continued development. It must never gate reading
+functionality, format/file support, annotations, accessibility, localization or other
+core capabilities. These prices are current product direction, not finalized storefront
+behavior.
 
 Premium should answer:
 

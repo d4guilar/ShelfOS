@@ -251,16 +251,24 @@ accessibility and recognizable product identity.
 
 > **Same ShelfOS. Different personality.**
 
-Premium themes ship as **theme packs** ($4.99 each, 4–5 themes) or through
-**ShelfOS Plus** ($14.99 lifetime launch direction). Pack contents, pack → Plus
-upgrade fairness and the lifetime boundary are owned by
-[PREMIUM.md](../features/PREMIUM.md).
+Premium themes ship in **four paid packs of four themes each — 16 premium themes
+total** — or individually, and the full collection is also unlocked by
+**ShelfOS Plus**. Current launch/product pricing direction:
+
+- individual premium theme — **$4.99 USD** one-time
+- four-theme pack — **$11.99 USD** one-time (versus $19.96 bought individually)
+- **ShelfOS Plus Lifetime** — **$29.99 USD** one-time, covering every current
+  premium theme/pack plus future official first-party ShelfOS premium themes
+
+Pack contents, pack → Plus upgrade fairness and the lifetime boundary are owned by
+[PREMIUM.md](../features/PREMIUM.md). These prices are product direction, not
+implemented storefront behavior.
 
 Everything named below is an **inspiration reference only**. ShelfOS never ships
 proprietary logos, characters, copyrighted artwork, copied UI assets, proprietary
 sounds or copied boot animations.
 
-## Retro Systems — 5 themes
+## Retro Systems — 4 themes
 
 ### Terminal
 
@@ -291,11 +299,19 @@ Public name **Pagestation**; this replaces the earlier working name *Memory Orbi
 
 ---
 
-### Glassline
+### ShelfXP
 
-- Windows Vista / Aero-era inspiration: translucent layered glass, soft aurora lighting
-- glossy but tasteful controls; late-2000s optimistic computing character
-- do not copy Microsoft logos or proprietary assets
+Public name **ShelfXP**; this replaces the earlier working name *Glassline*.
+
+- Windows 95 / 98 / early-XP creative direction: friendly, chunky, confidently
+  mid-90s-to-early-2000s desktop optimism
+- layered surface depth, beveled-but-tasteful controls, saturated taskbar-era
+  color blocking, generous clear type
+- accent drives the principal highlight / selection family and may echo a
+  classic desktop-selection or start-button energy
+- optional effect: one very short, restrained system-startup-inspired sequence
+- do not copy Microsoft logos, proprietary assets, Bliss-style artwork, original
+  boot animations, proprietary sounds or Windows branding
 
 ### MonoDot
 
@@ -303,11 +319,42 @@ Public name **Pagestation**; this replaces the earlier working name *Memory Orbi
 - bitmap typography, stark graphic hierarchy, intentionally restricted palette
 - optional accent behaves like a single alternate system color
 
+---
+
+## Interface Futures — 4 themes
+
+Conceptual cluster for contemporary, spatial and calm-modern presentation
+directions. Contents may still be refined by design work; the four-theme pack
+boundary and the total of 16 premium themes are fixed.
+
 ### Deckwave
 
 - SteamOS / handheld-console-library inspiration: cover-forward, modern dark interface
 - controller-friendly visual rhythm with a restrained contemporary presentation
 - do not clone SteamOS or ship Valve/Steam proprietary assets
+
+### Orbitline
+
+- orbital / arcade-selection energy: circular menus, sweep-and-snap focus
+  movement, restrained sci-fi instrumentation
+- strong horizontal motion language with bold but readable display typography
+- accent drives the primary arc / highlight color
+- inspiration references only; no franchise logos, characters, audio or artwork
+
+### Softshell
+
+- calm, tactile, low-contrast comfort: rounded generous surfaces, quiet
+  separation, long-session readability
+- light and dark variants of the same personality
+- a deliberately understated premium direction for readers who want calm
+  rather than spectacle
+
+### Gridframe
+
+- structured editorial and information-dense presentation: strong grid, visible
+  columns, precise alignment, technical-document character
+- restrained palette with a single decisive accent for selection and progress
+- suits large libraries, document-heavy collections and two-page reading
 
 ---
 
@@ -438,27 +485,36 @@ ThemeRegistry
 │   ├── PearPlatinumDark
 │   └── Deckle
 └── Premium
-    ├── RetroSystems       (pack: 5)
+    ├── RetroSystems       (pack: 4)
     │   ├── Terminal
     │   ├── Pagestation
-    │   ├── Glassline
-    │   ├── MonoDot
-    │   └── Deckwave
+    │   ├── ShelfXP
+    │   └── MonoDot
     ├── PopAndPrint        (pack: 4)
     │   ├── SpriteClash
     │   ├── HalftoneHero
     │   ├── PocketPixel
     │   └── MangaPrint
-    └── DreamInternet      (pack: 4)
-        ├── AeroBloom
-        ├── NeoShibuya
-        ├── SakuraMist
-        └── ClipPop2000
+    ├── DreamInternet      (pack: 4)
+    │   ├── AeroBloom
+    │   ├── NeoShibuya
+    │   ├── SakuraMist
+    │   └── ClipPop2000
+    └── InterfaceFutures   (pack: 4)
+        ├── Deckwave
+        ├── Orbitline
+        ├── Softshell
+        └── Gridframe
 ```
 
-13 premium themes in three packs at launch. Every theme ships one designed default
+16 premium themes in four packs at launch. Every theme ships one designed default
 accent plus its standard curated accent set, and the same semantic accent roles apply
 to premium themes as to free themes.
+
+A premium theme is a full presentation experience, not a color swap: it may carry its
+own visual identity, accent language, ambient/background animation, optional startup
+sequence, themed assets and themed empty states, while still preserving ShelfOS
+structure, navigation, accessibility and reader clarity.
 
 Do not hard-code theme branches across unrelated screens.
 

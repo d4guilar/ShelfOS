@@ -1,5 +1,26 @@
 # Documentation Changelog
 
+## Premium commercial structure and 16-theme lineup (2026-10-15)
+
+- Premium lineup restructured to **4 paid packs × 4 themes = 16 premium themes**:
+  Retro Systems (Terminal, Pagestation, **ShelfXP**, MonoDot), Pop & Print and Dream
+  Internet unchanged, and the new **Interface Futures** pack (Deckwave, Orbitline,
+  Softshell, Gridframe). *Glassline* is replaced by **ShelfXP** (finalized Windows
+  95/98/early-XP direction); Deckwave moved from Retro Systems to Interface Futures.
+- Reconciled pricing direction across `docs/PRODUCT.md`, `docs/features/PREMIUM.md`,
+  `docs/design/THEMES.md`, `docs/design/VISUAL_IDENTITY.md`, `docs/ROADMAP.md`,
+  `docs/ARCHITECTURE.md` and ADR-0012: individual premium theme **$4.99**, four-theme
+  pack **$11.99** (versus $19.96 individually), **ShelfOS Plus Lifetime $29.99**. The
+  earlier $4.99-per-pack / $14.99 Plus direction is superseded.
+- Documented that a premium theme is a full presentation experience — custom visual
+  identity, accent language, ambient/background animation, optional startup sequence,
+  themed assets and themed empty states — not a simple color swap.
+- Recorded that Plus must never gate reading, format/file support, annotations,
+  accessibility, localization or other core capabilities, and that these prices are
+  current launch/product direction rather than finalized storefront behavior.
+- No implementation, billing, Gradle or dependency changes. The five free themes
+  (Classic, Dark, Pear Platinum, Pear Platinum Dark, Deckle) remain free and unchanged.
+
 ## Phase 4E acceptance status finalization (2026-10-14)
 
 - Phase 4E — Portable Knowledge & Restore is now documented as **IMPLEMENTED AND

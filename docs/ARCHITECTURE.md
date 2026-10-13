@@ -474,8 +474,9 @@ This list follows accepted ADR-0012 (five polished free themes over one monochro
 core), which supersedes the earlier Night/Aqua naming. Naming for these five was
 finalized in `design/THEMES.md`.
 
-Future premium theme packs (Retro Systems, Pop & Print, Dream Internet) alongside the five
-free themes above; see [themes](design/THEMES.md).
+Future premium themes ship individually and in four paid packs — Retro Systems,
+Pop & Print, Dream Internet and Interface Futures (16 premium themes total) — alongside
+the five free themes above; see [themes](design/THEMES.md).
 
 Themes must not compromise accessibility or basic reader clarity.
 
