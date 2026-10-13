@@ -1,5 +1,51 @@
 # Documentation Changelog
 
+## Phase 4E planning finalized after Codex High PASS (2026-10-12)
+
+- Final focused independent planning re-review: **PASS**, with no BLOCKER, HIGH,
+  MEDIUM or LOW findings, no remediation notes and no remaining administrator decision.
+- Phase 4E — Portable Knowledge & Restore is **PLANNING COMPLETE / CODEX HIGH PASS /
+  IMPLEMENTATION NOT STARTED / READY FOR PR**. Phase 4F remains NOT STARTED; Phase 4
+  remains NOT COMPLETE / NOT ACCEPTED; physical/manual portability UAT remains deferred
+  to Phase 4F.
+- Documentation-only status finalization. The approved Phase 4E contract is unchanged;
+  no production code, tests, resources, schema/migration, Gradle or dependencies changed.
+
+## Phase 4E planning contract hardened after Codex High review (2026-10-12)
+
+- Review result: FAIL — PLANNING REMEDIATION REQUIRED, with six MEDIUM contract issues
+  and two LOW clarifications; no BLOCKER or HIGH finding. Status is now **PLANNING
+  COMPLETE / CODEX HIGH PASS / IMPLEMENTATION NOT STARTED / READY FOR PR** after the
+  final focused independent planning re-review.
+- JSON v1 now rejects repeated publication groups and intra-document annotation ids,
+  preserves domain-valid unknown-palette style keys, compares all persisted annotation
+  fields exactly, orders groups/annotations by canonical ids, and ignores only unknown
+  object member names—not unknown semantic values.
+- Filtered export walks every keyset page. Restore is additive only; local absence never
+  means deletion. Valid local conflicts are skipped while NEW rows import atomically;
+  stale preview classifications abort with zero writes. Snapshot collision and live-item
+  authority rules are explicit.
+- Import uses bounded streaming/revalidation with guards of 64 MiB, 10,000 publication
+  groups and 100,000 annotations. The targeted plan adds every requested adversarial case,
+  including failed-export cleanup. Export is never truncated to an import guard.
+- Documentation only: no production code, tests, resources, schema/migration, Gradle or
+  dependency changes; no automated/manual UAT, push or PR.
+
+## Phase 4E portable-knowledge planning reconciled (2026-10-12)
+
+- Administrator decision recorded: Phase 4E is **Portable Knowledge & Restore**, with
+  human-readable Markdown export and canonical versioned ShelfOS JSON export/import.
+- JSON v1 now specifies the smallest safe publication snapshot, byte-exact opaque locators,
+  exact-id live association, orphan restore, preserved annotation ids/timestamps,
+  idempotent duplicates, no-overwrite conflicts, whole-document validation and one Room-v5
+  transaction. It excludes publication bytes/paths/URIs, identity guessing, full-backup
+  claims and non-ShelfOS adapters.
+- Status reconciled: Phase 4D merged/implementation complete in PR #38 at `90b9f1c`; 4E
+  planning reconciled/implementation not started; 4F not started; Phase 4 not complete or
+  accepted. Physical UAT remains 4F and implementation requires a fresh Codex High review.
+- Documentation only: no production code, tests, resources, schema/migration, Gradle or
+  dependency changes; no manual UAT, push or PR.
+
 ## Phase 4D final Codex status (2026-10-12)
 
 - Independent Codex High final re-review: **PASS WITH NOTES**, with no BLOCKER, HIGH or MEDIUM findings. H1 and M1 are RESOLVED; 4D is **IMPLEMENTATION COMPLETE / REMEDIATION COMPLETE / CODEX HIGH PASS WITH NOTES / READY FOR PR**. Physical/manual UAT remains deferred to Phase 4F; Phase 4 is not complete or accepted, and 4E/4F have not started.

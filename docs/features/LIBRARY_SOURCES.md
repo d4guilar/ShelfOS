@@ -119,10 +119,31 @@ deletion of source files. Do not remove items still backed by another Source or
 managed copy. Disconnect stops future scanning and releases access only when no
 other item/operation needs it. It never deletes the user's files.
 
+## Phase 4E knowledge restore is not publication restore
+
+Phase 4E — Portable Knowledge & Restore imports only canonical ShelfOS knowledge JSON.
+When an exported `libraryItemId` exactly equals a current live item id, annotations may
+remain associated with that item and its live metadata stays authoritative. Otherwise the
+annotations are restored as orphan knowledge under the imported display-only snapshot.
+Title, creator, filename, size, category and format are never identity evidence, and no
+fake `LibraryItem` is created. The JSON `sourceRemoved` value is informational export-time
+context only; current Room state decides live versus orphan regardless of that value.
+
+Import is additive and absence never deletes local data. For an existing orphan snapshot,
+matching context reuses it; differing imported context produces a warning while the local
+snapshot wins and eligible NEW annotations may still import. For an exact live item, live
+metadata wins, any stale snapshot is ignored, and import neither updates nor cleans it.
+Normal later KEEP/DELETE removal remains the sole owner of snapshot lifecycle.
+
+The format contains no publication bytes, SAF URI, private-copy path, cover binary or
+fingerprint. It is therefore knowledge-only portability, not a full library/device backup,
+publication import, Source reconnection or migration. Orphans remain visible in Global
+Notes and can be searched, edited, deleted and exported again, but cannot be opened. The
+canonical contract is in [`PHASE_4_IMPLEMENTATION_PLAN.md`](../PHASE_4_IMPLEMENTATION_PLAN.md#12-portable-knowledge--restore-4e).
+
 ## Publication identity across removal and re-import (future)
 
-Future requirement; not implemented, and not part of Phase 4 (Notes and Knowledge
-Layer). The user-facing goal:
+Future requirement; not implemented by Phase 4E. The user-facing goal:
 
 ```text
 publication removed

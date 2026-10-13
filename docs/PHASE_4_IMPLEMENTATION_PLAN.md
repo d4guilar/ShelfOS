@@ -1,6 +1,6 @@
 # Phase 4 Implementation Plan — Notes and Knowledge Layer
 
-Status (reconciled 2026-10-12): **Phase 4A, 4B and 4C are merged: 4C.1 is MERGED + ACCEPTED on `main` at `0040c52187e50515b7d20608e5ef8e71dacc7809`; 4C.2 (the adaptive Publication Notebook) was merged in PR #37 at `ca47e3d1bee2c3d5426996ab6c76204cd5920131` with independent Codex High review PASS, so 4C is implementation complete; physical/manual UAT for 4C.2 is deferred to Phase 4F. 4D (the global Notes hub) is IMPLEMENTATION COMPLETE / REMEDIATION COMPLETE / CODEX HIGH PASS WITH NOTES / READY FOR PR on `phase-4/4d-global-notes-hub` (not merged; physical/manual UAT deferred to 4F). Phases 4E and 4F have not started.** Phase 4 as a whole is NOT complete or accepted. 4D takes Room to v5 (additive `annotation_source_snapshot`) and adds no dependency.
+Status (finalized 2026-10-12): **Phase 4A, 4B, 4C and 4D are merged. Phase 4D is MERGED / IMPLEMENTATION COMPLETE in PR #38 on `main` at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`. Phase 4E — Portable Knowledge & Restore is PLANNING COMPLETE / CODEX HIGH PASS / IMPLEMENTATION NOT STARTED / READY FOR PR. Phase 4F is NOT STARTED.** Phase 4 as a whole is NOT complete or accepted. Room remains at v5 (`annotation` plus additive `annotation_source_snapshot`); the external JSON `schemaVersion` is unrelated to the Room version. Physical/manual portability UAT remains deferred to Phase 4F.
 
 Anything marked **(proposed)** is a recommendation for review, not an accepted design.
 Anything marked **(verified)** was checked against the repository or the pinned
@@ -653,60 +653,234 @@ accessible labels ("Bookmark, page 12"). Rules in §6.2. No text selection, no r
   survives recreation via `SavedStateHandle` as `LibraryViewModel` does.
 - Library-level search (`Destination.SEARCH`) is unchanged; Notes search is local to Notes.
 
-## 12. Export (4E)
+## 12. Portable Knowledge & Restore (4E)
 
-- **Boundary:** export the user's knowledge, never the publication. Android SAF
-  `ActivityResultContracts.CreateDocument` chosen by the user (activity 1.13 is already a
-  dependency); no sidecar beside publications; no network.
-- **Scope choices:** all knowledge, one publication, or the current Notes filter result.
-- **Canonical JSON (proposed), UTF-8:**
+Phase 4E has two deliberately different outputs. **Markdown is a human-readable export
+format and is not imported. ShelfOS JSON is the canonical machine-readable, versioned
+round-trip format and is the only knowledge format imported in v1.** This is knowledge
+portability, not publication import and not a full device or library backup: publication
+binaries, source URIs, private-copy paths, covers, settings and independently imported-file
+identity are outside the format.
+
+### 12.1 Canonical ShelfOS JSON v1
+
+UTF-8 JSON has this public root contract:
 
 ```json
 {
   "schema": "shelfos.knowledge",
   "schemaVersion": 1,
-  "exportedAt": "2026-10-10T12:00:00Z",
+  "exportedAt": "2026-10-12T12:00:00.000Z",
   "appVersion": "0.0.0-dev",
   "publications": [
     {
       "libraryItemId": "uuid",
-      "title": "…", "creator": "…", "format": "EPUB", "category": "BOOK",
-      "fileName": "…", "byteSize": 123456,
-      "contentFingerprint": null,
+      "title": "…",
+      "creator": "…",
+      "category": "BOOK",
+      "format": "EPUB",
       "sourceRemoved": false,
       "annotations": [
         {
-          "id": "uuid", "kind": "HIGHLIGHT", "styleKey": "amber",
+          "id": "uuid",
+          "kind": "HIGHLIGHT",
           "locatorFormat": "READIUM_LOCATOR_1",
-          "locator": { "…verbatim Readium Locator JSON object…": null },
+          "locatorJson": "{…exact persisted locator string…}",
           "progressSnapshot": 42,
-          "selectedText": "…", "body": null, "title": null,
-          "createdAt": "2026-10-10T12:00:00Z", "updatedAt": "2026-10-10T12:00:00Z"
+          "orderKey": 12.5,
+          "title": null,
+          "selectedText": "…",
+          "body": null,
+          "styleKey": "amber",
+          "createdAt": "2026-10-12T12:00:00.000Z",
+          "updatedAt": "2026-10-12T12:00:00.000Z"
         }
       ]
     }
   ]
 }
 ```
-  `locator` is embedded as a JSON object (not an escaped string) when it parses and as a
-  string otherwise. `contentFingerprint` is reserved and always `null` in Phase 4 because no
-  fingerprint exists (§7.4); no binaries, covers or source paths/URIs are exported (URIs
-  are access references and may be private). Unknown future fields must be ignorable
-  (`schemaVersion` gates breaking changes).
-- **Markdown (proposed), supported cleanly:** one section per publication (`## Title — Creator`), then per annotation a list item with kind, location label,
-  `> excerpt` blockquote for text, and the note body as a paragraph; page/chapter labels
-  are the same localized strings the UI uses; user text is emitted verbatim with
-  Markdown-significant characters escaped only where needed to avoid breaking structure (rules to be settled in 4E, with tests for
-  hostile text such as backticks, `#` and leading `>`).
-- **Round-trip/import is out of scope for Phase 4** (it needs the fingerprint/relink
-  design and conflict rules). Export must not claim to be a backup (`docs/features/LIBRARY_SOURCES.md`
-  describes the future portable backup).
-- Failure behavior: SAF cancellation is not an error; write failure shows a localized message and leaves no partial file reported as success (write to the provided document stream; on exception report failure and attempt to
-  delete the document); large exports stream rather than build one string.
-- **Dictionary/provider:** architecture research only — a short design note (provider
-  interface behind a ShelfOS abstraction per `METADATA_ENRICHMENT.md` conventions,
-  offline-first, no credentials in the open-source APK, explicit privacy statement about
-  what leaves the device). **No network code, no provider, no UI** in Phase 4.
+
+Publication context is intentionally small: `libraryItemId`, title, creator, category,
+format and `sourceRemoved`. `fileName`, `byteSize` and speculative `contentFingerprint`
+are removed from v1; none is safe identity. JSON contains no SAF URI, filesystem/private
+path, publication or cover bytes, credentials, account identifiers or device-specific
+state. `sourceRemoved` is export-time context only. It never determines identity,
+live/orphan association, reattachment, deletion or conflict handling; current Room state
+always decides whether an exact `libraryItemId` is live.
+
+Every illustrated root, publication and annotation member is required in v1; the annotation
+members shown as null are required-but-nullable. Strings are never inferred from omitted
+values. `publications` and `annotations` are arrays, ids are nonblank stable strings, and
+category/format use the current known tokens. Each document has exactly one publication
+group per `libraryItemId`; repeating a group id is invalid even when its context is
+identical. Each annotation id also appears exactly once in the entire document. Either
+kind of repetition rejects the complete document before mutation: v1 never merges,
+concatenates, overwrites or chooses between repeated entries.
+
+Every annotation preserves all canonical Room v5 fields: id, kind, locator format,
+**`locatorJson` as the exact opaque string**, progress snapshot, nullable order key,
+nullable title/selected text/body/style key, and timestamps. `READIUM_LOCATOR_1` and
+`FIXED_PAGE_1` are never reconstructed from progress, display labels, Markdown or snapshot
+metadata. A known-format locator which is malformed but already represents persisted user
+knowledge is exported and imported byte-for-byte, remains listed as malformed/unplaceable,
+and is never repaired, navigated from, or deleted implicitly.
+
+`createdAt`, `updatedAt` and `exportedAt` use ISO-8601 UTC with millisecond precision and
+convert losslessly to/from the internal epoch milliseconds. Invalid timestamps reject the
+import; they are never replaced with the current time. `schemaVersion` gates breaking
+format changes and is distinct from Room v5. A v1 reader ignores unknown object member
+names at the root, publication and annotation levels when all required known members remain
+valid. Unknown semantic values are not ignored: an unknown annotation kind, locator format,
+publication category or publication format rejects the complete document, as do a missing
+required field, wrong schema or unsupported version.
+
+Canonical JSON ordering is fixed: publication groups sort by `libraryItemId` ascending and
+annotations within each group sort by annotation `id` ascending, using deterministic
+ordinal/string comparison. It never follows localized titles/creators, UI sort/grouping,
+locale, physical database order or insertion order. Thus the same knowledge payload has
+the same array order and canonical field representation, although export-instance metadata
+such as `exportedAt` or `appVersion` can make complete files differ.
+
+### 12.2 Identity, duplicates, conflicts and orphans
+
+- Publication association uses **only exact `libraryItemId` equality with a currently live
+  `LibraryItem`**. Title, creator, filename, size, category, format and approximate metadata
+  never establish identity. There is no fingerprint, fuzzy match or automatic relink.
+- An exact live match associates imported annotations with that item; live metadata remains
+  authoritative and imported display context does not create or overwrite a snapshot.
+  Any stale local snapshot for that id is ignored for association/display and is not
+  cleaned up as an import side effect.
+  A later explicit KEEP removal captures the then-current live display fields as the
+  orphan fallback.
+- Without an exact live match, import creates or preserves an
+  `annotation_source_snapshot` for that source id and imports the annotations as orphaned
+  knowledge. It creates no fake `library_item`. The group immediately appears in Global
+  Notes, searchable/editable/deletable/re-exportable, with no Open-source action.
+  If that orphan id already has a local snapshot, matching imported context reuses it.
+  Different imported context does not overwrite it: the local snapshot wins, the mismatch
+  is reported as a non-destructive note/warning, and otherwise-valid NEW annotations may
+  still import against that orphan id. Snapshot-context equality is exact over title,
+  creator, category and format; `sourceRemoved` is excluded. Imported context fills only
+  an absent snapshot.
+- Annotation ids round-trip. A new id imports. An existing id with identical canonical
+  content is an idempotent duplicate and is skipped. The same id with different canonical
+  content is a conflict: preserve the existing row, do not overwrite it, do not mint a
+  copy, and report it. Canonical equality compares exactly the persisted representation of
+  `id`, `libraryItemId`, `kind`, `locatorFormat`, `locatorJson`, `progressSnapshot`,
+  `orderKey`, `title`, `selectedText`, `body`, `styleKey`, `createdAt` and `updatedAt`.
+  It excludes `exportedAt`, `appVersion`, publication display context, `sourceRemoved`,
+  localized location/date text, Markdown and cover/fallback visuals. Because
+  `libraryItemId` participates, an existing annotation id under another source is a
+  conflict, never reassociation. Timestamps never choose a winner.
+- Explicit relink, persistent fingerprints and restoration across independently imported
+  publication files remain future work; v1 does not probe or match content.
+
+### 12.3 Import validation, preview and commit
+
+`OpenDocument` reads only the user-selected JSON. Document invalidity (bad syntax/schema,
+unsupported version, missing/unknown semantic values, duplicate group/annotation ids or a
+limit violation) rejects the complete document before preview or mutation. A structurally
+valid document can still have LOCAL duplicates and conflicts: preview reports publication
+groups, annotation count, exact live matches, orphan groups, identical duplicates,
+conflicts and snapshot-context warnings. Duplicates and conflicts are skipped, not document
+failures; confirmed import atomically inserts every currently classified NEW row and any
+required orphan snapshot while leaving those local rows unchanged.
+
+Import is **strictly additive**. Absence from any all-knowledge, one-publication or filtered
+document never deletes or changes a local annotation, snapshot, LibraryItem, reading state,
+reader preference or source/publication file. V1 only inserts NEW knowledge, skips
+identical duplicates, skips/reports conflicts, and creates a snapshot required by NEW orphan
+knowledge. It is not synchronization, mirroring, replacement restore or authoritative
+state reconciliation. Partial exports are valid canonical documents and reimport has no
+"make local match this file" meaning.
+
+The result groups are concise: Imported, Skipped duplicates, Conflicts and Orphan groups,
+plus a non-destructive source-context warning when applicable. No v1 conflict-resolution UI
+is required. The bounded workflow is:
+
+1. **Streaming validation/inventory:** incrementally read and byte-count the SAF stream;
+   validate syntax, schema/version, required structure, unique group and annotation ids,
+   field/domain rules and global limits. Retain only bounded inventory/record data needed
+   by later passes, never an arbitrarily large JSON tree or source string.
+2. **Classification/preview:** classify validated records against Room as exact-live or
+   orphan and NEW, DUPLICATE or CONFLICT, including snapshot-context warnings.
+3. **Confirmed import:** reopen the selected URI using the current activity-result access,
+   stream and revalidate it, then inside one Room transaction re-evaluate classifications.
+   If any classification differs from preview, abort with zero writes and require a fresh
+   preview. Otherwise insert NEW rows/snapshots and skip the already-classified duplicates
+   and conflicts. Any read or database failure makes no success claim and commits nothing.
+
+Passes may be combined only when bounded memory, complete validation before durable
+mutation, stale-preview protection and one atomic database commit remain true. No new JSON
+dependency is mandated. If a single transaction proves impractical at the approved bounds,
+implementation stops for plan review rather than silently committing batches.
+
+Because external input is untrusted, initial importer guards are **64 MiB of UTF-8 JSON,
+10,000 publication groups and 100,000 annotations**. A known `ContentResolver` length above
+64 MiB may fail before parsing; unknown length never bypasses the guard because the stream
+is byte-counted. Meeting any guard exactly is valid when all fields are valid; exceeding
+one rejects the complete document before mutation. The 100,000-row ceiling is deliberately
+well above the current 10,000-annotation performance target. These are implementation
+resource guards, not identity, Room-schema or JSON-format semantics, and a future app may
+raise them without changing `schemaVersion`.
+
+Each field also obeys the current canonical/domain limits: `locatorJson` is nonblank and at
+most 64 KiB UTF-8; selected text at most 2,000 UTF-16 units; body at most 20,000 UTF-16
+units; progress 0–100; order key null or finite; and kind/content/style combinations use
+the current `AnnotationRules`. Portable restore preserves every domain-valid `styleKey`
+exactly, including a nonblank value unknown to the current UI palette; palette membership
+is an editor/rendering concern, not portable identity. Null stays null where allowed, and
+no key is normalized, corrected or remapped. A style that actually violates the domain
+rule rejects the document.
+
+The outer `locatorJson` member must be a JSON string, but its opaque contents are not
+normalized or required to parse: a known `locatorFormat` plus a malformed locator already
+persisted as ShelfOS knowledge round-trips byte-for-byte as unplaceable. An unknown
+`locatorFormat` is instead unsupported semantic input and rejects the document. The
+importer accepts Unicode, emoji, quotes, Markdown symbols and RTL text and executes none of
+it. No smaller new per-field caps are introduced.
+
+### 12.4 Markdown export
+
+Markdown remains clean, human-readable output only: a publication heading followed by
+annotation kind/location, an excerpt blockquote where present, body/note text, and useful
+dates/context. It uses localized display labels and escapes only characters needed to
+preserve the structure. It contains no hidden machine restore payload and is never accepted
+by the 4E importer. For the smallest deterministic rule, Markdown uses the same publication
+and annotation id ordering as JSON; its presentation can remain localized.
+
+### 12.5 SAF, failure, privacy and scope
+
+- Export uses `ActivityResultContracts.CreateDocument`; import uses
+  `ActivityResultContracts.OpenDocument` or the repository's established SAF equivalent.
+  Both are explicit, accountless, offline user actions. No sidecars, storage scanning,
+  automatic cloud or network calls.
+- Export scopes are all knowledge, one publication and the current Notes filter result.
+  "Current Notes filter result" means every database row matching the active logical query,
+  not visible/loaded `LazyColumn` rows, the first keyset page or the current memory window.
+  JSON and Markdown export must walk every keyset page until exhaustion. All three JSON
+  scopes produce valid additive-import documents; omitted knowledge has no deletion meaning.
+  Large JSON and Markdown exports stream and are never truncated to the 64 MiB **import**
+  guard or any provider limit. Cancel is not an error. A write failure is
+  localized, is never reported as success, and attempts to remove the newly created partial
+  destination where the provider permits; provider/storage failure never yields a
+  deliberately incomplete successful export. Import cancellation is not an error; read,
+  invalid-JSON, wrong-schema, unsupported-version and database failures are localized and
+  never reported as successful.
+- Exported knowledge can contain sensitive notes, selected excerpts, publication
+  titles/creators, exact locators and timestamps. ShelfOS writes only to the selected
+  destination, reads only the selected import document, sends no telemetry/network data,
+  and includes no publication bytes or source URI/path.
+- `OpenDocument` permission exists only for the active import workflow. Multi-pass reads
+  reuse that activity-result access while active; ShelfOS stores no import-source URI and
+  does not retain persistable permission for later sessions.
+- Before implementation, audit 4B/4D highlight-with-body and selection-note behavior. If
+  excerpt-to-note is already complete, record **NO PRODUCTION CHANGES REQUIRED** instead of
+  duplicating UI.
+- Dictionary/provider work is one docs-only architecture note: a future ShelfOS-owned
+  provider abstraction, offline-first behavior and privacy/credential constraints. No
+  provider/network/UI/API-key/dependency work belongs in 4E.
 
 ## 13. Slices
 
@@ -832,7 +1006,7 @@ carries the spike entry). ADR-0025 is unchanged and none of its decisions was co
 
 ### 13.3 4C — Fixed-layout notes, bookmark polish and the reader-local Publication Notebook
 
-**Status: 4C.1 MERGED + ACCEPTED (`main` @ `0040c52187e50515b7d20608e5ef8e71dacc7809`); 4C.2 IMPLEMENTATION COMPLETE + CODEX HIGH PASS, READY TO MERGE; physical UAT deferred to 4F (2026-10-11; section 13.3.16).** This section supersedes the earlier short 4C description; the original summary is §10 and the anchor rules are §6.2.
+**Status: 4C.1 MERGED + ACCEPTED (`main` @ `0040c52187e50515b7d20608e5ef8e71dacc7809`); 4C.2 IMPLEMENTATION COMPLETE + CODEX HIGH PASS, MERGED in PR #37 at `ca47e3d1bee2c3d5426996ab6c76204cd5920131`; physical UAT deferred to 4F (reconciled 2026-10-12; section 13.3.16).** This section supersedes the earlier short 4C description; the original summary is §10 and the anchor rules are §6.2.
 
 #### 13.3.1 Goal, scope and non-goals
 
@@ -1097,7 +1271,7 @@ Implemented on `phase-4/4c1-fixed-annotations`, accepted after independent High 
 
 #### 13.3.16 4C.2 implementation record (2026-10-11; IMPLEMENTATION COMPLETE, CODEX HIGH PASS; MERGED in PR #37 at `ca47e3d1bee2c3d5426996ab6c76204cd5920131`, reconciled 2026-10-12)
 
-**Final status.** Original implementation `953e9c03fbea854ce1e5562386bded74ae6ce45a`; accessibility/docs remediation `a3d74cba52503b79f753234959416c071617c01e`. Independent Codex High found H1 (EPUB Notebook spoken accessibility semantics lost; restored through separate visual and spoken location representations) and M1 (validation documentation status contradiction; corrected); the final Codex High re-review is **PASS**. Workflow decision: physical/manual UAT is performed once at phase closure, so the Samsung UAT for 4C.2 is **deferred to Phase 4F**, which owns the comprehensive hardware acceptance matrix over the accumulated 4A, 4B, 4C.1, 4C.2, 4D and 4E behavior (checklist not yet written). It is not a merge blocker and no Samsung 4C.2 PASS is claimed. Phase 4 as a whole is NOT complete or accepted until 4D, 4E and 4F finish.
+**Final status.** Original implementation `953e9c03fbea854ce1e5562386bded74ae6ce45a`; accessibility/docs remediation `a3d74cba52503b79f753234959416c071617c01e`. Independent Codex High found H1 (EPUB Notebook spoken accessibility semantics lost; restored through separate visual and spoken location representations) and M1 (validation documentation status contradiction; corrected); the final Codex High re-review is **PASS**. Workflow decision: physical/manual UAT is performed once at phase closure, so the Samsung UAT for 4C.2 is **deferred to Phase 4F**, which owns the comprehensive hardware acceptance matrix over the accumulated 4A, 4B, 4C.1, 4C.2, 4D and 4E behavior (checklist not yet written). It is not a merge blocker and no Samsung 4C.2 PASS is claimed. Phase 4 as a whole remains NOT complete or accepted until 4E and 4F finish.
 
 Implemented on `phase-4/4c2-adaptive-notebook` from the accepted 4C.1 merge `0040c52187e50515b7d20608e5ef8e71dacc7809`. The mandatory RP5 gate passed before adaptive UI work: the same Activity, EPUB session and `EpubNavigatorFragment` remained mounted through four pane-equivalent width cycles; one navigator remained; href was unchanged; total progression stayed within 0.01; the resource remained usable. The retained final-UI regression repeats the test by opening/closing the real pane under a forced 1600×1000 at 160 dpi viewport and restores the RP5 to 360 dpi.
 
@@ -1114,11 +1288,11 @@ The implementation adds the pure 840×480dp adaptive policy with a 36% pane clam
 - **Risks:** removal-path data semantics; hub query cost; deep-link argument wiring across the EPUB Activity and nav route.
 - **Codex High review: yes** for the removal/orphan/migration part; the UI-only portion could be reviewed at standard level — recommend one High review over the slice.
 
-#### 13.4.1 4D implementation record (2026-10-12; IMPLEMENTATION COMPLETE / REMEDIATION COMPLETE / CODEX HIGH PASS WITH NOTES / READY FOR PR)
+#### 13.4.1 4D implementation record (2026-10-12; MERGED / IMPLEMENTATION COMPLETE)
 
-Implemented on `phase-4/4d-global-notes-hub` from `main` at `ca47e3d1bee2c3d5426996ab6c76204cd5920131` (4C.2, PR #37, merged). Not merged and not in a PR; no physical/manual UAT (Phase 4F); 4E not started; Phase 4 is NOT complete. Evidence and its device limits (including intermittent RP5 ADB authorization) are in `docs/VALIDATION.md`.
+Implemented on `phase-4/4d-global-notes-hub` from `main` at `ca47e3d1bee2c3d5426996ab6c76204cd5920131` (4C.2, PR #37), then merged in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`. No physical/manual UAT was run; that remains Phase 4F. Phase 4E planning is complete with an independent Codex High PASS and is ready for PR, but implementation has not started; Phase 4F has not started, and Phase 4 is NOT complete or accepted. Evidence and its device limits (including intermittent RP5 ADB authorization) are in `docs/VALIDATION.md`.
 
-Independent Codex High review returned FAIL with exactly H1 (a stale locator could remain authoritative across Activity recreation) and M1 (rows omitted the §11 cover/timestamps and reduced EPUB location to percentage). The narrow remediation gives the ViewModel saved-state ownership of one-shot launch consumption and the latest accepted locator, and completes the existing row contract with the shared generated cover visual, kind icon/label, stored chapter/Location presentation and locale-aware Created/Updated labels. Final Codex High re-review returned **PASS WITH NOTES**, with no BLOCKER, HIGH or MEDIUM findings; its sole LOW documentation note corrected the recreation-test, API 24 assumption and root-cause wording in `docs/VALIDATION.md`. H1 and M1 are RESOLVED. No accepted 4D area, schema, query, migration, dependency, exact-anchor rule, fixed navigation or reader session architecture changed. 4D is ready for PR but is not merged or accepted; physical/manual UAT remains deferred to Phase 4F.
+Independent Codex High review returned FAIL with exactly H1 (a stale locator could remain authoritative across Activity recreation) and M1 (rows omitted the §11 cover/timestamps and reduced EPUB location to percentage). The narrow remediation gives the ViewModel saved-state ownership of one-shot launch consumption and the latest accepted locator, and completes the existing row contract with the shared generated cover visual, kind icon/label, stored chapter/Location presentation and locale-aware Created/Updated labels. Final Codex High re-review returned **PASS WITH NOTES**, with no BLOCKER, HIGH or MEDIUM findings; its sole LOW documentation note corrected the recreation-test, API 24 assumption and root-cause wording in `docs/VALIDATION.md`. H1 and M1 are RESOLVED. No accepted 4D area, schema, query, migration, dependency, exact-anchor rule, fixed navigation or reader session architecture changed. Physical/manual UAT remains deferred to Phase 4F.
 
 - **Schema.** Room v5, additive hand-written `MIGRATION_4_5`; table `annotation_source_snapshot(libraryItemId PK, title, creator, category, format)` created for keep-notes removals; no foreign key; no URI/path/hash. `5.json` committed. Migration tests use the repository's real-file raw-SQL pattern (no new test dependency).
 - **Removal.** `LibraryRepository.remove(id, policy)`; `KnowledgePolicy.KEEP` added. With saved items the removal dialog shows two explicit actions ("Remove, keep notes" / "Remove, delete notes") and no default (this refines the plan's earlier "default KEEP" wording to the owner rule that KEEP is never implicit); with none it is the unchanged single action. KEEP runs in one transaction: snapshot (only when annotations exist), delete preferences/reading state/item, annotations untouched. DELETE deletes the annotations and any stale snapshot. The last orphan deleted removes its snapshot; "delete notes for this removed publication" is explicit and refuses while the item exists.
@@ -1129,16 +1303,74 @@ Independent Codex High review returned FAIL with exactly H1 (a stale locator cou
 - **Decisions for the administrator.** (1) The publication sort uses a temp B-tree per page (about 30 ms per page at 10,000 rows on a fast host); whether that is acceptable on the SM-T580 is a 4F measurement, and the fallback (a stored lower-cased sort title or a cheaper default sort) would be a later migration. (2) Global listings skip rows of an unknown kind/format without counting them (the per-publication readers still count); say if the hub should surface that count. (3) Hub rows hold full note bodies (up to 20,000 characters each) in memory for the loaded pages. (4) The legacy `bookmark` table is still not dropped (after 4F).
 
 
-### 13.5 4E — Portable knowledge and research
+### 13.5 4E — Portable Knowledge & Restore
 
-- **Goal:** export to JSON and Markdown via SAF; excerpt-to-note polish; dictionary/provider architecture research note.
-- **Scope:** §12; "turn this excerpt into a note" polish if not already covered by 4B; a design note (docs only) for dictionary/provider.
-- **Non-goals:** import/round-trip, backup, cloud, provider code, network, fingerprinting.
-- **Likely areas:** proposed `domain/annotations/export/` (pure serializer), `feature/notes/` (export action), `core/files/` is not touched.
-- **Targeted tests:** JVM golden-file tests for JSON and Markdown (including hostile text, Unicode, empty/orphan publications, `schemaVersion`), SAF instrumented test writing to a `CreateDocument` result, cancellation and failure behavior, proof that no publication bytes/URIs are in the output, source-file hash unchanged by export.
-- **Acceptance:** export reproduces the data exactly; user-selected location only; works offline; no sidecar files.
-- **Risks:** Markdown escaping correctness; privacy of exported URIs (excluded by design).
-- **Codex High review: yes (standard-high)** for data-integrity and privacy of the export format, since it becomes an external contract.
+**Status: PLANNING COMPLETE / CODEX HIGH PASS / IMPLEMENTATION NOT STARTED / READY FOR PR.**
+
+- **Goal:** human-readable Markdown export plus lossless canonical ShelfOS JSON export and
+  safe JSON import/restore through SAF, all offline and user initiated.
+- **Scope:** §12 in full; JSON v1 export/import, preview/classification/result, exact-id live
+  association, orphan snapshot restoration, Markdown export, three export scopes, failure
+  handling and privacy disclosures. Audit excerpt-to-note first and make no production
+  change if 4B/4D already satisfies it. Add only a small docs-only future
+  dictionary/provider architecture note.
+- **Non-goals:** arbitrary Markdown/TXT/PDF-as-note import; Obsidian, Notion,
+  Kindle/Kobo/Readwise/Calibre adapters; publication binaries or ordinary Library import;
+  full/device/library backup; cloud, accounts or sync; fingerprinting, automatic
+  reattachment, filename/metadata matching or manual relink UI; provider/network/UI/API
+  key work; metadata enrichment, OCR, ink/handwriting or source-publication modification.
+- **Implementation boundary:** prefer `domain/annotations/portable/` for pure canonical
+  DTOs, serializer, parser/validator, import classification/plan and result models. Keep
+  SAF launchers and presentation in the feature/Android layer; do not couple the format to
+  Compose. Add a narrow transactional repository/DAO import path rather than reusing the
+  ordinary create path that mints ids/timestamps. Existing Room v5 is expected to suffice
+  through `annotation` and `annotation_source_snapshot`; do not plan v6 without concrete
+  proof. No new dependency is planned; platform JSON streaming is sufficient unless
+  implementation evidence proves otherwise.
+- **Targeted tests — JSON export:** schema v1; every annotation kind; live/orphan sources;
+  Unicode/emoji/RTL and hostile strings; byte-exact malformed persisted locator; exact
+  timestamps/ids; no URI/path/publication/cover bytes; publication arrays ascending by id
+  and annotations ascending by id, stable across different database insertion orders. A
+  domain-valid style key unknown to the current palette must export → import → re-export
+  exactly. A filtered result larger than one repository page must export every matching row
+  for JSON and Markdown, including rows never loaded/visible in the UI.
+- **Targeted tests — document validation:** invalid JSON, wrong schema, unsupported version,
+  missing required fields, repeated publication `libraryItemId`, repeated annotation id
+  anywhere in the file, unknown kind/locator/category/format, and domain-invalid content all
+  reject the whole document. Unknown member names at root/publication/annotation are ignored
+  when known fields remain valid. Known-format malformed locator is preserved; unknown
+  locator format rejects.
+- **Targeted tests — local classification/import:** exact-id live match; unmatched source →
+  orphan; identical local annotation duplicate skip; divergent content conflict/no
+  overwrite; same annotation id under a different `libraryItemId` is a conflict with no
+  move/overwrite/copy; ids/timestamps/locator/style remain exact; idempotent import and
+  canonical re-export. Pre-existing orphan snapshot with same context is reused; different
+  context preserves the local snapshot, reports a mismatch and still imports eligible NEW
+  rows. Exact live item plus stale snapshot uses live metadata and imports no snapshot
+  context; both `sourceRemoved` values leave current Room live/orphan classification
+  unchanged. A previewed NEW row changed locally before confirmation aborts the entire
+  transaction with zero partial rows.
+- **Targeted tests — additive/limits:** partial or filtered reimport leaves local annotations,
+  snapshots and LibraryItems absent from the file untouched. Reject over 64 MiB, over
+  10,000 groups and over 100,000 annotations; accept boundary values where practical; an
+  unknown-length SAF stream still trips the byte counter. Retain realistic large-library,
+  rollback-on-invalid/failing-import and database-failure coverage.
+- **Targeted tests — Markdown/SAF:** Unicode, minimal escaping, hostile Markdown, orphan
+  headings, excerpts/body and readable deterministic output; `CreateDocument` and
+  `OpenDocument` success/cancel/failure; active-workflow-only import permission; no
+  sidecar/network and unchanged source hash. A failed export reports failure, attempts
+  deletion of its new destination, emits no success, never truncates, and leaves the source
+  publication untouched. Run targeted tests only, not the full Phase 4 regression.
+- **Acceptance:** §12 contract and tests pass; import is bounded, atomic, additive,
+  idempotent and never guesses publication identity; JSON round-trips every currently valid
+  canonical annotation; Markdown stays clean and human-readable; user-selected locations
+  only; no publication mutation.
+- **Risks:** an external contract is hard to revise; hostile/large input; exact opaque
+  locator preservation; collision/conflict classification; transaction size; Markdown
+  escaping; sensitive exported content.
+- **Codex High review: required, fresh and independent.** Focus on round-trip fidelity,
+  validation, conflicts, atomicity, privacy, no identity guessing, orphan restoration and
+  source immutability.
 
 ### 13.6 4F — Acceptance
 
@@ -1147,7 +1379,7 @@ Independent Codex High review returned FAIL with exactly H1 (a stale locator cou
   `assembleDebugAndroidTest`, `lintDebug`, `bundleDebug`; migration validation from a real
   Phase-3 install; physical UAT (§17); documentation reconciliation (ROADMAP, ANNOTATIONS.md, ARCHITECTURE §16, READER.md, PRODUCT status) and the post-acceptance drop of the legacy `bookmark` table if UAT shows zero loss.
 - **Non-goals:** new features.
-- **Acceptance matrix:** migration safety; persistence and restart/process death; reopen; missing/unavailable source; deletion semantics (DELETE and KEEP); EPUB highlight restoration; fixed-page anchors (PDF/CBZ/CBR, spread, RTL); jump-to-source; large collections; hub search/sort/grouping; EN/ES/PT-BR; accessibility; touch/keyboard/controller; phone/tablet layouts; source immutability (hash before/after); export correctness.
+- **Acceptance matrix:** migration safety; persistence and restart/process death; reopen; missing/unavailable source; deletion semantics (DELETE and KEEP); EPUB highlight restoration; fixed-page anchors (PDF/CBZ/CBR, spread, RTL); jump-to-source; large collections; hub search/sort/grouping; EN/ES/PT-BR; accessibility; touch/keyboard/controller; phone/tablet layouts; source immutability (hash before/after); Markdown export; canonical JSON export → import round-trip, including exact live association and orphan restoration.
 - **Codex High review: yes** — independent review of the accumulated diff and evidence before merge, or an explicit owner-UAT acceptance recorded as in Phase 3.
 
 ## 14. Per-slice dependencies
@@ -1165,7 +1397,7 @@ Independent Codex High review returned FAIL with exactly H1 (a stale locator cou
 
 ## 15. Recommended order and parallelism
 
-Historical order (4A, 4B merged): `4A` → (`4B-spike` ∥ `4C`) → `4B` (if go) → `4D` → `4E` → `4F`. Current order: 4C.1 → 4C.2 → 4D → 4E → 4F. Disagreements with the
+Historical order: `4A` → (`4B-spike` ∥ `4C`) → `4B` (if go) → `4D` → `4E` → `4F`. Remaining order after the merged 4D: 4E → 4F. Disagreements with the
 brief's sequence are limited to: (1) the spike should not wait for 4A because it needs no
 schema, and getting its answer early de-risks the whole phase; (2) `KEEP` removal moves to
 4D because it is meaningless before orphans are visible, while the **count disclosure** and
@@ -1206,12 +1438,11 @@ Phase 4 accessibility acceptance must re-check availability before claiming it.
 
 **4C addendum (planning):** the SM-T580 cannot be driven by ADB (damaged Micro-USB data hardware), so 4C.1/4C.2 acceptance on it is a manual UAT with a reviewed debug APK installed over the LAN (as 4B); the RP5 is the primary automated device and the API 24 emulator the fallback. A tablet-sized emulator (1200 x 1920 at 240 dpi, or any AVD with `wm size`/`wm density`) can exercise the side-by-side and portrait layouts automatically, but proves layout and state only, not Samsung memory or WebView behavior. No foldable hardware is documented; fold behavior uses the existing fold-descriptor injection tests and emulator posture simulation.
 
-UAT script: migrate a real Phase-3 install with several bookmarks; create/edit/delete
-highlights and notes; kill the process (`adb shell am kill`) and reopen; rotate/resize;
-make a source unavailable and confirm notes remain and jump explains; remove an item
-under both policies; export and inspect; import a 10,000-annotation synthetic dataset and
-search/scroll; operate by keyboard and controller; verify the source files' hashes are
-unchanged.
+UAT scope remains Phase 4F; no manual UAT is required during 4E implementation. Its final
+checklist will include a simple portability path: export → import → verify notes,
+highlights and bookmarks → verify orphan groups → verify exact-id live association where
+applicable. The complete Phase 4F checklist is intentionally not written in this planning
+slice.
 
 ## 18. Localization and accessibility expectations
 
@@ -1231,8 +1462,11 @@ annotations; ink/handwriting, pen, stylus and freeform drawing (4C's notebook ex
 coordinate-based PDF markup; Adapted PDF reconstruction and SourceMap mapping; any source
 mutation or publication embedding; Series/omnibus annotation aggregation; Smart Shelves;
 online dictionary integration; metadata or cover enrichment implementation; automatic
-re-association of annotations to re-imported publications; content hashing; backup/restore
-and import of exported knowledge; unrelated Library/Reader redesign. Metadata and cover
+re-association of annotations to re-imported publications; content hashing; arbitrary
+Markdown/TXT/PDF-as-note import; Obsidian, Notion, Kindle, Kobo, Readwise or Calibre
+adapters; publication-binary/library/device backup; cloud/account sync; manual relink UI;
+unrelated Library/Reader redesign. Canonical ShelfOS JSON knowledge import/restore is in
+4E, but it must not be described as full backup or device migration. Metadata and cover
 enrichment are important future work but are not authorization to broaden Phase 4.
 
 ## 20. Risks and unknowns
@@ -1248,6 +1482,9 @@ enrichment are important future work but are not authorization to broaden Phase 
 - Selection accessibility with TalkBack/keyboard/gamepad is unverified.
 - Hub performance on a 2 GB-RAM tablet.
 - Markdown export escaping.
+- Portable JSON contract compatibility; hostile or very large input; transaction size;
+  duplicate/conflict classification; lossless locator/timestamp/id round-trip; accidentally
+  treating snapshot metadata as publication identity.
 - Unknown WebView version on the SM-T580.
 
 ## 21. Stop conditions (an implementation agent must stop and report)
@@ -1257,9 +1494,15 @@ enrichment are important future work but are not authorization to broaden Phase 
 - Any change would write to a publication file or create a sidecar next to one.
 - A new dependency (Paging, room-testing, serialization, FTS) seems necessary — stop and request the AGENTS.md dependency review.
 - A slice needs a schema change beyond its stated scope.
+- 4E appears to require Room v6, partial-commit batching, publication identity inference,
+  locator repair/reconstruction, or a non-canonical import adapter — stop and reconcile the
+  plan before implementation.
+- 4E cannot satisfy the 64 MiB/10,000-group/100,000-annotation guards with bounded memory,
+  complete preflight and one atomic commit using current/platform capabilities — stop and
+  review the architecture; do not weaken a safety property or add a dependency implicitly.
 - `sanitizeEpubHtml`, `naturalCompare`, `pageLocator`/`restorePage` semantics or the spread/page-index model would have to change.
 - Removal would delete annotation data without the disclosed, user-confirmed choice.
-- Any network call would be required for annotation CRUD, review, jump or export.
+- Any network call would be required for annotation CRUD, review, jump, export or import.
 - An unresolved doc/implementation conflict or a conflict with AGENTS.md rules.
 - Validation shows the infrastructure traps in §16 (0 tests run, install failures) — report, do not claim a pass.
 - Product questions below are needed to proceed.
