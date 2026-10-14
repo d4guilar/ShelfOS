@@ -63,6 +63,24 @@ class PortableKnowledgeTest {
         assertInvalid("{")
     }
 
+    @Test fun longUnknownMemberNamesAreSkippedAtEveryLevel() {
+        val json = ByteArrayOutputStream().also { PortableKnowledgeJson.write(document(), it) }.toString("UTF-8")
+        val longName = "future" + "x".repeat(70_000)
+        val escapedName = "future\\u263A" + "x".repeat(600)
+        val withUnknown = json.replaceFirst("{", "{\"$longName\":{\"$escapedName\":[1,true,null]},")
+            .replaceFirst("\"libraryItemId\"", "\"$longName\":false,\"libraryItemId\"")
+            .replaceFirst("\"id\"", "\"$escapedName\":\"ok\",\"id\"")
+        assertEquals(parse(json), parse(withUnknown))
+    }
+
+    @Test fun malformedLongUnknownMemberNamesStillFail() {
+        val json = ByteArrayOutputStream().also { PortableKnowledgeJson.write(document(), it) }.toString("UTF-8")
+        val prefix = "future" + "x".repeat(600)
+        assertInvalid(json.replaceFirst("{", "{\"$prefix\\q\":null,"))
+        assertInvalid(json.replaceFirst("{", "{\"$prefix\\uZZZZ\":null,"))
+        assertInvalid(json.replaceFirst("{", "{\"$prefix\n\":null,"))
+    }
+
     @Test fun schemaTimestampDomainAndByteLimitFailuresRejectTheWholeDocument() {
         val json = ByteArrayOutputStream().also { PortableKnowledgeJson.write(document(), it) }.toString("UTF-8")
         assertInvalid(json.replace("shelfos.knowledge", "other"))

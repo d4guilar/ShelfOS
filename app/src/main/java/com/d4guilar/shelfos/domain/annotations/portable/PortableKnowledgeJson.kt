@@ -259,7 +259,8 @@ object PortableKnowledgeJson {
             expect('{'); skipWhitespace()
             if (take('}')) return
             while (true) {
-                val name = readString(512); skipWhitespace(); expect(':'); member(name); skipWhitespace()
+                // progressSnapshot is the longest known key; longer keys remain unknown.
+                val name = readString(16, discardOverflow = true); skipWhitespace(); expect(':'); member(name); skipWhitespace()
                 if (take('}')) return
                 expect(',')
             }
@@ -275,15 +276,21 @@ object PortableKnowledgeJson {
             }
         }
 
-        private fun readString(maxChars: Int): String {
+        private fun readString(maxChars: Int, discardOverflow: Boolean = false): String {
             skipWhitespace(); expectRaw('"')
             val out = StringBuilder()
-            fun append(c: Char) { if (out.length >= maxChars) fail("string exceeds field limit"); out.append(c) }
+            var overflow = false
+            fun append(c: Char) {
+                if (out.length >= maxChars) {
+                    if (!discardOverflow) fail("string exceeds field limit")
+                    overflow = true
+                } else out.append(c)
+            }
             while (true) {
                 val c = next()
                 when {
                     c < 0 -> fail("unterminated string")
-                    c == '"'.code -> return out.toString()
+                    c == '"'.code -> return if (overflow) "" else out.toString()
                     c == '\\'.code -> {
                         when (val escaped = next()) {
                             '"'.code, '\\'.code, '/'.code -> append(escaped.toChar())
