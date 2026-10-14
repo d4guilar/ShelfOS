@@ -48,6 +48,10 @@ interface AnnotationRepository {
     suspend fun countOrphans(): Int
     /** One bounded page of the global Notes list in [NotesQuery.sort] order; pass [NotesPage.next] as [after] for the next page. Rows of an unknown kind or format are left out. */
     suspend fun notes(query: NotesQuery, after: NotesCursor? = null, limit: Int = NOTES_PAGE_SIZE): NotesPage
+    /** Canonical export page in (publication id, annotation id) order; cursor is the last raw row's two ids. */
+    suspend fun portableExportPage(query: NotesQuery, after: Pair<String, String>?, limit: Int = NOTES_PAGE_SIZE): List<AnnotationWithSource>
+    /** Missing-context groups on one export page that contain a matching non-Readium locator. */
+    suspend fun portableGroupsWithNonReadium(query: NotesQuery, ids: List<String>): Set<String>
     /** How many annotations match [query] (ignoring paging), for the result count. */
     suspend fun countNotes(query: NotesQuery): Int
     /** Emits whenever annotations, removal snapshots or library items change; the value carries no meaning. Use it to refresh [notes]. */
@@ -128,6 +132,21 @@ class RoomAnnotationRepository(
 
     override suspend fun countNotes(query: NotesQuery) =
         dao.countNotes(if (query.kinds == null) 1 else 0, query.kinds.orEmpty().map { it.name }, query.publicationId, likePattern(query.text))
+
+    override suspend fun portableExportPage(query: NotesQuery, after: Pair<String, String>?, limit: Int): List<AnnotationWithSource> {
+        require(limit > 0) { "limit must be positive" }
+        return dao.portableExportPage(if (query.kinds == null) 1 else 0, query.kinds.orEmpty().map { it.name },
+            query.publicationId, likePattern(query.text), if (after == null) 0 else 1,
+            after?.first.orEmpty(), after?.second.orEmpty(), limit)
+            .mapNotNull { row -> row.annotation.toDomainOrNull()?.let { AnnotationWithSource(it, row.toSource()) } }
+    }
+
+    override suspend fun portableGroupsWithNonReadium(query: NotesQuery, ids: List<String>): Set<String> {
+        require(ids.size <= NOTES_PAGE_SIZE) { "export group lookup must be page bounded" }
+        if (ids.isEmpty()) return emptySet()
+        return dao.portableGroupsWithNonReadium(if (query.kinds == null) 1 else 0,
+            query.kinds.orEmpty().map { it.name }, query.publicationId, likePattern(query.text), ids).toSet()
+    }
 
     override fun observeChanges() = dao.observeChanges()
     override fun observePublications() = dao.observePublications().map { rows -> rows.map { NotesPublication(it.toSource(), it.total) } }

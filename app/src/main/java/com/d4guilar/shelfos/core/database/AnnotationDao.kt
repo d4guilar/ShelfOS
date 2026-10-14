@@ -170,6 +170,19 @@ abstract class AnnotationDao {
     abstract suspend fun notesByPublication(allKinds: Int, kinds: List<String>, itemId: String?, pattern: String?,
         hasCursor: Int, cTitle: String, cItem: String, cOrder: Double, cCreated: Long, cId: String, limit: Int): List<NoteRowEntity>
 
+    /** Portable export walks one bounded page in canonical id order, independent of the visible Notes sort. */
+    @Query(NOTE_COLUMNS + SOURCE_JOIN + NOTE_FILTERS +
+        "AND (:hasCursor = 0 OR a.libraryItemId > :cItem OR (a.libraryItemId = :cItem AND a.id > :cId)) " +
+        "ORDER BY a.libraryItemId COLLATE BINARY ASC, a.id COLLATE BINARY ASC LIMIT :limit")
+    abstract suspend fun portableExportPage(allKinds: Int, kinds: List<String>, itemId: String?, pattern: String?,
+        hasCursor: Int, cItem: String, cId: String, limit: Int): List<NoteRowEntity>
+
+    /** One bounded lookup per export page, only for groups whose source format is unavailable. */
+    @Query("SELECT DISTINCT a.libraryItemId " + SOURCE_JOIN + NOTE_FILTERS +
+        "AND a.libraryItemId IN (:ids) AND a.locatorFormat != 'READIUM_LOCATOR_1'")
+    abstract suspend fun portableGroupsWithNonReadium(allKinds: Int, kinds: List<String>, itemId: String?,
+        pattern: String?, ids: List<String>): List<String>
+
     /** How many rows match the same filters (one cheap read, so the hub can say how many results there are). */
     @Query("SELECT COUNT(*) " + SOURCE_JOIN + NOTE_FILTERS)
     abstract suspend fun countNotes(allKinds: Int, kinds: List<String>, itemId: String?, pattern: String?): Int

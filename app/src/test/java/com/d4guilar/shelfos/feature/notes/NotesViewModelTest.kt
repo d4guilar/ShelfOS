@@ -38,6 +38,8 @@ class NotesViewModelTest {
             val page = all.drop(start).take(limit)
             return NotesPage(page, if (start + limit < all.size) NotesCursor("", "", 0.0, 0, (start + limit).toString()) else null)
         }
+        override suspend fun portableExportPage(query: NotesQuery, after: Pair<String, String>?, limit: Int) = error("unused")
+        override suspend fun portableGroupsWithNonReadium(query: NotesQuery, ids: List<String>): Set<String> = error("unused")
         override fun observeChanges() = changes
         fun touch() { changes.value++ }
         override fun observePublications() = rows.map { list ->

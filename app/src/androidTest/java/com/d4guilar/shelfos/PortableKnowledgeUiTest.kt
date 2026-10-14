@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos
 
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.semantics.SemanticsActions
+import android.view.KeyEvent
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -20,8 +20,12 @@ class PortableKnowledgeUiTest {
         compose.onNodeWithTag("knowledge_import").assertHasClickAction().assertIsEnabled()
         val density = compose.activity.resources.displayMetrics.density
         assertTrue(compose.onNodeWithTag("knowledge_export").fetchSemanticsNode().size.height >= 47 * density)
-        compose.onNodeWithTag("knowledge_export").performSemanticsAction(SemanticsActions.RequestFocus)
-        compose.onNodeWithTag("knowledge_export").performKeyInput { pressKey(Key.Enter) }
+        repeat(20) {
+            if (runCatching { compose.onNodeWithTag("knowledge_export").assertIsFocused() }.isSuccess) return@repeat
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_TAB)
+        }
+        compose.onNodeWithTag("knowledge_export").assertIsFocused()
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_ENTER)
         compose.onNodeWithTag("knowledge_format_json").assertExists().assertIsSelected()
         compose.onNodeWithTag("knowledge_format_markdown").assertExists().performClick().assertIsSelected()
         compose.onNodeWithTag("knowledge_scope_all").assertExists()

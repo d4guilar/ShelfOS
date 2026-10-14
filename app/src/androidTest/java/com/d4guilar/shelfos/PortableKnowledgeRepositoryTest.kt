@@ -77,6 +77,22 @@ class PortableKnowledgeRepositoryTest {
         assertNull(db.annotations().byId("second"))
         assertTrue(db.annotations().portableSnapshots().isEmpty())
     }
+
+    @Test fun conflictOnlyUnknownLocalRowDoesNotCreateEmptyOrphanSnapshot() = runBlocking<Unit> {
+        val malformed = annotation("unknown", "orphan", "local body").toEntity().copy(kind = "FUTURE_KIND")
+        db.annotations().insertPortableAnnotations(listOf(malformed))
+        val input = document(publication("orphan", listOf(annotation("unknown", "orphan", "incoming body"))))
+        val preview = repository.classify(input)
+        assertEquals(0, preview.newCount)
+        assertEquals(1, preview.conflictCount)
+        assertEquals(0, preview.orphanGroupsToCreate)
+        val result = repository.import(input, preview)
+        assertEquals(0, result.imported)
+        assertEquals(1, result.conflicts)
+        assertEquals(0, result.orphanGroups)
+        assertTrue(db.annotations().portableSnapshots().isEmpty())
+        assertEquals(malformed, db.annotations().byId("unknown"))
+    }
 }
 
 private fun PortableAnnotation.toEntity() = AnnotationEntity(id, libraryItemId, kind.name, locatorFormat.name,

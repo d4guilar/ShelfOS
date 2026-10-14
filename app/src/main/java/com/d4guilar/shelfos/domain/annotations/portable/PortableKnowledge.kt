@@ -33,6 +33,9 @@ data class PortablePublication(
     val annotations: List<PortableAnnotation>,
 )
 
+/** One export row; the publication header carries no annotation list while rows are streamed. */
+data class PortableExportRow(val publication: PortablePublication, val annotation: PortableAnnotation)
+
 data class PortableAnnotation(
     val id: String,
     val libraryItemId: String,
@@ -127,7 +130,17 @@ fun classifyPortableKnowledge(document: PortableKnowledgeDocument, local: Portab
 
     for (publication in document.publications.sortedBy { it.libraryItemId }) {
         val live = publication.libraryItemId in local.livePublicationIds
-        val hasNew = publication.annotations.any { local.annotations[it.id] == null }
+        val plans = publication.annotations.sortedBy { it.id }.map { incoming ->
+            val current = local.annotations[incoming.id]
+            val status = when {
+                incoming.id in local.unknownAnnotationIds -> PortableAnnotationStatus.CONFLICT
+                current == null -> PortableAnnotationStatus.NEW
+                current == incoming.toAnnotation() -> PortableAnnotationStatus.DUPLICATE
+                else -> PortableAnnotationStatus.CONFLICT
+            }
+            PortableAnnotationPlan(incoming.id, status)
+        }
+        val hasNew = plans.any { it.status == PortableAnnotationStatus.NEW }
         val importedContext = publication.toContext()
         val localSnapshot = local.snapshots[publication.libraryItemId]
         val snapshot = when {
@@ -141,20 +154,13 @@ fun classifyPortableKnowledge(document: PortableKnowledgeDocument, local: Portab
         if (snapshot == PortableSnapshotStatus.CREATE) snapshotCreates++
         if (snapshot == PortableSnapshotStatus.LOCAL_WINS) warnings++
         publicationPlans += PortablePublicationPlan(publication.libraryItemId, live, snapshot)
-        for (incoming in publication.annotations.sortedBy { it.id }) {
-            val current = local.annotations[incoming.id]
-            val status = when {
-                incoming.id in local.unknownAnnotationIds -> PortableAnnotationStatus.CONFLICT
-                current == null -> PortableAnnotationStatus.NEW
-                current == incoming.toAnnotation() -> PortableAnnotationStatus.DUPLICATE
-                else -> PortableAnnotationStatus.CONFLICT
-            }
-            when (status) {
+        for (plan in plans) {
+            when (plan.status) {
                 PortableAnnotationStatus.NEW -> newCount++
                 PortableAnnotationStatus.DUPLICATE -> duplicateCount++
                 PortableAnnotationStatus.CONFLICT -> conflictCount++
             }
-            annotationPlans += PortableAnnotationPlan(incoming.id, status)
+            annotationPlans += plan
         }
     }
     return PortableImportPreview(document.publications.size, annotationPlans.size, newCount, duplicateCount,

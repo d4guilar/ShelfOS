@@ -2,6 +2,7 @@
 package com.d4guilar.shelfos.domain.annotations.portable
 
 import com.d4guilar.shelfos.domain.annotations.AnnotationKind
+import com.d4guilar.shelfos.domain.annotations.AnnotationLimits
 import com.d4guilar.shelfos.domain.annotations.LocatorFormat
 import com.d4guilar.shelfos.domain.library.MediaCategory
 import com.d4guilar.shelfos.domain.library.PublicationFormat
@@ -18,6 +19,8 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatterBuilder
 import java.time.temporal.ChronoField
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
 
 /** Dependency-free streaming JSON codec: it never creates a source-sized String or generic JSON object tree. */
 object PortableKnowledgeJson {
@@ -47,20 +50,7 @@ object PortableKnowledgeJson {
                         name("sourceRemoved"); bool(publication.sourceRemoved)
                         name("annotations"); array {
                             publication.annotations.sortedBy { it.id }.forEach { annotation ->
-                                valueSeparator(); obj {
-                                    name("id"); string(annotation.id)
-                                    name("kind"); string(annotation.kind.name)
-                                    name("locatorFormat"); string(annotation.locatorFormat.name)
-                                    name("locatorJson"); string(annotation.locatorJson)
-                                    name("progressSnapshot"); number(annotation.progressSnapshot)
-                                    name("orderKey"); nullableNumber(annotation.orderKey)
-                                    name("title"); nullableString(annotation.title)
-                                    name("selectedText"); nullableString(annotation.selectedText)
-                                    name("body"); nullableString(annotation.body)
-                                    name("styleKey"); nullableString(annotation.styleKey)
-                                    name("createdAt"); string(formatTimestamp(annotation.createdAt))
-                                    name("updatedAt"); string(formatTimestamp(annotation.updatedAt))
-                                }
+                                valueSeparator(); writeAnnotation(annotation)
                             }
                         }
                     }
@@ -68,6 +58,51 @@ object PortableKnowledgeJson {
             }
         }
         writer.finish()
+    }
+
+    /** Rows arrive in (publication id, annotation id) order; only one row and its header stay live here. */
+    suspend fun writeRows(exportedAt: Long, appVersion: String, rows: Flow<PortableExportRow>, output: OutputStream) {
+        val writer = JsonSink(OutputStreamWriter(output, StandardCharsets.UTF_8))
+        writer.beginObject()
+        writer.name("schema"); writer.string(PortableKnowledgeSchema.NAME)
+        writer.name("schemaVersion"); writer.number(PortableKnowledgeSchema.VERSION)
+        writer.name("exportedAt"); writer.string(formatTimestamp(exportedAt))
+        writer.name("appVersion"); writer.string(appVersion)
+        writer.name("publications"); writer.beginArray()
+        var groupId: String? = null
+        rows.collect { row ->
+            val publication = row.publication
+            if (publication.libraryItemId != groupId) {
+                if (groupId != null) { writer.endArray(); writer.endObject() }
+                writer.valueSeparator(); writer.beginObject()
+                writer.name("libraryItemId"); writer.string(publication.libraryItemId)
+                writer.name("title"); writer.string(publication.title)
+                writer.name("creator"); writer.string(publication.creator)
+                writer.name("category"); writer.string(publication.category.name)
+                writer.name("format"); writer.string(publication.format.name)
+                writer.name("sourceRemoved"); writer.bool(publication.sourceRemoved)
+                writer.name("annotations"); writer.beginArray()
+                groupId = publication.libraryItemId
+            }
+            writer.valueSeparator(); writer.writeAnnotation(row.annotation)
+        }
+        if (groupId != null) { writer.endArray(); writer.endObject() }
+        writer.endArray(); writer.endObject(); writer.finish()
+    }
+
+    private fun JsonSink.writeAnnotation(annotation: PortableAnnotation) = obj {
+        name("id"); string(annotation.id)
+        name("kind"); string(annotation.kind.name)
+        name("locatorFormat"); string(annotation.locatorFormat.name)
+        name("locatorJson"); string(annotation.locatorJson)
+        name("progressSnapshot"); number(annotation.progressSnapshot)
+        name("orderKey"); nullableNumber(annotation.orderKey)
+        name("title"); nullableString(annotation.title)
+        name("selectedText"); nullableString(annotation.selectedText)
+        name("body"); nullableString(annotation.body)
+        name("styleKey"); nullableString(annotation.styleKey)
+        name("createdAt"); string(formatTimestamp(annotation.createdAt))
+        name("updatedAt"); string(formatTimestamp(annotation.updatedAt))
     }
 
     fun read(input: InputStream, maxBytes: Long = PortableKnowledgeSchema.MAX_INPUT_BYTES): PortableKnowledgeDocument {
@@ -116,15 +151,15 @@ object PortableKnowledgeJson {
             readObject { name ->
                 when (name) {
                     "schema" -> {
-                        unique(seen, name); schema = readString()
+                        unique(seen, name); schema = readString(PortableKnowledgeSchema.NAME.length)
                         if (schema != PortableKnowledgeSchema.NAME) throw InvalidPortableKnowledgeException("wrong schema")
                     }
                     "schemaVersion" -> {
                         unique(seen, name); val parsed = readInt(); version = parsed
                         if (parsed != PortableKnowledgeSchema.VERSION) throw UnsupportedPortableKnowledgeVersionException(parsed)
                     }
-                    "exportedAt" -> { unique(seen, name); exportedAt = parseTimestamp(readString()) }
-                    "appVersion" -> { unique(seen, name); appVersion = readString() }
+                    "exportedAt" -> { unique(seen, name); exportedAt = parseTimestamp(readString(24)) }
+                    "appVersion" -> { unique(seen, name); appVersion = readString(PortableKnowledgeSchema.MAX_INPUT_BYTES.toInt()) }
                     "publications" -> { unique(seen, name); publications = readPublications() }
                     else -> skipValue()
                 }
@@ -161,11 +196,11 @@ object PortableKnowledgeJson {
             var sourceRemoved: Boolean? = null; var annotations: List<PortableAnnotation>? = null
             val seen = HashSet<String>()
             readObject { name -> when (name) {
-                "libraryItemId" -> { unique(seen, name); id = readString() }
-                "title" -> { unique(seen, name); title = readString() }
-                "creator" -> { unique(seen, name); creator = readString() }
-                "category" -> { unique(seen, name); category = enumValue<MediaCategory>(readString(), "category") }
-                "format" -> { unique(seen, name); format = enumValue<PublicationFormat>(readString(), "publication format") }
+                "libraryItemId" -> { unique(seen, name); id = readString(PortableKnowledgeSchema.MAX_INPUT_BYTES.toInt()) }
+                "title" -> { unique(seen, name); title = readString(PortableKnowledgeSchema.MAX_INPUT_BYTES.toInt()) }
+                "creator" -> { unique(seen, name); creator = readString(PortableKnowledgeSchema.MAX_INPUT_BYTES.toInt()) }
+                "category" -> { unique(seen, name); category = enumValue<MediaCategory>(readString(64), "category") }
+                "format" -> { unique(seen, name); format = enumValue<PublicationFormat>(readString(64), "publication format") }
                 "sourceRemoved" -> { unique(seen, name); sourceRemoved = readBoolean() }
                 "annotations" -> { unique(seen, name); annotations = readAnnotations() }
                 else -> skipValue()
@@ -195,18 +230,18 @@ object PortableKnowledgeJson {
             var created: Long? = null; var updated: Long? = null
             val seen = HashSet<String>()
             readObject { name -> when (name) {
-                "id" -> { unique(seen, name); id = readString() }
-                "kind" -> { unique(seen, name); kind = enumValue<AnnotationKind>(readString(), "annotation kind") }
-                "locatorFormat" -> { unique(seen, name); locatorFormat = enumValue<LocatorFormat>(readString(), "locator format") }
-                "locatorJson" -> { unique(seen, name); locatorJson = readString() }
+                "id" -> { unique(seen, name); id = readString(PortableKnowledgeSchema.MAX_INPUT_BYTES.toInt()) }
+                "kind" -> { unique(seen, name); kind = enumValue<AnnotationKind>(readString(64), "annotation kind") }
+                "locatorFormat" -> { unique(seen, name); locatorFormat = enumValue<LocatorFormat>(readString(64), "locator format") }
+                "locatorJson" -> { unique(seen, name); locatorJson = readString(AnnotationLimits.MAX_LOCATOR_BYTES) }
                 "progressSnapshot" -> { unique(seen, name); progress = readInt() }
                 "orderKey" -> { unique(seen, name); orderKey = readNullableDouble() }
-                "title" -> { unique(seen, name); title = readNullableString() }
-                "selectedText" -> { unique(seen, name); selected = readNullableString() }
-                "body" -> { unique(seen, name); body = readNullableString() }
-                "styleKey" -> { unique(seen, name); style = readNullableString() }
-                "createdAt" -> { unique(seen, name); created = parseTimestamp(readString()) }
-                "updatedAt" -> { unique(seen, name); updated = parseTimestamp(readString()) }
+                "title" -> { unique(seen, name); title = readNullableString(PortableKnowledgeSchema.MAX_INPUT_BYTES.toInt()) }
+                "selectedText" -> { unique(seen, name); selected = readNullableString(AnnotationLimits.MAX_SELECTED_TEXT) }
+                "body" -> { unique(seen, name); body = readNullableString(AnnotationLimits.MAX_BODY) }
+                "styleKey" -> { unique(seen, name); style = readNullableString(PortableKnowledgeSchema.MAX_INPUT_BYTES.toInt()) }
+                "createdAt" -> { unique(seen, name); created = parseTimestamp(readString(24)) }
+                "updatedAt" -> { unique(seen, name); updated = parseTimestamp(readString(24)) }
                 else -> skipValue()
             } }
             required(seen, "id", "kind", "locatorFormat", "locatorJson", "progressSnapshot", "orderKey", "title",
@@ -224,7 +259,7 @@ object PortableKnowledgeJson {
             expect('{'); skipWhitespace()
             if (take('}')) return
             while (true) {
-                val name = readString(); skipWhitespace(); expect(':'); member(name); skipWhitespace()
+                val name = readString(512); skipWhitespace(); expect(':'); member(name); skipWhitespace()
                 if (take('}')) return
                 expect(',')
             }
@@ -240,9 +275,10 @@ object PortableKnowledgeJson {
             }
         }
 
-        private fun readString(): String {
+        private fun readString(maxChars: Int): String {
             skipWhitespace(); expectRaw('"')
             val out = StringBuilder()
+            fun append(c: Char) { if (out.length >= maxChars) fail("string exceeds field limit"); out.append(c) }
             while (true) {
                 val c = next()
                 when {
@@ -250,15 +286,31 @@ object PortableKnowledgeJson {
                     c == '"'.code -> return out.toString()
                     c == '\\'.code -> {
                         when (val escaped = next()) {
-                            '"'.code, '\\'.code, '/'.code -> out.append(escaped.toChar())
-                            'b'.code -> out.append('\b'); 'f'.code -> out.append('\u000c'); 'n'.code -> out.append('\n')
-                            'r'.code -> out.append('\r'); 't'.code -> out.append('\t')
-                            'u'.code -> out.append(readHex().toChar())
+                            '"'.code, '\\'.code, '/'.code -> append(escaped.toChar())
+                            'b'.code -> append('\b'); 'f'.code -> append('\u000c'); 'n'.code -> append('\n')
+                            'r'.code -> append('\r'); 't'.code -> append('\t')
+                            'u'.code -> append(readHex().toChar())
                             else -> fail("invalid string escape")
                         }
                     }
                     c < 0x20 -> fail("control character in string")
-                    else -> out.append(c.toChar())
+                    else -> append(c.toChar())
+                }
+            }
+        }
+
+        private fun skipString() {
+            skipWhitespace(); expectRaw('"')
+            while (true) {
+                when (val c = next()) {
+                    -1 -> fail("unterminated string")
+                    '"'.code -> return
+                    '\\'.code -> when (next()) {
+                        '"'.code, '\\'.code, '/'.code, 'b'.code, 'f'.code, 'n'.code, 'r'.code, 't'.code -> Unit
+                        'u'.code -> readHex()
+                        else -> fail("invalid string escape")
+                    }
+                    else -> if (c < 0x20) fail("control character in string")
                 }
             }
         }
@@ -277,7 +329,7 @@ object PortableKnowledgeJson {
             return when (peek()) { 't'.code -> { literal("true"); true }; 'f'.code -> { literal("false"); false }; else -> fail("expected boolean") }
         }
 
-        private fun readNullableString(): String? { skipWhitespace(); return if (peek() == 'n'.code) { literal("null"); null } else readString() }
+        private fun readNullableString(maxChars: Int): String? { skipWhitespace(); return if (peek() == 'n'.code) { literal("null"); null } else readString(maxChars) }
         private fun readNullableDouble(): Double? {
             skipWhitespace(); if (peek() == 'n'.code) { literal("null"); return null }
             val value = readNumber().toDoubleOrNull() ?: fail("invalid number")
@@ -290,33 +342,34 @@ object PortableKnowledgeJson {
             return raw.toIntOrNull() ?: fail("integer out of range")
         }
 
-        private fun readNumber(): String {
-            skipWhitespace(); val out = StringBuilder()
-            if (take('-')) out.append('-')
+        private fun readNumber(keep: Boolean = true): String {
+            skipWhitespace(); val out = if (keep) StringBuilder() else null
+            fun append(c: Char) { if (out != null) { if (out.length >= 128) fail("number too long"); out.append(c) } }
+            if (take('-')) append('-')
             val first = peek()
-            if (first == '0'.code) { out.append(next().toChar()); if (peek() in '0'.code..'9'.code) fail("leading zero") }
+            if (first == '0'.code) { append(next().toChar()); if (peek() in '0'.code..'9'.code) fail("leading zero") }
             else {
                 if (first !in '1'.code..'9'.code) fail("expected number")
-                while (peek() in '0'.code..'9'.code) out.append(next().toChar())
+                while (peek() in '0'.code..'9'.code) append(next().toChar())
             }
-            if (take('.')) { out.append('.'); if (peek() !in '0'.code..'9'.code) fail("invalid fraction"); while (peek() in '0'.code..'9'.code) out.append(next().toChar()) }
+            if (take('.')) { append('.'); if (peek() !in '0'.code..'9'.code) fail("invalid fraction"); while (peek() in '0'.code..'9'.code) append(next().toChar()) }
             if (peek() == 'e'.code || peek() == 'E'.code) {
-                out.append(next().toChar()); if (peek() == '+'.code || peek() == '-'.code) out.append(next().toChar())
+                append(next().toChar()); if (peek() == '+'.code || peek() == '-'.code) append(next().toChar())
                 if (peek() !in '0'.code..'9'.code) fail("invalid exponent")
-                while (peek() in '0'.code..'9'.code) out.append(next().toChar())
+                while (peek() in '0'.code..'9'.code) append(next().toChar())
             }
-            return out.toString()
+            return out?.toString().orEmpty()
         }
 
         private fun skipValue(depth: Int = 0) {
             if (depth > 256) fail("JSON nesting too deep")
             skipWhitespace()
             when (peek()) {
-                '"'.code -> readString()
+                '"'.code -> skipString()
                 '{'.code -> readObject { skipValue(depth + 1) }
                 '['.code -> readArray { skipValue(depth + 1) }
                 't'.code -> literal("true"); 'f'.code -> literal("false"); 'n'.code -> literal("null")
-                else -> readNumber()
+                else -> readNumber(false)
             }
         }
 
@@ -344,8 +397,12 @@ object PortableKnowledgeJson {
 
     private class JsonSink(private val output: OutputStreamWriter) {
         private val first = ArrayDeque<Boolean>()
-        fun obj(block: JsonSink.() -> Unit) { output.write("{"); first.addLast(true); block(); first.removeLast(); output.write("}") }
-        fun array(block: JsonSink.() -> Unit) { output.write("["); first.addLast(true); block(); first.removeLast(); output.write("]") }
+        fun beginObject() { output.write("{"); first.addLast(true) }
+        fun endObject() { first.removeLast(); output.write("}") }
+        fun beginArray() { output.write("["); first.addLast(true) }
+        fun endArray() { first.removeLast(); output.write("]") }
+        fun obj(block: JsonSink.() -> Unit) { beginObject(); block(); endObject() }
+        fun array(block: JsonSink.() -> Unit) { beginArray(); block(); endArray() }
         fun name(value: String) { valueSeparator(); string(value); output.write(":") }
         fun valueSeparator() { if (first.isEmpty()) return; if (first.last()) first[first.lastIndex] = false else output.write(",") }
         fun string(value: String) { output.write("\""); value.forEach { c -> when (c) {

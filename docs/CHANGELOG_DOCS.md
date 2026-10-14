@@ -1,5 +1,17 @@
 # Documentation Changelog
 
+## Phase 4E implementation review remediation (2026-10-13)
+
+- Independent Codex High implementation review returned **FAIL: REMEDIATION REQUIRED**
+  for four MEDIUM findings (M1-M4); no BLOCKER or HIGH finding. Remediation is implemented
+  locally and awaits fresh independent review. Phase 4E is not accepted; Phase 4F is not started.
+- Export now writes from bounded canonical keyset pages, with one bounded grouped lookup
+  per page for contextless orphan format inference. Snapshot CREATE follows final NEW statuses.
+  Unknown JSON values are discarded without string/number materialization; known fields
+  are bounded while decoding. The RP5 focused Enter regression now uses native keyboard
+  events after confirming the focused Export button.
+- Focused JVM, API 24 and RP5 tests pass; see `docs/VALIDATION.md` for counts and limits.
+
 ## Phase 4E Portable Knowledge & Restore implemented locally (2026-10-13)
 
 - Phase 4E is **IMPLEMENTED LOCALLY / PENDING INDEPENDENT CODEX HIGH REVIEW**.

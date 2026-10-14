@@ -126,6 +126,46 @@ class PortableKnowledgeTest {
         assertFalse(output.contains("shelfos.knowledge")); assertFalse(output.contains("locatorJson"))
     }
 
+    @Test fun largeIgnoredStringIsSkippedAndKnownFieldsRejectAtTheirBounds() {
+        val json = ByteArrayOutputStream().also { PortableKnowledgeJson.write(document(), it) }.toString("UTF-8")
+        val prefix = "{\"future\":\"".toByteArray()
+        val suffix = ("\"," + json.drop(1)).toByteArray()
+        val unknown = object : java.io.InputStream() {
+            var index = 0
+            override fun read(): Int = when {
+                index < prefix.size -> prefix[index++].toInt() and 0xff
+                index < prefix.size + 16 * 1024 * 1024 -> { index++; 'x'.code }
+                index < prefix.size + 16 * 1024 * 1024 + suffix.size -> suffix[index++ - prefix.size - 16 * 1024 * 1024].toInt() and 0xff
+                else -> -1
+            }
+        }
+        assertEquals(3, PortableKnowledgeJson.read(unknown).publications.single().annotations.size)
+        val longBody = json.replace("\"body\":\"line", "\"body\":\"${"x".repeat(20_001)}\" ,\"ignored\":\"line")
+        assertEquals("string exceeds field limit", runCatching { parse(longBody) }.exceptionOrNull()?.message)
+        val longLocator = json.replace("\"locatorJson\":\" { malformed but opaque", "\"locatorJson\":\"${"x".repeat(65_537)}\",\"ignored\":\" { malformed but opaque")
+        assertEquals("string exceeds field limit", runCatching { parse(longLocator) }.exceptionOrNull()?.message)
+    }
+
+    @Test fun byteCounterAcceptsExactLimitAndRejectsOneExtraByte() {
+        val bytes = ByteArrayOutputStream().also { PortableKnowledgeJson.write(document(), it) }.toByteArray()
+        val padded = bytes + byteArrayOf(' '.code.toByte())
+        assertEquals(3, PortableKnowledgeJson.read(ByteArrayInputStream(padded), padded.size.toLong()).publications.single().annotations.size)
+        assertTrue(runCatching { PortableKnowledgeJson.read(ByteArrayInputStream(padded), bytes.size.toLong()) }.exceptionOrNull()
+            is InvalidPortableKnowledgeException)
+    }
+
+    @Test fun domainValidStyleHasNoInventedPerFieldCap() {
+        val style = "custom-" + "x".repeat(70_000)
+        val original = document().let { doc -> doc.copy(publications = doc.publications.map { publication ->
+            publication.copy(annotations = publication.annotations.map { annotation ->
+                if (annotation.kind == AnnotationKind.HIGHLIGHT) annotation.copy(styleKey = style) else annotation
+            })
+        }) }
+        val bytes = ByteArrayOutputStream().also { PortableKnowledgeJson.write(original, it) }.toByteArray()
+        assertEquals(style, PortableKnowledgeJson.read(ByteArrayInputStream(bytes)).publications.single()
+            .annotations.first { it.kind == AnnotationKind.HIGHLIGHT }.styleKey)
+    }
+
     private fun parse(json: String) = PortableKnowledgeJson.read(ByteArrayInputStream(json.toByteArray(Charsets.UTF_8)))
     private fun assertInvalid(json: String) = assertTrue(runCatching { parse(json) }.exceptionOrNull() is InvalidPortableKnowledgeException)
 }

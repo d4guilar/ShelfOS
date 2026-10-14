@@ -1,5 +1,42 @@
 # Validation
 
+## Phase 4E targeted implementation remediation (2026-10-13)
+
+Independent Codex High implementation review returned **FAIL: REMEDIATION REQUIRED**
+with four MEDIUM findings (M1-M4), no BLOCKER or HIGH finding. This local remediation
+addresses those four findings and awaits a fresh independent Codex High review. Phase 4E
+is not accepted; Phase 4F is NOT STARTED.
+
+- **M1:** Export reads canonical `(libraryItemId, annotation id)` keyset pages of at most
+  100 rows and writes each publication and annotation directly to JSON or Markdown.
+  It retains one page and one group header, without a full-library `ArrayList` or
+  `groupBy`. Contextless orphan fallback format uses one grouped lookup per page, with
+  at most that page's 100 ids, to preserve the prior all-locators inference. No import
+  size ceiling applies to export.
+- **M2:** Snapshot CREATE is computed after final annotation classification. An orphan
+  group whose only imported id conflicts with an unknown persisted kind imports zero
+  rows and creates zero snapshots; the existing row remains unchanged.
+- **M3:** Ignored JSON string values and numbers are validated while discarded, without
+  building their payloads. Known strings are bounded during decoding: current 64 KiB
+  locator, 2,000-character selected text and 20,000-character body rules. Fields without
+  a domain cap, including unknown-palette `styleKey`, retain the approved whole-document
+  cap; a 70,000-character valid style round-trips. The UTF-8 input counter accepts an
+  exact limit and rejects the next byte.
+- **M4:** On the RP5, Compose's synthetic `RequestFocus` and key injection left Export
+  unfocused, so Enter had no target. Native Android Tab navigation focuses the existing
+  semantic button, and native Enter opens the export choices. The test now asserts
+  focus first; no production UI change was needed. The device must be awake for UI tests.
+
+Focused evidence: JVM `PortableKnowledgeTest` **10/10** and `NotesViewModelTest` **12/12**;
+API 24 emulator XML `PortableKnowledgeRepositoryTest` **3/3**,
+`PortableKnowledgeExportTest` **1/1**, `PortableKnowledgeSafTest` **2/2** and
+`PortableKnowledgeUiTest` **1/1**; RP5 / Android 13 XML `PortableKnowledgeUiTest`
+**1/1**. Every inspected XML had zero failures, errors and skips. The export regression
+checks 205 filtered rows across multiple pages, maximum returned page size 100,
+deterministic group/row order, and a contextless mixed-locator orphan. Final
+`:app:assembleDebug`, `:app:assembleDebugAndroidTest` and `:app:lintDebug` passed;
+lint reported zero errors and 60 warnings. No physical Samsung UAT was run.
+
 ## PHASE 4E — PORTABLE KNOWLEDGE & RESTORE IMPLEMENTATION (2026-10-13)
 
 Status: **IMPLEMENTED LOCALLY / PENDING INDEPENDENT CODEX HIGH REVIEW.** Phase 4D
