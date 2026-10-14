@@ -1,11 +1,70 @@
 # Validation
 
-## Phase 4E targeted implementation remediation (2026-10-13)
+## PHASE 4E — PORTABLE KNOWLEDGE & RESTORE: ACCEPTED (2026-10-14)
+
+Status: **IMPLEMENTED AND INDEPENDENTLY REVIEWED / ACCEPTED.** Final independent
+Codex High verdict: **PASS**. All implementation findings M1–M5 are CLOSED. Phase 4F
+is NOT STARTED; Phase 4 as a whole is NOT complete or accepted.
+
+Canonical implementation chain: base `87ea50970c93839a587a385267b1f27b4aca2209`;
+initial implementation `ed074f275b25a1b1c21ad874b323016e98d7f3db`; M1–M4 remediation
+`0e6e98b08352f9e6f953da930b894102e945dc69`; M5 remediation / accepted code HEAD
+`ecf6f621d24cbcb40c38f323ec9ed407d45e6314`.
+
+Accepted functionality: canonical ShelfOS JSON knowledge export/import; human-readable
+Markdown export; all / single-publication / current-filter export scopes; all logical
+filtered rows across keyset pages; deterministic canonical ordering; bounded streaming
+export; incremental bounded JSON import; 64 MiB byte limit; 10,000 publication-group
+limit; 100,000 annotation limit; exact `libraryItemId` association only; unmatched
+publications restored as orphan knowledge with no fabricated LibraryItem; additive-only
+import; exact duplicate classification; conflict preservation with no overwrite;
+cross-publication ID conflict handling; stale document preview protection; stale Room
+preview protection; atomic Room transaction; ABORT conflict strategy; snapshot authority
+rules; SAF CreateDocument / OpenDocument; no persisted import URI grant; failed export
+cleanup attempt; no publication-source mutation; no network / telemetry;
+EN / ES / PT-BR localization; keyboard/gamepad-compatible Export activation confirmed
+on the RP5.
+
+Accepted remediations:
+
+- **M1 CLOSED** — end-to-end bounded 100-row keyset export.
+- **M2 CLOSED** — no conflict-only empty orphan snapshots.
+- **M3 CLOSED** — ignored JSON values skipped without proportional large decoded allocations.
+- **M4 CLOSED** — RP5 native Tab → focused Export → native Enter path verified; no
+  production UI change required.
+- **M5 CLOSED** — long unknown JSON member names are consumed/validated incrementally
+  and ignored, without arbitrary 512-character rejection or proportional allocation.
+
+**Final targeted evidence.** JVM `PortableKnowledgeTest` **12/12 PASS** and
+`NotesViewModelTest` **12/12 PASS**. API 24 (`shelfos-api24`)
+`PortableKnowledgeRepositoryTest` **3/3**, `PortableKnowledgeExportTest` **1/1**,
+`PortableKnowledgeSafTest` **2/2**, `PortableKnowledgeUiTest` **1/1** — all PASS.
+RP5 / Android 13 `PortableKnowledgeUiTest` **1/1 PASS**, covering the native Tab focus
+plus Enter activation path. Build gate: `:app:assembleDebug`,
+`:app:assembleDebugAndroidTest` and `:app:lintDebug` PASS; lint reported 0 errors and
+60 warnings; `git diff --check` clean.
+
+**Deferred to Phase 4F (NOT completed):** Samsung SM-T580 accumulated manual UAT;
+physical keyboard/controller acceptance where applicable; TalkBack; provider diversity;
+endurance; modest-hardware performance; and the accumulated Phase 4 regression /
+acceptance checklist.
+
+No physical/manual portability UAT has been run yet, and none is claimed here.
+
+### Historical implementation and remediation records
+
+The two dated sections below record the implementation and the M1–M4 remediation pass
+as they happened, and are retained for chronology only. Their "pending review" wording
+was superseded by the acceptance record above. A final M5 remediation was applied
+afterward at `ecf6f62` and is included in the accepted chain.
+
+#### Phase 4E targeted implementation remediation (2026-10-13, historical)
 
 Independent Codex High implementation review returned **FAIL: REMEDIATION REQUIRED**
 with four MEDIUM findings (M1-M4), no BLOCKER or HIGH finding. This local remediation
-addresses those four findings and awaits a fresh independent Codex High review. Phase 4E
-is not accepted; Phase 4F is NOT STARTED.
+addressed those four findings and then awaited a fresh independent review, which has
+since returned **PASS**. At the time of this entry Phase 4E was not yet accepted and
+Phase 4F was NOT STARTED.
 
 - **M1:** Export reads canonical `(libraryItemId, annotation id)` keyset pages of at most
   100 rows and writes each publication and annotation directly to JSON or Markdown.
@@ -27,7 +86,8 @@ is not accepted; Phase 4F is NOT STARTED.
   semantic button, and native Enter opens the export choices. The test now asserts
   focus first; no production UI change was needed. The device must be awake for UI tests.
 
-Focused evidence: JVM `PortableKnowledgeTest` **10/10** and `NotesViewModelTest` **12/12**;
+Focused evidence at the time of this entry: JVM `PortableKnowledgeTest` **10/10** and
+`NotesViewModelTest` **12/12**;
 API 24 emulator XML `PortableKnowledgeRepositoryTest` **3/3**,
 `PortableKnowledgeExportTest` **1/1**, `PortableKnowledgeSafTest` **2/2** and
 `PortableKnowledgeUiTest` **1/1**; RP5 / Android 13 XML `PortableKnowledgeUiTest`
@@ -35,14 +95,19 @@ API 24 emulator XML `PortableKnowledgeRepositoryTest` **3/3**,
 checks 205 filtered rows across multiple pages, maximum returned page size 100,
 deterministic group/row order, and a contextless mixed-locator orphan. Final
 `:app:assembleDebug`, `:app:assembleDebugAndroidTest` and `:app:lintDebug` passed;
-lint reported zero errors and 60 warnings. No physical Samsung UAT was run.
+lint reported zero errors and 60 warnings. No physical Samsung UAT was run. Later
+evidence after the M5 fix is recorded in the acceptance section at the top of this file;
+`PortableKnowledgeTest` there is 12/12 rather than the 10/10 shown here.
 
 ## PHASE 4E — PORTABLE KNOWLEDGE & RESTORE IMPLEMENTATION (2026-10-13)
 
-Status: **IMPLEMENTED LOCALLY / PENDING INDEPENDENT CODEX HIGH REVIEW.** Phase 4D
-remains MERGED / IMPLEMENTATION COMPLETE. Phase 4F is NOT STARTED; Phase 4 is NOT
-complete or accepted. No physical/manual Samsung UAT was run; portability acceptance
-remains Phase 4F.
+Historical record (superseded; see the acceptance section at the top of this file).
+At the time of this entry the status was **IMPLEMENTED LOCALLY / PENDING INDEPENDENT
+CODEX HIGH REVIEW**, and independent review then returned FAIL: REMEDIATION REQUIRED
+for M1–M4. Phase 4D remains MERGED / IMPLEMENTATION COMPLETE. Phase 4F is NOT STARTED;
+Phase 4 is NOT complete or accepted. No physical/manual Samsung UAT was run; portability
+acceptance remains Phase 4F. The remediation below was subsequently completed and a
+later M5 fix was applied; Phase 4E is now ACCEPTED.
 
 **Implementation.** Canonical `shelfos.knowledge` JSON v1 preserves every current
 annotation field, opaque known-format locator strings, epoch-millisecond timestamps as
