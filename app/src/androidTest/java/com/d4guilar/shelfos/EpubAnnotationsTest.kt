@@ -606,6 +606,7 @@ class EpubAnnotationsTest {
                 compose.onNode(hasContentDescription("Edit Highlight", substring = true)).performClick()
                 awaitEditor()
                 compose.onNodeWithTag("annotation_body").assertIsFocused().performTextInput("unsaved")
+                if (code == KeyEvent.KEYCODE_BACK) compose.hideSoftKeyboardIfShown() // the keyboard's own Back comes first
                 key(code)
                 try { compose.waitUntil(10_000) { !editorOpen() } } catch (e: Throwable) { fail("editor not dismissed by key $code") }
                 assertEquals("cancelling by key $code changed nothing", 1, stored().size)

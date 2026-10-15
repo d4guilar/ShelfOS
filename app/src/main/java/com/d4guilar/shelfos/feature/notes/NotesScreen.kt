@@ -42,6 +42,7 @@ import com.d4guilar.shelfos.domain.annotations.portable.*
 import com.d4guilar.shelfos.domain.library.PublicationFormat
 import com.d4guilar.shelfos.data.annotations.PortableExportFormat
 import com.d4guilar.shelfos.feature.reader.AnnotationDeleteConfirmDialog
+import com.d4guilar.shelfos.core.designsystem.NoImeExtractUi
 import com.d4guilar.shelfos.feature.reader.AnnotationEditorDialog
 import com.d4guilar.shelfos.feature.reader.AnnotationFilter
 import com.d4guilar.shelfos.feature.reader.activateOnGamepadConfirm
@@ -57,6 +58,9 @@ import java.util.Date
 /** Width at which the controls share one row instead of stacking (the existing 840dp adaptive threshold family; no window-size-class dependency). */
 private val WIDE_CONTROLS = 840.dp
 private const val LOAD_MORE_AHEAD = 20
+/** Below this available height (the repo's 480dp height convention) the controls scroll with the list instead of pinning above it. */
+private const val COMPACT_HEIGHT_DP = 480f
+internal fun notesControlsScroll(heightDp: Float): Boolean = heightDp < COMPACT_HEIGHT_DP
 
 /**
  * The global Notes destination: every note, highlight and bookmark across the library, with kind filter, search,
@@ -107,15 +111,16 @@ fun NotesScreen(vm: NotesViewModel, onOpenSource: (libraryItemId: String, annota
     }
     BoxWithConstraints(modifier.fillMaxSize().testTag("notes_screen")) {
         val wide = maxWidth >= WIDE_CONTROLS
-        Column(Modifier.fillMaxSize().padding(horizontal = t.spacing.medium), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        val compactHeight = notesControlsScroll(maxHeight.value)
+        val controls: @Composable () -> Unit = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(R.string.nav_notes), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
             val search: @Composable (Modifier) -> Unit = { m ->
-                OutlinedTextField(state.query, vm::search, m.testTag("notes_search"), singleLine = true,
+                NoImeExtractUi { OutlinedTextField(state.query, vm::search, m.testTag("notes_search"), singleLine = true,
                     label = { Text(stringResource(R.string.notes_search_label)) },
                     trailingIcon = if (state.query.isEmpty()) null else { {
                         val clear = { vm.search("") }
                         TextButton(clear, Modifier.testTag("notes_search_clear").activateOnGamepadConfirm(onActivate = clear)) { Text(stringResource(R.string.action_clear)) }
-                    } })
+                    } }) }
             }
             val publicationButton: @Composable () -> Unit = {
                 val selected = state.publications.firstOrNull { it.source.libraryItemId == state.publicationId }
@@ -148,11 +153,17 @@ fun NotesScreen(vm: NotesViewModel, onOpenSource: (libraryItemId: String, annota
             if (state.portableBusy) LinearProgressIndicator(Modifier.fillMaxWidth().testTag("knowledge_busy"))
             state.notice?.let { notice -> Text(notice.resolve(), Modifier.fillMaxWidth().clickable { vm.dismissNotice() }.padding(vertical = 8.dp).testTag("notes_notice"),
                 color = MaterialTheme.colorScheme.error) }
+        } }
+        val emptyText: @Composable () -> Unit = { Text(stringResource(if (state.filtering) R.string.annotations_empty_filtered else R.string.annotations_empty),
+            Modifier.padding(vertical = 16.dp).testTag("notes_empty")) }
+        Column(Modifier.fillMaxSize().padding(horizontal = t.spacing.medium), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (!compactHeight) controls()
             when {
-                !state.loaded -> Unit
-                state.items.isEmpty() -> Text(stringResource(if (state.filtering) R.string.annotations_empty_filtered else R.string.annotations_empty),
-                    Modifier.padding(vertical = 16.dp).testTag("notes_empty"))
+                !state.loaded && !compactHeight -> Unit
+                state.loaded && state.items.isEmpty() && !compactHeight -> emptyText()
                 else -> LazyColumn(Modifier.weight(1f).widthIn(max = 840.dp).testTag("notes_list"), state = listState) {
+                    if (compactHeight) item(key = "notes_controls", contentType = 2) { controls() }
+                    if (compactHeight && state.loaded && state.items.isEmpty()) item(key = "notes_empty_item", contentType = 3) { emptyText() }
                     items(state.items, key = { it.key }, contentType = { if (it is NotesItem.Header) 0 else 1 }) { item ->
                         when (item) {
                             is NotesItem.Header -> PublicationHeader(item, onDeleteGroup = { vm.requestDeleteOrphanGroup(item.source.libraryItemId) })

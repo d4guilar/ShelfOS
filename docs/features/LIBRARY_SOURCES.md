@@ -125,7 +125,7 @@ Implementation status: **IMPLEMENTED AND INDEPENDENTLY REVIEWED / ACCEPTED** —
 independent Codex High verdict **PASS**, all implementation findings M1–M5 CLOSED, accepted
 code HEAD `ecf6f621d24cbcb40c38f323ec9ed407d45e6314`. Room remains v5 and the implementation
 adds no Source record, source permission history, publication matching signal or
-publication-file write. Phase 4F remains NOT STARTED and owns physical/manual portability
+publication-file write. Phase 4F (ACCEPTED) owned physical/manual portability
 acceptance.
 
 Phase 4E — Portable Knowledge & Restore imports only canonical ShelfOS knowledge JSON.

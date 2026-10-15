@@ -80,7 +80,10 @@ class NotesHubUiTest {
     private fun awaitNoTag(tag: String, timeout: Long = 10_000) = compose.waitUntil(timeout) { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isEmpty() }
     /** The hub's own result count ("N items"): the list is lazy, so composed rows are not the number of results. */
     private fun countText() = compose.onAllNodes(hasTestTag("notes_count")).fetchSemanticsNodes().joinToString { n -> n.config.getOrNull(SemanticsProperties.Text)?.joinToString { it.text }.orEmpty() }
+    /** On short windows (below 480 dp high) the controls are the list's first item and scroll away; bring them back before using them. */
+    private fun controlsInView() { if (compose.onAllNodesWithTag("notes_list").fetchSemanticsNodes().isNotEmpty()) { compose.onNodeWithTag("notes_list").performScrollToIndex(0); compose.waitForIdle() } }
     private fun awaitRows(n: Int) {
+        controlsInView()
         val want = if (n == 1) "1 item" else "$n items"
         try { compose.waitUntil(15_000) { compose.onAllNodes(hasTestTag("notes_count") and hasText(want)).fetchSemanticsNodes().isNotEmpty() } }
         catch (e: androidx.compose.ui.test.ComposeTimeoutException) { fail("expected '$want' but the hub showed '${countText()}'") }
@@ -102,7 +105,7 @@ class NotesHubUiTest {
         awaitLibrary()
         compose.onNodeWithTag("nav_notes").performClick().assertIsSelected()
         awaitTag("notes_screen")
-        compose.onNodeWithTag("notes_search").performTextInput(search)
+        compose.onNodeWithTag("notes_search").performTextInput(search); compose.hideSoftKeyboardIfShown()
         if (expectedRows != null) awaitRows(expectedRows)
     }
 
@@ -164,9 +167,9 @@ class NotesHubUiTest {
         compose.onNodeWithTag("notes_filter_all").performClick(); awaitRows(8)
         // Search composes with the filter: the marker plus a narrowing word.
         compose.onNodeWithTag("notes_filter_notes").performClick(); awaitRows(5)
-        compose.onNodeWithTag("notes_search").performTextReplacement("hubmark orphan")
+        compose.onNodeWithTag("notes_search").performTextReplacement("hubmark orphan"); compose.hideSoftKeyboardIfShown()
         awaitRows(1); rowNode("hubmark orphan note").assertExists()
-        compose.onNodeWithTag("notes_search").performTextReplacement("hubmark zzzz-no-match")
+        compose.onNodeWithTag("notes_search").performTextReplacement("hubmark zzzz-no-match"); compose.hideSoftKeyboardIfShown()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("notes_empty").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Nothing in this view.").assertExists()
         compose.onNodeWithTag("notes_search_clear").performClick()
@@ -177,7 +180,7 @@ class NotesHubUiTest {
     @Test fun searchMatchesPublicationTitleAndSnapshotTitleAndEscapesPercent() {
         openNotes(search = "Hub Gone Book", expectedRows = 1)
         rowNode("hubmark orphan note").assertExists()
-        compose.onNodeWithTag("notes_search").performTextReplacement("hubmark %")
+        compose.onNodeWithTag("notes_search").performTextReplacement("hubmark %"); compose.hideSoftKeyboardIfShown()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("notes_empty").fetchSemanticsNodes().isNotEmpty() }   // a literal %, not a wildcard
     }
 
@@ -185,7 +188,7 @@ class NotesHubUiTest {
         openNotes()
         // Default sort is by publication: a header per publication, the removed one marked in text.
         revealTag("notes_group_removed"); compose.onNodeWithTag("notes_group_removed").assertExists()
-        compose.onNodeWithTag("notes_publication_filter").performClick()
+        controlsInView(); compose.onNodeWithTag("notes_publication_filter").performClick()
         awaitTag("notes_publication_list")
         compose.onAllNodesWithTag("notes_publication_option").fetchSemanticsNodes().let { assertTrue(it.size >= 3) }
         compose.onNode(hasTestTag("notes_publication_option") and hasText("Hub Gone Book", substring = true) and hasText("removed", substring = true)).performClick()
@@ -194,7 +197,7 @@ class NotesHubUiTest {
         compose.onNodeWithTag("notes_group_delete").assertExists()
         compose.onNodeWithTag("notes_publication_filter").assertTextContains("Hub Gone Book", substring = true)
         // Back to all publications.
-        compose.onNodeWithTag("notes_publication_filter").performClick()
+        controlsInView(); compose.onNodeWithTag("notes_publication_filter").performClick()
         compose.onNodeWithTag("notes_publication_option_all").performClick()
         awaitRows(8)
     }
@@ -207,11 +210,11 @@ class NotesHubUiTest {
         val pdfNoteAt = byPublication.indexOfFirst { it.contains("hubmark pdf note") }; val pdfBookmarkAt = byPublication.indexOfFirst { it.contains("hubmark pdf bookmark") }
         assertTrue("both PDF rows are adjacent, so both are on screen", pdfNoteAt >= 0 && pdfBookmarkAt >= 0)
         assertTrue(pdfNoteAt < pdfBookmarkAt)
-        compose.onNodeWithTag("notes_sort_date").performClick()
+        controlsInView(); compose.onNodeWithTag("notes_sort_date").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("notes_header").fetchSemanticsNodes().isEmpty() }
         // Newest first: the orphan note was created last.
         compose.waitUntil(10_000) { descriptionsInOrder().firstOrNull()?.contains("hubmark orphan note") == true }
-        compose.onNodeWithTag("notes_sort_publication").performClick()
+        controlsInView(); compose.onNodeWithTag("notes_sort_publication").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("notes_header").fetchSemanticsNodes().isNotEmpty() }
     }
 
@@ -227,7 +230,7 @@ class NotesHubUiTest {
         openNotes()
         rowButton("hubmark pdf note", "notes_edit").performClick()
         awaitTag("annotation_body")
-        compose.onNodeWithTag("annotation_body").performTextReplacement("hubmark pdf note EDITED")
+        compose.onNodeWithTag("annotation_body").performTextReplacement("hubmark pdf note EDITED"); compose.hideSoftKeyboardIfShown()
         compose.onNodeWithTag("annotation_editor_save").performClick()
         awaitNoTag("annotation_body")
         val edited = requireNotNull(container.annotations.get(pdfNote.id))
@@ -237,7 +240,7 @@ class NotesHubUiTest {
         // A highlight gains a body and keeps its kind, style and selected text.
         rowButton("hubmark highlighted words", "notes_edit").performClick()
         awaitTag("annotation_body")
-        compose.onNodeWithTag("annotation_body").performTextReplacement("added thoughts")
+        compose.onNodeWithTag("annotation_body").performTextReplacement("added thoughts"); compose.hideSoftKeyboardIfShown()
         compose.onNodeWithTag("annotation_editor_save").performClick()
         awaitNoTag("annotation_body")
         val hl = requireNotNull(container.annotations.get(highlight.id))
@@ -249,13 +252,13 @@ class NotesHubUiTest {
         openNotes()
         rowButton("hubmark orphan note", "notes_edit").performClick()
         awaitTag("annotation_body")
-        compose.onNodeWithTag("annotation_body").performTextReplacement("hubmark orphan note CHANGED")
+        compose.onNodeWithTag("annotation_body").performTextReplacement("hubmark orphan note CHANGED"); compose.hideSoftKeyboardIfShown()
         compose.onNodeWithTag("annotation_editor_cancel").performClick()
         awaitNoTag("annotation_body")
         assertEquals("hubmark orphan note", container.annotations.get(orphanNote.id)!!.body)
         rowButton("hubmark orphan note", "notes_edit").performClick()
         awaitTag("annotation_body")
-        compose.onNodeWithTag("annotation_body").performTextReplacement("hubmark orphan note CHANGED")
+        compose.onNodeWithTag("annotation_body").performTextReplacement("hubmark orphan note CHANGED"); compose.hideSoftKeyboardIfShown()
         compose.onNodeWithTag("annotation_editor_save").performClick()
         awaitNoTag("annotation_body")
         assertEquals("hubmark orphan note CHANGED", container.annotations.get(orphanNote.id)!!.body)
@@ -321,7 +324,7 @@ class NotesHubUiTest {
         assertTrue(container.annotations.notes(NotesQuery(publicationId = pdf.id)).rows.all { !it.source.live && it.source.title == pdf.title })
         compose.onNodeWithTag("nav_notes").performClick()
         awaitTag("notes_screen")
-        compose.onNodeWithTag("notes_search").performTextInput("hubmark")
+        compose.onNodeWithTag("notes_search").performTextInput("hubmark"); compose.hideSoftKeyboardIfShown()
         awaitRows(8)
         described("hubmark pdf note", pdf.title, "From a removed publication").assertExists()
         rowButtons("hubmark pdf note", "notes_open").assertCountEquals(0)
@@ -333,7 +336,7 @@ class NotesHubUiTest {
         assertTrue(container.annotations.notes(NotesQuery(publicationId = epub.id)).rows.isEmpty())
         compose.onNodeWithTag("nav_notes").performClick()
         awaitTag("notes_screen")
-        compose.onNodeWithTag("notes_search").performTextInput("hubmark")
+        compose.onNodeWithTag("notes_search").performTextInput("hubmark"); compose.hideSoftKeyboardIfShown()
         awaitRows(5)
         assertNotNull("another publication's notes are untouched", container.annotations.get(pdfNote.id))
     }
@@ -391,7 +394,7 @@ class NotesHubUiTest {
         openNotes()
         compose.onNodeWithTag("notes_filter_notes").performClick(); awaitRows(5)
         compose.onNodeWithTag("notes_sort_date").performClick()
-        compose.onNodeWithTag("notes_search").performTextReplacement("hubmark pdf")
+        compose.onNodeWithTag("notes_search").performTextReplacement("hubmark pdf"); compose.hideSoftKeyboardIfShown()
         awaitRows(1)
         compose.activityRule.scenario.recreate()
         awaitTag("nav_notes")
@@ -406,6 +409,8 @@ class NotesHubUiTest {
     @Test fun keyboardAndGamepadReachAndActivateEveryControl() {
         openNotes()
         // Keyboard: focus a filter chip and activate it with Enter.
+        // Prime non-touch input mode (a real key event), as a keyboard or gamepad user is in; touch mode refuses Compose focus requests on handhelds.
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DPAD_DOWN); compose.waitForIdle()
         compose.onNodeWithTag("notes_filter_highlights").performSemanticsAction(SemanticsActions.RequestFocus)
         compose.onNodeWithTag("notes_filter_highlights").assertIsFocused().performKeyInput { pressKey(Key.Enter) }
         awaitRows(1)

@@ -436,9 +436,10 @@ open class EpubActivity : AppCompatActivity() {
                         // current or not — matching how the existing Previous/Next hint keycaps sit beside their
                         // own Text rather than being folded into it.
                         TextButton({
-                            controller.chapter(session, chapter.href)?.let { locator ->
-                                vm.location(locator, locatorProgress(locator)); currentLocatorJson = locator
-                            }
+                            // The accepted chapter link is only the saved resume position. It carries no progression or
+                            // Location, so it must never become the live position a bookmark or note is taken from; the
+                            // navigator's own report (onLocation) replaces currentLocatorJson once the page settles.
+                            controller.chapter(session, chapter.href)?.let { locator -> vm.location(locator, locatorProgress(locator)) }
                             chapters = false
                         },
                             Modifier.padding(start = (chapter.depth * 16).dp)

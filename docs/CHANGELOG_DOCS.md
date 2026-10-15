@@ -1,5 +1,52 @@
 # Documentation Changelog
 
+## Phase 4 final acceptance (2026-10-15)
+
+- Recorded the final independent Codex High Phase 4F closure review: **PASS WITH NOTES**,
+  0 BLOCKER / 0 HIGH / 0 MEDIUM, LOW documentation findings only. Phase 4F is
+  **ACCEPTED**; Phase 4 is **ACCEPTED** and becomes COMPLETE on merge of the Phase 4F
+  acceptance PR. Phase 5 has not started.
+- Reconciled README, ROADMAP, the Phase 4 plan (header, 13.6) and VALIDATION to that status; known
+  accepted limitations (physical TalkBack, no foldable hardware, SAF diversity,
+  endurance, CBR source hash, unverified Phase 3 APK, short-window Save/Cancel) kept visible.
+- LOW finding 1: `docs/features/ANNOTATIONS.md` and `READER.md` updated to the accepted
+  Phase 4 state; `docs/ARCHITECTURE.md` section 16 rewritten to the shipped unified
+  annotation model (Room v5, no FK, source snapshot, no silent reattachment, legacy
+  `bookmark` retained, ink still future).
+- LOW finding 2: VALIDATION migration acceptance gains a chronology note: the 4-row
+  persistence check and the 2-duplicate import result were captured at points the record
+  does not order, so the result is not evidence of annotation loss.
+- Historical dated entries are unchanged. Documentation only.
+
+## Phase 4F final owner physical UAT (2026-10-15)
+
+- Recorded owner Samsung Galaxy Tab A SM-T580 physical UAT **PASS** on the final
+  APK from `16635bd`, including its SHA-256 and accumulated checklist scope,
+  with no blocking defect found. Recorded Retroid Pocket 5 physical/controller
+  UAT **PASS**, closing the earlier injected-input-only evidence gap.
+- Reconciled VALIDATION, the Phase 4 plan, ROADMAP and README to **PHYSICAL UAT
+  COMPLETE / READY FOR FINAL INDEPENDENT REVIEW**. Phase 4 is **NOT YET COMPLETE**
+  or accepted: final independent Codex High closure review and merge remain.
+- Preserved the unverified physical TalkBack gap, existing evidence limits and
+  administrator decision to retain the legacy `bookmark` table through closure
+  at Room v5; deletion remains a future dedicated maintenance migration, with
+  no v6 in 4F. Documentation only; no test suite rerun.
+
+## Phase 4F Notes hub short-landscape remediation (2026-10-15)
+
+- `docs/VALIDATION.md` gains "4F final narrow remediation: Notes hub short landscape": below 480 dp of available height the hub controls scroll with the list; RP5 `NotesHubUiTest` 20/20 (was 11/20) with per-method classification, phone/tablet 20/20, injected (non-physical) controller sanity, honest gaps. Plan section 13.6 status updated. The owner physical-controller pass is added to the UAT checklist and remains pending; Phase 4 is NOT yet accepted (pending owner Samsung UAT and administrator review).
+
+## Phase 4F resolution of two acceptance uncertainties (2026-10-14)
+
+- `docs/VALIDATION.md` gains "4F resolution of the two acceptance uncertainties": the RP5 `EpubBookmarkTest` intermittency is classified as a real 4D timing race (bare chapter-link locator used as the live position) and fixed; the RP5 short-landscape keyboard extract mode and first-Back draft loss are reproduced per surface, root-caused (`dismissOnShelfBack` pre-IME handling) and fixed, with before/after counts and honest gaps (Samsung keyboard, hub list height, Save/Cancel under the keyboard). Phase 4 remains NOT yet accepted: pending owner Samsung UAT and administrator review.
+- ADR-0023 gains a 4F clarification: Android Back belongs to the soft keyboard while it is showing; Escape and gamepad B remain explicit dismissals.
+- Administrator decision recorded in VALIDATION and plan section 13.6: the legacy `bookmark` table is intentionally retained through Phase 4 closure as a migration-safety artifact; removal is deferred to a later dedicated maintenance migration after Phase 4 acceptance; no v6 migration in 4F (Room stays at 5).
+
+## Phase 4F acceptance — first evidence pass (2026-10-14)
+
+- Recorded the first Phase 4F acceptance evidence pass in `docs/VALIDATION.md`: JVM 587/0, RP5 and API 24 per-class instrumented matrices, tablet-sized run, build gates (lint 0 errors / 60 warnings, bundleDebug), a genuine Phase-3-to-Room-v5 upgrade on the RP5 (2 bookmarks in, 2 annotations out, legacy table kept), source-immutability hashes, EN/ES/PT-BR parity, and the Samsung UAT package.
+- Plan §13.6, README and ROADMAP status wording reconciled: 4E is merged (PR #40); 4F is IN PROGRESS and Phase 4 is NOT yet accepted (owner Samsung UAT and administrator review pending). No completion claimed; the legacy `bookmark` table is not dropped.
+
 ## Premium commercial structure and 16-theme lineup (2026-10-15)
 
 - Premium lineup restructured to **4 paid packs × 4 themes = 16 premium themes**:

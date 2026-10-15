@@ -96,3 +96,7 @@ WebViews where inline annotations are unavailable and the platform's own selecti
 ## Phase 4C.2 clarification (2026-10-11)
 
 An open in-window Publication Notebook pane is a transient supporting layer above chrome semantics. After any active EPUB selection and any editor/delete dialog, Back, Escape or gamepad B closes the Notebook pane before revealing hidden chrome or leaving the reader. Each press removes exactly one layer; compact Notebook dialogs retain their own window-level dismissal.
+
+## Phase 4F clarification (2026-10-14)
+
+The soft keyboard is the topmost layer of a text-entry dialog. Android Back (only; not Escape or gamepad B, which are explicit dismissals) while the keyboard is showing belongs to the keyboard: it hides the keyboard and keeps the unsaved draft, and the next Back dismisses the editor as above. `dismissOnShelfBack` therefore declines a Back whose key-down found the keyboard visible, reading the window's own insets. Annotation and Notes-search fields also ask the keyboard not to take over a short landscape window (`IME_FLAG_NO_EXTRACT_UI`). Before this, on the RP5 in landscape the first Back with the keyboard open dismissed the editor and discarded the draft.

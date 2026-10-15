@@ -256,8 +256,8 @@ above. Extend through tested, non-destructive migrations, not speculative tables
 | PublicationDocument / SourceMap | Derived semantic chapters/blocks and confidence-bearing source page/bounds/text-range mappings tied to a source revision |
 
 LibraryItem source provenance is separate from source access and platform identity.
-Bookmarks, annotations, covers, metadata overrides, reading sessions and later ink
-remain separate concerns as their milestones need them. Exact tables, cardinalities
+Annotations (including bookmarks, see section 16), covers, metadata overrides,
+reading sessions and later ink remain separate concerns as their milestones need them. Exact tables, cardinalities
 and serialized schemas are not frozen by this conceptual inventory.
 
 ## 7. Source access and durability
@@ -514,25 +514,36 @@ Generated covers should still look intentional and fit the active ShelfOS design
 
 ## 16. Annotation model
 
-Text-based annotation concept:
+Phase 4 (accepted; see ADR-0025 and `docs/PHASE_4_IMPLEMENTATION_PLAN.md`) ships one
+unified `annotation` table (Room v5):
 
 ```text
 Annotation
 ├── id
-├── libraryItemId
-├── locator
+├── libraryItemId        (no foreign key to LibraryItem)
+├── kind                 BOOKMARK | HIGHLIGHT | NOTE
+├── locatorFormat        READIUM_LOCATOR_1 | FIXED_PAGE_1
+├── locatorJson          authoritative anchor
+├── progressSnapshot
+├── orderKey
+├── title
 ├── selectedText
-├── type
-│   ├── HIGHLIGHT
-│   ├── UNDERLINE
-│   └── NOTE
-├── color/style
 ├── body
+├── styleKey
 ├── createdAt
 └── updatedAt
 ```
 
-Bookmarks may be separate entities.
+- `locatorJson` is authoritative; other fields are display or ordering aids.
+- The table intentionally has no FK to LibraryItem, so knowledge can outlive its
+  publication (orphan knowledge). A separate `annotation_source_snapshot` table holds
+  publication display context for kept orphans.
+- There is no silent reattachment and no fingerprint-based association. Portable
+  restore (import) associates only by the exact current `libraryItemId`; unmatched
+  groups restore as orphans.
+- Publication source files are never modified.
+- The legacy `bookmark` table is intentionally retained as a migration-safety
+  artifact; removal is deferred to a future dedicated maintenance migration.
 
 Future ink annotations should store page/content-relative geometry rather than raw screen coordinates.
 
