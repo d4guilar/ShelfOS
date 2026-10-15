@@ -125,8 +125,8 @@ consistent framing, category-appropriate proportions, theme-aware backgrounds an
 crop/contain behavior without stretching. The shape options (Original, 2:3, 3:4, 4:5,
 1:1, Custom W:H), Crop to fill / Fit entire artwork and the global-plus-per-category
 preference model are accepted in the
-[Phase 4.5 plan](../PHASE_4_5_IMPLEMENTATION_PLAN.md) §7–§8; the shipped defaults are an
-open administrator decision there.
+[Phase 4.5 plan](../PHASE_4_5_IMPLEMENTATION_PLAN.md) §7–§8; the owner-approved defaults are 2:3 with Crop to fill (Books, Comics and Manga), Original for Documents, custom ratios 1:2 to 2:1 and no Auto option. These are
+planned, not yet implemented.
 
 The source priority (reconciled 2026-10-15 with `features/METADATA_ENRICHMENT.md` §3) is
 user-selected, confident high-quality online, usable embedded, first-page-derived, then

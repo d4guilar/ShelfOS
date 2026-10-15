@@ -515,8 +515,8 @@ USER_SELECTED
 ```
 
 A user-selected cover always wins; a weak or ambiguous online match never replaces usable
-local artwork. Cover *source* and cover *presentation* are separate: originals are cached at
-native dimensions and the shared cover renderer applies the user's display shape (Original,
+local artwork. Cover *source* and cover *presentation* are separate: artwork is stored under a bounded policy (small originals byte-exact, larger ones as bounded derivatives recording the original dimensions) and
+the shared cover renderer applies the user's display shape (Original,
 2:3, 3:4, 4:5, 1:1, Custom) with Crop or Fit, never stretching. See
 [`PHASE_4_5_IMPLEMENTATION_PLAN.md`](PHASE_4_5_IMPLEMENTATION_PLAN.md) §7 and §17.
 Today (Room v5) every cover is the generated visual; no artwork is extracted yet.
@@ -611,7 +611,7 @@ current licensing and terms permit; no provider is assumed to grant permanent st
 
 Current network state (verified 2026-10-15): the manifest explicitly removes the
 transitively merged `INTERNET` and `ACCESS_NETWORK_STATE` permissions, and no HTTP client is
-a dependency. Phase 4.5C is the first planned slice to add network access, deliberately and
+a dependency. The first Phase 4.5 provider slice (4.5C, 4.5D or 4.5E; not 4.5A or 4.5B) is the first planned to add network access, after its provider authorization gate, deliberately and
 behind a user-visible toggle; see
 [`PHASE_4_5_IMPLEMENTATION_PLAN.md`](PHASE_4_5_IMPLEMENTATION_PLAN.md) §19 and §21. Keyed
 providers are acceptable only as user-supplied keys (BYOK).
@@ -925,7 +925,7 @@ MetadataEnrichmentService
 ├── IdentifierDetector
 ├── FilenameInferenceProvider
 ├── OpenLibraryProvider
-├── GoogleBooksProvider
+├── GoogleBooksProvider      (rejected for Phase 4.5; plan §14)
 └── future media-specific providers
 ```
 

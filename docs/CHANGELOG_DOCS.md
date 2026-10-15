@@ -1,5 +1,35 @@
 # Documentation Changelog
 
+## Phase 4.5 plan remediation, part 2 (2026-10-15)
+
+Documentation only; closes the remaining findings of the first independent Codex High
+review (M1–M7 and the LOW items). Phase 4 remains complete; no Phase 4.5 slice is
+implemented; Phase 5 is unchanged; Room v6/v7 are planned only.
+
+- Extraction failures completed (permanent vs temporary reasons, no permanent `NONE` for a
+  temporary failure, no erasing a usable cover, jittered persisted backoff with a global
+  and per-launch cap, no endless loop); cover-row lifecycle and removal race closed
+  (rows first, files after commit, guarded final write, orphan sweeps; covers are not
+  knowledge); best-effort `sourceRevision` stored on the cover row only (no `library_item`
+  change); same-page FrontCover/first-page reference rule.
+- Library refresh storm: inspected the real `LibraryDao.observe()` shape and chose an
+  independently observed cover-reference map plus 25–50-row batches; Search and Notes hub
+  added to the cover-consumer inventory with a minimal Notes data path.
+- Solid CBR: one background extraction at a time, reader-first, lazy plus slow idle
+  backfill, native extraction not cancellable, Samsung SM-T580 evidence added to 4.5G.
+- Providers: Google Books rejected for Phase 4.5 (application-fee, embedded-credential,
+  caching, presentation); Open Library re-verified against its three official pages and
+  marked promising/conditional; Metron unchanged (conditional); Manga acceptance matrix and
+  EN/JP/ES ISBN corpus; matching-safety rules (no title-containment VERY_HIGH, `-1` cover
+  ids).
+- Owner-approved presentation decisions recorded consistently (default 2:3 Crop, Manga uses
+  the global default, Documents Original, no Auto, custom 1:2 to 2:1, Original/details/
+  expand/reduced-motion semantics); PDF derivative encoding; grid-thumbnail measurement
+  gate; local-cover storage budget re-evaluated (D20 open; 512 MiB withdrawn as a figure).
+- 4.5B networking reconciled: network boundary design only, no `INTERNET`/HTTP until the
+  first provider slice passes its authorization gate. First implementation prompt rewritten
+  for 4.5A.1 only. D19/D20/D21 remain open.
+
 ## Phase 4.5 plan remediation, part 1 (2026-10-15)
 
 Documentation only, after the first independent Codex High review returned FAIL —

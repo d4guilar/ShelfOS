@@ -166,7 +166,8 @@ inventory is not a requirement to add network APIs to the first reader build.
 [Phase 4.5 — Metadata, Covers & Library Presentation](#phase-45--metadata-covers--library-presentation);
 provider choices there are subject to the terms review in
 [`PHASE_4_5_IMPLEMENTATION_PLAN.md`](PHASE_4_5_IMPLEMENTATION_PLAN.md) §14 (Google Books
-is not approved as a default fallback).
+is **rejected for Phase 4.5** unless explicit written Google permission resolves its usage
+restrictions; Open Library is promising but conditional, production approval pending).
 
 - metadata provenance model
 - embedded metadata extraction
@@ -175,7 +176,7 @@ is not approved as a default fallback).
 - cover candidate picker ("Find cover online")
 - identifier detection
 - Open Library provider
-- Google Books fallback/provider
+- ~~Google Books fallback/provider~~ (rejected for Phase 4.5; see the plan §14, D2)
 - confidence scoring
 - candidate confirmation UI
 - background automatic metadata enrichment after commit
@@ -413,15 +414,20 @@ and import and reading never depend on a provider.
   own validation, Codex High review and merge. **4.5A.1 Local Cover Artwork** (Room v6):
   embedded EPUB cover, CBZ/CBR cover, PDF first-page preview, bounded artwork storage
   (small originals byte-exact, larger ones as bounded derivatives that record the original
-  dimensions), local cover lifecycle and safe backfill, a minimal shared cover renderer on
-  the existing frame. **4.5A.2 Cover Presentation** (Room v7): display shape Original / 2:3
-  / 3:4 / 4:5 / 1:1 / Custom W:H with Crop to fill or Fit entire artwork, never stretched;
-  global default plus per-category overrides; Settings UI; no network.
+  dimensions), local cover lifecycle and safe backfill (batched, one CBR extraction at a
+  time), a minimal shared cover renderer on the existing frame for the Library, Search,
+  details, Notes and expand transition; **no networking**. **4.5A.2 Cover Presentation**
+  (Room v7): display shape Original / 2:3 / 3:4 / 4:5 / 1:1 / Custom W:H (1:2 to 2:1, no
+  Auto) with Crop to fill or Fit entire artwork, never stretched; global default (2:3 Crop;
+  Documents Original) plus per-category overrides; Settings UI; **no networking**.
 - **4.5B Metadata Core** — provenance/confidence, identifier detection, richer embedded
   metadata, provider-neutral interfaces, candidate model, enrichment coordinator, cache and
-  network/privacy boundary.
-- **4.5C Books** — default keyless provider (Open Library, pending terms approval),
-  ISBN-first, metadata and covers.
+  network/privacy boundary **design**. 4.5B does not by itself authorize the `INTERNET`
+  permission or any real provider HTTP call: the first network permission/HTTP arrives only
+  in the first provider slice (4.5C/4.5D/4.5E) after that provider's own authorization gate
+  and a manifest/privacy review.
+- **4.5C Books** — keyless provider candidate (Open Library: promising/conditional,
+  production approval pending), ISBN-first, metadata and covers. Google Books is rejected.
 - **4.5D Manga** — volume-aware matching, ISBN/edition, volume-specific covers.
 - **4.5E Comics** — Series + issue matching, UPC/ISBN, ComicInfo/MetronInfo evidence, issue
   covers, and an approved issue-level online provider (preferred: Metron with per-user
