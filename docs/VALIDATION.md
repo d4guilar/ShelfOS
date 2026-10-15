@@ -2,9 +2,25 @@
 
 ## PHASE 4F — FINAL OWNER PHYSICAL UAT (2026-10-15)
 
-**Phase 4F: PHYSICAL UAT COMPLETE / READY FOR FINAL INDEPENDENT REVIEW.**
-**Phase 4: NOT YET COMPLETE / NOT YET ACCEPTED.** Final independent Codex High
-closure review and merge remain required.
+**Phase 4F: ACCEPTED.** Final independent Codex High closure review: **PASS WITH
+NOTES**, 0 BLOCKER / 0 HIGH / 0 MEDIUM, LOW documentation findings only (resolved in
+the closure documentation commit).
+**Phase 4: ACCEPTED**, and COMPLETE when the Phase 4F acceptance branch is merged to
+`main`. Phase 5 has not started.
+
+The reviewer explicitly accepted: the bookmark live-locator race fix, the IME
+draft-preservation fix, the short-landscape Notes Hub fix, the migration and source
+immutability evidence, Samsung and RP5 physical UAT, the retained legacy `bookmark`
+table at Room v5, the API 24 / WebView 52 environmental classification, the foldable
+simulation evidence, and physical TalkBack remaining an explicit evidence gap.
+
+Accepted limitations (not blockers, none promoted to PASS): physical TalkBack
+unverified; no dedicated foldable hardware (fold behavior is simulation/emulator
+evidence); limited SAF-provider diversity; limited extended endurance testing; manual
+CBR source hash not captured; CBR migration covered by automated migration/native
+tests rather than the manual seeded fixture; the old Phase 3 APK used for owner
+migration was not byte-verified against a release tag; short-window editor
+Save/Cancel may require hiding the IME first.
 
 ### Samsung owner UAT
 
@@ -48,9 +64,10 @@ provided or are claimed here.
 - Administrator decision remains intact: Room stays at **v5**; the legacy
   `bookmark` table is intentionally retained through Phase 4 closure. Deletion
   is deferred to a future dedicated maintenance migration after Phase 4
-  acceptance; **no v6 migration in 4F**.
-- This update records owner evidence only. Final independent Codex High closure
-  review and merge are still pending; Phase 4 is not complete or accepted.
+  acceptance; **no v6 migration in 4F**. This is a migration-safety artifact, not
+  technical debt blocking Phase 4 closure.
+- This section records owner evidence. The final independent Codex High closure
+  review (PASS WITH NOTES) has since accepted Phase 4F; see the status above.
 
 The dated evidence passes below are historical records. Their pending Samsung
 and physical-controller wording describes those passes and is superseded by
@@ -234,6 +251,7 @@ Portrait (API 24 emulator, after the fix only): first Back with the keyboard up 
 * Clean install of that APK; through its own UI imported three synthetic fixtures from `/sdcard/Download/p4f` (EPUB, CBZ, PDF; generated for this pass, nothing private), opened the EPUB and added two real bookmarks (Chapter 2 and 3). Phase-3 DB: `PRAGMA user_version = 3`; `library_item` 3, `bookmark` 2, `reading_state` 1, `reader_preference` 0, `appearance_preference` 0; `room_master_table` hash `1f487b301990c63f31ea5b21875364ea`. CBR was not seeded (no RAR authoring tool; CBR is covered by the instrumented classes).
 * `adb install -r` of the current debug APK (`0e24eff138b9...`) over it, then launch: `user_version = 5`, `room_master_table` hash **`01a3ac3be5e0e6f0d609c8a7356fabb2`, equal to the identityHash in `app/schemas/.../5.json`**, `annotation` 2, `annotation_source_snapshot` 0, `library_item` 3, `reading_state` 1, `PRAGMA integrity_check` ok. **Legacy `bookmark` table kept: 2 rows byte-identical to before (`select *` diff empty); `library_item` rows byte-identical.** Both annotation rows match their bookmark on id, itemId, locator, createdAt (kind BOOKMARK). Zero loss: 2 in, 2 out.
 * Same install after upgrade: Notes hub shows "2 items" under the book; the PDF and EPUB still open; a PDF bookmark and a PDF page note (`FIXED_PAGE_1`) added through the current UI; app force-stopped and relaunched: 4 annotation rows persist, `bookmark` still 2. **Export (ShelfOS JSON, All knowledge) to Downloads** contained the 2 migrated bookmarks with their original ids, locators, `progressSnapshot` and timestamps; **Import of that file reported New 0, Duplicates 2, Conflicts 0**; Cancel changed nothing.
+* Chronology note (closure review). The migration fixture and the later portable-knowledge round-trip were captured at different points in the acceptance sequence; the recorded evidence does not establish that the export was taken after all four annotations existed (it records the 2 migrated bookmarks in the export, not the PDF bookmark and note). Therefore the 2-duplicate import result must not be read as evidence of annotation loss. The migration assertions passed (2 in, 2 out; 4 rows persisted after relaunch), the separate export tests passed (`PortableKnowledgeExportTest`, `PortableKnowledgeRepositoryTest`), and the owner JSON export/import round-trip acceptance passed, each only to the extent recorded above.
 * Fallback tests (reconstructed v3/v4 DBs, raw-SQL real migration, rollback on failure): `AnnotationMigrationTest` 6/6, `NotesSnapshotMigrationTest` 4/4, `BookmarkPersistenceTest` 7/7, on both devices.
 
 ### Source immutability

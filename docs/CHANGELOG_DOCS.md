@@ -1,5 +1,23 @@
 # Documentation Changelog
 
+## Phase 4 final acceptance (2026-10-15)
+
+- Recorded the final independent Codex High Phase 4F closure review: **PASS WITH NOTES**,
+  0 BLOCKER / 0 HIGH / 0 MEDIUM, LOW documentation findings only. Phase 4F is
+  **ACCEPTED**; Phase 4 is **ACCEPTED** and becomes COMPLETE on merge of the Phase 4F
+  acceptance PR. Phase 5 has not started.
+- Reconciled README, ROADMAP, the Phase 4 plan (header, 13.6) and VALIDATION to that status; known
+  accepted limitations (physical TalkBack, no foldable hardware, SAF diversity,
+  endurance, CBR source hash, unverified Phase 3 APK, short-window Save/Cancel) kept visible.
+- LOW finding 1: `docs/features/ANNOTATIONS.md` and `READER.md` updated to the accepted
+  Phase 4 state; `docs/ARCHITECTURE.md` section 16 rewritten to the shipped unified
+  annotation model (Room v5, no FK, source snapshot, no silent reattachment, legacy
+  `bookmark` retained, ink still future).
+- LOW finding 2: VALIDATION migration acceptance gains a chronology note: the 4-row
+  persistence check and the 2-duplicate import result were captured at points the record
+  does not order, so the result is not evidence of annotation loss.
+- Historical dated entries are unchanged. Documentation only.
+
 ## Phase 4F final owner physical UAT (2026-10-15)
 
 - Recorded owner Samsung Galaxy Tab A SM-T580 physical UAT **PASS** on the final
