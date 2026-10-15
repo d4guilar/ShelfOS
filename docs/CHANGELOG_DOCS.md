@@ -1,5 +1,34 @@
 # Documentation Changelog
 
+## Phase 4.5 plan remediation, part 1 (2026-10-15)
+
+Documentation only, after the first independent Codex High review returned FAIL —
+REMEDIATION REQUIRED. The full review text was not available; only the findings below were
+addressed (see the commit report for what was not).
+
+- Comics acceptance: removed the local-only escape clause (D3, §30, §31, ROADMAP,
+  `METADATA_ENRICHMENT.md`). Comics now require local extraction, ComicInfo/MetronInfo
+  evidence, filename/Series/issue inference, correct local issue covers **and** an approved,
+  integrated issue-level online provider with explicit candidate matching; otherwise 4.5E
+  and 4.5G (and the phase) stay open.
+- Metron: replaced the stale research with Metron's official commercial-use statement
+  (2026-10-04; fetched 2026-10-15): CC BY-SA 4.0 with attribution/ShareAlike, per-user
+  accounts or tokens (no shared bundled account), tokens preferred and Basic auth to be
+  retired, 20 requests/minute and 5,000/day, caching expected, publisher covers not
+  licensed. Status CONDITIONAL until the current `metron.cloud` service terms are reviewed
+  and the ShareAlike/paid-theme questions are answered (new D5 prerequisites, D19). No legal
+  conclusion drawn.
+- Cover storage: replaced byte-for-byte storage with a bounded policy (small supported
+  originals byte-exact at about 1 MiB / 4 Mpx; larger artwork as a bounded derivative,
+  longest edge 1600 px, original dimensions and ORIGINAL/DERIVED recorded; storage budget;
+  user-selected covers never silently evicted).
+- 4.5A split into two independent PRs: 4.5A.1 Local Cover Artwork (Room v6) and 4.5A.2
+  Cover Presentation (Room v7); provider/metadata tables move to the next version (v8
+  possible, not pre-reserved). First implementation prompt now targets 4.5A.1 only.
+- `publication_cover` redesigned as one row per artwork kind (`PRIMARY KEY (libraryItemId,
+  kind)`, FK cascade, precedence at read time, restart-safe extraction) with a draft
+  permanent/temporary extraction-failure model.
+
 ## Phase 4.5 planning — Metadata, Covers & Library Presentation (2026-10-15)
 
 - New `docs/PHASE_4_5_IMPLEMENTATION_PLAN.md` (implementation authority): repository

@@ -660,7 +660,10 @@ Full behavior, precedence and scope rules are owned by
 
 This work is scheduled as **Phase 4.5 — Metadata, Covers & Library Presentation**
 ([plan](PHASE_4_5_IMPLEMENTATION_PLAN.md)); Books, Comics and Manga are all required for its
-acceptance. Cover presentation is a free core preference: original artwork is preserved and
+acceptance, and Comics acceptance requires an approved online issue-level provider path
+(local extraction and artwork alone are not enough). Stored cover artwork is bounded (small
+originals byte-exact, larger ones as bounded derivatives; the source publication is never
+modified). Cover presentation is a free core preference: original artwork is preserved and
 the user chooses the display shape (Original, 2:3, 3:4, 4:5, 1:1, Custom) and Crop or Fit,
 globally with optional per-category overrides.
 

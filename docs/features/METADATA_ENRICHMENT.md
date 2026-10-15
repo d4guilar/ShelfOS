@@ -8,7 +8,11 @@ phases; none is implemented in the Phase 0 prototype. See ADR-0016.
 [Phase 4.5 — Metadata, Covers & Library Presentation](../PHASE_4_5_IMPLEMENTATION_PLAN.md).
 Current state at Room v5: only EPUB title/creator and ComicInfo title/writer/manga-direction
 are extracted; every Library cover is generated; there is no network access. Phase 4.5
-requires Books, Comics **and** Manga enrichment for acceptance (§17 below is reconciled).
+requires Books, Comics **and** Manga enrichment for acceptance (§17 below is reconciled);
+for Comics this means an approved, integrated issue-level online provider in addition to
+local extraction (local artwork alone does not satisfy it). Stored cover artwork is bounded:
+small supported images byte-exact, larger ones as a bounded derivative that records the
+original dimensions (plan §7, §18).
 
 ## 1. Goal
 
@@ -417,7 +421,14 @@ charging users a fee for the application. It stays RESEARCH / NOT YET APPROVED, 
 future user-key (BYOK) option after legal review. Open Library is the recommended default
 candidate pending administrator approval. Comic and Manga provider findings (Metron, Comic
 Vine, GCD, MangaDex, AniList and others) are in the
-[Phase 4.5 plan](../PHASE_4_5_IMPLEMENTATION_PLAN.md) §14.
+[Phase 4.5 plan](../PHASE_4_5_IMPLEMENTATION_PLAN.md) §14. **Metron** (comics project at
+`metron.cloud`) is the preferred, **conditional** Comics candidate on the basis of its
+official commercial-use statement of 2026-10-04: CC BY-SA 4.0 data permits commercial use
+with attribution and ShareAlike; each user supplies their own account/token (no shared
+bundled account); tokens are preferred and Basic auth will be retired; limits are 20
+requests/minute and 5,000/day; caching is expected; publisher cover images are **not**
+under that license. It is not approved until the current service terms are reviewed and the
+ShareAlike questions are answered (plan D5, D19).
 
 ## 11. Local-first caching
 
@@ -570,7 +581,8 @@ Reading remains available.
 - local cover artwork extraction and cover presentation (shape + Crop/Fit)
 - Open Library provider (pending terms approval)
 - Google Books only as a possible future BYOK option (not a default fallback; §10)
-- Comic and Manga enrichment (required for Phase 4.5 acceptance; providers terms-gated)
+- Comic and Manga enrichment (required for Phase 4.5 acceptance; providers terms-gated; Comics
+  need an approved online path, not local-only)
 - confidence scoring
 - match confirmation
 - background automatic metadata enrichment after commit

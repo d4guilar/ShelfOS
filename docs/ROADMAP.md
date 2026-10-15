@@ -188,7 +188,10 @@ a user-selected cover always wins, a confident online cover may improve a weak
 embedded/generated cover, and enrichment never blocks local import or reading.
 Comic and Manga enrichment is required Phase 4.5 acceptance scope; specialist
 Comic/Manga providers are replaceable architecture slots there, used only if their
-terms are approved (see the Phase 4.5 plan).
+terms are approved. Comics acceptance specifically requires an approved, integrated
+issue-level online provider (preferred: Metron with per-user tokens, conditional on a
+terms review); local extraction and local artwork alone do not satisfy it (see the Phase 4.5
+plan).
 
 ### Visual implementation milestone
 
@@ -406,18 +409,24 @@ and import and reading never depend on a provider.
 
 ### Deliverables (slices)
 
-- **4.5A Cover Presentation Foundation** — local artwork (embedded EPUB cover, CBZ/CBR
-  first page, PDF first-page render) preserved at native dimensions; display shape
-  Original / 2:3 / 3:4 / 4:5 / 1:1 / Custom W:H with Crop to fill or Fit entire artwork,
-  never stretched; global default plus per-category overrides; no network.
+- **4.5A Cover Presentation Foundation** — umbrella of two independent PRs, each with its
+  own validation, Codex High review and merge. **4.5A.1 Local Cover Artwork** (Room v6):
+  embedded EPUB cover, CBZ/CBR cover, PDF first-page preview, bounded artwork storage
+  (small originals byte-exact, larger ones as bounded derivatives that record the original
+  dimensions), local cover lifecycle and safe backfill, a minimal shared cover renderer on
+  the existing frame. **4.5A.2 Cover Presentation** (Room v7): display shape Original / 2:3
+  / 3:4 / 4:5 / 1:1 / Custom W:H with Crop to fill or Fit entire artwork, never stretched;
+  global default plus per-category overrides; Settings UI; no network.
 - **4.5B Metadata Core** — provenance/confidence, identifier detection, richer embedded
   metadata, provider-neutral interfaces, candidate model, enrichment coordinator, cache and
   network/privacy boundary.
 - **4.5C Books** — default keyless provider (Open Library, pending terms approval),
   ISBN-first, metadata and covers.
 - **4.5D Manga** — volume-aware matching, ISBN/edition, volume-specific covers.
-- **4.5E Comics** — Series + issue matching, UPC/ISBN, issue covers; comic provider and
-  artwork policy subject to licensing decisions.
+- **4.5E Comics** — Series + issue matching, UPC/ISBN, ComicInfo/MetronInfo evidence, issue
+  covers, and an approved issue-level online provider (preferred: Metron with per-user
+  tokens; conditional on terms review and owner authorization). 4.5E and 4.5G stay open if
+  no provider is approved and integrated.
 - **4.5F Enrichment UX** — "We think this is…", Find cover online, Choose from device,
   Refresh metadata, failure/offline states.
 - **4.5G Acceptance** — Books, Comics and Manga matrices, wrong-match protection,
@@ -438,7 +447,8 @@ and import and reading never depend on a provider.
 Books, Comics **and** Manga each receive confident metadata and correct
 (edition/issue/volume-specific) covers, Documents stay conservative, the Library is visually
 complete offline, and the plan's acceptance criteria (§30) pass with physical UAT. Phase 4.5
-cannot close with Books only.
+cannot close with Books only, and it cannot close with local-only Comics: Comics need an
+approved, working issue-level online path, otherwise 4.5E and 4.5G remain open.
 
 ---
 
