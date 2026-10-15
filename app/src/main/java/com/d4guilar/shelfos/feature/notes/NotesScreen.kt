@@ -42,6 +42,7 @@ import com.d4guilar.shelfos.domain.annotations.portable.*
 import com.d4guilar.shelfos.domain.library.PublicationFormat
 import com.d4guilar.shelfos.data.annotations.PortableExportFormat
 import com.d4guilar.shelfos.feature.reader.AnnotationDeleteConfirmDialog
+import com.d4guilar.shelfos.core.designsystem.NoImeExtractUi
 import com.d4guilar.shelfos.feature.reader.AnnotationEditorDialog
 import com.d4guilar.shelfos.feature.reader.AnnotationFilter
 import com.d4guilar.shelfos.feature.reader.activateOnGamepadConfirm
@@ -110,12 +111,12 @@ fun NotesScreen(vm: NotesViewModel, onOpenSource: (libraryItemId: String, annota
         Column(Modifier.fillMaxSize().padding(horizontal = t.spacing.medium), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(R.string.nav_notes), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
             val search: @Composable (Modifier) -> Unit = { m ->
-                OutlinedTextField(state.query, vm::search, m.testTag("notes_search"), singleLine = true,
+                NoImeExtractUi { OutlinedTextField(state.query, vm::search, m.testTag("notes_search"), singleLine = true,
                     label = { Text(stringResource(R.string.notes_search_label)) },
                     trailingIcon = if (state.query.isEmpty()) null else { {
                         val clear = { vm.search("") }
                         TextButton(clear, Modifier.testTag("notes_search_clear").activateOnGamepadConfirm(onActivate = clear)) { Text(stringResource(R.string.action_clear)) }
-                    } })
+                    } }) }
             }
             val publicationButton: @Composable () -> Unit = {
                 val selected = state.publications.firstOrNull { it.source.libraryItemId == state.publicationId }

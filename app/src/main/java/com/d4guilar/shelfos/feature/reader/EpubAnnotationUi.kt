@@ -25,6 +25,7 @@ import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.key.onPreInterceptKeyBeforeSoftKeyboard
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -36,7 +37,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.d4guilar.shelfos.R
+import com.d4guilar.shelfos.core.designsystem.NoImeExtractUi
 import com.d4guilar.shelfos.core.input.InputContext
 import com.d4guilar.shelfos.core.input.ShelfCommand
 import com.d4guilar.shelfos.core.input.isGamepadSource
@@ -75,14 +79,30 @@ internal fun styleLabel(styleKey: String?): String = stringResource(when (styleK
     else -> R.string.annotation_style_unknown
 })
 
-/** Dialog-local Android Back/Escape/gamepad-B handling that runs before a focused text field or IME can consume it. */
-internal fun Modifier.dismissOnShelfBack(onDismiss: () -> Unit) = onPreInterceptKeyBeforeSoftKeyboard { event ->
-    val native = event.nativeKeyEvent
-    val dismiss = native.keyCode == KeyEvent.KEYCODE_BACK ||
-        native.shelfCommand(InputContext.READER) == ShelfCommand.BACK
-    if (!dismiss) return@onPreInterceptKeyBeforeSoftKeyboard false
-    if (native.action == KeyEvent.ACTION_UP) onDismiss()
-    true // Consume down and up so a focused editor never interprets the command as text input.
+/**
+ * Dialog-local Android Back/Escape/gamepad-B handling that runs before a focused text field or IME can consume it.
+ * The one exception is Android Back while the soft keyboard is showing: that press belongs to the keyboard (it hides
+ * it), so a draft is never discarded just because the user wanted the keyboard out of the way. The next Back, with
+ * the keyboard hidden, dismisses the layer as usual; Escape and gamepad B are always an explicit dismissal.
+ */
+@Composable
+internal fun Modifier.dismissOnShelfBack(onDismiss: () -> Unit): Modifier {
+    // Read from the window's own insets at press time: unlike Compose's WindowInsets it is not consumed by the host's layout.
+    val view = LocalView.current
+    var backBelongsToKeyboard by remember { mutableStateOf(false) }
+    return onPreInterceptKeyBeforeSoftKeyboard { event ->
+        val native = event.nativeKeyEvent
+        val back = native.keyCode == KeyEvent.KEYCODE_BACK
+        if (back) {
+            // Decided on DOWN and kept for UP, so a keyboard that hides in between cannot turn its Back into ours.
+            if (native.action == KeyEvent.ACTION_DOWN) backBelongsToKeyboard = ViewCompat.getRootWindowInsets(view)?.isVisible(WindowInsetsCompat.Type.ime()) == true
+            if (backBelongsToKeyboard) return@onPreInterceptKeyBeforeSoftKeyboard false
+        }
+        val dismiss = back || native.shelfCommand(InputContext.READER) == ShelfCommand.BACK
+        if (!dismiss) return@onPreInterceptKeyBeforeSoftKeyboard false
+        if (native.action == KeyEvent.ACTION_UP) onDismiss()
+        true // Consume down and up so a focused editor never interprets the command as text input.
+    }
 }
 
 /**
@@ -235,10 +255,10 @@ fun AnnotationEditorDialog(
                     }
                 }
             }
-            OutlinedTextField(body, { body = it }, Modifier.fillMaxWidth().heightIn(min = 120.dp).focusRequester(field)
+            NoImeExtractUi { OutlinedTextField(body, { body = it }, Modifier.fillMaxWidth().heightIn(min = 120.dp).focusRequester(field)
                 .onFocusChanged { fieldFocused = it.hasFocus }.testTag("annotation_body"),
                 label = { Text(stringResource(if (bodyRequired) R.string.annotation_note_label else R.string.annotation_highlight_note_label)) },
-                isError = tooLong)
+                isError = tooLong) }
             if (body.length > AnnotationLimits.MAX_BODY * 9 / 10) Text(
                 String.format(stringResource(R.string.annotation_note_counter), body.length, AnnotationLimits.MAX_BODY),
                 color = if (tooLong) MaterialTheme.colorScheme.error else tokens.colors.secondary, style = tokens.typography.labelSmall)

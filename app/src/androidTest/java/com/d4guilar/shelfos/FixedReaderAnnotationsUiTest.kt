@@ -341,6 +341,7 @@ class FixedReaderAnnotationsUiTest {
             compose.onNodeWithTag("notebook_add_note").performClick()
             awaitTag("annotation_body")
             compose.waitForIdle()
+            if (code == KeyEvent.KEYCODE_BACK) compose.hideSoftKeyboardIfShown() // the keyboard's own Back comes first
             key(code)
             awaitNoTag("annotation_body")
             compose.onNodeWithTag("notebook_panel").assertExists() // the first press closed only the editor

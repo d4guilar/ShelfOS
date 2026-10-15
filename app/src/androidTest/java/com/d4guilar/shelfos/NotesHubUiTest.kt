@@ -102,7 +102,7 @@ class NotesHubUiTest {
         awaitLibrary()
         compose.onNodeWithTag("nav_notes").performClick().assertIsSelected()
         awaitTag("notes_screen")
-        compose.onNodeWithTag("notes_search").performTextInput(search)
+        compose.onNodeWithTag("notes_search").performTextInput(search); compose.hideSoftKeyboardIfShown()
         if (expectedRows != null) awaitRows(expectedRows)
     }
 
@@ -164,9 +164,9 @@ class NotesHubUiTest {
         compose.onNodeWithTag("notes_filter_all").performClick(); awaitRows(8)
         // Search composes with the filter: the marker plus a narrowing word.
         compose.onNodeWithTag("notes_filter_notes").performClick(); awaitRows(5)
-        compose.onNodeWithTag("notes_search").performTextReplacement("hubmark orphan")
+        compose.onNodeWithTag("notes_search").performTextReplacement("hubmark orphan"); compose.hideSoftKeyboardIfShown()
         awaitRows(1); rowNode("hubmark orphan note").assertExists()
-        compose.onNodeWithTag("notes_search").performTextReplacement("hubmark zzzz-no-match")
+        compose.onNodeWithTag("notes_search").performTextReplacement("hubmark zzzz-no-match"); compose.hideSoftKeyboardIfShown()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("notes_empty").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Nothing in this view.").assertExists()
         compose.onNodeWithTag("notes_search_clear").performClick()
@@ -177,7 +177,7 @@ class NotesHubUiTest {
     @Test fun searchMatchesPublicationTitleAndSnapshotTitleAndEscapesPercent() {
         openNotes(search = "Hub Gone Book", expectedRows = 1)
         rowNode("hubmark orphan note").assertExists()
-        compose.onNodeWithTag("notes_search").performTextReplacement("hubmark %")
+        compose.onNodeWithTag("notes_search").performTextReplacement("hubmark %"); compose.hideSoftKeyboardIfShown()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("notes_empty").fetchSemanticsNodes().isNotEmpty() }   // a literal %, not a wildcard
     }
 
@@ -227,7 +227,7 @@ class NotesHubUiTest {
         openNotes()
         rowButton("hubmark pdf note", "notes_edit").performClick()
         awaitTag("annotation_body")
-        compose.onNodeWithTag("annotation_body").performTextReplacement("hubmark pdf note EDITED")
+        compose.onNodeWithTag("annotation_body").performTextReplacement("hubmark pdf note EDITED"); compose.hideSoftKeyboardIfShown()
         compose.onNodeWithTag("annotation_editor_save").performClick()
         awaitNoTag("annotation_body")
         val edited = requireNotNull(container.annotations.get(pdfNote.id))
@@ -237,7 +237,7 @@ class NotesHubUiTest {
         // A highlight gains a body and keeps its kind, style and selected text.
         rowButton("hubmark highlighted words", "notes_edit").performClick()
         awaitTag("annotation_body")
-        compose.onNodeWithTag("annotation_body").performTextReplacement("added thoughts")
+        compose.onNodeWithTag("annotation_body").performTextReplacement("added thoughts"); compose.hideSoftKeyboardIfShown()
         compose.onNodeWithTag("annotation_editor_save").performClick()
         awaitNoTag("annotation_body")
         val hl = requireNotNull(container.annotations.get(highlight.id))
@@ -249,13 +249,13 @@ class NotesHubUiTest {
         openNotes()
         rowButton("hubmark orphan note", "notes_edit").performClick()
         awaitTag("annotation_body")
-        compose.onNodeWithTag("annotation_body").performTextReplacement("hubmark orphan note CHANGED")
+        compose.onNodeWithTag("annotation_body").performTextReplacement("hubmark orphan note CHANGED"); compose.hideSoftKeyboardIfShown()
         compose.onNodeWithTag("annotation_editor_cancel").performClick()
         awaitNoTag("annotation_body")
         assertEquals("hubmark orphan note", container.annotations.get(orphanNote.id)!!.body)
         rowButton("hubmark orphan note", "notes_edit").performClick()
         awaitTag("annotation_body")
-        compose.onNodeWithTag("annotation_body").performTextReplacement("hubmark orphan note CHANGED")
+        compose.onNodeWithTag("annotation_body").performTextReplacement("hubmark orphan note CHANGED"); compose.hideSoftKeyboardIfShown()
         compose.onNodeWithTag("annotation_editor_save").performClick()
         awaitNoTag("annotation_body")
         assertEquals("hubmark orphan note CHANGED", container.annotations.get(orphanNote.id)!!.body)
@@ -321,7 +321,7 @@ class NotesHubUiTest {
         assertTrue(container.annotations.notes(NotesQuery(publicationId = pdf.id)).rows.all { !it.source.live && it.source.title == pdf.title })
         compose.onNodeWithTag("nav_notes").performClick()
         awaitTag("notes_screen")
-        compose.onNodeWithTag("notes_search").performTextInput("hubmark")
+        compose.onNodeWithTag("notes_search").performTextInput("hubmark"); compose.hideSoftKeyboardIfShown()
         awaitRows(8)
         described("hubmark pdf note", pdf.title, "From a removed publication").assertExists()
         rowButtons("hubmark pdf note", "notes_open").assertCountEquals(0)
@@ -333,7 +333,7 @@ class NotesHubUiTest {
         assertTrue(container.annotations.notes(NotesQuery(publicationId = epub.id)).rows.isEmpty())
         compose.onNodeWithTag("nav_notes").performClick()
         awaitTag("notes_screen")
-        compose.onNodeWithTag("notes_search").performTextInput("hubmark")
+        compose.onNodeWithTag("notes_search").performTextInput("hubmark"); compose.hideSoftKeyboardIfShown()
         awaitRows(5)
         assertNotNull("another publication's notes are untouched", container.annotations.get(pdfNote.id))
     }
@@ -391,7 +391,7 @@ class NotesHubUiTest {
         openNotes()
         compose.onNodeWithTag("notes_filter_notes").performClick(); awaitRows(5)
         compose.onNodeWithTag("notes_sort_date").performClick()
-        compose.onNodeWithTag("notes_search").performTextReplacement("hubmark pdf")
+        compose.onNodeWithTag("notes_search").performTextReplacement("hubmark pdf"); compose.hideSoftKeyboardIfShown()
         awaitRows(1)
         compose.activityRule.scenario.recreate()
         awaitTag("nav_notes")
