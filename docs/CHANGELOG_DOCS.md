@@ -1,5 +1,11 @@
 # Documentation Changelog
 
+## Phase 4F resolution of two acceptance uncertainties (2026-10-14)
+
+- `docs/VALIDATION.md` gains "4F resolution of the two acceptance uncertainties": the RP5 `EpubBookmarkTest` intermittency is classified as a real 4D timing race (bare chapter-link locator used as the live position) and fixed; the RP5 short-landscape keyboard extract mode and first-Back draft loss are reproduced per surface, root-caused (`dismissOnShelfBack` pre-IME handling) and fixed, with before/after counts and honest gaps (Samsung keyboard, hub list height, Save/Cancel under the keyboard). Phase 4 remains NOT yet accepted: pending owner Samsung UAT and administrator review.
+- ADR-0023 gains a 4F clarification: Android Back belongs to the soft keyboard while it is showing; Escape and gamepad B remain explicit dismissals.
+- Administrator decision recorded in VALIDATION and plan section 13.6: the legacy `bookmark` table is intentionally retained through Phase 4 closure as a migration-safety artifact; removal is deferred to a later dedicated maintenance migration after Phase 4 acceptance; no v6 migration in 4F (Room stays at 5).
+
 ## Phase 4F acceptance — first evidence pass (2026-10-14)
 
 - Recorded the first Phase 4F acceptance evidence pass in `docs/VALIDATION.md`: JVM 587/0, RP5 and API 24 per-class instrumented matrices, tablet-sized run, build gates (lint 0 errors / 60 warnings, bundleDebug), a genuine Phase-3-to-Room-v5 upgrade on the RP5 (2 bookmarks in, 2 annotations out, legacy table kept), source-immutability hashes, EN/ES/PT-BR parity, and the Samsung UAT package.
