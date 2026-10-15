@@ -56,6 +56,18 @@ and the Library cover-map throttle, startup ordering, source-revision unknowns, 
 wording, WebP facts and provisional Samsung criteria corrected (§14, §19.1, §23.2, §28.1).
 Room v6 stays planned, not implemented; v7 stays reserved for 4.5A.2.
 
+Final QA reconciliation (2026-10-15, third independent review: PASS WITH NOTES, 0 blocker/
+high/medium, 7 LOW; plan accepted for merge): one Room schema for fresh and migrated
+databases, value sets enforced by Kotlin enums and repository validation instead of
+migration-only `CHECK`s (§23.1, §24); cover replacement by a new immutable file with the
+Room row updated before the old file is deleted (§7, §23.4, §23.5); retry exhaustion parks
+at four attempts or two interruptions, whichever first, and the clock-skew clamp uses the
+largest single delay (§23.3); CBR/reader cover reuse only for the exact page the extractor
+would choose (§19.2); storage admission counts bounded temporary extraction and separates
+API 26+ from API 24/25 (§18.1); compatibility of the replacement model with the lifecycle
+(§23.4); §32 carries the safeguards. No accepted decision changed (D3, D9-D12, D18, D20,
+D21 as recorded; D19 open).
+
 ---
 
 ## 1. Purpose and product rationale
@@ -330,6 +342,16 @@ Rules:
      API 24+ compatible (including the legacy API 24/25 probe), original PDF untouched. It
      is recorded as `localSource = PDF_FIRST_PAGE`, DERIVED, never called "embedded" or
      "original". This is one case among several DERIVED cases, not the only one.
+   - **Stored files are immutable and uniquely named (final-QA decision).** Every
+     successful extraction writes a **new** file,
+     `covers/<libraryItemId>/<slot>-<token>.<ext>` (for example `local-9f3c1a07b2d84e55.jpg`:
+     the slot in lowercase, a 64-bit random token as 16 hex digits, a fixed extension from
+     the stored MIME type; **no source-derived text** — no entry name, title or path — ever
+     appears in a file name). A stored file is **never overwritten and never renamed over
+     another file**; replacing a cover means committing a row that references a new file and
+     only then deleting the previous one (§23.5). The file name is therefore also the
+     artwork's identity for the bitmap cache (§19.1): a replaced cover can never be served
+     from the previous cache key.
 2. **Display shape is presentation only (owner-approved).** Default **2:3 with Crop to
    fill**. Shapes: `ORIGINAL`, `RATIO_2_3`, `RATIO_3_4`, `RATIO_4_5`, `RATIO_1_1`,
    `CUSTOM(w, h)`. **There is no separate "Auto" option.** Custom ratios are limited to
@@ -361,8 +383,9 @@ Rules:
 7. **Decode, not store, at display size — bounded grid-thumbnail path (proposed).**
    Bitmaps are decoded with `inSampleSize` to the rendered pixel size (grid tiles are
    roughly 112–136 dp wide, ≈ 300–420 px at 3x density) and kept in a bounded memory LRU
-   (reuse `ByteBudgetedLruCache`, `core/reader/ThumbnailLoader.kt`); the stored artwork file
-   is untouched. No grid tile ever decodes a source archive page, and no tile is required
+   (reuse `ByteBudgetedLruCache`, `core/reader/ThumbnailLoader.kt`; **the cache key includes
+   the stored `fileName`**, which changes with every replacement, so no stale bitmap is ever
+   served under a previous key); the stored artwork file is untouched. No grid tile ever decodes a source archive page, and no tile is required
    to read a multi-megabyte image: it decodes the stored ≤ 1200 px / ≤ 512 KiB file with
    sampling. A regenerable small thumbnail, or a second display derivative, is **not
    committed**: the plan does not add a thumbnail table or format until measurement
@@ -779,8 +802,8 @@ EMBEDDED above ONLINE. They were updated to this order, which `METADATA_ENRICHME
 ## 18. Caching and offline design
 
 - All covers live in app-private storage (proposed `filesDir/covers/<libraryItemId>/`,
-  **one file per item and slot**: `local.<ext>` now; `user.<ext>` and `online.<ext>` are
-  future slots), plus one Room row per item and slot recording provenance, stored
+  **one referenced file per item and slot**: `local-<token>.<ext>` now, uniquely named per
+  successful extraction (§7 rule 1); `user-…` and `online-…` are future slots), plus one Room row per item and slot recording provenance, stored
   dimensions, original dimensions and ORIGINAL/DERIVED (§23.1). A file is never shared
   between rows. `filesDir`, not `cacheDir`: the system must not evict the Library's
   identity.
@@ -806,7 +829,8 @@ EMBEDDED above ONLINE. They were updated to this order, which `METADATA_ENRICHME
   (the user replaces the file) or disappear. While the source is unavailable the cached
   cover stays (it may be the only copy). When it returns, the extractor compares the current
   best-effort `sourceRevision` (§23.2); a revision that is known, comparable and different
-  re-extracts the LOCAL slot and replaces it only after the new file is fully written; a
+  re-extracts the LOCAL slot and replaces it only after the new file is fully written and its
+  row is committed (§23.5); a
   provider that exposes no reliable `lastModified` (UNKNOWN) never auto-detects the change
   and never triggers costly re-extraction, which is why **Refresh
   cover** (an always-available planned action, 4.5F; the extractor entry point exists in
@@ -849,16 +873,41 @@ Policy:
    ≤ 1200 px, fixed recompression ladder, never recursive). One stored file per item and
    slot; no file sharing between rows (§23.1).
 2. **Write guard (low storage).** Before creating a cover file, and before any expensive
-   decode/extraction work, verify free space: `StatFs(filesDir).availableBytes` (API 18+,
-   so available on `minSdk` 24) minus the anticipated write (the 512 KiB ceiling) must leave
-   **at least 512 MiB free after the write**, and a stricter Android low-storage condition
-   (the platform's own threshold) always wins. `StorageManager.getAllocatableBytes` exists
-   only since API 26 and counts clearable cache as available, so it is not used to loosen
-   the guard; `ACTION_DEVICE_STORAGE_LOW/OK` are deprecated since API 26 and are not relied
-   on (SDK `android-37.0` `api-versions.xml`; verify at implementation).
+   decode/extraction work, verify free space: the free figure minus the **anticipated
+   writes** must leave **at least 512 MiB free after the writes**, and a stricter Android
+   low-storage condition (the platform's own threshold) always wins. The approved numbers
+   are unchanged; this item only fixes what is counted and which API supplies the figure.
+   - **Anticipated writes include bounded temporary extraction.** Admission counts the
+     final artifact (≤ 512 KiB) **plus the temporary bytes the extraction is known to need**.
+     A CBR entry is extracted whole to a temporary file before it is decoded and bounded,
+     so the temporary need can far exceed the final 512 KiB. Where the archive's declared
+     entry uncompressed size is trustworthy, use it **capped by the existing `ArchivePolicy`
+     / `RarExtractionCache.MAX_ENTRY_BYTES` ceilings**; a missing, zero, negative or
+     implausible declaration (above those ceilings) is **unknown** and admission falls
+     back to a **conservative fixed temporary reserve (proposal: 32 MiB, a reviewable
+     constant, not an approved number)**. Source archives are never modified.
+   - **API 26+ (proposed):** the free figure is `min(StorageManager.getAllocatableBytes(
+     getUuidForPath(filesDir)), StatFs(filesDir).availableBytes)`. `getAllocatableBytes(UUID)`
+     and `getUuidForPath(File)` exist only since API 26 (SDK `android-37.0`
+     `api-versions.xml`, verified; re-verify at implementation). Allocatable bytes count
+     clearable cache, so taking the minimum never lets cache that the platform *could* free
+     loosen the guard, while a platform-reported lower figure tightens it.
+   - **API 24/25 (`minSdk` 24):** those two methods **do not exist**; use
+     `StatFs(filesDir).availableBytes` (`getAvailableBytes()`, API 18) with the same 512 MiB
+     reserve. The conservative fallback is a supported, never-loosening path, not a claim
+     of platform parity, and no compat dependency is added.
+   - `ACTION_DEVICE_STORAGE_LOW/OK` are deprecated since API 26 and are not relied on.
+   - **`STORAGE_FULL` discovered during work** (an `ENOSPC`/`IOException` while writing the
+     temporary or final file) is an **explained outcome**, not process death: it runs the
+     explicit-outcome close of §23.5 step 4 — marker cleared, the temporary file removed,
+     `FAILED_TEMPORARY` / `STORAGE_FULL` recorded, **no interruption counted and the attempt
+     given back** (the existing `STORAGE_FULL` rule, §23.3), no timer. The existing gate and
+     hysteresis (item 4) govern the next admission, so there is no retry loop after
+     recovery. No new storage dependency.
 3. **If the guard fails:** skip the write; preserve every existing artwork file and row;
    keep showing the generated fallback; record a retryable `FAILED_TEMPORARY` /
-   `STORAGE_FULL` (no timer; it consumes **no** attempt, because no extraction ran). While
+   `STORAGE_FULL` (no timer; it consumes **no** attempt: the guard failed before any work, or
+   a mid-work `STORAGE_FULL` gives the attempt back, item 2). While
    the guard fails the scheduler admits no new local-cover work app-wide (one process-level
    gate, not a retry per item).
 4. **No retry storm on a full device.** `STORAGE_FULL` rows are retried only on a
@@ -911,7 +960,8 @@ offline/category)`.
    batched writes (§19.1). Its durable state is the cover row
    plus the durable attempt marker (§23.5): process death is detected at the next startup
    *before* any extraction is scheduled, an interrupted item is retried only with persisted
-   backoff and is parked after two unexplained interruptions — no job framework needed.
+   backoff and is parked after four attempts or two unexplained interruptions, whichever
+   comes first — no job framework needed.
    Existing libraries are backfilled the same way.
 3. Online pass (4.5C+): only when online enrichment is enabled and the network is available;
    ordered per provider rate limits, newest imports first, persisted `nextEligibleAt` with
@@ -946,7 +996,9 @@ Strategies considered:
 - **B. Independently observed cover state.** A separate small query
   (`SELECT libraryItemId, slot, fileName, storedWidthPx, storedHeightPx, updatedAt FROM
   publication_cover WHERE status = 'READY'`) observed as its own `Flow`, reduced to an
-  immutable `Map<libraryItemId, CoverRef>` (slot precedence applied, §23.1),
+  immutable `Map<libraryItemId, CoverRef>` (slot precedence applied, §23.1; **`CoverRef`
+  carries `fileName`**, so a replaced cover changes the map entry *and* the bitmap-cache
+  key, §7 rule 7),
   `distinctUntilChanged()` (attempt-marker writes touch the same table but do not change
   the READY map, so they re-run the query yet emit nothing) and then **conflated with a
   latest-value throttle** — emit the latest map at most once per minimum interval (proposed
@@ -1008,14 +1060,28 @@ Rules (proposed):
    active or the app is in the background; a job already inside native code cannot be
    cancelled and is allowed to finish (bounded by the existing size ceiling), so the
    scheduler never *starts* work it would need to abort.
-4. **Reuse reader artwork when safe.** When the user opens a comic, the first page the
-   reader has already decoded/extracted may feed the cover store (a DERIVED
-   `ARCHIVE_FIRST_PAGE` row) instead of extracting it again — an **optimization, only if it
-   is clean** (same page identity, same revision); otherwise skipped.
+4. **Reuse reader artwork only when it is exactly the page the cover extractor would
+   choose.** For CBZ and CBR the extractor's choice is: a valid ComicInfo `FrontCover` page
+   in range wins (`COMICINFO_FRONT_COVER`, `sourceChoice = DECLARED`), otherwise the first
+   page of the logical page list (`ARCHIVE_FIRST_PAGE`, `INFERRED`) — §23.1. A page the
+   reader has already extracted may be reused instead of extracting it again **only if** its
+   logical index is that chosen index **and** it came from the same revision of the same
+   source. Otherwise the reader's page is ignored (for example, the reader opened at a
+   resume position, or the FrontCover is not page 0). **One shared page-ordering function
+   is the single source of truth** for the logical page list: the reader and the cover
+   extractor both call it (the natural ordering of `ArchivePolicy.pages` / `RarContainer`),
+   so they cannot disagree about which page is "first" or what index the FrontCover names;
+   a test asserts both consumers resolve the same ordering on a fixture archive. A reused
+   page is stored like any other extraction: `slot = LOCAL`, `localSource`, `sourceRef` and
+   `sourceChoice` as the extractor would have written them, and **`representation` records
+   the stored bytes**: `ORIGINAL` only if the reader's bytes are stored byte-exact within
+   the §7 bounds, `DERIVED` if they were re-encoded or resized to meet them. There is no
+   additional row or provenance type for "came from the reader". It is an **optimization,
+   only if it is clean**; otherwise skipped.
 5. **Restart-safe progress.** The attempt is recorded durably *before* native extraction
    starts (§23.5); a killed extraction leaves an abandoned marker and a `.tmp`, reconciled
-   and swept at startup *before* anything is scheduled; two unexplained interruptions park
-   the item; no endless retry and no startup re-execution of interrupted native work
+   and swept at startup *before* anything is scheduled; four attempts or two unexplained
+   interruptions, whichever comes first, park the item; no endless retry and no startup re-execution of interrupted native work
    (§23.3, §23.5).
 6. Source archives are never modified; `ArchivePolicy`/`RarContainer` safety limits and
    native boundaries are unchanged; **no native code change is planned**.
@@ -1109,26 +1175,33 @@ Options considered:
 | C. One row per item **and slot** (`PRIMARY KEY (libraryItemId, slot)`), provenance stored as columns | One stored file per publication and slot; resolution is a pure function | **Approved (D21).** No file sharing, no reference counting |
 
 Approved shape (column names are implementation details settled in the 4.5A.1 PR and its
-Codex review):
+Codex review). **One schema, no migration-only constraints (final-QA decision):** the SQL
+below is *logical*. The authoritative DDL is the `createSql` Room exports to
+`schemas/.../6.json` for the `@Entity`, and the hand-written `MIGRATION_5_6` must execute
+**exactly that `createSql` and the exported index statements, character for character**
+(Room's own table and index names, quoting and column order). A fresh install (Room creates
+the table) and an upgraded database (the migration creates it) therefore have the same
+schema. The migration adds **no `CHECK` constraint** that the generated fresh schema does not
+have; the allowed values are enforced in Kotlin (below).
 
 ```sql
 CREATE TABLE publication_cover (
   libraryItemId TEXT NOT NULL,
-  slot TEXT NOT NULL CHECK (slot IN ('LOCAL','USER','ONLINE')),
-  status TEXT NOT NULL CHECK (status IN ('PENDING','READY','FAILED_PERMANENT','FAILED_TEMPORARY')),
-  failureReason TEXT,              -- reason enum (section 23.3), null when READY
-  fileName TEXT,                   -- relative to filesDir/covers/<libraryItemId>/; null unless READY
+  slot TEXT NOT NULL,              -- CoverSlot enum name: LOCAL | USER | ONLINE
+  status TEXT NOT NULL,            -- CoverStatus: PENDING | READY | FAILED_PERMANENT | FAILED_TEMPORARY
+  failureReason TEXT,              -- CoverFailureReason (section 23.3), null when READY
+  fileName TEXT,                   -- relative to filesDir/covers/<libraryItemId>/; null until the first READY commit; unique and immutable per extraction (section 7)
   mimeType TEXT,
-  representation TEXT CHECK (representation IN ('ORIGINAL','DERIVED')),   -- null unless READY
+  representation TEXT,             -- CoverRepresentation: ORIGINAL | DERIVED; null unless READY
   sourceWidthPx INTEGER, sourceHeightPx INTEGER,   -- native pixels of the source artwork
   storedWidthPx INTEGER, storedHeightPx INTEGER,   -- pixels of the stored file
   storedBytes INTEGER,
-  localSource TEXT CHECK (localSource IN ('EPUB_COVER','COMICINFO_FRONT_COVER','ARCHIVE_FIRST_PAGE','PDF_FIRST_PAGE')),  -- LOCAL slot only
+  localSource TEXT,                -- CoverLocalSource: EPUB_COVER | COMICINFO_FRONT_COVER | ARCHIVE_FIRST_PAGE | PDF_FIRST_PAGE; LOCAL slot only
   sourceRef TEXT,                  -- safe locator: entry name / logical page index / equivalent; never a raw path
-  sourceChoice TEXT CHECK (sourceChoice IN ('DECLARED','INFERRED')),      -- LOCAL slot: was the source declared by the file or inferred
+  sourceChoice TEXT,               -- CoverSourceChoice: DECLARED | INFERRED (LOCAL slot: declared by the file, or inferred)
   sourceRevision TEXT,             -- BEST-EFFORT revision evidence at extraction time (23.2); not an identity
   extractorVersion INTEGER NOT NULL,        -- version that wrote the current row outcome
-  attempts INTEGER NOT NULL DEFAULT 0,      -- attempts consumed in the current trigger window (23.3)
+  attempts INTEGER NOT NULL DEFAULT 0,      -- attempts consumed in the current trigger window (23.3); Room @ColumnInfo(defaultValue = "0")
   interruptions INTEGER NOT NULL DEFAULT 0, -- unexplained interrupted attempts in the window (23.5)
   attemptStartedAt INTEGER,                 -- non-null = an attempt began and has not been closed (23.5)
   attemptExtractorVersion INTEGER,          -- extractor version of that attempt
@@ -1143,8 +1216,8 @@ CREATE TABLE publication_cover (
 Slot rules:
 
 - **4.5A.1 writes only the `LOCAL` slot.** `USER` (4.5F) and `ONLINE` (4.5C+) are future
-  slots reserved by the `CHECK`; nothing writes them in 4.5A.1 and provider columns arrive
-  only with the slice that first writes them (D16).
+  slots reserved by the `CoverSlot` enum; the repository refuses to write them in 4.5A.1
+  and provider columns arrive only with the slice that first writes them (D16).
 - **One stored file per publication and slot.** `LOCAL` provenance is `localSource` +
   `sourceRef` + `sourceChoice`. The extractor picks exactly one source: EPUB OPF cover
   (`EPUB_COVER`, declared); a ComicInfo `FrontCover` page that is in range
@@ -1163,8 +1236,10 @@ Slot rules:
 
 **Row before artwork.** A `PENDING` row (no file yet) is inserted at the *start* of an
 attempt so the durable attempt marker has somewhere to live (§23.5); absent row = never
-attempted. A re-extraction over an existing `READY` row keeps `READY` and its file
-untouched while only the attempt columns change.
+attempted. A first-ever extraction therefore has **no previous `READY` row and the `PENDING`
+row has no `fileName` until the success commit**. A re-extraction over an existing `READY`
+row keeps `READY` and its current file untouched while only the attempt columns change; its
+commit then points the row at a **new** unique file (§23.5 step 4).
 
 **Index requirements (verified conventions).** `reading_state` declares an FK on its
 primary-key column `itemId` with no extra index, and `bookmark` declares an explicit
@@ -1175,12 +1250,30 @@ child column is not covered by an index; whether it counts the composite primary
 covering must be **confirmed by the implementation build** (add `Index("libraryItemId")`
 if the warning appears). The cover-map query (§19.1) scans `status = 'READY'` once; the
 startup reconciliation scans `attemptStartedAt IS NOT NULL` once (a table scan over at most
-a few thousand rows; no index planned). **Implementation checks:** Room entities cannot
-declare `CHECK` constraints, so the hand-written `Migration(5, 6)` carries them; confirm at
-implementation that Room's schema validation (which compares columns, primary key,
-foreign keys and indices, not `CHECK`) accepts the migrated table; if it does not, enforce
-the value sets in Kotlin enums and keep the raw-SQL migration test on the remaining
-structure.
+a few thousand rows; no index planned).
+
+**Enums and validation instead of `CHECK` (final-QA decision; replaces the earlier plan to
+hand-write `CHECK`s and the "does Room accept them" caveat).** Room entities cannot declare
+`CHECK` constraints, and a migration-only `CHECK` would make fresh and upgraded databases
+differ, so none exists. Instead:
+
+- **Typed Kotlin enums** — `CoverSlot`, `CoverStatus`, `CoverFailureReason`,
+  `CoverRepresentation`, `CoverLocalSource`, `CoverSourceChoice` — are persisted as their
+  enum **name** in `TEXT` columns through Room type converters (or an explicit mapping in
+  the repository); converters never throw.
+- **Write validation at the persistence boundary** (the cover repository/DAO, the only
+  writer): rejects an unknown enum value, an invalid combination (e.g. `READY` without a
+  `fileName`/`representation`; `localSource` or `sourceChoice` on a non-`LOCAL` slot or a
+  `LOCAL` slot without them when `READY`; `failureReason` on a `READY` row; any write to
+  `USER`/`ONLINE` in 4.5A.1) and negative counters, before SQL runs.
+- **Read tolerance:** a row whose stored enum string is unknown (downgrade artifacts,
+  manual edits, a future version) is read as *unusable* — it never throws and never crashes
+  the Library; it renders the generated cover, is excluded from the cover map and is
+  treated as eligible for reassessment on the next trigger.
+- **Defaults must match exactly.** Room's migration validation compares column defaults, so
+  `@ColumnInfo(defaultValue = "0")` on `attempts`, `interruptions` and `parked` must equal
+  the migration's `DEFAULT 0` exactly (it is the same exported `createSql`; a hand-edit that
+  differs would fail validation on upgrade).
 
 **D21 (approved):** the slot model above; `PRIMARY KEY (libraryItemId, slot)`; slots
 LOCAL/USER/ONLINE with LOCAL-only writes in 4.5A.1; provenance as columns; FK
@@ -1251,8 +1344,8 @@ never erases a usable cover.
 - **Never** persist a permanent `NONE`/`FAILED_PERMANENT` for a temporary failure. A
   transient failure **must not erase an existing usable cover**: a failure on slot S writes
   or updates only S's row, never deletes another slot's `READY` row, and for S itself it
-  keeps the previous `READY` file/row (the old file is replaced only after a new one is
-  complete, §23.5); if S had a `READY` row the failure is recorded as retry metadata
+  keeps the previous `READY` file/row (the row references a new file only after that file is
+  complete and the row update has committed, §23.5); if S had a `READY` row the failure is recorded as retry metadata
   without clearing it. Coroutine cancellation records no failure.
 
 **Definitions (one vocabulary for every number below).**
@@ -1264,15 +1357,22 @@ never erases a usable cover.
 - **Initial attempt** — attempt 1 of a window (no earlier failure to back off from).
 - **Automatic retry** — attempts 2–4, each scheduled after a `FAILED_TEMPORARY` outcome
   (including `INTERRUPTED`). **At most 3 automatic retries, so at most 4 attempts per
-  trigger window.** After the fourth attempt fails the row is **parked**.
+  trigger window.** **Park rule (one rule, evaluated every time an attempt closes and at
+  startup reconciliation):** the row is **parked when `attempts ≥ 4` OR `interruptions ≥ 2`,
+  whichever comes first.** If attempt 4 itself ends in a temporary failure *or* is found
+  interrupted at startup, the row is parked and **no further backoff is scheduled**.
 - **Unexplained interrupted attempt** — an attempt whose marker was still open at the next
   startup. It **consumes one attempt** (the count is taken at attempt start) and increments
   `interruptions`; **two unexplained interruptions park the item immediately**, i.e.
-  earlier than the four-attempt cap (worst case: parked after attempt 2).
+  earlier than the four-attempt cap (worst case: parked after attempt 2), and an interrupted
+  attempt 4 is parked by the attempt count (the budget is exhausted).
 - **Explicit user-triggered retry** (Refresh cover, 4.5F) — a trigger: one immediate
   initial attempt (still subject to the storage guard and the one-CBR gate) plus a fresh
   window of up to 3 automatic retries.
-- **Parked** — `parked = 1`: no automatic attempt, no timer, until a trigger. A parked item
+- **Parked** — `parked = 1`: no automatic attempt, no timer, until a trigger. Parking
+  **survives process restart**; a launch neither resets the counters nor is a trigger;
+  `nextEligibleAt` is ignored (and cleared) while parked, so **no elapsed timer ever makes a
+  parked item eligible** — only a defined trigger un-parks it. A parked item
   keeps its existing `READY` cover or the generated fallback, and the app and Library
   open normally.
 
@@ -1296,7 +1396,19 @@ from the end of the failed attempt, ±20% jitter, ignoring attempt run time:
 | 2 | automatic retry 1 | ~1 min | 0.8–1.2 min | ~1 min | 0.8–1.2 min |
 | 3 | automatic retry 2 | ~4 min | 3.2–4.8 min | ~5 min | 4.0–6.0 min |
 | 4 | automatic retry 3 | ~16 min | 12.8–19.2 min | ~21 min | 16.8–25.2 min |
-| — | after attempt 4 fails | parked, no timer | — | — | — |
+| — | after attempt 4 fails or is interrupted | parked, no timer | — | — | — |
+
+What closes attempt N (the rule above applied; counters after the transition):
+
+| Outcome of attempt N | `attempts` | `interruptions` | Result |
+| --- | --- | --- | --- |
+| Success | reset 0 | reset 0 | `READY`, no timer |
+| Temporary failure, N < 4 and `interruptions` < 2 | N | unchanged | `nextEligibleAt = now + delay(N)` with jitter |
+| Temporary failure, **N = 4** | 4 | unchanged | **parked, no timer** |
+| Permanent failure (evidence-backed reason) | N | unchanged | `FAILED_PERMANENT`, parked, no timer |
+| Unexplained interruption found at startup, N < 4 and new `interruptions` < 2 | N | +1 | backoff `nextEligibleAt`, never eligible at startup |
+| Unexplained interruption, **N = 4 or new `interruptions` = 2** | N | +1 | **parked, no timer** |
+| `STORAGE_FULL` (guard or mid-work) or explicit cancellation | N − 1 (attempt given back) | unchanged | no timer; `STORAGE_FULL` follows §18.1, cancellation records nothing |
 
 The Part 1 schedule (five attempts with a multi-hour cap) is **withdrawn** and no other
 section cites attempt counts or delays. The window therefore spans ≈ 21 minutes of nominal
@@ -1307,10 +1419,12 @@ the scheduler postpones work while a reader is active or the app is in the backg
 instead of retrying everything; a global concurrency cap (§19, §19.2: one CBR at a time) and a
 **per-launch cap** (proposed: at most ~25 temporary-failed rows retried per launch pass,
 newest first) apply; a `nextEligibleAt` implausibly far in the future (clock moved
-backwards; > now + 25.2 min) is clamped to the maximum jittered delay. `SOURCE_UNAVAILABLE`/
+backwards; later than now + 19.2 min, the largest **single** delay, 16 min × 1.2) is clamped
+to that value. (25.2 min is the cumulative upper bound of the whole window, not a single
+delay, and is not the clamp.) `SOURCE_UNAVAILABLE`/
 `PERMISSION_UNAVAILABLE` carry no timer; `STORAGE_FULL` follows §18.1. There is **no endless
 automatic retry loop**: the longest automatic sequence is 4 attempts per window, and
-interruptions shorten it to 2.
+interruptions shorten it to 2; a parked item has no pending timer.
 
 A `FAILED_*` row means "generated cover shown" (or the existing cover kept), never a
 `PublicationProblem`, and never blocks opening the item (§22).
@@ -1345,19 +1459,28 @@ paths that delete a `library_item`):
 3. Cancel the item's in-flight/queued extraction job at removal (best-effort; the guard
    below does not depend on it). A native CBR extraction already in progress cannot be
    cancelled (§19.2) and finishes harmlessly.
-4. **A job started while the item existed does not make its result valid.** The final write
-   rechecks ownership *inside a transaction*: `INSERT … SELECT … WHERE EXISTS (SELECT 1
-   FROM library_item WHERE id = :id)` (zero rows inserted = rejected), and the FK also
-   rejects a late insert (`SQLiteConstraintException`). On rejection the writer deletes its
-   temp and final file(s) and exits; it never recreates a row. Temp-file cleanup also
-   happens on any exception/cancellation (`finally`). This closes the race "extraction
-   completes after removal".
+4. **A job started while the item existed does not make its result valid.** The
+   attempt-begin write is `INSERT … SELECT … WHERE EXISTS (SELECT 1 FROM library_item WHERE
+   id = :id)` (zero rows inserted = no attempt starts). The **final write is a guarded
+   `UPDATE` of the attempt's own row, never an insert or upsert**: `UPDATE publication_cover
+   SET … WHERE libraryItemId = :id AND slot = 'LOCAL' AND attemptStartedAt = :myAttempt AND
+   EXISTS (SELECT 1 FROM library_item WHERE id = :id)`, and **the number of rows updated
+   must be exactly 1**. Zero rows (the item and, by cascade, the row are gone, or the attempt
+   no longer owns the row) is a **rejection**: no row is created or revived, and the writer
+   deletes its temp and new final file(s) and exits. The FK also rejects a late insert
+   (`SQLiteConstraintException`). Temp-file cleanup also happens on any
+   exception/cancellation (`finally`). This closes the race "extraction completes after
+   removal".
 5. **Orphan-file sweep (startup; fixed order: reconcile attempt markers → delete orphan
    rows → sweep orphan files → only then enable the scheduler, §23.5):** delete
-   `covers/<dir>` with no `library_item`; delete files in an item's directory referenced
-   by no row; delete `*.tmp` files (at that point no extraction of this process can be in
-   flight, so none is a legitimate uncommitted write; the sweeper never runs while the
-   scheduler is active); missing regenerable files are queued afterwards, subject to §23.3. **Orphan-row prevention:**
+   `covers/<dir>` with no `library_item`; delete **every file in an item's directory that is
+   not referenced** — *referenced* means its name equals the non-null `fileName` of some
+   `publication_cover` row of that item (any slot); the sweeper keys on this and on nothing
+   else (no age heuristic) — which covers both a replaced cover's old file whose
+   post-commit delete never ran and a new file finalized but never committed; delete
+   `*.tmp` files (the temporary suffix of §23.5 step 3; at that point no extraction of this
+   process can be in flight, so none is a legitimate uncommitted write; the sweeper never
+   runs while the scheduler is active); missing regenerable files are queued afterwards, subject to §23.3. **Orphan-row prevention:**
    the FK plus step 4 make orphan rows impossible; a defensive startup `DELETE FROM
    publication_cover WHERE libraryItemId NOT IN (SELECT id FROM library_item)` is a
    one-statement safety net (and enforces that SQLite foreign keys are on, which Room
@@ -1373,6 +1496,29 @@ paths that delete a `library_item`):
 
 Alternative considered: no FK, explicit deletes only (like `annotation`) — rejected, because
 it re-creates the orphan class of bug the guarded design avoids.
+
+**Compatibility of the unique-file replacement (checklist; each item holds because the
+only files that ever exist are *referenced* files, *temporary* files and *unreferenced new
+or old* files).**
+
+- **Startup sweep:** referenced = row `fileName`; everything else, including a replaced
+  cover's leftover and an uncommitted new file, is swept after reconciliation (step 5).
+- **Deletion cascade:** rows go in the removal transaction; `covers/<id>/` (all files, old
+  and new) is deleted after commit.
+- **Pending attempt records:** the `PENDING` row of a first extraction has no `fileName`;
+  an open marker on a `READY` row never touches its referenced file; reconciliation is a
+  database update only (§23.5).
+- **Parked failures:** parking changes counters only; a parked `READY` row keeps its file
+  and renders; a parked row has no file to sweep or replace.
+- **Migration (v5 → v6):** the table is new and empty; there are no pre-existing cover
+  files, so nothing to rename or reconcile.
+- **Orphan annotations:** untouched; they never reference cover files (ADR-0025).
+- **Bitmap cache:** keyed by `fileName`, so a replaced cover is a new key and the previous
+  entry simply ages out of the LRU (§7 rule 7, §19.1).
+- **Source availability and revision:** an unavailable source changes nothing; unreliable
+  or zero timestamps are UNKNOWN and size alone is not identity (§23.2); no full-file hash
+  per Library render; user reading has priority (§19.2); existing artwork survives
+  temporary source unavailability.
 
 ### 23.5 Restart-safe extraction and durable attempt tracking (proposed; closes the native-crash loop)
 
@@ -1403,16 +1549,48 @@ loss can lose the most recent WAL frames, which at worst forgets one attempt.
    ownership check): insert a `PENDING` row if absent; set `attemptStartedAt = now`,
    `attemptExtractorVersion = current`, `attempts = attempts + 1`. Work starts only after
    the commit returns.
-3. **Work** into `local.<ext>.tmp` (temp-then-rename; the old file and row stay
-   until the new file is complete, so a replacement never blanks a displayed cover).
-4. **Normal full outcome.** Success: rename the file, then one guarded transaction writes
-   `READY` and the provenance columns, **clears `attemptStartedAt`** and resets `attempts`
-   and `interruptions` to 0. Explained failure: one transaction clears `attemptStartedAt`,
-   records the §23.3 reason, computes `nextEligibleAt` from `attempts` (parks after attempt
-   4 or on a permanent reason). Expensive CBR/PDF rows commit **immediately per item**
+3. **Work** into a bounded temporary file `covers/<id>/<attemptToken>.tmp` — never into a
+   final name. The existing `READY` row and its file stay **completely unchanged** and keep
+   rendering, so a replacement never blanks or alters a displayed cover. The temporary file
+   is validated (≤ 512 KiB, header/decode check, known MIME) before it is finalized.
+4. **Normal full outcome.**
+   **Success, strictly in this order** (the database is updated *before* the old file is
+   deleted, and no file is ever overwritten): (a) the old `READY` file is untouched; (b) the
+   validated temporary file is **finalized atomically under a new unique name**
+   `local-<token>.<ext>` (§7 rule 1; a rename of the temp inside the same directory, never
+   onto an existing file — if the name exists, draw another token); (c) **one guarded Room
+   transaction** reads the row's current `fileName` as `oldFileName`, then runs the guarded
+   `UPDATE` of §23.4 step 4 (`WHERE libraryItemId = ? AND slot = 'LOCAL' AND attemptStartedAt
+   = ? AND` item-exists guard; **rows updated must be exactly 1**) writing `READY`, the new
+   `fileName`, provenance, dimensions and sizes, **clearing `attemptStartedAt`** and
+   resetting `attempts` and `interruptions` to 0; (d) **only after that transaction has
+   committed**, best-effort delete `oldFileName` (if the delete fails or the process dies it
+   is an unreferenced file that the startup sweep removes).
+   **Failure cases of the replacement:**
+   - *Room update throws or updates ≠ 1 row:* the old `READY` row and its artwork stay as
+     they were and the Library cover is not damaged; the new, unreferenced file (and any
+     temp) is deleted in `finally`. A thrown error closes the attempt as an explained
+     `IO_ERROR` through a separate small transaction; if even that cannot run the marker
+     stays open and step 6 reconciles it.
+   - *The item was removed mid-extraction:* zero rows updated = rejection (§23.4 step 4);
+     no cover row is created or kept; the new file is deleted; nothing references it.
+   - *Process dies between finalize and the Room commit:* the old `READY` row is still the
+     reference (still correct, old artwork intact); the marker is open, so step 6 records
+     an unexplained interruption and persistent attempt accounting still applies; the new
+     file is **unreferenced**, and the sweep (step 7) deletes it. Nothing is half-visible.
+   - *First-ever extraction:* there is no previous `READY` row; the `PENDING` row (created
+     at attempt begin) has no `fileName` until this commit, so a failure leaves a
+     file-less row and no artifact.
+
+   **Explained failure:** one transaction clears `attemptStartedAt` and records the §23.3
+   reason; the §23.3 park rule decides parking (`attempts ≥ 4` or `interruptions ≥ 2` or a
+   permanent reason), otherwise `nextEligibleAt` is computed from `attempts`. A
+   `STORAGE_FULL` found during work is an explained outcome that gives the attempt back
+   (§18.1 item 2, no interruption). Expensive CBR/PDF rows commit **immediately per item**
    (§19.1), not in a batch.
 5. **Explicit cancellation** (the item was removed, the scope was cancelled, the user
-   asked): handled in `finally` under `NonCancellable`: delete the temp file, clear
+   asked): handled in `finally` under `NonCancellable`: delete the temp file and any finalized-but-uncommitted new
+   file, clear
    `attemptStartedAt`, **give back the attempt** (`attempts − 1`), count no interruption.
    A native CBR extraction cannot be cancelled (§19.2); cancellation takes effect after it
    returns. If the process dies before this cleanup runs, the marker is simply found open
@@ -1423,8 +1601,9 @@ loss can lose the most recent WAL frames, which at worst forgets one attempt.
    `failureReason = INTERRUPTED` (status `FAILED_TEMPORARY` for a `PENDING` row; a `READY`
    row stays `READY`), marker cleared — and it is **never assumed to prove a native
    crash** (the OS may have killed the process; `ApplicationExitInfo` exists only on
-   API 30+ and is not used to decide). If `interruptions ≥ 2` the row is **parked**
-   (`parked = 1`, no timer). Otherwise `nextEligibleAt = now + the next §23.3 backoff
+   API 30+ and is not used to decide). If `attempts ≥ 4` or `interruptions ≥ 2` the row is
+   **parked** (`parked = 1`, no timer; an interrupted attempt 4 schedules no further
+   backoff, §23.3). Otherwise `nextEligibleAt = now + the next §23.3 backoff
    delay` (jittered, at least the first-retry delay), so interrupted native work **cannot
    be eligible at startup**. Reconciliation is a database update only; it **never starts
    or awaits an extraction**, and it touches each publication independently.
@@ -1451,7 +1630,7 @@ and every transition above; an instrumented **kill-process** test (a fake slow e
 `am force-stop` or `Process.killProcess` mid-extraction, then relaunch); a
 startup-reconciliation test; a **parked item not retried on the next 3 launches**; an
 explicit Refresh that un-parks; a **sweeper-ordering** test (a valid in-flight marker and
-temp file survive until reconciliation has run).
+temp file survive until reconciliation has run); and the replacement tests of §27.
 
 ### 23.6 v6 → v7 (4.5A.2): `cover_presentation_preference`
 
@@ -1491,7 +1670,10 @@ write; removed with the item). No change to `annotation`, `annotation_source_sna
 - Hand-written `Migration(5, 6)` (4.5A.1), `Migration(6, 7)` (4.5A.2) and a later
   migration only if and when a slice needs it — additive `CREATE TABLE` only, exported
   schema JSON committed, no destructive fallback — same style as `MIGRATION_4_5`. Each
-  migration ships in its own PR with its own migration test.
+  migration ships in its own PR with its own migration test. **`MIGRATION_5_6` executes the
+  Room-exported `createSql` and index statements of `6.json` exactly** (§23.1): no
+  migration-only `CHECK`, and every `DEFAULT` equal to the entity's
+  `@ColumnInfo(defaultValue)`.
 - The legacy `bookmark` table stays untouched (its removal is a separate, dedicated
   maintenance migration, not Phase 4.5).
 - Instrumented migration tests with the repository's raw-SQLite pattern: create the previous
@@ -1500,10 +1682,13 @@ write; removed with the item). No change to `annotation`, `annotation_source_sna
   and the new tables exist and are empty; for v6 also assert, with raw SQL (`sqlite_master`,
   `PRAGMA table_info` / `foreign_key_list` / `index_list`): the `publication_cover` table,
   its **primary key columns in order `(libraryItemId, slot)`**, the **foreign key to
-  `library_item(id)` with `ON DELETE CASCADE`**, the expected indices, that an insert with
-  a `slot` outside `LOCAL`/`USER`/`ONLINE` (and an invalid `status`, `representation`,
-  `localSource` or `sourceChoice`) is rejected by the `CHECK`, and the **cascade** (delete
-  an item, its cover rows vanish).
+  `library_item(id)` with `ON DELETE CASCADE`**, the expected indices, the column defaults,
+  and the **cascade** (delete an item, its cover rows vanish). **Schema equality:** the
+  migrated database's `sqlite_master` SQL, `table_info`, `foreign_key_list` and `index_list`
+  for `publication_cover` equal both the exported `6.json` `createSql` and a database
+  freshly created by Room at v6 (fresh install vs v5→v6 upgrade behave identically). Invalid
+  enum strings and combinations are tested at the **application persistence boundary**
+  (§23.1), not as SQL `CHECK` failures.
 - Existing libraries receive covers through the local backfill (§19), not in the migration.
 - Removal paths (`LibraryDao.removeDeletingKnowledge` / `removeKeepingKnowledge`) gain the
   new tables in the same transaction; cover files are deleted after commit.
@@ -1542,7 +1727,10 @@ write; removed with the item). No change to `annotation`, `annotation_source_sna
   equal); preference resolution; Original slot clamp; EPUB cover href resolution
   (EPUB2 `meta name="cover"`, EPUB3 `properties="cover-image"`, relative paths, unsafe
   paths rejected via `ArchivePolicy.safeName`); first-page selection order consistent with
-  `ArchivePolicy.pages`/`RarContainer`; ISBN-10/13/UPC checksum and normalization;
+  `ArchivePolicy.pages`/`RarContainer` — **a test asserts the reader and the cover extractor
+  use the same shared page-ordering function** and that reader-page reuse (§19.2 rule 4)
+  happens only for exactly the extractor's chosen page (FrontCover vs first page), recording
+  `ORIGINAL` only for byte-exact storage; ISBN-10/13/UPC checksum and normalization;
   filename volume/issue parser corpus (Latin + CJK tokens); cover storage policy (ORIGINAL
   vs DERIVED thresholds, the 512 KiB bound, the fixed recompression ladder and its minimum
   edge, original dimensions recorded, never-upscale, never duplicating a multi-megabyte
@@ -1565,8 +1753,11 @@ write; removed with the item). No change to `annotation`, `annotation_source_sna
 - **Cover lifecycle/refresh tests (4.5A.1):** guarded insert after item removal writes no
   row and leaves no file; removal rolls back without touching files; startup sweep removes
   orphan directories/`.tmp`; temporary failures never write `FAILED_PERMANENT` and never
-  clear a `READY` row; the §23.3 schedule (attempts 1–4, delays ~1/4/16 min, ±20% jitter,
-  parked after attempt 4, a relaunch is not a trigger and does not reset history) and the
+  clear a `READY` row; the §23.3 schedule (attempts 1–4, delays ~1/4/16 min, ±20% jitter),
+  **the park rule (`attempts ≥ 4` or `interruptions ≥ 2`; attempt 4 ending in a temporary
+  failure or an interruption parks with no further backoff; a parked item never becomes
+  eligible because a timer elapsed; parking survives restart; a relaunch is not a trigger
+  and does not reset history; the clock-skew clamp is 19.2 min)** and the
   per-launch retry cap on a virtual clock; batched writes cause **no**
   `LibraryDao.observe()` emission (cover-map `Flow` test) and the throttled map keeps
   emitting under a continuous backfill (a debounce would not); ComicInfo `FrontCover`
@@ -1581,7 +1772,24 @@ write; removed with the item). No change to `annotation`, `annotation_source_sna
   `INTERRUPTED`, counter, backoff, no extraction at startup); a **parked item is not
   retried on the next 3 launches**; an **explicit Refresh un-parks**; a **sweeper-ordering
   test** (reconcile → sweep → schedule; a marker or `.tmp` is never swept before
-  reconciliation).
+  reconciliation). **Atomic-replacement tests (§23.5 step 4):** a replacement writes a new
+  uniquely named file and never overwrites the old one; a **crash between finalize and the
+  Room commit** keeps the old `READY` reference and the sweep deletes the unreferenced new
+  file, with attempt accounting intact; **Room update failure injection** (throws, and
+  returns 0 rows) keeps the old row and artwork and discards the new file; **item removed
+  mid-extraction** creates no row and deletes the new file; a **stale bitmap cache after
+  replacement** is impossible (the cache key follows `fileName`); the **sweep** removes old
+  unreferenced files and `.tmp` without touching referenced ones. **Room schema tests
+  (§24):** fresh install; v5→v6 migration; migrated schema equal to the exported `6.json`
+  `createSql` and to a fresh Room v6 database; foreign keys, composite primary key
+  `(libraryItemId, slot)`, required indices and default values; the repository/DAO rejects
+  an unknown enum string or invalid combination, and reading a row with an unknown stored
+  enum string degrades safely (generated cover, no crash). **Storage tests (§18.1):**
+  admission counts bounded temporary extraction (declared size capped by the archive
+  limits; unknown or implausible declaration → the fixed reserve); API 26+ vs API 24/25
+  free-space paths; `STORAGE_FULL` during work clears the marker, records
+  `FAILED_TEMPORARY/STORAGE_FULL`, counts no interruption and consumes no attempt, with no
+  retry loop after recovery.
 - **Manga corpus (4.5D/4.5G):** the EN/JP/ES ISBN corpus of §12 with the seven recorded
   outcomes per case; no provider coverage figure is asserted.
 
@@ -1661,18 +1869,20 @@ from `main` after 4.5A.1 merges.
 
 - **Scope:** Room v6 with `publication_cover` (§23.1, the **LOCAL/USER/ONLINE slot model**,
   `PRIMARY KEY (libraryItemId, slot)`, FK cascade; **4.5A.1 writes only the LOCAL slot**;
-  provenance in `localSource`/`sourceRef`/`sourceChoice`; extraction status model §23.3);
-  EPUB embedded cover (OPF); CBZ/CBR cover extraction (ComicInfo `FrontCover` page if
+  provenance in `localSource`/`sourceRef`/`sourceChoice`; extraction status model §23.3;
+  **one schema for fresh and migrated databases — Kotlin enums plus repository validation,
+  no migration-only `CHECK`**, §23.1); EPUB embedded cover (OPF); CBZ/CBR cover extraction (ComicInfo `FrontCover` page if
   declared and in range, else first page in natural order; one file, never two); PDF
   first-page preview (bounded, through the existing PDF open path incl. API 24/25 legacy
   probe); **per-item bounded artwork storage** (§7 rule 1: ≈ 512 KiB per cover, ORIGINAL
   only when small and within limits, else DERIVED ≤ 1200 px with the fixed ladder, original
   dimensions recorded), the **low-storage write guard (≥ 512 MiB free after the write) and
   no automatic eviction** (§18.1); **durable per-publication attempt tracking** recorded
-  before native extraction/decoding, reconciled at startup, parking after **two unexplained
-  interruptions**, and the single retry schedule (initial attempt + up to 3 automatic
+  before native extraction/decoding, reconciled at startup, parking after **four attempts or
+  two unexplained interruptions, whichever comes first**, and the single retry schedule (initial attempt + up to 3 automatic
   retries; §23.3, §23.5), with **no startup retry loop**; local cover lifecycle
-  (post-commit background extraction, atomic temp-then-rename, deletion with item removal,
+  (post-commit background extraction, **unique immutable cover files with the Room row
+  updated before the old file is deleted**, deletion with item removal,
   **startup reconciliation → orphan sweep → scheduler**, in that order); safe idempotent
   backfill for existing libraries (cheap rows in 25–50-row batches, each expensive CBR/PDF
   extraction committed immediately, bounded concurrency, **one CBR extraction at a time**,
@@ -1693,7 +1903,9 @@ from `main` after 4.5A.1 merges.
 - **Depends on:** nothing in 4.5 (starts from `main`).
 - **Validation:** JVM tests (§27), v5→v6 migration test incl. FK cascade, extraction corpus
   incl. malformed, oversized and huge-comic-page art, removal-race, kill-process attempt
-  tracking and parked-item tests (§23.5), storage-guard tests (§18.1, no eviction),
+  tracking and parked-item tests (§23.5), atomic-replacement, schema-equality and
+  enum-validation tests (§24, §27), storage-guard tests (§18.1, no eviction, bounded
+  temporary admission, API 26+ vs 24/25),
   process-death backfill resume without a retry loop, a seeded 2,000-item backfill
   measuring Library-query emissions, cover-map emissions and recompositions (§19.1),
   thumbnail decode latency against the §7 gate, emulator
@@ -1904,7 +2116,8 @@ Preconditions closed in part 3: **D12, D20 and D21 are approved** (§31); D18 is
 (§23.1); the **512 KiB per-cover ceiling** and **1200 px default derivative bound** (§7);
 the **low-storage write guard (≥ 512 MiB free after the write)** and **no automatic
 local-cover eviction** (§18.1); **crash-safe durable attempt tracking** and **parking of
-problematic extraction after two unexplained interruptions** with **no startup retry
+problematic extraction after four attempts or two unexplained interruptions, whichever
+first** with **no startup retry
 loop** (§23.3, §23.5); **completed startup reconciliation and sweep before any
 extraction is scheduled**; **latest-value cover observation** (§19.1); **Crop to fill in the
 existing fixed-shape frames** (§7 rule 11); **Room v6 migration and tests** (§24, §27);
@@ -1925,14 +2138,16 @@ cover-shape Settings UI, premium/monetization logic, and the Phase 5 PDF Adapted
 > **Scope:** Room v6 with `publication_cover` (slot model, `PRIMARY KEY (libraryItemId,
 > slot)`, slots LOCAL/USER/ONLINE with **only LOCAL written**, `localSource` +
 > `sourceRef` + `sourceChoice`, FK `ON DELETE CASCADE` plus explicit delete in both
-> removal transactions, `CHECK`s on the value sets, status PENDING/READY/FAILED_PERMANENT/
+> removal transactions, **Kotlin enums with repository/DAO validation on the value sets (no
+> migration-only `CHECK`)**, status PENDING/READY/FAILED_PERMANENT/
 > FAILED_TEMPORARY with the permanent/temporary reason lists, `extractorVersion`,
 > best-effort `sourceRevision` on the cover row only (zero/absent/unreliable
 > `lastModified` = UNKNOWN), and the attempt-tracking columns `attemptStartedAt`,
 > `attemptExtractorVersion`, `attempts`, `interruptions`, `nextEligibleAt`, `parked`) via a
 > hand-written additive `MIGRATION_5_6` (legacy `bookmark` untouched, no `library_item`
 > change) and a raw-SQLite migration test asserting the table, primary key, foreign key,
-> indices, `CHECK` values and the cascade; local artwork extraction for **EPUB** (EPUB2
+> indices, defaults, schema equality with the exported `6.json` and a fresh Room database,
+> enum validation and the cascade; local artwork extraction for **EPUB** (EPUB2
 > `meta name="cover"`, EPUB3 `properties="cover-image"`, path-safe through `ArchivePolicy`),
 > **CBZ/CBR** (ComicInfo `FrontCover` only when its index is in range of the logical page
 > list, else the first page in `ArchivePolicy.pages` / `RarContainer` natural order; **one
@@ -1943,13 +2158,14 @@ cover-shape Settings UI, premium/monetization logic, and the Phase 5 PDF Adapted
 > DERIVED with the fixed ladder; original pixel dimensions recorded; never duplicate large
 > comic pages), the **free-space guard (≥ 512 MiB free after the write; on failure skip,
 > keep existing artwork, record retryable `STORAGE_FULL`, no repeated attempts)** and
-> **no automatic eviction and no adaptive quota** (§18.1); temp file then atomic rename and
-> the row last in a guarded transaction that re-checks the item still exists;
+> **no automatic eviction and no adaptive quota** (§18.1); a bounded temp file, then a new
+> uniquely named immutable file, then the row updated in a guarded transaction (updated
+> rows must equal 1) **before** the old file is deleted;
 > **extraction failure semantics and the single retry schedule** (§23.3: initial attempt +
 > up to 3 automatic retries, no permanent state from a temporary failure, no endless retry,
 > no retry storm after restart, a relaunch is not a trigger); **crash-safe attempt
 > tracking** (§23.5: marker committed *before* native extraction/decoding/conversion;
-> startup reconciliation before scheduling; park after two unexplained interruptions;
+> startup reconciliation before scheduling; park at `attempts ≥ 4` or `interruptions ≥ 2`;
 > reconcile → sweep → schedule; no startup execution of interrupted native work); **safe
 > backfill** (post-commit extraction on `AppContainer.backgroundScope`; cheap rows in
 > 25–50-row batches, each expensive CBR/PDF extraction committed immediately; an
@@ -1968,7 +2184,41 @@ cover-shape Settings UI, premium/monetization logic, and the Phase 5 PDF Adapted
 > permission or any manifest change, Room v7, cover-shape Settings and per-category
 > preferences, the full Crop/Fit/Original/Custom UI (4.5A.2), premium/monetization logic,
 > Choose from device, metadata networking, Google Books, Metron integration, provider
-> schemas, and any Phase 5 PDF Adapted work; no new dependency. **Validate** with focused
+> schemas, and any Phase 5 PDF Adapted work; no new dependency.
+>
+> **Mandatory safeguards (final QA; each must be visibly implemented and tested):**
+>
+> 1. **Matching Room schemas.** Fresh install and v5→v6 migration produce the same
+>    `publication_cover` schema: `MIGRATION_5_6` runs the exported `6.json` `createSql`
+>    exactly; **no migration-only `CHECK`**; enums (`CoverSlot`, `CoverStatus`,
+>    `CoverFailureReason`, `CoverRepresentation`, `CoverLocalSource`, `CoverSourceChoice`)
+>    plus repository/DAO validation; unknown stored enum strings degrade safely;
+>    `@ColumnInfo(defaultValue)` equals the migration's `DEFAULT` exactly (§23.1, §24).
+> 2. **Unique immutable cover-file identity.** Each successful extraction writes
+>    `local-<token>.<ext>` (no source-derived text); never overwrite or rename over an
+>    existing file; the bitmap-cache key and the cover map include `fileName` (§7, §19.1).
+> 3. **Update the database before deleting the old cover.** Order: keep old READY → bounded
+>    temp → finalize under a new name → guarded Room update → only then delete the old file;
+>    failures keep the old row and artwork and discard the new file (§23.5).
+> 4. **A zero-row guarded write is a failure.** Updated rows must equal 1; item removed
+>    mid-extraction creates no row and deletes the new file (§23.4).
+> 5. **Park at `attempts ≥ 4` or `interruptions ≥ 2`, whichever first**; attempt 4 ending
+>    in a temporary failure or interruption parks with no further backoff; parking survives
+>    restart; a launch is not a trigger; the clock-skew clamp is 19.2 min, the largest
+>    single delay (§23.3).
+> 6. **Correct reader-page reuse.** Reuse a reader page only when it is exactly the page the
+>    extractor would choose (valid ComicInfo FrontCover, else the first page), using one
+>    shared page-ordering function with a test; store LOCAL provenance and record
+>    ORIGINAL or DERIVED from the stored bytes; no extra row (§19.2 rule 4).
+> 7. **Bounded CBR temporary-storage admission.** Count temporary extraction (declared size
+>    capped by archive limits, else the proposed fixed reserve) plus the 512 KiB artifact
+>    against the 512 MiB reserve; `STORAGE_FULL` during work closes the attempt normally
+>    (no interruption, no attempt consumed) (§18.1).
+> 8. **API-compatible low-storage checks.** API 26+ may use `getAllocatableBytes(
+>    getUuidForPath(filesDir))` (taking the minimum with `StatFs`); API 24/25 use
+>    `StatFs.availableBytes` with the same reserve and must not claim those APIs (§18.1).
+>
+> **Validate** with focused
 > JVM unit tests (storage policy and ladder, status transitions and the retry schedule, the
 > attempt state machine, href resolution, ComicInfo index fallback, first-page selection,
 > slot resolution, free-space guard, one-CBR scheduler) and instrumented tests (migration

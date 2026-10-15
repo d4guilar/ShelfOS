@@ -416,8 +416,11 @@ and import and reading never depend on a provider.
   storage (≈ 512 KiB per cover: small originals byte-exact within limits, larger ones as
   bounded derivatives of ≈ 1200 px that record the original dimensions; a low-storage write
   guard; **no automatic eviction**), a LOCAL/USER/ONLINE cover-slot schema (only LOCAL is
-  written), local cover lifecycle with **crash-safe durable attempt tracking** (parked after
-  two unexplained interruptions) and safe backfill (batched, one CBR extraction at a time),
+  written; one Room schema for fresh and migrated databases, with enums and repository
+  validation instead of migration-only `CHECK`s), local cover lifecycle with **crash-safe
+  durable attempt tracking** (parked after four attempts or two unexplained interruptions,
+  whichever comes first), **unique immutable cover files** (the Room row is updated before
+  the old file is deleted) and safe backfill (batched, one CBR extraction at a time),
   a minimal shared cover renderer using Crop to fill in the existing frames for the
   Library, Search, details, Notes and expand transition; **no networking**. **4.5A.2 Cover Presentation**
   (Room v7): display shape Original / 2:3 / 3:4 / 4:5 / 1:1 / Custom W:H (1:2 to 2:1, no

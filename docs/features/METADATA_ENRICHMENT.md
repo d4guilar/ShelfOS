@@ -132,7 +132,8 @@ every case.
 Cover source and cover display are separate. ShelfOS keeps the best available artwork under
 a per-item bounded storage policy (≈ 512 KiB per cover; small originals byte-exact within
 limits, larger ones as a bounded derivative that records the original dimensions; no
-automatic eviction; the source publication is never modified) and never
+automatic eviction; each replacement is a new immutable file referenced only after its
+database row commits; the source publication is never modified) and never
 rewrites it into a fixed shape. A shared cover renderer applies the effective display
 shape — **Original, 2:3, 3:4, 4:5, 1:1 or Custom W:H** (custom ratios 1:2 to 2:1; no Auto
 option; default 2:3 Crop, Documents Original) — with

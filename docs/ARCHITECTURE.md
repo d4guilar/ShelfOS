@@ -515,7 +515,7 @@ USER_SELECTED
 ```
 
 A user-selected cover always wins; a weak or ambiguous online match never replaces usable
-local artwork. Cover *source* and cover *presentation* are separate: artwork is stored under a per-item bounded policy (≈ 512 KiB per cover; small originals byte-exact within limits, larger ones as bounded derivatives recording the original dimensions; one LOCAL/USER/ONLINE slot per publication; no automatic eviction) and
+local artwork. Cover *source* and cover *presentation* are separate: artwork is stored under a per-item bounded policy (≈ 512 KiB per cover; small originals byte-exact within limits, larger ones as bounded derivatives recording the original dimensions; one LOCAL/USER/ONLINE slot per publication; each extraction writes a new, uniquely named, immutable file and the Room row is updated before the old file is deleted; no automatic eviction) and
 the shared cover renderer applies the user's display shape (Original,
 2:3, 3:4, 4:5, 1:1, Custom) with Crop or Fit, never stretching. See
 [`PHASE_4_5_IMPLEMENTATION_PLAN.md`](PHASE_4_5_IMPLEMENTATION_PLAN.md) §7 and §17.

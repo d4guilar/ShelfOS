@@ -1,5 +1,40 @@
 # Documentation Changelog
 
+## Phase 4.5 final QA reconciliation (2026-10-15)
+
+Documentation only; closes the LOW notes of the final independent Codex High review (PASS
+WITH NOTES: 0 blocker/high/medium, 7 LOW; plan accepted for merge). Phase 4 remains
+complete; Phase 4.5 is still PLANNING; Phase 5 remains Advanced PDF Ingestion; no slice is
+implemented and no production code changed. All accepted decisions are unchanged (D3, D9,
+D10, D11, D12, D18, D20, D21; D19 open; Open Library and Metron conditional; Google Books
+rejected).
+
+- **One Room schema (plan sections 23.1, 24, 27, 29, 32):** `MIGRATION_5_6` executes the
+  Room-exported `6.json` `createSql` exactly; the migration-only `CHECK` constraints and the
+  "Room cannot declare CHECK" caveat are removed. Allowed values are enforced by typed
+  Kotlin enums plus repository/DAO validation, with safe reads of unknown stored values;
+  `@ColumnInfo(defaultValue)` must equal the migration defaults. Schema-equality tests added.
+- **Atomic cover replacement (7, 19.1, 23.4, 23.5, 27):** each successful extraction writes
+  a new immutable `local-<token>.<ext>`; the Room row is updated in a guarded transaction
+  (exactly one updated row) before the old file is deleted; failures keep the old row and
+  artwork; the sweeper deletes files not referenced by any row and `*.tmp`; the bitmap
+  cache key follows `fileName`.
+- **Retry exhaustion (23.3, 23.5):** park at attempts >= 4 or interruptions >= 2,
+  whichever first; attempt 4 ending in a temporary failure or interruption parks with no
+  further backoff; a parked item ignores timers; the clock-skew clamp is the largest single
+  delay, 19.2 minutes (not the 25.2-minute cumulative bound). Retry schedule unchanged.
+- **CBR cover reuse (19.2):** reuse a reader page only when it is exactly the page the
+  extractor would choose, with one shared page-ordering function; provenance stays LOCAL
+  with ORIGINAL or DERIVED from the stored bytes. The stale "DERIVED ARCHIVE_FIRST_PAGE"
+  rule is gone.
+- **Storage guard (18.1):** admission counts bounded temporary extraction (declared size
+  capped by archive limits, else a proposed fixed reserve); API 26+ may use
+  `getAllocatableBytes`/`getUuidForPath` (verified API 26), API 24/25 use `StatFs`;
+  `STORAGE_FULL` during work closes the attempt normally. D20 numbers unchanged.
+- **Lifecycle compatibility (23.4):** checklist for the sweep, cascade, pending and
+  parked rows, migration, orphan annotations and the bitmap cache.
+- Plan section 32 now carries the eight mandatory safeguards for the 4.5A.1 prompt.
+
 ## Phase 4.5 plan remediation, part 3 (2026-10-15)
 
 Documentation only; closes the findings of the second independent Codex High review
