@@ -460,16 +460,17 @@ Introduce sustainable monetization without damaging free ShelfOS.
 
 - centralized entitlement system
 - Google Play Billing
-- permanent **ShelfOS Plus** lifetime unlock ($14.99 launch/founding direction)
-- premium theme packs ($4.99 each) with upgrade accounting toward Plus where platform
-  billing capabilities allow
+- permanent **ShelfOS Plus** lifetime unlock ($29.99 launch/founding direction)
+- individual premium themes ($4.99 each) and four-theme packs ($11.99 each), with
+  upgrade accounting toward Plus where platform billing capabilities allow
 - restore purchase behavior
 - Plus entitlement registry and settings surface
 - graceful offline entitlement behavior
 
 ### Candidate Plus content
 
-- the 13 launch premium themes in three packs (Retro Systems, Pop & Print, Dream Internet)
+- the 16 launch premium themes in four packs of four (Retro Systems, Pop & Print,
+  Dream Internet, Interface Futures)
 - curated accent sets and optional theme effects
 - local cosmetic personalization extras and Labs / early access
 

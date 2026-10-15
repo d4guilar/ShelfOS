@@ -258,8 +258,12 @@ accents and concept-image references live in `THEMES.md`.
 
 ## 13. Premium theme strategy
 
-Premium themes are optional alternate worlds for the user's library, delivered as theme
-packs ($4.99 each) or through ShelfOS Plus ($14.99 lifetime launch direction). They may
+Premium themes are optional alternate worlds for the user's library, delivered as
+individual themes ($4.99 each), four-theme packs ($11.99 each) or through ShelfOS Plus
+($29.99 lifetime launch direction). The launch lineup is four paid packs of four themes
+each — 16 premium themes total. Each premium theme is a full presentation experience with
+its own visual identity, accent language, ambient animation, optional startup sequence,
+themed assets and themed empty states, not a color swap. They may
 use stronger motion, custom presentation, optional effects and theme-specific browsing
 behavior while preserving the underlying ShelfOS navigation and accessibility model.
 

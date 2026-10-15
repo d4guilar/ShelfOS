@@ -56,6 +56,23 @@ theme packs or through the lifetime ShelfOS Plus entitlement, with a themed-pack
 path toward Plus. The list above is retained as the record of the earlier backlog; see
 `docs/design/THEMES.md` and `docs/features/PREMIUM.md`.
 
+Lineup and pricing reconciliation (2026-10-15, current): the premium lineup is
+**16 themes in four paid packs of four** —
+
+- **Retro Systems** — Terminal, Pagestation, **ShelfXP** (replaces *Glassline*; finalized
+  Windows 95/98/early-XP direction), MonoDot
+- **Pop & Print** — Sprite Clash, Halftone Hero, Pocket Pixel, Manga Print (unchanged)
+- **Dream Internet** — AeroBloom, Neo Shibuya, Sakura Mist, ClipPop 2000 (unchanged)
+- **Interface Futures** — Deckwave (moved out of Retro Systems), Orbitline, Softshell,
+  Gridframe
+
+Pricing direction: individual premium theme **$4.99**; four-theme pack **$11.99**
+(versus $19.96 individually); **ShelfOS Plus Lifetime $29.99**, covering all current
+premium themes/packs and future official first-party premium themes. Prices are product
+direction, not implemented storefront behavior. The five free themes are unchanged and
+none of them may move behind Plus. The 2026-09-28 paragraph above is retained as
+historical chronology only.
+
 ## Consequences
 
 Positive:
