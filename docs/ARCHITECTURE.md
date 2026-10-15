@@ -19,6 +19,10 @@ was available (that path is reviewed from AOSP source contract only) and no
 dedicated foldable hardware was used. Do not describe ShelfOS as a public release:
 [Public Demo Readiness](VALIDATION.md) is a separate, later gate.
 
+Phase 4 (Notes and Knowledge Layer) is complete (2026-10-15, Room v5). The next active
+milestone is Phase 4.5 — Metadata, Covers & Library Presentation
+([plan](PHASE_4_5_IMPLEMENTATION_PLAN.md)); Phase 5 remains Advanced PDF Ingestion.
+
 [PHASE_1_PLAN](PHASE_1_PLAN.md) scopes that first slice. Accepted ADRs 0018–0022
 extend the target architecture; they do not claim the new ingestion, Series,
 Shelves, Source or Adapted PDF systems exist. The detailed specifications below
@@ -500,15 +504,22 @@ Do not overwrite user-edited fields during refresh.
 
 ## 15. Cover precedence
 
-Suggested:
+Reconciled 2026-10-15 with [Metadata enrichment](features/METADATA_ENRICHMENT.md) §3 and
+`PRODUCT.md` (the earlier list here ranked EMBEDDED above ONLINE_MATCH):
 
 ```text
 USER_SELECTED
-> EMBEDDED
-> ONLINE_MATCH
-> FIRST_PAGE
+> CONFIDENT HIGH-QUALITY ONLINE_MATCH
+> USABLE EMBEDDED (then FIRST_PAGE render)
 > GENERATED
 ```
+
+A user-selected cover always wins; a weak or ambiguous online match never replaces usable
+local artwork. Cover *source* and cover *presentation* are separate: originals are cached at
+native dimensions and the shared cover renderer applies the user's display shape (Original,
+2:3, 3:4, 4:5, 1:1, Custom) with Crop or Fit, never stretching. See
+[`PHASE_4_5_IMPLEMENTATION_PLAN.md`](PHASE_4_5_IMPLEMENTATION_PLAN.md) §7 and §17.
+Today (Room v5) every cover is the generated visual; no artwork is extracted yet.
 
 Generated covers should still look intentional and fit the active ShelfOS design language.
 
@@ -597,6 +608,13 @@ Default online enrichment should use public/no-key services or authentication de
 for installed clients. Never embed secret provider credentials in the APK. Optional
 BYOK credentials remain local where practical. Provider data is cached only where its
 current licensing and terms permit; no provider is assumed to grant permanent storage.
+
+Current network state (verified 2026-10-15): the manifest explicitly removes the
+transitively merged `INTERNET` and `ACCESS_NETWORK_STATE` permissions, and no HTTP client is
+a dependency. Phase 4.5C is the first planned slice to add network access, deliberately and
+behind a user-visible toggle; see
+[`PHASE_4_5_IMPLEMENTATION_PLAN.md`](PHASE_4_5_IMPLEMENTATION_PLAN.md) §19 and §21. Keyed
+providers are acceptable only as user-supplied keys (BYOK).
 
 ## 19. Error model
 

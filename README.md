@@ -38,14 +38,14 @@ supplied by ShelfOS; you read files you own or have legally obtained. See
 caveats (including API 24/25 legacy-PDF handling that the owner's API 27 test
 device does not exercise).
 
-This is not a release: ShelfOS remains an early development prototype. The next
-roadmap area is Phase 4 (Notes and Knowledge Layer), which has started: 4A through
-4E are merged (4D, the Room-v5 global Notes hub, in PR #38; 4E, Portable Knowledge
-& Restore, in PR #40). Phase 4F (accumulated acceptance) is **ACCEPTED**: owner Samsung SM-T580 UAT and RP5
-physical/controller UAT both PASS, and the final independent Codex High closure review
-returned PASS WITH NOTES (no BLOCKER, HIGH or MEDIUM findings). Evidence and the remaining
-TalkBack gap are recorded in `docs/VALIDATION.md`. Phase 4 is **ACCEPTED** and will be
-complete on merge of the Phase 4F acceptance PR.
+This is not a release: ShelfOS remains an early development prototype. Phase 4 (Notes
+and Knowledge Layer) is **complete** (2026-10-15; 4A–4F merged, final acceptance in PR #42):
+owner Samsung SM-T580 UAT and RP5 physical/controller UAT both PASS, and the final
+independent Codex High closure review returned PASS WITH NOTES. Evidence and the remaining
+TalkBack gap are recorded in `docs/VALIDATION.md`. The next active milestone is **Phase
+4.5 — Metadata, Covers & Library Presentation** (planning only; see
+[the plan](docs/PHASE_4_5_IMPLEMENTATION_PLAN.md)); Library covers are still generated
+placeholders today. Phase 5 remains Advanced PDF Ingestion.
 
 Global destinations are Library, Search, Notes, Shelves and Settings. Notes is a real
 cross-library hub (Phase 4D, merged and implementation complete); Shelves is a

@@ -658,6 +658,12 @@ provider-neutral metadata layer, never through an individual provider.
 Full behavior, precedence and scope rules are owned by
 [Metadata enrichment](features/METADATA_ENRICHMENT.md).
 
+This work is scheduled as **Phase 4.5 — Metadata, Covers & Library Presentation**
+([plan](PHASE_4_5_IMPLEMENTATION_PLAN.md)); Books, Comics and Manga are all required for its
+acceptance. Cover presentation is a free core preference: original artwork is preserved and
+the user chooses the display shape (Original, 2:3, 3:4, 4:5, 1:1, Custom) and Crop or Fit,
+globally with optional per-category overrides.
+
 ## Themes as layers, not alternate products
 
 Themes share one ShelfOS information architecture.

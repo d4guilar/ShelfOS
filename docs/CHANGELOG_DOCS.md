@@ -1,5 +1,30 @@
 # Documentation Changelog
 
+## Phase 4.5 planning — Metadata, Covers & Library Presentation (2026-10-15)
+
+- New `docs/PHASE_4_5_IMPLEMENTATION_PLAN.md` (implementation authority): repository
+  baseline at `e869762` (Room v5, no network permission, no cover artwork extracted —
+  every cover is generated at a fixed 0.68 ratio), cover presentation model, preference
+  hierarchy, provenance/confidence, provider-neutral architecture, provider terms research
+  (accessed 2026-10-15), matching/override/precedence rules, caching, lifecycle, privacy,
+  proposed Room v6/v7 (planning only), slices 4.5A–4.5G, acceptance and 17 open decisions.
+  Slice adjustment: 4.5A begins with local artwork extraction because none exists.
+- `docs/ROADMAP.md`: inserted Phase 4.5 between Phase 4 and Phase 5 (numbering unchanged);
+  Phase 4 marked COMPLETE (PR #42); stale Phase 3/4 current-status text and Phase 1
+  metadata-milestone/Future notes updated narrowly. README, `PHASE_4_IMPLEMENTATION_PLAN.md`
+  header and `features/ANNOTATIONS.md` status reconciled to Phase 4 complete.
+- Reconciled conflicts (not silently chosen): `ARCHITECTURE.md` §15 and
+  `design/VISUAL_IDENTITY.md` ranked EMBEDDED above ONLINE covers, contradicting
+  `METADATA_ENRICHMENT.md` §3 and `PRODUCT.md`; both now use USER > confident high-quality
+  ONLINE > usable EMBEDDED (> FIRST_PAGE) > GENERATED. `METADATA_ENRICHMENT.md` deferred
+  comic/manga providers to "later" and named Google Books a fallback; it now records that
+  Comics and Manga are required Phase 4.5 scope and that Google Books is RESEARCH / NOT YET
+  APPROVED (key required, credentials may not be embedded in open source, no permanent
+  copies, fee restriction). Cover-shape ratios previously "open" are now specified.
+- `ARCHITECTURE.md` records the verified network state (manifest removes `INTERNET`).
+  `PRODUCT.md` links the plan. Documentation only; no code, Gradle, schema or dependency
+  change.
+
 ## Phase 4 final acceptance (2026-10-15)
 
 - Recorded the final independent Codex High Phase 4F closure review: **PASS WITH NOTES**,

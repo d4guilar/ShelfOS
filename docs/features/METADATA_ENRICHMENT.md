@@ -4,6 +4,12 @@ Phase 0 contains original mock metadata only. The extraction, inference, editing
 provenance and provider work described below starts with functional import/library
 phases; none is implemented in the Phase 0 prototype. See ADR-0016.
 
+**Implementation authority (2026-10-15):** this specification is delivered by
+[Phase 4.5 — Metadata, Covers & Library Presentation](../PHASE_4_5_IMPLEMENTATION_PLAN.md).
+Current state at Room v5: only EPUB title/creator and ComicInfo title/writer/manga-direction
+are extracted; every Library cover is generated; there is no network access. Phase 4.5
+requires Books, Comics **and** Manga enrichment for acceptance (§17 below is reconciled).
+
 ## 1. Goal
 
 ShelfOS should transform an imported file into a useful library object without requiring users to manually type information that can be safely inferred or resolved.
@@ -117,6 +123,16 @@ This does not change the general provenance order in §3 for other fields. It re
 cover resolution has its own policy, and that USER remains the absolute top priority in
 every case.
 
+### Cover presentation (accepted 2026-10-15)
+
+Cover source and cover display are separate. ShelfOS caches the best original artwork at
+native dimensions and never rewrites it into a fixed shape. A shared cover renderer applies
+the effective display shape — **Original, 2:3, 3:4, 4:5, 1:1 or Custom W:H** — with
+**Crop to fill** or **Fit entire artwork**, never stretching or squashing. The effective
+shape is a global default with optional per-category overrides (Books, Comics, Manga,
+Documents); per-Shelf and per-item overrides are later work. Details in the
+[Phase 4.5 plan](../PHASE_4_5_IMPLEMENTATION_PLAN.md) §7–§8.
+
 ## 4. Provider architecture
 
 Do not hard-code one metadata service into UI or domain logic.
@@ -130,9 +146,13 @@ MetadataProvider
 ├── FilenameInferenceProvider
 ├── OpenLibraryProvider
 ├── GoogleBooksProvider
-├── ComicMetadataProvider        later
-└── MangaMetadataProvider        later
+├── ComicMetadataProvider        slot (Phase 4.5E; terms-gated)
+└── MangaMetadataProvider        slot (Phase 4.5D; terms-gated)
 ```
+
+Comic/Manga providers are `MetadataProvider` implementations scoped to those categories, not
+separate abstractions. Open Library and Google Books are named above as candidates only;
+neither is production-approved until its terms review passes (see §10).
 
 A `MetadataEnrichmentService` coordinates providers and produces candidates.
 
@@ -389,6 +409,16 @@ Provider use must respect current API terms, quotas, attribution requirements, a
 
 Do not assume current provider behavior is permanent.
 
+**Terms review (2026-10-15; reconciliation):** Google Books is **not** approved as a
+zero-setup fallback. Its documentation requires an API key or OAuth token for public
+requests, Google's API terms say developer credentials may not be embedded in open-source
+projects and forbid permanent copies beyond cache headers, and the Books terms restrict
+charging users a fee for the application. It stays RESEARCH / NOT YET APPROVED, at most a
+future user-key (BYOK) option after legal review. Open Library is the recommended default
+candidate pending administrator approval. Comic and Manga provider findings (Metron, Comic
+Vine, GCD, MangaDex, AniList and others) are in the
+[Phase 4.5 plan](../PHASE_4_5_IMPLEMENTATION_PLAN.md) §14.
+
 ## 11. Local-first caching
 
 After successful enrichment, persist usable metadata locally.
@@ -534,11 +564,13 @@ Reading remains available.
 - generated fallback cover
 - provenance model
 
-### Next enrichment milestone
+### Next enrichment milestone (Phase 4.5)
 
 - ISBN/identifier detection
-- Open Library provider
-- Google Books fallback
+- local cover artwork extraction and cover presentation (shape + Crop/Fit)
+- Open Library provider (pending terms approval)
+- Google Books only as a possible future BYOK option (not a default fallback; §10)
+- Comic and Manga enrichment (required for Phase 4.5 acceptance; providers terms-gated)
 - confidence scoring
 - match confirmation
 - background automatic metadata enrichment after commit
@@ -550,7 +582,7 @@ Reading remains available.
 
 ### Later
 
-- comic/manga providers
+- additional BYOK specialist comic/manga providers beyond the Phase 4.5 slots
 - OCR-assisted identification
 - series intelligence
 - bulk library enrichment

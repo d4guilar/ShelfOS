@@ -122,10 +122,15 @@ ShelfOS should be **beautiful by default, configurable for power users**. Missin
 or poor metadata must not become a broken-looking library. Cover source and cover
 presentation are separate: preserve original artwork while the UI applies
 consistent framing, category-appropriate proportions, theme-aware backgrounds and
-crop/contain behavior without stretching. Exact ratios and crop defaults remain open.
+crop/contain behavior without stretching. The shape options (Original, 2:3, 3:4, 4:5,
+1:1, Custom W:H), Crop to fill / Fit entire artwork and the global-plus-per-category
+preference model are accepted in the
+[Phase 4.5 plan](../PHASE_4_5_IMPLEMENTATION_PLAN.md) §7–§8; the shipped defaults are an
+open administrator decision there.
 
-The source priority remains user-selected, embedded, trusted online candidate,
-first-page-derived, then generated. A generated fallback uses title, creator,
+The source priority (reconciled 2026-10-15 with `features/METADATA_ENRICHMENT.md` §3) is
+user-selected, confident high-quality online, usable embedded, first-page-derived, then
+generated; a weak or ambiguous online match never replaces usable local art. A generated fallback uses title, creator,
 category and restrained theme-aware ShelfOS typography so local documents and
 obscure works still look intentional.
 
