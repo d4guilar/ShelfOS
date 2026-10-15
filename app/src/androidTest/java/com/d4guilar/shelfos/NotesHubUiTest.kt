@@ -80,7 +80,10 @@ class NotesHubUiTest {
     private fun awaitNoTag(tag: String, timeout: Long = 10_000) = compose.waitUntil(timeout) { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isEmpty() }
     /** The hub's own result count ("N items"): the list is lazy, so composed rows are not the number of results. */
     private fun countText() = compose.onAllNodes(hasTestTag("notes_count")).fetchSemanticsNodes().joinToString { n -> n.config.getOrNull(SemanticsProperties.Text)?.joinToString { it.text }.orEmpty() }
+    /** On short windows (below 480 dp high) the controls are the list's first item and scroll away; bring them back before using them. */
+    private fun controlsInView() { if (compose.onAllNodesWithTag("notes_list").fetchSemanticsNodes().isNotEmpty()) { compose.onNodeWithTag("notes_list").performScrollToIndex(0); compose.waitForIdle() } }
     private fun awaitRows(n: Int) {
+        controlsInView()
         val want = if (n == 1) "1 item" else "$n items"
         try { compose.waitUntil(15_000) { compose.onAllNodes(hasTestTag("notes_count") and hasText(want)).fetchSemanticsNodes().isNotEmpty() } }
         catch (e: androidx.compose.ui.test.ComposeTimeoutException) { fail("expected '$want' but the hub showed '${countText()}'") }
@@ -185,7 +188,7 @@ class NotesHubUiTest {
         openNotes()
         // Default sort is by publication: a header per publication, the removed one marked in text.
         revealTag("notes_group_removed"); compose.onNodeWithTag("notes_group_removed").assertExists()
-        compose.onNodeWithTag("notes_publication_filter").performClick()
+        controlsInView(); compose.onNodeWithTag("notes_publication_filter").performClick()
         awaitTag("notes_publication_list")
         compose.onAllNodesWithTag("notes_publication_option").fetchSemanticsNodes().let { assertTrue(it.size >= 3) }
         compose.onNode(hasTestTag("notes_publication_option") and hasText("Hub Gone Book", substring = true) and hasText("removed", substring = true)).performClick()
@@ -194,7 +197,7 @@ class NotesHubUiTest {
         compose.onNodeWithTag("notes_group_delete").assertExists()
         compose.onNodeWithTag("notes_publication_filter").assertTextContains("Hub Gone Book", substring = true)
         // Back to all publications.
-        compose.onNodeWithTag("notes_publication_filter").performClick()
+        controlsInView(); compose.onNodeWithTag("notes_publication_filter").performClick()
         compose.onNodeWithTag("notes_publication_option_all").performClick()
         awaitRows(8)
     }
@@ -207,11 +210,11 @@ class NotesHubUiTest {
         val pdfNoteAt = byPublication.indexOfFirst { it.contains("hubmark pdf note") }; val pdfBookmarkAt = byPublication.indexOfFirst { it.contains("hubmark pdf bookmark") }
         assertTrue("both PDF rows are adjacent, so both are on screen", pdfNoteAt >= 0 && pdfBookmarkAt >= 0)
         assertTrue(pdfNoteAt < pdfBookmarkAt)
-        compose.onNodeWithTag("notes_sort_date").performClick()
+        controlsInView(); compose.onNodeWithTag("notes_sort_date").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("notes_header").fetchSemanticsNodes().isEmpty() }
         // Newest first: the orphan note was created last.
         compose.waitUntil(10_000) { descriptionsInOrder().firstOrNull()?.contains("hubmark orphan note") == true }
-        compose.onNodeWithTag("notes_sort_publication").performClick()
+        controlsInView(); compose.onNodeWithTag("notes_sort_publication").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("notes_header").fetchSemanticsNodes().isNotEmpty() }
     }
 
@@ -406,6 +409,8 @@ class NotesHubUiTest {
     @Test fun keyboardAndGamepadReachAndActivateEveryControl() {
         openNotes()
         // Keyboard: focus a filter chip and activate it with Enter.
+        // Prime non-touch input mode (a real key event), as a keyboard or gamepad user is in; touch mode refuses Compose focus requests on handhelds.
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DPAD_DOWN); compose.waitForIdle()
         compose.onNodeWithTag("notes_filter_highlights").performSemanticsAction(SemanticsActions.RequestFocus)
         compose.onNodeWithTag("notes_filter_highlights").assertIsFocused().performKeyInput { pressKey(Key.Enter) }
         awaitRows(1)
