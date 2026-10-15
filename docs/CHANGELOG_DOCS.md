@@ -1,5 +1,164 @@
 # Documentation Changelog
 
+## Phase 4.5 final QA reconciliation (2026-10-15)
+
+Documentation only; closes the LOW notes of the final independent Codex High review (PASS
+WITH NOTES: 0 blocker/high/medium, 7 LOW; plan accepted for merge). Phase 4 remains
+complete; Phase 4.5 is still PLANNING; Phase 5 remains Advanced PDF Ingestion; no slice is
+implemented and no production code changed. All accepted decisions are unchanged (D3, D9,
+D10, D11, D12, D18, D20, D21; D19 open; Open Library and Metron conditional; Google Books
+rejected).
+
+- **One Room schema (plan sections 23.1, 24, 27, 29, 32):** `MIGRATION_5_6` executes the
+  Room-exported `6.json` `createSql` exactly; the migration-only `CHECK` constraints and the
+  "Room cannot declare CHECK" caveat are removed. Allowed values are enforced by typed
+  Kotlin enums plus repository/DAO validation, with safe reads of unknown stored values;
+  `@ColumnInfo(defaultValue)` must equal the migration defaults. Schema-equality tests added.
+- **Atomic cover replacement (7, 19.1, 23.4, 23.5, 27):** each successful extraction writes
+  a new immutable `local-<token>.<ext>`; the Room row is updated in a guarded transaction
+  (exactly one updated row) before the old file is deleted; failures keep the old row and
+  artwork; the sweeper deletes files not referenced by any row and `*.tmp`; the bitmap
+  cache key follows `fileName`.
+- **Retry exhaustion (23.3, 23.5):** park at attempts >= 4 or interruptions >= 2,
+  whichever first; attempt 4 ending in a temporary failure or interruption parks with no
+  further backoff; a parked item ignores timers; the clock-skew clamp is the largest single
+  delay, 19.2 minutes (not the 25.2-minute cumulative bound). Retry schedule unchanged.
+- **CBR cover reuse (19.2):** reuse a reader page only when it is exactly the page the
+  extractor would choose, with one shared page-ordering function; provenance stays LOCAL
+  with ORIGINAL or DERIVED from the stored bytes. The stale "DERIVED ARCHIVE_FIRST_PAGE"
+  rule is gone.
+- **Storage guard (18.1):** admission counts bounded temporary extraction (declared size
+  capped by archive limits, else a proposed fixed reserve); API 26+ may use
+  `getAllocatableBytes`/`getUuidForPath` (verified API 26), API 24/25 use `StatFs`;
+  `STORAGE_FULL` during work closes the attempt normally. D20 numbers unchanged.
+- **Lifecycle compatibility (23.4):** checklist for the sweep, cascade, pending and
+  parked rows, migration, orphan annotations and the bitmap cache.
+- Plan section 32 now carries the eight mandatory safeguards for the 4.5A.1 prompt.
+
+## Phase 4.5 plan remediation, part 3 (2026-10-15)
+
+Documentation only; closes the findings of the second independent Codex High review
+(0 HIGH, 2 MEDIUM). Phase 4 remains complete; Phase 4.5 is still PLANNING; no slice is
+implemented; Room v6 is planned (not implemented) and v7 stays reserved for 4.5A.2.
+
+- **D20 approved (initial 4.5A.1 policy):** per-item local-cover storage (about 512 KiB per
+  cover; 2,000 covers about 1 GiB is a worst-case planning bound), a write guard that
+  keeps at least 512 MiB free after the write, retryable `STORAGE_FULL` without a retry
+  storm, **no automatic eviction** and no adaptive total quota. Superseded and removed as
+  policy: the 8% / 256-768 MiB adaptive quota, the 150 MiB guard, automatic artwork
+  eviction, the ~1 MiB / ~4 Mpx byte-exact ceiling and the 1600 px default derivative
+  (now about 1200 px with a fixed five-pass JPEG ladder and an 800 px minimum edge).
+- **Crash loop closed:** a durable per-publication attempt marker is committed before
+  native extraction, decoding or re-encoding; startup reconciliation records abandoned
+  attempts as unexplained interruptions (never assumed to be native crashes), parks an
+  item after two, and runs before the orphan sweep and before anything is scheduled.
+  Design compared (columns on the LOCAL row, a tiny table, a marker file); test list added.
+- **One retry schedule:** initial attempt plus up to 3 automatic retries (about 1, 4 and 16
+  minutes, plus or minus 20% jitter; about 21 minutes nominal), then parked; a relaunch is
+  not a trigger; interruptions consume attempts and park earlier. The older five-attempt
+  timing is withdrawn.
+- **D21 approved:** cover slot model `PRIMARY KEY (libraryItemId, slot)` with LOCAL, USER
+  and ONLINE slots (4.5A.1 writes only LOCAL), provenance in `localSource`/`sourceRef`/
+  `sourceChoice`, one file per publication and slot, no file sharing. The
+  provenance-as-key design is superseded.
+- **D12 approved:** bounded PDF preview (derived, white background, about 1200 px, JPEG
+  about q90). WebP facts corrected from the Android SDK (`WEBP` deprecated in API 30;
+  `WEBP_LOSSY`/`WEBP_LOSSLESS` since API 30; legacy `WEBP` lossless at quality 100 only
+  from API 29).
+- Smaller fixes: latest-value throttle instead of `debounce` for the Library cover map (and
+  no unmeasured recomposition claim); expensive CBR/PDF rows commit per item; Crop to fill
+  in the existing frames until 4.5A.2; zero/absent `lastModified` is UNKNOWN; Metron wording
+  corrected against the official statement (tokens and Basic Auth, the shared-account
+  advice, the caching quote, attribution, fair-use covers; `metron.live` unrelated,
+  `metron.cloud` terms still unresolved, Metron still CONDITIONAL); provisional (not
+  observed) Samsung contention criteria added (plan §28.1).
+- Owner decisions recorded: D3, D9, D10, D11, D12, D20, D21. D19 (Metron licensing) stays
+  OPEN. No provider, dependency, permission or schema was implemented.
+
+## Phase 4.5 plan remediation, part 2 (2026-10-15)
+
+Documentation only; closes the remaining findings of the first independent Codex High
+review (M1–M7 and the LOW items). Phase 4 remains complete; no Phase 4.5 slice is
+implemented; Phase 5 is unchanged; Room v6/v7 are planned only.
+
+- Extraction failures completed (permanent vs temporary reasons, no permanent `NONE` for a
+  temporary failure, no erasing a usable cover, jittered persisted backoff with a global
+  and per-launch cap, no endless loop); cover-row lifecycle and removal race closed
+  (rows first, files after commit, guarded final write, orphan sweeps; covers are not
+  knowledge); best-effort `sourceRevision` stored on the cover row only (no `library_item`
+  change); same-page FrontCover/first-page reference rule.
+- Library refresh storm: inspected the real `LibraryDao.observe()` shape and chose an
+  independently observed cover-reference map plus 25–50-row batches; Search and Notes hub
+  added to the cover-consumer inventory with a minimal Notes data path.
+- Solid CBR: one background extraction at a time, reader-first, lazy plus slow idle
+  backfill, native extraction not cancellable, Samsung SM-T580 evidence added to 4.5G.
+- Providers: Google Books rejected for Phase 4.5 (application-fee, embedded-credential,
+  caching, presentation); Open Library re-verified against its three official pages and
+  marked promising/conditional; Metron unchanged (conditional); Manga acceptance matrix and
+  EN/JP/ES ISBN corpus; matching-safety rules (no title-containment VERY_HIGH, `-1` cover
+  ids).
+- Owner-approved presentation decisions recorded consistently (default 2:3 Crop, Manga uses
+  the global default, Documents Original, no Auto, custom 1:2 to 2:1, Original/details/
+  expand/reduced-motion semantics); PDF derivative encoding; grid-thumbnail measurement
+  gate; local-cover storage budget re-evaluated (D20 open; 512 MiB withdrawn as a figure).
+- 4.5B networking reconciled: network boundary design only, no `INTERNET`/HTTP until the
+  first provider slice passes its authorization gate. First implementation prompt rewritten
+  for 4.5A.1 only. D19/D20/D21 remain open.
+
+## Phase 4.5 plan remediation, part 1 (2026-10-15)
+
+Documentation only, after the first independent Codex High review returned FAIL —
+REMEDIATION REQUIRED. The full review text was not available; only the findings below were
+addressed (see the commit report for what was not).
+
+- Comics acceptance: removed the local-only escape clause (D3, §30, §31, ROADMAP,
+  `METADATA_ENRICHMENT.md`). Comics now require local extraction, ComicInfo/MetronInfo
+  evidence, filename/Series/issue inference, correct local issue covers **and** an approved,
+  integrated issue-level online provider with explicit candidate matching; otherwise 4.5E
+  and 4.5G (and the phase) stay open.
+- Metron: replaced the stale research with Metron's official commercial-use statement
+  (2026-10-04; fetched 2026-10-15): CC BY-SA 4.0 with attribution/ShareAlike, per-user
+  accounts or tokens (no shared bundled account), tokens preferred and Basic auth to be
+  retired, 20 requests/minute and 5,000/day, caching expected, publisher covers not
+  licensed. Status CONDITIONAL until the current `metron.cloud` service terms are reviewed
+  and the ShareAlike/paid-theme questions are answered (new D5 prerequisites, D19). No legal
+  conclusion drawn.
+- Cover storage: replaced byte-for-byte storage with a bounded policy (small supported
+  originals byte-exact at about 1 MiB / 4 Mpx; larger artwork as a bounded derivative,
+  longest edge 1600 px, original dimensions and ORIGINAL/DERIVED recorded; storage budget;
+  user-selected covers never silently evicted).
+- 4.5A split into two independent PRs: 4.5A.1 Local Cover Artwork (Room v6) and 4.5A.2
+  Cover Presentation (Room v7); provider/metadata tables move to the next version (v8
+  possible, not pre-reserved). First implementation prompt now targets 4.5A.1 only.
+- `publication_cover` redesigned as one row per artwork kind (`PRIMARY KEY (libraryItemId,
+  kind)`, FK cascade, precedence at read time, restart-safe extraction) with a draft
+  permanent/temporary extraction-failure model.
+
+## Phase 4.5 planning — Metadata, Covers & Library Presentation (2026-10-15)
+
+- New `docs/PHASE_4_5_IMPLEMENTATION_PLAN.md` (implementation authority): repository
+  baseline at `e869762` (Room v5, no network permission, no cover artwork extracted —
+  every cover is generated at a fixed 0.68 ratio), cover presentation model, preference
+  hierarchy, provenance/confidence, provider-neutral architecture, provider terms research
+  (accessed 2026-10-15), matching/override/precedence rules, caching, lifecycle, privacy,
+  proposed Room v6/v7 (planning only), slices 4.5A–4.5G, acceptance and 17 open decisions.
+  Slice adjustment: 4.5A begins with local artwork extraction because none exists.
+- `docs/ROADMAP.md`: inserted Phase 4.5 between Phase 4 and Phase 5 (numbering unchanged);
+  Phase 4 marked COMPLETE (PR #42); stale Phase 3/4 current-status text and Phase 1
+  metadata-milestone/Future notes updated narrowly. README, `PHASE_4_IMPLEMENTATION_PLAN.md`
+  header and `features/ANNOTATIONS.md` status reconciled to Phase 4 complete.
+- Reconciled conflicts (not silently chosen): `ARCHITECTURE.md` §15 and
+  `design/VISUAL_IDENTITY.md` ranked EMBEDDED above ONLINE covers, contradicting
+  `METADATA_ENRICHMENT.md` §3 and `PRODUCT.md`; both now use USER > confident high-quality
+  ONLINE > usable EMBEDDED (> FIRST_PAGE) > GENERATED. `METADATA_ENRICHMENT.md` deferred
+  comic/manga providers to "later" and named Google Books a fallback; it now records that
+  Comics and Manga are required Phase 4.5 scope and that Google Books is RESEARCH / NOT YET
+  APPROVED (key required, credentials may not be embedded in open source, no permanent
+  copies, fee restriction). Cover-shape ratios previously "open" are now specified.
+- `ARCHITECTURE.md` records the verified network state (manifest removes `INTERNET`).
+  `PRODUCT.md` links the plan. Documentation only; no code, Gradle, schema or dependency
+  change.
+
 ## Phase 4 final acceptance (2026-10-15)
 
 - Recorded the final independent Codex High Phase 4F closure review: **PASS WITH NOTES**,

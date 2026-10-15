@@ -4,6 +4,16 @@ Phase 0 contains original mock metadata only. The extraction, inference, editing
 provenance and provider work described below starts with functional import/library
 phases; none is implemented in the Phase 0 prototype. See ADR-0016.
 
+**Implementation authority (2026-10-15):** this specification is delivered by
+[Phase 4.5 — Metadata, Covers & Library Presentation](../PHASE_4_5_IMPLEMENTATION_PLAN.md).
+Current state at Room v5: only EPUB title/creator and ComicInfo title/writer/manga-direction
+are extracted; every Library cover is generated; there is no network access. Phase 4.5
+requires Books, Comics **and** Manga enrichment for acceptance (§17 below is reconciled);
+for Comics this means an approved, integrated issue-level online provider in addition to
+local extraction (local artwork alone does not satisfy it). Stored cover artwork is bounded per item (≈ 512 KiB per cover): small supported images byte-exact within limits, larger
+ones as a bounded derivative that records the original dimensions; no automatic eviction
+and a low-storage write guard (plan §7, §18.1).
+
 ## 1. Goal
 
 ShelfOS should transform an imported file into a useful library object without requiring users to manually type information that can be safely inferred or resolved.
@@ -117,6 +127,21 @@ This does not change the general provenance order in §3 for other fields. It re
 cover resolution has its own policy, and that USER remains the absolute top priority in
 every case.
 
+### Cover presentation (accepted 2026-10-15)
+
+Cover source and cover display are separate. ShelfOS keeps the best available artwork under
+a per-item bounded storage policy (≈ 512 KiB per cover; small originals byte-exact within
+limits, larger ones as a bounded derivative that records the original dimensions; no
+automatic eviction; each replacement is a new immutable file referenced only after its
+database row commits; the source publication is never modified) and never
+rewrites it into a fixed shape. A shared cover renderer applies the effective display
+shape — **Original, 2:3, 3:4, 4:5, 1:1 or Custom W:H** (custom ratios 1:2 to 2:1; no Auto
+option; default 2:3 Crop, Documents Original) — with
+**Crop to fill** or **Fit entire artwork**, never stretching or squashing. The effective
+shape is a global default with optional per-category overrides (Books, Comics, Manga,
+Documents); per-Shelf and per-item overrides are later work. Details in the
+[Phase 4.5 plan](../PHASE_4_5_IMPLEMENTATION_PLAN.md) §7–§8.
+
 ## 4. Provider architecture
 
 Do not hard-code one metadata service into UI or domain logic.
@@ -129,10 +154,14 @@ MetadataProvider
 ├── IdentifierDetector
 ├── FilenameInferenceProvider
 ├── OpenLibraryProvider
-├── GoogleBooksProvider
-├── ComicMetadataProvider        later
-└── MangaMetadataProvider        later
+├── GoogleBooksProvider          REJECTED for Phase 4.5 (plan §14); not to be built
+├── ComicMetadataProvider        slot (Phase 4.5E; terms-gated)
+└── MangaMetadataProvider        slot (Phase 4.5D; terms-gated)
 ```
+
+Comic/Manga providers are `MetadataProvider` implementations scoped to those categories, not
+separate abstractions. Open Library is promising but conditional (not production-approved
+until its terms review passes); Google Books is rejected for Phase 4.5 (see §10).
 
 A `MetadataEnrichmentService` coordinates providers and produces candidates.
 
@@ -375,19 +404,33 @@ Useful for:
 
 ### Google Books
 
-Useful fallback/secondary provider for:
-
-- titles
-- authors
-- descriptions
-- publication metadata
-- identifiers
-- categories
-- covers where permitted
-
-Provider use must respect current API terms, quotas, attribution requirements, and licensing at implementation time.
+**REJECTED FOR PHASE 4.5** — not a fallback, not a secondary provider and not an optional
+BYOK feature — unless explicit written Google permission resolves its usage restrictions.
+The earlier "useful fallback/secondary provider" description is withdrawn.
 
 Do not assume current provider behavior is permanent.
+
+**Terms review (2026-10-15; reconciliation):** Google's Books terms say you "may not charge
+users any fee for the use of your application" (ShelfOS has a paid Plus tier), Google's API
+terms forbid developer credentials in open-source projects (ShelfOS is open source) and
+forbid permanent copies beyond cache headers (ShelfOS caches covers for offline use), and
+results must not be altered and carry adjacent Google branding (ShelfOS reframes covers and
+applies its own precedence). A user-supplied key does not remove these application-level
+obligations. Open Library is **promising but conditional**: production approval is pending
+(it advises caching responses, asks that the cover API not be crawled, and does not assert
+rights over covers; see the plan §14). Comic and Manga provider findings (Metron, Comic
+Vine, GCD, MangaDex, AniList and others) are in the
+[Phase 4.5 plan](../PHASE_4_5_IMPLEMENTATION_PLAN.md) §14. **Metron** (comics project at
+`metron.cloud`) is the preferred, **conditional** Comics candidate on the basis of its
+official commercial-use statement of 2026-10-04: CC BY-SA 4.0 data permits commercial use
+with attribution and ShareAlike; each user supplies their own account/token (no shared
+bundled account — the statement says not to ship one account shared by all users); tokens
+are recommended and "Basic Auth will be retired eventually"; limits are 20 requests/minute
+and 5,000/day (a donation can raise the daily limit up to 25,000); caching is recommended;
+publisher cover images are **not** under that license (Metron hosts them as fair use, which
+does not automatically extend to ShelfOS). `metron.live` is unrelated to Metron comic
+metadata, and the `metron.cloud` service terms stay unresolved. It is not approved until the current service terms are reviewed and the
+ShareAlike questions are answered (plan D5, D19).
 
 ## 11. Local-first caching
 
@@ -534,11 +577,14 @@ Reading remains available.
 - generated fallback cover
 - provenance model
 
-### Next enrichment milestone
+### Next enrichment milestone (Phase 4.5)
 
 - ISBN/identifier detection
-- Open Library provider
-- Google Books fallback
+- local cover artwork extraction and cover presentation (shape + Crop/Fit)
+- Open Library provider (promising/conditional; production approval pending; not needed by 4.5A)
+- Google Books is **rejected for Phase 4.5** (not a fallback, not an optional BYOK) unless explicit written Google permission resolves its usage restrictions (§10)
+- Comic and Manga enrichment (required for Phase 4.5 acceptance; providers terms-gated; Comics
+  need an approved online path, not local-only)
 - confidence scoring
 - match confirmation
 - background automatic metadata enrichment after commit
@@ -550,7 +596,7 @@ Reading remains available.
 
 ### Later
 
-- comic/manga providers
+- additional BYOK specialist comic/manga providers beyond the Phase 4.5 slots
 - OCR-assisted identification
 - series intelligence
 - bulk library enrichment

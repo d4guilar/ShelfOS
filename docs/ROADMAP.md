@@ -162,6 +162,12 @@ After the local import model is stable:
 Local extraction/provenance can grow incrementally. External providers belong to
 the later advanced-organization/enrichment track above, after commit; this retained
 inventory is not a requirement to add network APIs to the first reader build.
+**Update (2026-10-15):** this milestone is now scheduled as
+[Phase 4.5 — Metadata, Covers & Library Presentation](#phase-45--metadata-covers--library-presentation);
+provider choices there are subject to the terms review in
+[`PHASE_4_5_IMPLEMENTATION_PLAN.md`](PHASE_4_5_IMPLEMENTATION_PLAN.md) §14 (Google Books
+is **rejected for Phase 4.5** unless explicit written Google permission resolves its usage
+restrictions; Open Library is promising but conditional, production approval pending).
 
 - metadata provenance model
 - embedded metadata extraction
@@ -170,7 +176,7 @@ inventory is not a requirement to add network APIs to the first reader build.
 - cover candidate picker ("Find cover online")
 - identifier detection
 - Open Library provider
-- Google Books fallback/provider
+- ~~Google Books fallback/provider~~ (rejected for Phase 4.5; see the plan §14, D2)
 - confidence scoring
 - candidate confirmation UI
 - background automatic metadata enrichment after commit
@@ -181,8 +187,12 @@ inventory is not a requirement to add network APIs to the first reader build.
 Cover policy defaults live in [Metadata enrichment](features/METADATA_ENRICHMENT.md):
 a user-selected cover always wins, a confident online cover may improve a weak
 embedded/generated cover, and enrichment never blocks local import or reading.
-Specialist Comic/Manga metadata providers remain a later item in the
-advanced-organization/enrichment track above.
+Comic and Manga enrichment is required Phase 4.5 acceptance scope; specialist
+Comic/Manga providers are replaceable architecture slots there, used only if their
+terms are approved. Comics acceptance specifically requires an approved, integrated
+issue-level online provider (preferred: Metron with per-user tokens, conditional on a
+terms review); local extraction and local artwork alone do not satisfy it (see the Phase 4.5
+plan).
 
 ### Visual implementation milestone
 
@@ -302,7 +312,7 @@ forward and are **implemented and accepted as part of Phase 1** (ADR-0017,
 2026-09-24). Advanced spreads, thumbnails, foldable-aware pairing and native CBR
 support were completed here in Phase 3. The original inventory below is retained
 for coverage; delivered items are marked accordingly. ShelfOS as a whole is not
-finished: Phase 4 (Notes and Knowledge Layer) is the next roadmap area — 4A through 4D are merged, with 4D (the global Notes hub) merged in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`; 4E — Portable Knowledge & Restore is merged (PR #40, accepted code HEAD `ecf6f62`); 4F (accumulated acceptance) is ACCEPTED, with owner Samsung SM-T580 UAT and RP5 physical/controller UAT both PASS and a final independent Codex High closure review of PASS WITH NOTES. Phase 4 is ACCEPTED and will be COMPLETE on merge of the Phase 4F acceptance PR.
+finished: Phase 4 (Notes and Knowledge Layer) followed and is now COMPLETE (see its section below), and Phase 4.5 (Metadata, Covers & Library Presentation) is the next active milestone.
 
 ### Goal
 Make image-sequence media first-class.
@@ -347,7 +357,9 @@ A user can comfortably read a CBZ comic or manga entirely with touch, keyboard, 
 
 ### Current status
 
-Phase 4 has started. 4A through 4D are merged and implementation complete; 4D, the Room-v5 global Notes hub, merged in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`. Physical/manual acceptance is recorded under Phase 4F below. **4E — Portable Knowledge & Restore is IMPLEMENTED AND INDEPENDENTLY REVIEWED / ACCEPTED** (final independent Codex High verdict PASS; implementation findings M1–M5 CLOSED; accepted code HEAD `ecf6f621d24cbcb40c38f323ec9ed407d45e6314`): Markdown is human-readable export, while canonical ShelfOS JSON is the only versioned round-trip import/restore format. It restores unmatched groups as orphans, is strictly additive and never guesses publication identity or includes publication binaries. 4E is merged (PR #40). 4F is **ACCEPTED**: owner Samsung SM-T580 UAT and RP5 physical/controller UAT both PASS, and the final independent Codex High closure review returned PASS WITH NOTES (0 BLOCKER / 0 HIGH / 0 MEDIUM; LOW documentation findings resolved). Physical TalkBack remains an evidence gap, covered only by available semantic/accessibility automation. Room remains v5, with the legacy `bookmark` table retained through closure and deletion deferred to a future dedicated maintenance migration; no v6 in 4F. Phase 4 is **ACCEPTED** and will be **COMPLETE** on merge of the Phase 4F acceptance PR; Phase 5 has not started. Evidence is in [`VALIDATION.md`](VALIDATION.md) and the plan in [`PHASE_4_IMPLEMENTATION_PLAN.md`](PHASE_4_IMPLEMENTATION_PLAN.md).
+**Phase 4 is COMPLETE (2026-10-15):** the Phase 4F acceptance PR merged as PR #42 (`e869762dd56c55cd2ad7c67fa72cd87dc9e19c9b`). The next active milestone is [Phase 4.5](#phase-45--metadata-covers--library-presentation); Phase 5 has not started. The record below is retained as history.
+
+4A through 4D are merged and implementation complete; 4D, the Room-v5 global Notes hub, merged in PR #38 at `90b9f1c7fe827c996247a60bcd8cbc224afc72d3`. Physical/manual acceptance is recorded under Phase 4F below. **4E — Portable Knowledge & Restore is IMPLEMENTED AND INDEPENDENTLY REVIEWED / ACCEPTED** (final independent Codex High verdict PASS; implementation findings M1–M5 CLOSED; accepted code HEAD `ecf6f621d24cbcb40c38f323ec9ed407d45e6314`): Markdown is human-readable export, while canonical ShelfOS JSON is the only versioned round-trip import/restore format. It restores unmatched groups as orphans, is strictly additive and never guesses publication identity or includes publication binaries. 4E is merged (PR #40). 4F is **ACCEPTED**: owner Samsung SM-T580 UAT and RP5 physical/controller UAT both PASS, and the final independent Codex High closure review returned PASS WITH NOTES (0 BLOCKER / 0 HIGH / 0 MEDIUM; LOW documentation findings resolved). Physical TalkBack remains an evidence gap, covered only by available semantic/accessibility automation. Room remains v5, with the legacy `bookmark` table retained through closure and deletion deferred to a future dedicated maintenance migration; no v6 in 4F. Phase 4 is **ACCEPTED** and will be **COMPLETE** on merge of the Phase 4F acceptance PR; Phase 5 has not started. Evidence is in [`VALIDATION.md`](VALIDATION.md) and the plan in [`PHASE_4_IMPLEMENTATION_PLAN.md`](PHASE_4_IMPLEMENTATION_PLAN.md).
 
 ### Goal
 ShelfOS becomes useful for active reading and study.
@@ -372,6 +384,83 @@ ShelfOS becomes useful for active reading and study.
 A student can highlight and annotate a supported publication, review that knowledge from
 one central screen, export it as readable Markdown or canonical ShelfOS JSON, and safely
 restore the JSON without publication-identity guessing.
+
+---
+
+## Phase 4.5 — Metadata, Covers & Library Presentation
+
+### Current status
+
+**Next active milestone (planning, 2026-10-15).** Phase 4 is complete. Phase 4.5 is
+inserted between Phase 4 and Phase 5; Phase 5 remains Advanced PDF Ingestion and the
+numbering of every later phase is unchanged. No 4.5 slice is implemented yet. The
+implementation authority is [`PHASE_4_5_IMPLEMENTATION_PLAN.md`](PHASE_4_5_IMPLEMENTATION_PLAN.md);
+behavior is owned by [Metadata enrichment](features/METADATA_ENRICHMENT.md).
+
+### Goal
+
+> **The interface is monochrome. The library is the color.**
+>
+> **The file is the source of truth; metadata turns the folder into a library.**
+
+Turn local files into a recognizable, cover-first Library. This is not optional polish:
+Library identity depends on real artwork and correct metadata. Local files stay
+authoritative; online enrichment is optional, background, network-assisted convenience,
+and import and reading never depend on a provider.
+
+### Deliverables (slices)
+
+- **4.5A Cover Presentation Foundation** — umbrella of two independent PRs, each with its
+  own validation, Codex High review and merge. **4.5A.1 Local Cover Artwork** (Room v6):
+  embedded EPUB cover, CBZ/CBR cover, PDF first-page preview, per-item bounded artwork
+  storage (≈ 512 KiB per cover: small originals byte-exact within limits, larger ones as
+  bounded derivatives of ≈ 1200 px that record the original dimensions; a low-storage write
+  guard; **no automatic eviction**), a LOCAL/USER/ONLINE cover-slot schema (only LOCAL is
+  written; one Room schema for fresh and migrated databases, with enums and repository
+  validation instead of migration-only `CHECK`s), local cover lifecycle with **crash-safe
+  durable attempt tracking** (parked after four attempts or two unexplained interruptions,
+  whichever comes first), **unique immutable cover files** (the Room row is updated before
+  the old file is deleted) and safe backfill (batched, one CBR extraction at a time),
+  a minimal shared cover renderer using Crop to fill in the existing frames for the
+  Library, Search, details, Notes and expand transition; **no networking**. **4.5A.2 Cover Presentation**
+  (Room v7): display shape Original / 2:3 / 3:4 / 4:5 / 1:1 / Custom W:H (1:2 to 2:1, no
+  Auto) with Crop to fill or Fit entire artwork, never stretched; global default (2:3 Crop;
+  Documents Original) plus per-category overrides; Settings UI; **no networking**.
+- **4.5B Metadata Core** — provenance/confidence, identifier detection, richer embedded
+  metadata, provider-neutral interfaces, candidate model, enrichment coordinator, cache and
+  network/privacy boundary **design**. 4.5B does not by itself authorize the `INTERNET`
+  permission or any real provider HTTP call: the first network permission/HTTP arrives only
+  in the first provider slice (4.5C/4.5D/4.5E) after that provider's own authorization gate
+  and a manifest/privacy review.
+- **4.5C Books** — keyless provider candidate (Open Library: promising/conditional,
+  production approval pending), ISBN-first, metadata and covers. Google Books is rejected.
+- **4.5D Manga** — volume-aware matching, ISBN/edition, volume-specific covers.
+- **4.5E Comics** — Series + issue matching, UPC/ISBN, ComicInfo/MetronInfo evidence, issue
+  covers, and an approved issue-level online provider (preferred: Metron with per-user
+  tokens; conditional on terms review and owner authorization). 4.5E and 4.5G stay open if
+  no provider is approved and integrated.
+- **4.5F Enrichment UX** — "We think this is…", Find cover online, Choose from device,
+  Refresh metadata, failure/offline states.
+- **4.5G Acceptance** — Books, Comics and Manga matrices, wrong-match protection,
+  cache/offline, outages, source immutability, privacy, provider/legal checklist,
+  Samsung SM-T580 manual LAN UAT and RP5 controller UAT.
+
+### Constraints
+
+- User-selected covers and user edits always win; a wrong match is worse than no match.
+- Cover precedence: user-selected > confident high-quality online > usable embedded >
+  generated/fallback.
+- No secret credentials in the APK; keyed providers only as user-supplied keys (BYOK); no
+  provider is used before its terms are reviewed and approved.
+- No accounts, sync, AI, scraping, Phase 5 PDF analysis or Phase 6 ink work.
+
+### Done when
+
+Books, Comics **and** Manga each receive confident metadata and correct
+(edition/issue/volume-specific) covers, Documents stay conservative, the Library is visually
+complete offline, and the plan's acceptance criteria (§30) pass with physical UAT. Phase 4.5
+cannot close with Books only, and it cannot close with local-only Comics: Comics need an
+approved, working issue-level online path, otherwise 4.5E and 4.5G remain open.
 
 ---
 
@@ -677,8 +766,8 @@ Phase 3 section above.)
 - theme SDK
 - plugin architecture
 - metadata provider extensions
-- zero-setup default online enrichment plus optional BYOK specialist providers
-- cover normalization/generated fallbacks and provider-term-aware caching
+- optional BYOK specialist metadata providers beyond Phase 4.5 (zero-setup default
+  enrichment, cover presentation and provider-term-aware caching moved into Phase 4.5)
 - local Completion Cards, system-share images and local completion history
 - launcher icon density/adaptive/legacy fidelity validation
 - iOS / iPadOS
