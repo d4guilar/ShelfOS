@@ -9,6 +9,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.os.storage.StorageManager
+import android.provider.DocumentsContract
+import androidx.core.net.toUri
 import android.provider.OpenableColumns
 import android.system.ErrnoException
 import android.system.Os
@@ -167,6 +169,20 @@ class PublicationFiles(
     } catch (_: IllegalArgumentException) {
         throw PublicationException(PublicationProblem.SOURCE_UNAVAILABLE)
     }
+
+    /**
+     * Best-effort source revision evidence for the cover row (plan §23.2): the current size and, only when the provider
+     * reports a positive value, `COLUMN_LAST_MODIFIED`. Never an identity; null when nothing is known. A private copy is
+     * immutable by construction.
+     */
+    fun revision(item: LibraryItem): String? = if (item.managedPath != null) "managed" else try {
+        resolver.query(item.sourceUri.toUri(), arrayOf(OpenableColumns.SIZE, DocumentsContract.Document.COLUMN_LAST_MODIFIED), null, null, null)?.use { c ->
+            if (!c.moveToFirst()) return@use null
+            fun long(column: String) = c.getColumnIndex(column).takeIf { it >= 0 && !c.isNull(it) }?.let(c::getLong)?.takeIf { it > 0 }
+            listOfNotNull(long(OpenableColumns.SIZE)?.let { "size=$it" }, long(DocumentsContract.Document.COLUMN_LAST_MODIFIED)?.let { "modified=$it" })
+                .joinToString(";").ifEmpty { null }
+        }
+    } catch (_: Exception) { null }
 
     /**
      * Private copies are referenced by file name inside ShelfOS storage. Early prototype rows stored an

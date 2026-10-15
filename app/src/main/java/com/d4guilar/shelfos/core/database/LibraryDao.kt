@@ -56,14 +56,16 @@ abstract class LibraryDao {
     @Query("DELETE FROM reading_state WHERE itemId = :id") protected abstract suspend fun deleteReading(id: String)
     @Query("DELETE FROM reader_preference WHERE itemId = :id") protected abstract suspend fun deletePreferences(id: String)
     @Query("DELETE FROM annotation WHERE libraryItemId = :id") protected abstract suspend fun deleteAnnotations(id: String)
+    // Covers are owned derived state, never knowledge: both removal policies delete them (the FK cascade is a backstop).
+    @Query("DELETE FROM publication_cover WHERE libraryItemId = :id") protected abstract suspend fun deleteCovers(id: String)
     /**
      * Deletes ShelfOS-owned state for one item under `KnowledgePolicy.DELETE`: preferences, reading state, every
-     * canonical annotation row and the item, atomically in one transaction. Other items and all source files are
+     * canonical annotation row, cover rows and the item, atomically in one transaction. Other items and all source files are
      * untouched. The annotation table has no foreign key, so it is deleted explicitly here (a failure anywhere rolls
      * the whole removal back). The legacy `bookmark` table keeps its own cascade foreign key and is cleared by the
      * item delete; nothing reads it any more. This is the only code path that removes a `library_item` row.
      */
-    @Transaction open suspend fun removeDeletingKnowledge(id: String) { deletePreferences(id); deleteReading(id); deleteAnnotations(id); deleteSnapshot(id); deleteItem(id) }
+    @Transaction open suspend fun removeDeletingKnowledge(id: String) { deletePreferences(id); deleteReading(id); deleteAnnotations(id); deleteSnapshot(id); deleteCovers(id); deleteItem(id) }
 
     @Query("SELECT COUNT(*) FROM annotation WHERE libraryItemId = :id") protected abstract suspend fun annotationCount(id: String): Int
     @Query("DELETE FROM annotation_source_snapshot WHERE libraryItemId = :id") protected abstract suspend fun deleteSnapshot(id: String)
@@ -73,13 +75,13 @@ abstract class LibraryDao {
 
     /**
      * Removal under `KnowledgePolicy.KEEP`, atomically: when the item owns annotations its display snapshot is saved (replacing any
-     * older one), then preferences, reading state and the item are deleted and every annotation row stays untouched, becoming
+     * older one), then preferences, reading state, cover rows and the item are deleted and every annotation row stays untouched, becoming
      * an orphan. An item with no annotations gets no snapshot (no stale row for zero retained knowledge). Never reattaches
      * anything and never touches source files.
      */
     @Transaction open suspend fun removeKeepingKnowledge(id: String) {
         if (annotationCount(id) > 0) saveSnapshot(id) else deleteSnapshot(id)
-        deletePreferences(id); deleteReading(id); deleteItem(id)
+        deletePreferences(id); deleteReading(id); deleteCovers(id); deleteItem(id)
     }
     @Upsert abstract suspend fun saveReading(state: ReadingEntity)
     @Upsert abstract suspend fun savePreferences(state: ReaderPreferenceEntity)

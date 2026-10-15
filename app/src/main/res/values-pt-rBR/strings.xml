@@ -92,6 +92,13 @@
     <string name="detail_source_linked">Origem: arquivo original vinculado</string>
     <string name="detail_source_private_copy">Origem: cópia privada offline do original</string>
     <string name="detail_cover_generated">Capa: gerada pelo ShelfOS</string>
+    <string name="detail_cover_epub">Capa: incluída no EPUB</string>
+    <string name="detail_cover_comicinfo">Capa: capa declarada no ComicInfo</string>
+    <string name="detail_cover_first_page">Capa: primeira página do arquivo</string>
+    <string name="detail_cover_pdf_preview">Capa: prévia da primeira página do PDF</string>
+    <string name="detail_cover_line">%1$s (%2$s)</string>
+    <string name="detail_cover_original">cópia exata</string>
+    <string name="detail_cover_derived">cópia reduzida</string>
     <string name="origin_user">Editado por você</string>
     <string name="origin_embedded">Incluído na publicação</string>
     <string name="origin_filename">Do nome do arquivo</string>

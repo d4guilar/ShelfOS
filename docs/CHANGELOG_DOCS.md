@@ -1,5 +1,18 @@
 # Documentation Changelog
 
+## Phase 4.5A.1 local cover artwork implementation (2026-10-15)
+
+Implementation PR documentation (awaiting independent Codex High review; not accepted).
+
+- Plan status and new §33: what 4.5A.1 delivers, ten implementation decisions/deviations
+  (rename-based finalize, no row batching, unavailable sources give the attempt back,
+  READY failures record counters only, CBR reuse through the reader's cache key, 0-based
+  FrontCover, implemented triggers, scheduling gates, rendering, constants) and the
+  remaining gaps.
+- ROADMAP, ARCHITECTURE §15 and METADATA_ENRICHMENT current-state lines: Room v6 and local
+  artwork, awaiting review.
+- VALIDATION: new 4.5A.1 section with commands, counts and environment limits.
+
 ## Phase 4.5 final QA reconciliation (2026-10-15)
 
 Documentation only; closes the LOW notes of the final independent Codex High review (PASS

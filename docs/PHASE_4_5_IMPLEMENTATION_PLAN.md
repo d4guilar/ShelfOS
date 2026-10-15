@@ -1,7 +1,9 @@
 # Phase 4.5 Implementation Plan — Metadata, Covers & Library Presentation
 
-Status (2026-10-15): **PLANNING. No Phase 4.5 slice is implemented or authorized beyond
-this plan.** Phase 4 (Notes and Knowledge Layer) is COMPLETE (Phase 4F acceptance merged
+Status (2026-10-15): **4.5A.1 Local Cover Artwork IMPLEMENTED on branch
+`phase-4.5/4.5a1-local-cover-artwork`, awaiting independent Codex High review (not
+accepted).** Implementation record and deviations: §33. No other slice is implemented.
+Phase 4 (Notes and Knowledge Layer) is COMPLETE (Phase 4F acceptance merged
 in PR #42). Phase 4.5 is the next active milestone. Phase 5 remains Advanced PDF Ingestion;
 numbering after 4.5 is unchanged.
 
@@ -2239,3 +2241,77 @@ After 4.5A.1 merges, **4.5A.2 — Cover Presentation** starts from fresh `main` 
 preferences; Settings → Library appearance; details-pane and cover-expand behavior;
 keyboard/controller/accessibility; EN/ES/PT-BR. It has its own implementation prompt written
 then, its own validation, Codex High review, remediation and merge.
+
+## 33. 4.5A.1 implementation record (2026-10-15, awaiting review)
+
+Branch `phase-4.5/4.5a1-local-cover-artwork` from `main` @ `0bf1063`. Evidence:
+[VALIDATION](VALIDATION.md) "PHASE 4.5A.1". **Not accepted** until the independent Codex
+High review closes.
+
+**Delivered.** Room v6 `publication_cover` (§23.1 columns, `PRIMARY KEY (libraryItemId,
+slot)`, FK `ON DELETE CASCADE`, defaults `0`, no `CHECK`, no extra index — the KSP build
+raised no FK-index warning); `MIGRATION_5_6` runs the exported `6.json` `createSql`
+verbatim (`ShelfDatabase.PUBLICATION_COVER_CREATE_SQL`, asserted against the JSON by a JVM
+test). Enums and pure policy in `domain/library/Covers.kt`; guarded SQL in
+`core/database/CoverDao.kt`; the only writer and its boundary validation in
+`data/library/CoverRepository.kt`; scheduling in `data/library/CoverScheduler.kt`; files in
+`core/files/CoverFiles.kt`; extraction in `core/reader/CoverExtractor.kt` (reuses
+`PublicationFiles.open`, `ArchivePolicy.pages`, `RarContainer`, `EmbeddedMetadataReader`
+and `FixedReaderFactory`); one shared renderer `core/designsystem/PublicationCover.kt`
+used by the Library grid, Continue Reading, details pane, cover-expand overlay, Search rows
+and Notes rows (live and orphan). `LibraryItem.coverColor`/`coverMotif` removed. Both
+removal transactions delete cover rows; files are deleted after commit.
+
+**Implementation decisions and deviations (for review):**
+
+1. **Finalize = exists-checked rename, not a hard link.** `Os.link` in app data fails with
+   `EACCES` (SELinux) on the API 24 emulator. The new name is a fresh 64-bit token checked
+   absent; the scheduler's single worker (one mutex) is the only writer of a cover
+   directory, so no file can appear under that name in between. Still never overwrites a
+   referenced file in practice; a review may prefer another primitive.
+2. **No 25–50-row batching.** Every attempt needs its own begin commit (marker before work,
+   §23.5) and close commit, so batching cheap rows would weaken crash safety. The cover map
+   throttle bounds emissions instead; measured: 2,000 covers → 1 Library emission and ~64
+   cover-map emissions (§19.1 targets met).
+3. **`SOURCE_UNAVAILABLE` / `PERMISSION_UNAVAILABLE` give the attempt back** (like
+   `STORAGE_FULL`): they are detected when the source is opened, before extraction, and
+   must not park an item. With no timer, these rows (and `STORAGE_FULL`) are reassessed
+   **once per cold start**, within the per-launch cap of 25; `STORAGE_FULL` additionally on
+   the foreground-return recovery signal with the 64 MiB hysteresis.
+4. **A failure over a READY row records only counters/backoff** (`failureReason` stays null;
+   READY never carries a failure reason, §23.1 validation).
+5. **CBR uses the reader's cache key** (`rarCacheSourceKey`): a page the reader extracted
+   from the same immutable private copy is reused only if it is the exact chosen physical
+   page (shared `RarContainer` index); linked sources get an ephemeral namespace (no reuse).
+   The lease is released right after the copy. Coordinator contention is still a 4.5G
+   measurement (§19.2 rule 7).
+6. **ComicInfo `Image` is 0-based** (unverified convention, §13); out-of-range falls back to
+   the first logical page.
+7. **Triggers implemented in 4.5A.1:** a READY file the renderer cannot read (re-extracted at
+   most once per process) and `CoverScheduler.refresh` (the Refresh-cover entry point; no UI
+   until 4.5F). `extractorVersion` is recorded (version 1); `sourceRevision` is recorded
+   (`managed`, or provider size/`lastModified` when positive) but **no revision comparison
+   runs yet** — see gaps.
+8. **Scheduling gates:** foreground = `MainActivity` started; reader active = the fixed-reader
+   route (the EPUB reader is its own activity, so `MainActivity` stops). One worker = at most
+   one extraction of any format (so at most one CBR); 3 s pause after a CBR; 3 s idle delay
+   after reconcile/sweep; while idle the worker polls every 30 s for elapsed retry timers
+   (`shortcut:` in code). Visible tiles and details request their item once per process.
+9. **Rendering:** Crop to fill in the existing 0.68 frames; a neutral frame while the cover
+   map is unknown or a known cover is decoding (no generated→real flash); a cover change
+   swaps instantly (no cross-fade in any motion setting). Decoding: off the main thread
+   (2 threads), `inSampleSize` to the frame, LRU 24 MiB / 256 entries keyed by
+   `id/fileName/sample`.
+10. **Reviewable constants used:** 32 MiB unknown-CBR temporary reserve, 64 MiB recovery
+    hysteresis, 40 Mpx input cap, 4 Mpx decode working cap, ladder exactly as §7, per-launch
+    cap 25, map throttle 300 ms.
+
+**Remaining gaps (not claimed):** no source-revision comparison trigger (Refresh cover in
+4.5F covers changed files); no extractor-version requalification pass (only one version
+exists); no real RAR image fixture — CBR is proven at the container level (JVM fake session:
+ordering, FrontCover, exact-page reuse, ephemeral namespace) and through the shared image
+writer; the kill-process test is simulated (an attempt left open, then a new repository +
+scheduler "launch"), not an OS process kill; SM-T580 decode latency, CBR contention and
+memory evidence (§7 rule 7, §19.2, §28.1) and RP5 controller checks remain 4.5G; the Library
+has no list mode (no list consumer exists); 4.5A.2 owns shapes, Fit/Original, real-ratio
+details pane and artwork-bounds cover expansion.

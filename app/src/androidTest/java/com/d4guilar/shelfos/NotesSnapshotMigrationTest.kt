@@ -68,7 +68,7 @@ class NotesSnapshotMigrationTest {
             // Every pre-existing table is unchanged, row for row (library, reading state, preferences, legacy bookmarks, annotations).
             val raw = SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READONLY)
             raw.use {
-                assertEquals(5, it.version)
+                assertEquals("migrated through v5 to the current v6", 6, it.version)
                 for ((table, order) in tables) assertEquals("$table must be unchanged by v4 -> v5", before.getValue(table), LegacyDatabases.dump(it, table, order))
             }
             // Legacy locators are still exactly what 4A/4B/4C wrote, and the repository reads them.
@@ -120,7 +120,7 @@ class NotesSnapshotMigrationTest {
             }
         }
         val failed = Room.databaseBuilder(context, ShelfDatabase::class.java, name)
-            .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3, ShelfDatabase.MIGRATION_3_4, failing).build()
+            .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3, ShelfDatabase.MIGRATION_3_4, failing, ShelfDatabase.MIGRATION_5_6).build()
         try { assertTrue("migration must fail", runCatching { failed.openHelper.writableDatabase }.isFailure) } finally { runCatching { failed.close() } }
         SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READONLY).use { raw ->
             assertEquals("database must remain at v4", 4, raw.version)
@@ -141,7 +141,7 @@ class NotesSnapshotMigrationTest {
             val sql = db.openHelper.writableDatabase
             sql.query("SELECT COUNT(*) FROM annotation").use { it.moveToFirst(); assertEquals(1, it.getInt(0)) }
             sql.query("SELECT COUNT(*) FROM annotation_source_snapshot").use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
-            sql.query("PRAGMA user_version").use { it.moveToFirst(); assertEquals(5, it.getInt(0)) }
+            sql.query("PRAGMA user_version").use { it.moveToFirst(); assertEquals(6, it.getInt(0)) }
         } finally { db.close(); context.deleteDatabase(name) }
     }
 }

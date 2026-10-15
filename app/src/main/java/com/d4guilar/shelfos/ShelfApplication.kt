@@ -9,7 +9,16 @@ import com.d4guilar.shelfos.data.annotations.PortableKnowledgeFiles
 import com.d4guilar.shelfos.data.annotations.RoomPortableKnowledgeRepository
 import com.d4guilar.shelfos.core.reader.isReadiumLocatorJson
 import com.d4guilar.shelfos.domain.annotations.DefaultAnnotationLocatorValidator
+import com.d4guilar.shelfos.core.files.CoverFiles
 import com.d4guilar.shelfos.core.files.PublicationFiles
+import com.d4guilar.shelfos.core.reader.LocalCoverExtractor
+import com.d4guilar.shelfos.data.library.CoverScheduler
+import com.d4guilar.shelfos.data.library.RoomCoverRepository
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
+import com.d4guilar.shelfos.core.designsystem.CoverArtwork
+import com.d4guilar.shelfos.domain.library.CoverRef
 import com.d4guilar.shelfos.core.reader.FixedReaderFactory
 import com.d4guilar.shelfos.core.reader.EpubReaderFactory
 import com.d4guilar.shelfos.core.reader.ManagedFontRepository
@@ -30,7 +39,9 @@ class AppContainer(application: Application) {
     val files = PublicationFiles(application)
     /** Shared by every import: grants are process-wide, and import cleanup outlives the screen that started it. */
     val importLeases = ImportLeases()
-    val library by lazy { RoomLibraryRepository(database.library(), files) }
+    val coverFiles = CoverFiles(application)
+    val library by lazy { RoomLibraryRepository(database.library(), files, coverFiles) }
+    val covers by lazy { RoomCoverRepository(database.covers()) }
     /** Canonical annotation store; the single owner of knowledge persistence (ADR-0025). */
     val annotations by lazy { RoomAnnotationRepository(database.annotations(), DefaultAnnotationLocatorValidator(::isReadiumLocatorJson)) }
     val portableKnowledge by lazy {
@@ -46,5 +57,16 @@ class AppContainer(application: Application) {
      */
     val sourceMaintenance: Job = backgroundScope.launch {
         try { library.reconcileSources() } catch (e: CancellationException) { throw e } catch (_: Exception) { /* Retried next launch. */ }
+    }
+    /** Local cover backfill (Phase 4.5A.1): reconcile → sweep → then idle, gated scheduling. Never blocks startup. */
+    val coverScheduler by lazy { CoverScheduler(covers, coverFiles, { id -> library.publication(id).first() }, LocalCoverExtractor(files, fixedReaders)) }
+    /** What the shared cover renderer reads; one instance (one bitmap cache) per process. */
+    val coverArtwork by lazy {
+        CoverArtwork(covers.covers.stateIn<Map<String, CoverRef>?>(backgroundScope, SharingStarted.Eagerly, null),
+            { ref -> coverFiles.file(ref.libraryItemId, ref.fileName) }, coverScheduler::request, coverScheduler::reportMissing, covers::provenance)
+    }
+    val coverWork: Job = backgroundScope.launch {
+        sourceMaintenance.join()
+        try { coverScheduler.run() } catch (e: CancellationException) { throw e } catch (_: Exception) { /* Covers stay generated; next launch reconciles. */ }
     }
 }

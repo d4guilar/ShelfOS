@@ -1,5 +1,44 @@
 # Validation
 
+## PHASE 4.5A.1 — LOCAL COVER ARTWORK IMPLEMENTATION (2026-10-15, awaiting review)
+
+**Not accepted.** Implementation evidence for the independent Codex High review. Branch
+`phase-4.5/4.5a1-local-cover-artwork` from `main` @ `0bf1063cc6c2e711b9135dda161216675cfe0ebb`.
+Scope, decisions and gaps: [plan §33](PHASE_4_5_IMPLEMENTATION_PLAN.md#33-45a1-implementation-record-2026-10-15-awaiting-review).
+
+**Environment, stated plainly.** API 24 x86_64 emulator `shelfos-api24` (`emulator-5554`,
+WebView 52, 1080x1920 @ 420 dpi) only. The connected RP5 was deliberately not used
+(instrumentation clears app data on the owner's device). No Samsung SM-T580, tablet,
+short-landscape, Dark-theme visual, physical controller or TalkBack run in this slice;
+those remain 4.5G. The emulator is a fast x86 host: its timings are not SM-T580 evidence.
+
+**Commands.** `gradlew.bat :app:testDebugUnitTest :app:lintDebug`;
+`gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest`; `gradlew.bat
+:app:kspDebugKotlin --rerun` (no Room FK-index warning); APKs installed and every class run
+as its own `adb shell am instrument -w -r -e class <class>` after `pm clear`, counted from the
+instrumentation status stream (scripts in the session scratchpad, not committed).
+
+| Check | Result |
+| --- | --- |
+| JVM `testDebugUnitTest` | **610 tests, 0 failures** (53 result files; 587 before). New: `CoverPolicyTest` (retry schedule ±20%, park at 4 attempts / 2 interruptions, attempt give-back for STORAGE_FULL/unavailable/cancel, permanent vs temporary, 19.2-min clamp, slot resolution, FrontCover range, ORIGINAL thresholds, ladder, storage admission incl. temporary CBR reserve, persistence-boundary validation, throttle vs debounce under continuous backfill, migration SQL == `6.json` createSql), `CoverSourceSelectionTest` (EPUB2/EPUB3 references, unsafe/remote/escaping hrefs, ComicInfo FrontCover parsing, CBZ natural order, CBR exact-page reuse via the reader's cache key, ephemeral namespace for linked sources) |
+| `lintDebug` | 0 errors, 60 warnings (same count and categories as the Phase 4 baseline) |
+| `CoverMigrationTest` | 2/2: real v5 file → v6, every pre-existing table byte-identical (items, reading state, preferences, legacy `bookmark`, annotations, snapshot); columns, defaults `0`, PK `(libraryItemId, slot)`, FK `CASCADE`, only the PK autoindex, no `CHECK`; schema identical to a fresh Room v6 database and to the exported createSql; cascade deletes covers, never annotations |
+| `CoverLifecycleTest` | 12/12: unique immutable file + READY row; replacement writes a new file, old kept during work and deleted only after commit; zero-row guarded write and a throwing commit keep the old cover and discard the new file; removal mid-extraction → no row, no file; guarded begin after removal inserts nothing; removal deletes rows then files; abandoned attempt → INTERRUPTED + backoff, never eligible at startup, `.tmp` swept; second interruption parks; parked item not retried on 3 launches, explicit refresh un-parks; sweep after reconcile and before any extraction; storage guard (no work, attempt 0, no timer, READY artwork kept) and mid-work STORAGE_FULL (no interruption, no attempt consumed); unknown stored enum strings → generated, no crash; **2,000-item backfill: ~19 s, `LibraryDao.observe()` 1 emission (initial only), cover map 62–64 emissions, all 2,000 published** |
+| `CoverExtractionCorpusTest` | 7/7: EPUB3 small JPEG byte-exact ORIGINAL; EPUB2 1800x2700 PNG → DERIVED 800x1200 JPEG ≤ 512 KiB with source dims; SVG → UNSUPPORTED_REPRESENTATION; no cover / escaping href / missing entry → NO_SUITABLE_ARTWORK; garbage bytes → UNDECODABLE_CONTENT; CBZ FrontCover page chosen, out-of-range/negative → first page; 400 Mpx PNG header rejected without allocation; noisy 2400x3600 page bounded; PDF 600x800 pt → 900x1200 DERIVED preview, white background; missing source → SOURCE_UNAVAILABLE; every source file SHA-256 identical afterwards |
+| `CoverRendererUiTest` | 1/1: neutral frame before the map loads (no generated flash, no request); artwork in the 0.68 frame (cropped, ratio asserted); item without cover → generated + one request; missing file reported → generated; replaced file shows new artwork |
+| Full instrumented regression (69 classes, build before two lint-only edits) | 447 started, 427 passed, 18 failed, 2 skipped by design. 17 failures are the documented API 24 WebView 52 limits (`EpubAnnotationsTest` 13/27, `EpubManagedFontLiveSwitchTest` 0/2, `EpubManagedFontProofTest` 0/1, `NotesEpubJumpTest` 1, identical to the Phase 4F API 24 record). 1 was `NotesHubUiTest` orphan-edit (Save not found); rerun on the final build **20/20** |
+| Final build rerun | `CoverMigrationTest` 2/2, `CoverExtractionCorpusTest` 7/7, `CoverLifecycleTest` 12/12, `CoverRendererUiTest` 1/1, `NotesHubUiTest` 20/20, `LibraryPersistenceTest` 10/10, `NavigationSmokeTest` 28/28 |
+
+**Found and fixed during validation:** `Os.link` (hard-link finalize) fails with `EACCES` in
+app storage on Android; finalize now uses an exists-checked rename (plan §33 item 1).
+
+**Not executed / not claimed:** a real OS process kill (simulated by an open attempt and a new
+repository + scheduler); a real RAR image fixture (CBR proven at container level and through
+the shared image writer); API 25/26+ storage paths at runtime (API 24 `StatFs` path only;
+the API 26+ branch is source-reviewed); grid decode latency, dropped frames and recomposition
+counts while flinging (§7 rule 7, §19.1 measurement targets); SM-T580 CBR contention and
+memory (§19.2, §28.1); RP5 controller; Classic/Dark visual inspection on device.
+
 ## PHASE 4F — FINAL OWNER PHYSICAL UAT (2026-10-15)
 
 **Phase 4F: ACCEPTED.** Final independent Codex High closure review: **PASS WITH

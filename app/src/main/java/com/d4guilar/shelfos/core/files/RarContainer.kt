@@ -15,7 +15,7 @@ import java.util.concurrent.CancellationException
  * extraction/cache key -- see [RarContainer]'s class doc for why display names alone can never be trusted for
  * this.
  */
-internal data class RarPageEntry(val physicalIndex: Int, val name: String)
+internal data class RarPageEntry(val physicalIndex: Int, val name: String, val declaredSize: Long? = null)
 
 /**
  * Phase 3E-D R1A layering fix: the lower-level, format-independent RAR container abstraction that BOTH import-time
@@ -81,6 +81,9 @@ internal class RarContainer private constructor(
         check(!closed) { "RarContainer is closed" }
         return extract(pages[index].physicalIndex)
     }
+
+    /** The archive's own (untrusted) uncompressed-size declaration for logical page [index], if any. */
+    fun declaredPageBytes(index: Int): Long? = pages[index].declaredSize
 
     /**
      * Container-level `ComicInfo.xml` exposure. Reuses [EmbeddedMetadataReader]'s existing CBZ parser/model
@@ -214,7 +217,7 @@ internal class RarContainer private constructor(
                 }
             if (sortedPages.isEmpty()) throw PublicationException(PublicationProblem.EMPTY_ARCHIVE)
 
-            return Index(sortedPages.map { RarPageEntry(it.physicalIndex, it.name) }, comicInfo)
+            return Index(sortedPages.map { RarPageEntry(it.physicalIndex, it.name, it.size) }, comicInfo)
         }
     }
 }

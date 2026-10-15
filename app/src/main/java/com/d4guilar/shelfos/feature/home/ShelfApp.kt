@@ -115,6 +115,7 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
     // correct -- no callback, no `LaunchedEffect`, no cross-composable round trip, so a fixed reader's first
     // real measurement is never preceded by a frame of wrong (legacy-padded) geometry.
     val reading = route.startsWith("reader")
+    LaunchedEffect(reading) { container.coverScheduler.setReaderActive(reading) }
     val density = LocalDensity.current
     val legacyPadding = with(density) {
         if (reading || legacyWindowBounds == Rect.Zero) PaddingValues(0.dp)

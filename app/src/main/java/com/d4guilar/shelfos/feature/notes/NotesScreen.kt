@@ -32,7 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d4guilar.shelfos.R
-import com.d4guilar.shelfos.core.designsystem.PublicationCoverVisual
+import com.d4guilar.shelfos.core.designsystem.PublicationCover
 import com.d4guilar.shelfos.core.designsystem.resolve
 import com.d4guilar.shelfos.core.designsystem.shelfAction
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
@@ -342,7 +342,8 @@ private fun NoteRow(row: NotesItem.Row, onOpen: () -> Unit, onEdit: () -> Unit, 
             .semantics(mergeDescendants = true) { contentDescription = rowDescription }.padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
             Box(Modifier.width(48.dp).testTag(if (source.live) "notes_cover" else "notes_cover_fallback")) {
-                PublicationCoverVisual(source.libraryItemId, publication, Modifier.fillMaxWidth())
+                // Shared renderer: a live item shows its cover; an orphan has no cover row (removed with its item) and stays generated.
+                PublicationCover(source.libraryItemId, publication, Modifier.fillMaxWidth())
             }
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
