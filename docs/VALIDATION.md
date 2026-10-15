@@ -1,5 +1,183 @@
 # Validation
 
+## PHASE 4F ACCEPTANCE — EVIDENCE PASS (first pass) (2026-10-14)
+
+**Status: Phase 4 is NOT yet accepted: pending owner Samsung SM-T580 UAT and administrator review.** This is the first, evidence-gathering pass of 4F. No production code, schema, dependency or UI behavior was changed (`git diff main..HEAD` is documentation only). No product defect was found that required a fix; see "Failures and classification" for the RP5 results that are NOT clean and are NOT fully explained. No Samsung PASS, no TalkBack acceptance and no physical-controller acceptance is claimed.
+
+Source: `main` `fe0bc1f0ab9ebe75d9ba9659774255f455e5d2c9` (after PR #41; 4A–4E merged), branch `phase-4/4f-acceptance`, tree clean at start. Room `@Database(version = 5)`, schemas 1–5 in `app/schemas` (identityHash of 5.json `01a3ac3be5e0e6f0d609c8a7356fabb2`). All builds/tests below ran on that source.
+
+### Devices and method
+
+| Device | Detail |
+| --- | --- |
+| RP5 `d8f7f1b6` | Android 13, WebView 109, 1080x1920 @ 360 dpi (no override). The app runs in LANDSCAPE on it: window 1920x1080 px = about 853x445 dp (auto-rotate on, `user_rotation=1`; left as found). |
+| API 24 emulator `shelfos-api24` | x86_64, WebView 52, 1080x1920 @ 420 dpi. Restarted once (see infrastructure). |
+| Samsung SM-T580 | Not run. Owner manual UAT only. |
+
+Instrumented method (a deviation from the standing "one class per Gradle invocation" rule, stated plainly): `assembleDebug` + `assembleDebugAndroidTest` were built once by Gradle, the two APKs installed on each device, and every class was run as its own `adb shell am instrument -w -r -e class <one class>` with `pm clear com.d4guilar.shelfos` before each class. Counts come from the instrumentation status stream (`INSTRUMENTATION_STATUS_CODE` 1 started / 0 pass / -2 fail / -3 assumption-skipped), not from Gradle XML, so a 0-test run is visible as `started=0` (this is how the post-hang junk rows were detected and discarded). Raw outputs and scripts stayed in the scratchpad (not committed). The 64 test classes were enumerated from `app/src/androidTest` (files containing `@Test`; 5 helper files without tests excluded).
+
+### JVM and build gates
+
+| Gate | Result |
+| --- | --- |
+| `./gradlew testDebugUnitTest` | PASS: 50 result XMLs, **587 tests, 0 failures, 0 errors, 0 skipped**. |
+| `assembleDebug`, `assembleDebugAndroidTest` | PASS (HEAD `fe0bc1f`). |
+| `lintDebug` | PASS: **0 errors, 60 warnings** (`app/build/reports/lint-results-debug.*`). |
+| `bundleDebug` | PASS: `app-debug.aab` 21,339,354 bytes. |
+
+### Instrumented matrix (tests / failures, one class per run)
+
+Columns: RP5 (WebView 109, landscape 853x445 dp host) and API 24 emulator (WebView 52, portrait phone). Totals: RP5 423 tests, 22 failures; API 24 423 tests, 17 failures; 0 crashes; 1 assumption-skip (API 24 `NotesEpubJumpTest`, "needs a current WebView (API 26+)").
+
+| Class | RP5 | API 24 |
+| --- | --- | --- |
+| `AnnotationMigrationTest` | 6 / 0 | 6 / 0 |
+| `AnnotationRepositoryTest` | 15 / 0 | 15 / 0 |
+| `AppLanguageInstrumentedTest` | 3 / 0 | 3 / 0 |
+| `AppearanceRestorationTest` | 1 / 0 | 1 / 0 |
+| `BookmarkPersistenceTest` | 7 / 0 | 7 / 0 |
+| `CbrProductIntegrationTest` | 6 / 0 | 6 / 0 |
+| `EpubAnchorVerifierInstrumentedTest` | 11 / 0 | 11 / 0 |
+| `EpubAnnotationsTest` | 27 / 0 | 27 / 13 |
+| `EpubBookmarkLocationInstrumentedTest` | 6 / 0 | 6 / 0 |
+| `EpubBookmarkTest` | 9 / 2 | 9 / 0 |
+| `EpubChapterHighlightTest` | 3 / 0 | 3 / 0 |
+| `EpubManagedFontAppearanceTest` | 1 / 0 | 1 / 0 |
+| `EpubManagedFontLiveSwitchTest` | 2 / 0 | 2 / 2 |
+| `EpubManagedFontProofTest` | 1 / 0 | 1 / 1 |
+| `EpubRecreationTest` | 1 / 0 | 1 / 0 |
+| `EpubResizeGateTest` | 1 / 0 | 1 / 0 |
+| `EpubSearchServiceInstrumentedTest` | 1 / 0 | 1 / 0 |
+| `EpubSearchTest` | 6 / 2 | 6 / 0 |
+| `EpubStrictXhtmlRenderingTest` | 2 / 0 | 2 / 0 |
+| `FixedAnnotationProcessDeathTest` | 2 / 0 | 2 / 0 |
+| `FixedAnnotationRepositoryTest` | 8 / 0 | 8 / 0 |
+| `FixedReaderAnnotationsUiTest` | 18 / 0 | 18 / 0 |
+| `FixedReaderCbrAnnotationHostedTest` | 4 / 0 | 4 / 0 |
+| `FixedReaderFoldRenderGeometryUiTest` | 3 / 0 | 3 / 0 |
+| `FixedReaderFoldRenderRequestTest` | 4 / 0 | 4 / 0 |
+| `FixedReaderFoldableUiTest` | 9 / 0 | 9 / 0 |
+| `FixedReaderHingeSafeModalTest` | 7 / 0 | 7 / 0 |
+| `FixedReaderRecreationTest` | 7 / 0 | 7 / 0 |
+| `FixedReaderRenderRequestTest` | 20 / 0 | 20 / 0 |
+| `FixedReaderSpreadUiTest` | 11 / 4 | 11 / 0 |
+| `FixedReaderSpreadViewModelTest` | 14 / 0 | 14 / 0 |
+| `FixedReaderTransformBoundsTest` | 15 / 0 | 15 / 0 |
+| `FixedReaderViewModelLifecycleTest` | 2 / 0 | 2 / 0 |
+| `FoldDescriptorMapperTest` | 9 / 0 | 9 / 0 |
+| `InputModalityClassificationTest` | 10 / 0 | 10 / 0 |
+| `LibraryPersistenceTest` | 10 / 0 | 10 / 0 |
+| `MalformedFixedReaderResilienceTest` | 4 / 0 | 4 / 0 |
+| `ManagedFontRepositoryTest` | 1 / 0 | 1 / 0 |
+| `NavigationSmokeTest` | 28 / 0 | 28 / 0 |
+| `NotesEpubJumpTest` | 7 / 0 | 7 / 1 |
+| `NotesHubUiTest` | 20 / 9 | 20 / 0 |
+| `NotesRepositoryTest` | 17 / 0 | 17 / 0 |
+| `NotesScaleTest` | 2 / 0 | 2 / 0 |
+| `NotesSnapshotMigrationTest` | 4 / 0 | 4 / 0 |
+| `PdfFailedOpenFinalizationTest` | 5 / 0 | 5 / 0 |
+| `PortableKnowledgeExportTest` | 1 / 0 | 1 / 0 |
+| `PortableKnowledgeRepositoryTest` | 3 / 0 | 3 / 0 |
+| `PortableKnowledgeSafTest` | 2 / 0 | 2 / 0 |
+| `PortableKnowledgeUiTest` | 1 / 0 | 1 / 0 |
+| `ReaderDialogFoldSafetyTest` | 4 / 1 | 4 / 0 |
+| `ReaderPreferencesSpreadInstrumentedTest` | 7 / 0 | 7 / 0 |
+| `ReaderStateTest` | 3 / 0 | 3 / 0 |
+| `RemovalDialogKnowledgeTest` | 6 / 1 | 6 / 0 |
+| `RoomPersistenceTest` | 1 / 0 | 1 / 0 |
+| `SyntheticLargePdfAcceptanceTest` | 1 / 0 | 1 / 0 |
+| `SyntheticLoadAcceptanceTest` | 1 / 0 | 1 / 0 |
+| `ThumbnailLoaderInstrumentedTest` | 6 / 0 | 6 / 0 |
+| `ThumbnailNavigationUiTest` | 7 / 3 | 7 / 0 |
+| `UatHarnessTest` | 1 / 0 | 1 / 0 |
+| `core.files.LibarchiveNativeSmokeTest` | 3 / 0 | 3 / 0 |
+| `core.files.LibarchiveRarNativeLifecycleTest` | 9 / 0 | 9 / 0 |
+| `core.files.LibarchiveRarNativeTest` | 13 / 0 | 13 / 0 |
+| `core.files.RarPageSourceRealSessionInstrumentedTest` | 1 / 0 | 1 / 0 |
+| `core.reader.RarPageSourceRenderInstrumentedTest` | 3 / 0 | 3 / 0 |
+
+`FixedReaderTransformBoundsTest` (which hung once on an emulator in an earlier phase) completed on both devices (RP5 15/15 in 53 s; API 24 15/15 in 90 s). The native CBR/libarchive classes (`LibarchiveNativeSmokeTest`, `LibarchiveRarNativeTest`, `LibarchiveRarNativeLifecycleTest`, `RarPageSourceRealSessionInstrumentedTest`, `RarPageSourceRenderInstrumentedTest`, `CbrProductIntegrationTest`, `FixedReaderCbrAnnotationHostedTest`) are all green on both devices.
+
+### Tablet-sized configuration (API 24 emulator, `wm size 1200x1920`, `wm density 240`; override reset and verified)
+
+`NotesHubUiTest` 20/20, `FixedReaderSpreadUiTest` 11/11, `FixedReaderFoldableUiTest` 9/9, `FixedReaderHingeSafeModalTest` 7/7, `ReaderDialogFoldSafetyTest` 4/4, `FixedReaderAnnotationsUiTest` 18/18, `FixedReaderCbrAnnotationHostedTest` 4/4, `PortableKnowledgeUiTest` 1/1, `RemovalDialogKnowledgeTest` 6/6, `ThumbnailNavigationUiTest` 7/7, `FixedReaderFoldRenderGeometryUiTest` 3/3, `NavigationSmokeTest` 28/28. All pass. Fold/posture simulation is exercised by the hosted fold classes already in the matrix (`FixedReaderFoldableUiTest`, `FixedReaderHingeSafeModalTest`, `FixedReaderFoldRender*`, `ReaderDialogFoldSafetyTest`, `FoldDescriptorMapperTest`, `FixedReaderCbrAnnotationHostedTest`); no new fold tests were written and no fold hardware was used.
+
+### Failures and classification (investigated, not dismissed)
+
+**API 24 emulator (17 failures): environment, WebView 52 capability limits, documented since 4B.** `EpubAnnotationsTest` 13/27 failing (inline decoration and selection-toolbar tests need WebView 69 or later; the non-gated tests pass), `EpubManagedFontLiveSwitchTest` 0/2 and `EpubManagedFontProofTest` 0/1 ("Navigator JavaScript returned no font evidence"; recorded as failing/hanging on this emulator since 2B), `NotesEpubJumpTest#anUnplacedHighlightDoesNotMoveTheReaderAndExplainsWhy` 1 plus 1 assumption-skip. These classes pass on the RP5 (WebView 109): `EpubAnnotationsTest` 27/27, `EpubManagedFont*` 4/4, `NotesEpubJumpTest` 7/7.
+
+**API 24 infrastructure event.** The first `NotesScaleTest` run on the emulator hung (timeout 900 s after 1 of 2 tests, then the emulator stopped answering `adb shell`); the emulator was killed and restarted, and `NotesScaleTest` then passed 2/2 (115 s), as did `NotesSnapshotMigrationTest` 4/4 and every class after it. The hung run is NOT counted as a pass; the post-hang rows (`started=0`) were discarded and the matrix uses the post-restart results. No product cause was identified (the same test passes on rerun); it is recorded as an unexplained emulator wedge, not as a product regression and not as dismissed.
+
+**RP5 (22 failures): NOT clean; classified as follows.**
+
+| Class (RP5 failing / total) | Failing tests | Evidence and classification |
+| --- | --- | --- |
+| `EpubBookmarkTest` 2/9 (first run; 1 to 3 of 9 across 6 reruns) | `bookmarksDialogIsReachableAndOperableThroughKeyboardFocus` (known baseline, fails every time); `addListJumpAndDeleteBookmarksAcrossDialogReopens` and `returningToAPreviouslyBookmarkedLocationShowsRemoveBookmarkAgain` intermittent | `addListJump...` passed 8/8 when run alone and failed 3 of 6 class-level reruns, always at `bookmarkRow("Chapter 5")` `assertExists` (no wait) after the count reached 2. At the 4C.1 commit `0040c52` (built and run today on the same RP5) the class ran 6 times with only the baseline failure. **Possible timing regression since 4C.1 (EPUB bookmarks moved onto the annotation repository in 4D); root cause NOT established.** Reported as an open item, not as baseline. |
+| `EpubSearchTest` 2/6 | `acceptedCtrlFAndKeyboardFocus...`, `queryShowsReadableSnippet...` | Identical failures on the RP5 at `0040c52`; 6/6 on API 24. Pre-existing and RP5-specific, not a 4D/4E regression; cause not established. |
+| `ThumbnailNavigationUiTest` 3/7 | Escape and both gamepad-B tests | Identical at `0040c52`; 7/7 on API 24 portrait, landscape-size and tablet. Compose-level key injection does not close Pages on the RP5. **In the real app on the RP5, adb-injected Escape (`input keyboard keyevent 111`) and gamepad B (`input gamepad keyevent 97`) both closed Pages.** RP5 test-harness behavior, not shown to be a product defect. Not a physical-controller test. |
+| `FixedReaderSpreadUiTest` 4/11 | spread/single switch tests incl. "spread's wide combined content should allow substantial horizontal pan ... got 0.0" | Identical 7/11 at `0040c52` on the RP5. On API 24: 11/11 portrait, 9/11 at a 1920x1080 @ 360 dpi landscape-size override, 11/11 tablet. Pre-existing, tied to the small landscape window, not a 4D/4E regression. Whether spread geometry on a short landscape window is a product issue is open. |
+| `ReaderDialogFoldSafetyTest` 1/4 | `appearanceDialogStaysEntirelyInsideTheSelectedSafePaneUnderAVerticalFold` | Identical at `0040c52`; reproduces on API 24 at the 1920x1080 @ 360 dpi override (3/4); passes in portrait and tablet. Short landscape window; pre-existing. |
+| `RemovalDialogKnowledgeTest` 1/6 | `gamepadConfirmActivatesTheFocusedChoiceOnly` | Test added in 4E (no 4C.1 comparison); passes on API 24 in all three configurations. Same RP5 key-injection pattern as `ThumbnailNavigationUiTest`; harness-class, unconfirmed. |
+| `NotesHubUiTest` 9/20 | keyboard/gamepad reach-all-controls; out-of-range and malformed fixed notes; orphan edit; edit note; delete confirmation; publication filter; fixed jump and back; EPUB open | RP5 landscape 853x445 dp only (API 24 phone 20/20, tablet 20/20; API 24 at the 1920x1080 @ 360 dpi override 16/20). Screenshot evidence from that override: after the test types a search term the soft keyboard covers the list, so the row actions the test clicks are off screen; on the RP5 Gboard goes full-screen "extract" mode in landscape and hides the whole dialog. The hub controls take most of a 445 dp-high window (about one row visible). **Classified as landscape-short-window test fragility plus a UX observation, not a data defect; NOT proven that no product layout issue exists on short landscape windows.** `NotesHubUiTest` was never run on the RP5 in 4D/4E (their evidence is emulator-only), so there is no earlier RP5 baseline. |
+
+Net: no failure is a proven 4A–4E product regression, but `EpubBookmarkTest` intermittency on the RP5 is a *possible* timing regression that needs a decision, and the RP5 short-landscape and key-injection group is a gap in RP5 automation that the owner's Samsung UAT (and a physical-controller pass) must cover.
+
+### Migration acceptance (genuine Phase-3 upgrade, RP5)
+
+* Old APK: `C:\Users\dagui\Documents\ShelfOS-UAT\ShelfOS-Phase3-UAT.apk` (27,335,959 bytes, built 2026-10-09 17:22, shortly before PR #29 `6be8187` was committed at 17:49; versionCode 2 / 0.1.0-alpha; Android Debug certificate SHA-256 `0a7333d7a6342c204ad40268d497817439e2fa14a7ca0927cbf78f93802d7b3a`, identical to the current debug build, so an in-place `adb install -r` is possible). Caveat: it is the "Phase 3 UAT build", not byte-verified against a tag.
+* Clean install of that APK; through its own UI imported three synthetic fixtures from `/sdcard/Download/p4f` (EPUB, CBZ, PDF; generated for this pass, nothing private), opened the EPUB and added two real bookmarks (Chapter 2 and 3). Phase-3 DB: `PRAGMA user_version = 3`; `library_item` 3, `bookmark` 2, `reading_state` 1, `reader_preference` 0, `appearance_preference` 0; `room_master_table` hash `1f487b301990c63f31ea5b21875364ea`. CBR was not seeded (no RAR authoring tool; CBR is covered by the instrumented classes).
+* `adb install -r` of the current debug APK (`0e24eff138b9...`) over it, then launch: `user_version = 5`, `room_master_table` hash **`01a3ac3be5e0e6f0d609c8a7356fabb2`, equal to the identityHash in `app/schemas/.../5.json`**, `annotation` 2, `annotation_source_snapshot` 0, `library_item` 3, `reading_state` 1, `PRAGMA integrity_check` ok. **Legacy `bookmark` table kept: 2 rows byte-identical to before (`select *` diff empty); `library_item` rows byte-identical.** Both annotation rows match their bookmark on id, itemId, locator, createdAt (kind BOOKMARK). Zero loss: 2 in, 2 out.
+* Same install after upgrade: Notes hub shows "2 items" under the book; the PDF and EPUB still open; a PDF bookmark and a PDF page note (`FIXED_PAGE_1`) added through the current UI; app force-stopped and relaunched: 4 annotation rows persist, `bookmark` still 2. **Export (ShelfOS JSON, All knowledge) to Downloads** contained the 2 migrated bookmarks with their original ids, locators, `progressSnapshot` and timestamps; **Import of that file reported New 0, Duplicates 2, Conflicts 0**; Cancel changed nothing.
+* Fallback tests (reconstructed v3/v4 DBs, raw-SQL real migration, rollback on failure): `AnnotationMigrationTest` 6/6, `NotesSnapshotMigrationTest` 4/4, `BookmarkPersistenceTest` 7/7, on both devices.
+
+### Source immutability
+
+Hashed with `sha256sum` on the RP5 (`/sdcard/Download/p4f`): EPUB `c2be3599...e5db`, CBZ `91682707...279b`, PDF `b2840bb4...21ac`. Equal to the host hashes before import and unchanged after: library import, EPUB open and two bookmarks, PDF open with bookmark and note, Notes hub, export, import review (cancel), force-stop/relaunch. Only these three fixtures were hashed on a device (the CBR source was not). The existing tests that hash sources (`CbrProductIntegrationTest`, `RarPageSourceRealSessionInstrumentedTest`, `NotesRepositoryTest`, `PortableKnowledgeSafTest`, `EpubAnnotationsTest`) passed on the RP5.
+
+### Localization
+
+`values`, `values-es`, `values-pt-rBR`: 368 resource names each; the name-set diff EN vs ES and EN vs pt-BR is empty; 10 `<plurals>` each with `one`/`other` only (no `many`, which CLDR defines for Spanish and Portuguese for large numbers; recorded as an observation, not changed); printf placeholder multisets equal across the three files. RP5 on-device spot checks (`cmd locale set-app-locales`, restored to the system default afterwards): Notes hub (search hint, filters, sort, counts "4 elementos" / "4 itens"), export dialog ("Exportar conocimiento", format and scope labels), navigation rail, in Spanish and Brazilian Portuguese. No publication or user text was altered. Markdown localized labels were not re-rendered on a device (covered by the existing export tests that passed).
+
+### Accessibility and input
+
+* Touch, keyboard and gamepad-B/Escape: the instrumented suites above (see failures). On the RP5 only adb-**injected** keyboard and gamepad events were used (Escape and gamepad B closed Pages; arrow/Esc hint chips appeared after key events). **No physical built-in controller input was exercised by the agent; physical-controller acceptance is NOT claimed.**
+* **TalkBack is not installed on the RP5** (no `com.google.android.marvin.talkback`; the only enabled accessibility service is `com.rp.gameassistant...ForegroundAppMonitorV4Service`). **No TalkBack acceptance is claimed.** The 4C.2 spoken-semantics tests pass but are not a TalkBack run.
+* Observation (not changed): with the RP5's Gboard in landscape the note editor goes to full-screen "extract" mode; Back then closes the editor and discards the typed text, whereas the keyboard's own hide chevron keeps it. The owner may want `IME_FLAG_NO_EXTRACT_UI` on note fields.
+
+### Layout and devices
+
+Phone portrait (API 24), tablet 1200x1920 @ 240 dpi (API 24), landscape-size override 1920x1080 @ 360 dpi (API 24; every override reset and verified), RP5 landscape 853x445 dp. The Notebook opened as a dialog in the RP5 PDF reader (window height 445 dp is under the 480 dp side-by-side threshold); the side-by-side pane is covered by `FixedReaderCbrAnnotationHostedTest` (4/4 both devices) and the tablet run, not seen live in this pass. Screenshots were kept in the scratchpad only.
+
+### Acceptance matrix mapping
+
+| Area | Executed evidence | Gap |
+| --- | --- | --- |
+| Annotation core (bookmark/highlight/note, exact locators, restart, malformed) | `AnnotationRepositoryTest` 15/15, `FixedAnnotationRepositoryTest` 8/8, `FixedAnnotationProcessDeathTest` 2/2, `EpubAnnotationsTest` 27/27 (RP5), `EpubAnchorVerifierInstrumentedTest` 11/11, `MalformedFixedReaderResilienceTest` 4/4; live relaunch above | API 24 cannot show inline EPUB annotations (WebView 52) |
+| Removal / orphans | `RemovalDialogKnowledgeTest` 6/6 API 24 (5/6 RP5), `NotesRepositoryTest` 17/17, `NotesHubUiTest` 20/20 on API 24 phone and tablet | Not exercised live; RP5 `NotesHubUiTest` 9 failures (landscape) |
+| EPUB | `EpubAnnotationsTest`, `NotesEpubJumpTest` 7/7 (RP5), `EpubRecreationTest`, `EpubResizeGateTest` | `EpubBookmarkTest` intermittency (open item); API 24 gated |
+| Fixed layout (PDF/CBZ/CBR, spread, RTL, page jump) | `FixedReaderAnnotationsUiTest` 18/18 both, `FixedReaderSpreadViewModelTest` 14/14, `FixedReaderCbrAnnotationHostedTest` 4/4; live PDF bookmark and note | `FixedReaderSpreadUiTest` 4 RP5 failures (landscape); live CBZ/CBR page annotations not done |
+| Publication Notebook | `FixedReaderAnnotationsUiTest`, `FixedReaderCbrAnnotationHostedTest`, `NotesEpubJumpTest`; live PDF Notebook dialog | Live side-by-side pane; Back behavior only by tests |
+| Notes hub | `NotesHubUiTest` 20/20 (API 24 phone and tablet), `NotesRepositoryTest` 17/17, `NotesScaleTest` 2/2 (10k scale) | Samsung-class performance not measured |
+| Portable knowledge (4E) | `PortableKnowledgeRepositoryTest` 3/3, `PortableKnowledgeExportTest` 1/1, `PortableKnowledgeSafTest` 2/2, `PortableKnowledgeUiTest` 1/1 (both devices); live JSON export, import review (Duplicates 2) and cancel on the RP5 | Markdown scopes, conflicts, orphan restore, stale-preview and failed-export covered only by the existing (small) test counts, not re-exercised live |
+| Migration | above | CBR and Samsung not covered |
+| Localization / accessibility | above | TalkBack, physical controller, Samsung |
+
+### Performance observations
+
+`NotesScaleTest` (10,000 annotations): API 24 emulator 2/2 in 115 s on the rerun; RP5 2/2 in 27 s. No sustained slowdown seen in the live RP5 session; no memory profiling was done. Modest-hardware (Samsung SM-T580) performance is NOT measured.
+
+### Samsung SM-T580 UAT package (not run)
+
+`C:\Users\dagui\Documents\ShelfOS-UAT\ShelfOS-Phase4F-UAT.apk`: debug, `com.d4guilar.shelfos`, versionName 0.1.0-alpha, versionCode 2, minSdk 24 / targetSdk 37, 26,611,628 bytes, SHA-256 `0e24eff138b95a6df94beb8d09296b5c710ee127baab897e69612805cb47025c`, built from source at `fe0bc1f0ab9ebe75d9ba9659774255f455e5d2c9` (the 4F commit only adds documentation), same debug signing certificate as the Phase 3/4B/4C.1 APKs (in-place upgrade). Contains `lib/armeabi-v7a/libshelfos_cbr.so`. Installs and launches on the API 24 emulator and the RP5. It carries a second debug launcher (`UatLauncherActivity`, label "ShelfOS 4B UAT"). Owner checklist: `ShelfOS-Phase4F-UAT-Checklist.md` beside it. LAN URL pattern `http://<PC-LAN-IP>:8000/ShelfOS-Phase4F-UAT.apk` (PC LAN IPv4 at build time 192.168.1.120). The existing Phase 3 / 4B / 4C.1 APKs and `index.html` were not touched and no server was started.
+
+### Legacy `bookmark` table
+
+NOT dropped. Main source references only the `BookmarkEntity` declaration (`LibraryDao.kt`), its entry in `ShelfDatabase`, and the v3→v4 copy/verify SQL; tests reference it for migration checks. Dropping it is a v5→v6 migration (remove the entity, `DROP TABLE bookmark`, export `6.json`, adjust the migration tests); deferred to administrator authorization.
+
+### Not run in this pass
+
+Samsung UAT; physical controller; TalkBack; CBR source hashing; live CBZ/CBR annotations, live Markdown export, orphan restore, conflict handling and Notebook side-by-side on a device; third-party SAF providers; process death on the RP5 beyond `FixedAnnotationProcessDeathTest`; fold hardware.
+
 ## PHASE 4E — PORTABLE KNOWLEDGE & RESTORE: ACCEPTED (2026-10-14)
 
 Status: **IMPLEMENTED AND INDEPENDENTLY REVIEWED / ACCEPTED.** Final independent

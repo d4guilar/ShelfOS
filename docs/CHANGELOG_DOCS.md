@@ -1,5 +1,10 @@
 # Documentation Changelog
 
+## Phase 4F acceptance — first evidence pass (2026-10-14)
+
+- Recorded the first Phase 4F acceptance evidence pass in `docs/VALIDATION.md`: JVM 587/0, RP5 and API 24 per-class instrumented matrices, tablet-sized run, build gates (lint 0 errors / 60 warnings, bundleDebug), a genuine Phase-3-to-Room-v5 upgrade on the RP5 (2 bookmarks in, 2 annotations out, legacy table kept), source-immutability hashes, EN/ES/PT-BR parity, and the Samsung UAT package.
+- Plan §13.6, README and ROADMAP status wording reconciled: 4E is merged (PR #40); 4F is IN PROGRESS and Phase 4 is NOT yet accepted (owner Samsung UAT and administrator review pending). No completion claimed; the legacy `bookmark` table is not dropped.
+
 ## Premium commercial structure and 16-theme lineup (2026-10-15)
 
 - Premium lineup restructured to **4 paid packs × 4 themes = 16 premium themes**:
