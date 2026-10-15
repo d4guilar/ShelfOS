@@ -1,5 +1,9 @@
 # Documentation Changelog
 
+## Phase 4F Notes hub short-landscape remediation (2026-10-15)
+
+- `docs/VALIDATION.md` gains "4F final narrow remediation: Notes hub short landscape": below 480 dp of available height the hub controls scroll with the list; RP5 `NotesHubUiTest` 20/20 (was 11/20) with per-method classification, phone/tablet 20/20, injected (non-physical) controller sanity, honest gaps. Plan section 13.6 status updated. The owner physical-controller pass is added to the UAT checklist and remains pending; Phase 4 is NOT yet accepted (pending owner Samsung UAT and administrator review).
+
 ## Phase 4F resolution of two acceptance uncertainties (2026-10-14)
 
 - `docs/VALIDATION.md` gains "4F resolution of the two acceptance uncertainties": the RP5 `EpubBookmarkTest` intermittency is classified as a real 4D timing race (bare chapter-link locator used as the live position) and fixed; the RP5 short-landscape keyboard extract mode and first-Back draft loss are reproduced per surface, root-caused (`dismissOnShelfBack` pre-IME handling) and fixed, with before/after counts and honest gaps (Samsung keyboard, hub list height, Save/Cancel under the keyboard). Phase 4 remains NOT yet accepted: pending owner Samsung UAT and administrator review.
