@@ -1,5 +1,45 @@
 # Documentation Changelog
 
+## Phase 4.5 plan remediation, part 3 (2026-10-15)
+
+Documentation only; closes the findings of the second independent Codex High review
+(0 HIGH, 2 MEDIUM). Phase 4 remains complete; Phase 4.5 is still PLANNING; no slice is
+implemented; Room v6 is planned (not implemented) and v7 stays reserved for 4.5A.2.
+
+- **D20 approved (initial 4.5A.1 policy):** per-item local-cover storage (about 512 KiB per
+  cover; 2,000 covers about 1 GiB is a worst-case planning bound), a write guard that
+  keeps at least 512 MiB free after the write, retryable `STORAGE_FULL` without a retry
+  storm, **no automatic eviction** and no adaptive total quota. Superseded and removed as
+  policy: the 8% / 256-768 MiB adaptive quota, the 150 MiB guard, automatic artwork
+  eviction, the ~1 MiB / ~4 Mpx byte-exact ceiling and the 1600 px default derivative
+  (now about 1200 px with a fixed five-pass JPEG ladder and an 800 px minimum edge).
+- **Crash loop closed:** a durable per-publication attempt marker is committed before
+  native extraction, decoding or re-encoding; startup reconciliation records abandoned
+  attempts as unexplained interruptions (never assumed to be native crashes), parks an
+  item after two, and runs before the orphan sweep and before anything is scheduled.
+  Design compared (columns on the LOCAL row, a tiny table, a marker file); test list added.
+- **One retry schedule:** initial attempt plus up to 3 automatic retries (about 1, 4 and 16
+  minutes, plus or minus 20% jitter; about 21 minutes nominal), then parked; a relaunch is
+  not a trigger; interruptions consume attempts and park earlier. The older five-attempt
+  timing is withdrawn.
+- **D21 approved:** cover slot model `PRIMARY KEY (libraryItemId, slot)` with LOCAL, USER
+  and ONLINE slots (4.5A.1 writes only LOCAL), provenance in `localSource`/`sourceRef`/
+  `sourceChoice`, one file per publication and slot, no file sharing. The
+  provenance-as-key design is superseded.
+- **D12 approved:** bounded PDF preview (derived, white background, about 1200 px, JPEG
+  about q90). WebP facts corrected from the Android SDK (`WEBP` deprecated in API 30;
+  `WEBP_LOSSY`/`WEBP_LOSSLESS` since API 30; legacy `WEBP` lossless at quality 100 only
+  from API 29).
+- Smaller fixes: latest-value throttle instead of `debounce` for the Library cover map (and
+  no unmeasured recomposition claim); expensive CBR/PDF rows commit per item; Crop to fill
+  in the existing frames until 4.5A.2; zero/absent `lastModified` is UNKNOWN; Metron wording
+  corrected against the official statement (tokens and Basic Auth, the shared-account
+  advice, the caching quote, attribution, fair-use covers; `metron.live` unrelated,
+  `metron.cloud` terms still unresolved, Metron still CONDITIONAL); provisional (not
+  observed) Samsung contention criteria added (plan §28.1).
+- Owner decisions recorded: D3, D9, D10, D11, D12, D20, D21. D19 (Metron licensing) stays
+  OPEN. No provider, dependency, permission or schema was implemented.
+
 ## Phase 4.5 plan remediation, part 2 (2026-10-15)
 
 Documentation only; closes the remaining findings of the first independent Codex High

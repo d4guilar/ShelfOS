@@ -120,7 +120,8 @@ Cards are better reserved for:
 
 ShelfOS should be **beautiful by default, configurable for power users**. Missing
 or poor metadata must not become a broken-looking library. Cover source and cover
-presentation are separate: preserve original artwork while the UI applies
+presentation are separate: preserve the source's original artwork (ShelfOS stores a
+per-item bounded copy, never a replacement) while the UI applies
 consistent framing, category-appropriate proportions, theme-aware backgrounds and
 crop/contain behavior without stretching. The shape options (Original, 2:3, 3:4, 4:5,
 1:1, Custom W:H), Crop to fill / Fit entire artwork and the global-plus-per-category

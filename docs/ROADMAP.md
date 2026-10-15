@@ -412,11 +412,14 @@ and import and reading never depend on a provider.
 
 - **4.5A Cover Presentation Foundation** — umbrella of two independent PRs, each with its
   own validation, Codex High review and merge. **4.5A.1 Local Cover Artwork** (Room v6):
-  embedded EPUB cover, CBZ/CBR cover, PDF first-page preview, bounded artwork storage
-  (small originals byte-exact, larger ones as bounded derivatives that record the original
-  dimensions), local cover lifecycle and safe backfill (batched, one CBR extraction at a
-  time), a minimal shared cover renderer on the existing frame for the Library, Search,
-  details, Notes and expand transition; **no networking**. **4.5A.2 Cover Presentation**
+  embedded EPUB cover, CBZ/CBR cover, PDF first-page preview, per-item bounded artwork
+  storage (≈ 512 KiB per cover: small originals byte-exact within limits, larger ones as
+  bounded derivatives of ≈ 1200 px that record the original dimensions; a low-storage write
+  guard; **no automatic eviction**), a LOCAL/USER/ONLINE cover-slot schema (only LOCAL is
+  written), local cover lifecycle with **crash-safe durable attempt tracking** (parked after
+  two unexplained interruptions) and safe backfill (batched, one CBR extraction at a time),
+  a minimal shared cover renderer using Crop to fill in the existing frames for the
+  Library, Search, details, Notes and expand transition; **no networking**. **4.5A.2 Cover Presentation**
   (Room v7): display shape Original / 2:3 / 3:4 / 4:5 / 1:1 / Custom W:H (1:2 to 2:1, no
   Auto) with Crop to fill or Fit entire artwork, never stretched; global default (2:3 Crop;
   Documents Original) plus per-category overrides; Settings UI; **no networking**.

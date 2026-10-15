@@ -22,13 +22,16 @@ Markers used below:
   after terms review (§14, §31).
 - **CONDITIONAL** — a provider that is the preferred candidate but whose approval still
   depends on a named unresolved prerequisite (currently Metron, §14, D5).
+- **APPROVED** — an administrator decision recorded in §31 (currently D3, D9–D12, D18,
+  D20 and D21; D12/D20/D21 approve the *initial 4.5A.1 policy* only).
 
 Remediation (2026-10-15, after the first independent Codex High review): Comics acceptance
 now requires an approved online path (§30, D3); Metron research was redone from Metron's
 official commercial-use statement (§14); cover storage is bounded rather than byte-exact
 (§7, §18); 4.5A is split into two independent PRs, 4.5A.1 and 4.5A.2 (§29); the
-`publication_cover` design keeps one row per artwork kind (§23); extraction failures are
-split into permanent and temporary (§23.3).
+`publication_cover` design was first drawn with one row per artwork kind (superseded in
+part 3 by the slot model, §23.1); extraction failures are split into permanent and
+temporary (§23.3).
 
 Remediation, part 2 (2026-10-15, same review): extraction failure semantics completed
 (§23.3); cover-row lifecycle and removal race closed (§23.4); Library refresh-storm risk
@@ -41,6 +44,17 @@ FrontCover handling, matching safety and stale-source handling (§6, §7, §13, 
 the ROADMAP (§29); the first implementation prompt rewritten (§32). Owner-approved
 presentation decisions are marked **(owner-approved)**; nothing else in this plan is
 approved.
+
+Remediation, part 3 (2026-10-15, second independent review: 0 HIGH, 2 MEDIUM): **D20
+approved** as a per-item local-cover storage policy with **no automatic eviction** and a
+low-storage write guard (§7 rule 1, §18, §18.1; the adaptive-quota recommendation is
+superseded); the **extraction crash loop closed** by durable per-publication attempt
+tracking with parking after two unexplained interruptions (§23.5); the retry schedule made
+single and consistent (§23.3); **D21 approved** as the LOCAL/USER/ONLINE cover-slot model,
+replacing provenance-as-key (§23.1); **D12 approved** with bounded PDF-preview values (§7);
+and the Library cover-map throttle, startup ordering, source-revision unknowns, Metron
+wording, WebP facts and provisional Samsung criteria corrected (§14, §19.1, §23.2, §28.1).
+Room v6 stays planned, not implemented; v7 stays reserved for 4.5A.2.
 
 ---
 
@@ -114,9 +128,9 @@ These are fixed by the administrator for Phase 4.5:
    local artwork alone do not satisfy it (§30). If none is approved and integrated, 4.5E and
    4.5G stay open and the phase does not close.
 3. Cover **source** and cover **presentation** are separate. ShelfOS keeps the best
-   available artwork under a bounded storage policy (small originals byte-exact, larger
-   ones as a bounded high-quality derivative that records the original dimensions; §7) and
-   controls display shape separately:
+   available artwork under a per-item bounded storage policy (≈ 512 KiB per cover: small
+   originals copied byte-exact within limits, larger ones as a bounded derivative that
+   records the original dimensions; §7, §18.1) and controls display shape separately:
    `provider/embedded artwork → stored artwork (ORIGINAL or DERIVED) → ShelfOS cover
    renderer → user display aspect → Crop or Fit`. Never stretch or squash. The source
    publication is never modified and always keeps the full-size original artwork.
@@ -260,42 +274,62 @@ artwork source (embedded file entry | PDF first-page render | user image | provi
 
 Rules:
 
-1. **Bounded artwork storage; the source publication is never touched (proposed, (open)
-   D12/D20).** The original artwork always remains inside the source EPUB/CBZ/CBR (or the
+1. **Bounded artwork storage; the source publication is never touched (D12/D20
+   APPROVED for the initial 4.5A.1 policy; numeric ceilings are reviewable constants).**
+   The original artwork always remains inside the source EPUB/CBZ/CBR (or the
    provider/user file); ShelfOS never duplicates multi-megabyte comic pages just to show
-   Library covers. Every stored artwork file is recorded as **ORIGINAL** or **DERIVED**:
-   - *ORIGINAL*: a supported image (JPEG, PNG, WebP, GIF, BMP — whatever
-     `BitmapFactory` decodes on the device) that is **at most ~1 MiB and at most ~4 Mpx**
-     (planning default; reviewable constant) is stored byte-for-byte, no re-encode.
-   - *DERIVED*: anything larger is decoded with subsampling and re-encoded once as a bounded
-     high-quality display copy — **longest edge ≤ 1600 px** (benchmark 1200–1600 px at
-     implementation and keep the smallest size that still looks right in the Library tile
-     and the details pane), aspect ratio preserved, no crop, no stretch, **JPEG for opaque
-     art (quality proposed ~90, the recommended safe default on every API level)**; PNG only
-     when the source has alpha and the result stays within the bound. Lossless WebP is
-     **not** assumed: `Bitmap.CompressFormat.WEBP_LOSSY`/`WEBP_LOSSLESS` exist only from API
-     30 and the legacy `WEBP` constant is lossy-only on API 24–29 (Android SDK knowledge,
-     not re-fetched; **verify at implementation**). WebP *decode* is available on every
-     supported API level, so lossy WebP output is allowed only if a size/quality benchmark
-     justifies it. A DERIVED file that still exceeds a **~1 MiB stored-byte ceiling** is
-     re-encoded once at lower quality (never upscaled, never cropped). Subsampled decoding (`inSampleSize`) is chosen from the header
-     dimensions *before* allocation, with an independent **total-pixel cap** on the decode
-     target so a pathological image (e.g. 20000×20000) is rejected as
-     `FAILED_PERMANENT` rather than allocated.
-   - A **DERIVED copy is not byte-identical to the source image**, and the plan, UI copy
+   Library covers. Storage is bounded **per item**: **≈ 512 KiB of stored bytes per cover**
+   (§18.1). Every stored artwork file is recorded as **ORIGINAL** or **DERIVED**:
+   - *ORIGINAL*: a supported image (JPEG, PNG, WebP, GIF, BMP — whatever `BitmapFactory`
+     decodes on the device) whose bytes are **≤ 512 KiB** *and* whose longest edge is
+     **≤ the derivative bound (1200 px)** *and* whose header pixel count is within the
+     input pixel cap is copied **byte-for-byte**, no re-encode. (The 1200 px edge rule keeps
+     every stored file inside one decode envelope; it is a proposal within the approved
+     bytes bound.)
+   - *DERIVED*: anything else is decoded **once** with subsampling and re-encoded as a
+     bounded display copy: **default longest edge ≤ 1200 px** (1600 px only if later
+     benchmarks show the details pane needs it, a reviewable constant), aspect ratio
+     preserved, no crop, no upscale, an **explicit decoded-pixel cap** (header size is read
+     first; input above ≈ 40 Mpx, proposed, is rejected as `FAILED_PERMANENT` without
+     allocation, and the decode target is ≈ 2 Mpx), efficient lossy output — **JPEG for
+     opaque art (quality ≈ 90 start, the safe default on every API level)**; images with
+     alpha are composited on opaque white first (proposed) so the output stays JPEG.
+   - **Bounded, non-recursive size reduction (proposed ladder).** The decoded bitmap is
+     encoded at most **five times**, never re-encoding an encoded file: (1200 px, q90) →
+     (1200, q80) → (1200, q70) → (1000, q70) → (800, q70), stopping at the first result
+     ≤ 512 KiB; **800 px is the fixed minimum edge**. If the last pass is still over the
+     bound the row becomes `FAILED_PERMANENT` / `UNSUPPORTED_REPRESENTATION` (reassessed
+     only by an extractor-version change or an explicit Refresh cover) and the generated
+     cover stays. There is no infinite recompression and no silent size overrun.
+   - **WebP (facts verified 2026-10-15).** `Bitmap.CompressFormat.WEBP` exists since API 14
+     and is **deprecated since API 30**; `WEBP_LOSSY` and `WEBP_LOSSLESS` exist **only
+     since API 30** (Android SDK `android-37.0` `api-versions.xml`; the
+     [Bitmap.CompressFormat reference](https://developer.android.com/reference/android/graphics/Bitmap.CompressFormat)
+     page body could not be retrieved by the fetch tool, so the wording was checked against
+     the AOSP `Bitmap.java` source instead). In that source the legacy `WEBP` documents
+     that "as of Q" (API 29) a quality of 100 yields **lossless** WebP and any other quality
+     yields lossy WebP; on API 24–28 the constant is therefore lossy at every quality. No
+     single lossless-WebP behavior may be assumed across `minSdk` 24+. WebP *decode* is
+     available on every supported API level; WebP *output* is allowed only if a size/quality
+     benchmark justifies it and only through a path that is correct on API 24. **JPEG q90 is
+     the safe default.**
+   - A **DERIVED copy is never byte-identical to the source image**, and the plan, UI copy
      and technical details never call it the original. The record keeps the **original
-     pixel dimensions** and source provenance (entry name / page index / provider ref) so
+     pixel dimensions** and source provenance (`localSource`, `sourceRef`, §23.1) so
      presentation math (`ORIGINAL` shape) uses the true native ratio and the original can be
      re-read from the source when it is available.
-   - Provider images are stored as downloaded when within the thresholds, else DERIVED.
-     User-selected images follow the same rule and are *durable* (§18).
-   - A PDF has no embedded cover image, so its first page is *rendered* once through the
-     existing PDF open path into a DERIVED image — bounded first-page render, **longest
-     edge ≤ 1600 px, independent total-pixel cap, opaque white background composited
-     before encoding** (PDF pages are transparent), **lossy JPEG ~q90 (safe default; WebP
-     only if a benchmark justifies it)**, original PDF untouched — and recorded as
-     `PDF_FIRST_PAGE` / DERIVED, never called "embedded" or "original". This is one case
-     among several DERIVED cases, not the only one.
+   - Provider images (future) are stored as downloaded when within the bounds, else
+     DERIVED. User-selected images (future) follow the same rule and are *durable* user
+     data, not regenerable cache (§18).
+   - **PDF first page (D12 APPROVED).** A PDF has no embedded cover image, so its first
+     page is *rendered* once through the existing PDF open path into a DERIVED image:
+     bounded render (explicit total-pixel cap), **default longest edge ≈ 1200 px (1600 px
+     ceiling only if implementation evidence justifies it)**, **opaque white background
+     composited before encoding** (PDF pages are transparent), **JPEG quality ≈ 90 as the
+     starting point, adjusted through the ladder above if the 512 KiB bound requires**,
+     API 24+ compatible (including the legacy API 24/25 probe), original PDF untouched. It
+     is recorded as `localSource = PDF_FIRST_PAGE`, DERIVED, never called "embedded" or
+     "original". This is one case among several DERIVED cases, not the only one.
 2. **Display shape is presentation only (owner-approved).** Default **2:3 with Crop to
    fill**. Shapes: `ORIGINAL`, `RATIO_2_3`, `RATIO_3_4`, `RATIO_4_5`, `RATIO_1_1`,
    `CUSTOM(w, h)`. **There is no separate "Auto" option.** Custom ratios are limited to
@@ -329,16 +363,16 @@ Rules:
    roughly 112–136 dp wide, ≈ 300–420 px at 3x density) and kept in a bounded memory LRU
    (reuse `ByteBudgetedLruCache`, `core/reader/ThumbnailLoader.kt`); the stored artwork file
    is untouched. No grid tile ever decodes a source archive page, and no tile is required
-   to read a multi-megabyte image: it decodes the stored ≤ 1600 px / ≤ ~1 MiB file with
+   to read a multi-megabyte image: it decodes the stored ≤ 1200 px / ≤ 512 KiB file with
    sampling. A regenerable small thumbnail, or a second display derivative, is **not
    committed**: the plan does not add a thumbnail table or format until measurement
    justifies it. **Measurement gate (proposed thresholds, to be confirmed on the Samsung
    SM-T580 2 GB at 4.5A.1 validation and 4.5G):** median tile decode ≤ ~40 ms and p95 ≤
-   ~120 ms off the main thread for a 1600 px JPEG sampled to tile size; zero decode on the
+   ~120 ms off the main thread for a 1200 px JPEG sampled to tile size; zero decode on the
    main thread; no `OutOfMemoryError` and no dropped-frame regression versus the generated
    covers while flinging a 2,000-item grid; memory LRU budget ≤ ~24 MiB for covers. Only if
-   the gate fails is a small (~300 px) regenerable thumbnail written to the regenerable
-   tier (§18.1) — as a decision, with the measurements attached.
+   the gate fails is a small (~300 px) disk thumbnail considered — as a separate decision
+   with the measurements attached, outside the approved 4.5A.1 storage policy (§18.1).
 8. **Cover-expand transition (owner-approved).** The overlay never stretches the artwork
    during the transition and does not change the reader-navigation contract
    (`PendingCoverTransition.proceed` still runs when the expansion completes;
@@ -363,6 +397,11 @@ Rules:
     the loading frame and the generated fallback add no extra semantics; the
     focus border and selection state are conveyed by more than colour (existing
     `shelfAction` behavior).
+11. **4.5A.1 rendering until 4.5A.2 (proposed).** Until configurable presentation exists,
+    stored artwork is shown with **Crop to fill** inside the *existing* fixed-shape frames
+    (Library tile `aspectRatio(0.68f)`, Continue Reading, Search 52 dp, Notes 48 dp box and
+    the details frame): it is never stretched or squashed. Full-cover details presentation
+    and the approved shapes / Fit / Original arrive with 4.5A.2 (D9–D11).
 
 ## 8. Preference hierarchy
 
@@ -543,6 +582,11 @@ publisher/year/format), automatic confident cover improvement.
   missing, or a fixture proving a 1-based writer) it **falls back to the ordinary first
   page** and records the reason; the index base is confirmed against fixtures at
   implementation and is **unverified in this plan**. A declared cover is a hint, not truth.
+  **Exactly one LOCAL file is stored per publication (§23.1).** A FrontCover that resolves to
+  page 0 is the same single file, recorded with `localSource = COMICINFO_FRONT_COVER`
+  (`DECLARED`); a FrontCover naming another valid page stores that page; an invalid or
+  unavailable declaration falls back to the ordinary first page (`ARCHIVE_FIRST_PAGE`,
+  `INFERRED`) only when that is safe. No second row or second file is created.
 - **Local comic identifiers (evidence for 4.5B/4.5E, nothing is fetched).** ComicInfo
   `Web` can carry a provider/issue URL or identifier (Metron/Comic Vine/GCD links) and
   `GTIN` a UPC/ISBN; `MetronInfo.xml` (schema to be verified at 4.5B implementation)
@@ -563,9 +607,9 @@ publisher/year/format), automatic confident cover improvement.
   2026-10-04 (§14). Status **CONDITIONAL**: approval still requires the prerequisites in D5
   (current `metron.cloud` service/API terms reviewed manually or clarified by Metron, and
   the ShareAlike/attribution questions in D19 answered by the owner/counsel).
-  `metron.live` is unrelated to Metron comic metadata (per administrator brief, not
-  verified on the page; the comics project is Metron at `metron.cloud`, the only domain
-  the official statement cites).
+  `metron.live` is unrelated to Metron comic metadata (per the administrator; the official
+  statement does not mention it and cites only `metron.cloud`). The statement contains no
+  separate service-terms document, so the `metron.cloud` service terms stay unresolved.
 - **Other candidates** (none approved): **Comic Vine** — "strictly for non-commercial use
   only"; rejected for default; BYOK only after legal review. **GCD** — data CC BY-SA 4.0,
   minimal public API, cover-scan rights unclear; RESEARCH. **Open Library** — covers
@@ -592,7 +636,7 @@ commercial-use statement (fetched 2026-10-15; quoted phrases are short excerpts)
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Open Library** ([API](https://openlibrary.org/developers/api), [Covers](https://openlibrary.org/dev/docs/api/covers), [Licensing](https://openlibrary.org/developers/licensing), [Search](https://openlibrary.org/dev/docs/api/search)) | Books; editions/works; many commercial manga volumes; some comic TPBs. Edition-level | Yes, S/M/L by cover id/OLID/ISBN | None. Identify via a `User-Agent` naming the app with a contact email; optional use-case registration form | 1 req/s unidentified, 3 req/s identified; covers by ISBN/OCLC/LCCN: 100 per IP per 5 min (403 beyond); cover-id/OLID not rate-limited | API page: "Cache responses whenever possible." Covers page: "do not crawl our cover API"; intended for displaying covers on public sites; `src` URLs to `covers.openlibrary.org` for web pages; bulk via archive.org dumps. Missing cover returns a blank image unless `?default=false` (then 404). The covers page says nothing about cover id `-1` | "Courtesy link back … appreciated" | Not for scraping or bulk metadata download; APIs not meant for high-traffic commercial services (violations may be rate-limited or blocked). IA "does not assert any new copyright"; "existing rights issues" may apply; licensing page silent on covers and commercial use | **PROMISING / CONDITIONAL — production approval pending (D1).** Re-verified from the three official pages 2026-10-15. Open: ShelfOS is a distributed app (one user = one device IP, which fits per-IP limits) but is a commercial-model app (Plus) — ask OL via the registration form; on-device caching is *encouraged* by the API page and sits outside the web-`src` guidance; a lazy per-item lookup, never a full-library burst, is the only compatible backfill. Keyless access working does **not** approve it |
 | **Google Books** ([Terms](https://developers.google.com/books/terms), [APIs ToS](https://developers.google.com/terms), [Using API](https://developers.google.com/books/docs/v1/using), [Branding](https://developers.google.com/books/branding)) | Books, editions; some manga | `imageLinks` thumbnails on books.google.com | Docs: public requests "must be accompanied by an identifier" (API key or OAuth). ToS §4(b)(1): "Developer credentials may not be embedded in open source projects" | Quota per key (no figure stated) | APIs ToS §5(e): no permanent copies; no cache "longer than permitted by the cache header" | "Powered by Google" adjacent to results; prominent link to Google Books page; "must not alter results" | Books terms: "You may not charge users any fee for the use of your application" (conflict risk with ShelfOS Plus); cropping may be "altering" | **REJECTED FOR PHASE 4.5** unless explicit written Google permission resolves the restrictions below (D2). Not a fallback, not research-only-at-most, not optional BYOK |
-| **Metron** ([official commercial-use statement, 2026-10-04](https://metron-project.github.io/blog/commercial-api-use); service `metron.cloud`, [repo](https://github.com/metron-project/metron)) | Comics, issue-level; series, creators, publishers | Not under the CC license: publisher/creator copyright, hosted under "a fair-use rationale"; ShelfOS prefers local artwork | Per-user account or API token; tokens recommended over account passwords; "Basic Auth will be retired eventually" (no date given) | 20 requests/minute and 5,000/day per account; a donation can raise a matched account's daily limit up to 25,000; honor `X-RateLimit-*` / `Retry-After` | Caching recommended: store fetched data (released-issue data "rarely changes") | CC BY-SA 4.0 attribution wherever data is shown (one about/footer credit suffices, e.g. "Comic data from Metron, licensed under CC BY-SA 4.0"); ShareAlike on adapted Metron data that is published or distributed (the author's reading, not legal advice) | CC BY-SA 4.0 permits commercial use; each user of a distributed app signs in with their own account/token; a shared built-in account is discouraged. **Not resolved by the statement**: current `metron.cloud` service/API terms; ShareAlike effect on ShelfOS cached data, exports and backups; paid-theme (Plus) interaction; image rights | **CONDITIONAL: preferred candidate, NOT APPROVED** until the D5 prerequisites close. Per-user token (BYOK) only |
+| **Metron** ([official commercial-use statement, 2026-10-04](https://metron-project.github.io/blog/commercial-api-use); service `metron.cloud`, [repo](https://github.com/metron-project/metron)) | Comics, issue-level; series, creators, publishers | Not under the CC BY-SA license: copyright belongs to publishers or creators; Metron hosts them as fair use, which the statement says does not automatically extend to a downstream app (a US doctrine; other countries differ); ShelfOS prefers local artwork | Per-user account or API token; the statement recommends revocable tokens instead of an account password and says "Basic Auth will be retired eventually" (no date given), so new integrations should start with tokens | 20 requests/minute and 5,000/day per account; a donation can raise a matched account's daily limit up to 25,000; honor `X-RateLimit-*` / `Retry-After` | Caching recommended: store fetched data rather than re-requesting it ("Comic data doesn't change much once an issue has been released") | CC BY-SA 4.0: credit Metron wherever its data is shown, link to Metron and the license, and say whether the data was changed (a credits line or footer is enough); ShareAlike applies to adapted Metron data that is published or distributed, not to data kept internal (the author's reading, not legal advice) | CC BY-SA 4.0 permits commercial use; each user of a distributed app needs their own account/token — the statement says not to ship one built-in account shared by all users. **Not resolved by the statement**: current `metron.cloud` service/API terms; ShareAlike effect on ShelfOS cached data, exports and backups; paid-theme (Plus) interaction; image rights | **CONDITIONAL: preferred candidate, NOT APPROVED** until the D5 prerequisites close. Per-user token (BYOK) only |
 | **Comic Vine** ([API](https://comicvine.gamespot.com/api/)) | Comics, issue-level | Yes | Per-user API key (login) | 200 req/resource/hour | Fandom ToS: "Do not edit, manipulate or reproduce on any other medium" | Link back on every page using data | "Strictly for non-commercial use only" | **Rejected for default.** BYOK only if legal review accepts user-side non-commercial use (D5) |
 | **Grand Comics Database** ([API root](https://www.comics.org/api/)) | Comics, issue-level, deep international data | Scans exist; rights unclear | None stated | None stated | CC BY-SA 4.0 data (site footer, secondhand) | BY-SA attribution | Share-alike on redistributed data; cover rights not licensed | **RESEARCH.** API surface minimal; not planned for 4.5 |
 | **MangaDex** ([API docs](https://api.mangadex.org/docs/)) | Manga series/chapters (scanlation-centric) | Series covers | None | Separate page | — | Must credit MangaDex and scanlation groups | "CANNOT run ads or paid services on your website and/or apps" | **Rejected**: conflicts with ShelfOS Plus; scanlation context; series-level only |
@@ -634,7 +678,7 @@ Cross-cutting conclusions:
    approval disables the provider (registry flag) without touching cached user data.
 6. **Open licensing question (no legal conclusion drawn here).** Metron data is CC BY-SA 4.0.
    Metron's author reads ShareAlike as applying to adapted Metron *data* that is published
-   or distributed, not to the whole application, and says internal use does not trigger it
+   or distributed, and says data kept internal is not distributed and does not trigger it
    (his reading, "not legal advice"). Whether ShelfOS's own cache, Portable Knowledge
    exports, future backups, the open-source repository and the paid (Plus) theme model
    change that analysis is unresolved and is owner/counsel work (D19). ShelfOS currently
@@ -710,9 +754,11 @@ any contradiction never auto-apply.
 USER-SELECTED  >  CONFIDENT HIGH-QUALITY ONLINE  >  USABLE EMBEDDED  >  GENERATED/FALLBACK
 ```
 
-- `USABLE EMBEDDED` includes an EPUB/CBZ/CBR embedded cover; a PDF `FIRST_PAGE` render sits
-  at the bottom of this tier (it is local and usable, but weaker evidence than an embedded
-  cover image).
+- The `USABLE EMBEDDED` tier is the single **LOCAL slot** (§23.1): one stored file per
+  publication whose `localSource` records whether it is an EPUB cover, a ComicInfo
+  FrontCover page, an archive first page or a PDF first-page render. There is no ordering
+  between local sources because only one is ever stored. **Slot resolution (D21):** `USER`
+  > confident, eligible `ONLINE` (§17 gate) > `LOCAL` > generated fallback.
 - A user cover always wins; enrichment never overwrites it.
 - An online cover replaces an embedded/first-page cover only when the match is VERY_HIGH
   **and** the image is "high quality": at least the embedded cover's pixel area or a
@@ -732,34 +778,37 @@ EMBEDDED above ONLINE. They were updated to this order, which `METADATA_ENRICHME
 
 ## 18. Caching and offline design
 
-- All covers live in app-private storage (proposed `filesDir/covers/<libraryItemId>/`, one
-  file per artwork *kind*, e.g. `epub_embedded.<ext>`, `pdf_first_page.jpg`,
-  `user_selected.<ext>`), plus one Room row **per item and kind** recording stored
-  dimensions, original dimensions and ORIGINAL/DERIVED (§23). `filesDir`, not `cacheDir`:
-  the system must not evict the Library's identity.
-- **Bounded storage policy (proposed, D12/D20; supersedes any byte-for-byte rule).** Each
-  stored file follows §7 rule 1: ORIGINAL only when small and supported (~1 MiB / ~4 Mpx),
-  otherwise a bounded DERIVED copy (longest edge ≤ 1600 px). Multi-megabyte comic pages are
-  never duplicated. A DERIVED copy is not byte-identical to the source image; the original
-  artwork stays inside the source publication.
-- **Local-cover storage budget: see §18.1 (proposed, D20 OPEN).** Three tiers are kept
-  distinct (durable user artwork, local extracted/derived artwork, regenerable grid
-  thumbnails); the Part 1 figure of 512 MiB is **not** owner-approved and is re-evaluated
-  there.
-- **Regenerable vs durable.** Grid-size bitmaps in the memory LRU and any future small
-  thumbnails are regenerable caches. Extracted/derived artwork files are regenerable from
-  the source *only while the source is available*. User-selected covers are durable user data
-  (they cannot be regenerated).
-- Regenerate only when necessary and safe: a missing/corrupt file with an available source,
-  an extractor-version bump, a source-revision change (best-effort evidence, §23.2), or an
-  explicit **Refresh cover**. A source that becomes unavailable never erases the cached
-  artwork.
+- All covers live in app-private storage (proposed `filesDir/covers/<libraryItemId>/`,
+  **one file per item and slot**: `local.<ext>` now; `user.<ext>` and `online.<ext>` are
+  future slots), plus one Room row per item and slot recording provenance, stored
+  dimensions, original dimensions and ORIGINAL/DERIVED (§23.1). A file is never shared
+  between rows. `filesDir`, not `cacheDir`: the system must not evict the Library's
+  identity.
+- **Bounded storage policy (D12/D20 APPROVED for the initial 4.5A.1 policy).** Each stored
+  file follows §7 rule 1: ≈ 512 KiB per cover; ORIGINAL (byte-exact) only when small and
+  within the size and pixel limits, otherwise a bounded DERIVED copy (default longest edge
+  ≤ 1200 px). Multi-megabyte comic pages are never duplicated. A DERIVED copy is not
+  byte-identical to the source image; the original artwork stays inside the source
+  publication.
+- **Local-cover storage policy: see §18.1 (D20 APPROVED).** No automatic eviction; a
+  low-storage write guard; no adaptive total quota in 4.5A.1. Three tiers are kept distinct
+  (durable user artwork, local extracted/derived artwork, regenerable grid thumbnails).
+- **Regenerable vs durable.** Grid-size bitmaps in the memory LRU are regenerable caches.
+  Extracted/derived artwork files are regenerable from the source *only while the source is
+  available*, but are **persisted and not automatically evicted** (§18.1). User-selected
+  covers are durable user data (they cannot be regenerated).
+- Regenerate only when necessary and safe, and only through the attempt rules of §23.3 and
+  §23.5: a missing/corrupt file with an available source (queued once per trigger window,
+  never per Library display), an extractor-version bump, an actual source-revision change
+  (known and comparable, §23.2), or an explicit **Refresh cover**. A source that becomes
+  unavailable never erases the cached artwork.
 - **Stale linked-source covers.** A Library Source/linked publication may change in place
   (the user replaces the file) or disappear. While the source is unavailable the cached
   cover stays (it may be the only copy). When it returns, the extractor compares the current
-  best-effort `sourceRevision` (§23.2); a differing revision re-extracts the *local* kinds
-  and replaces them only after the new file is fully written; a provider that exposes no
-  reliable `lastModified` simply never auto-detects the change, which is why **Refresh
+  best-effort `sourceRevision` (§23.2); a revision that is known, comparable and different
+  re-extracts the LOCAL slot and replaces it only after the new file is fully written; a
+  provider that exposes no reliable `lastModified` (UNKNOWN) never auto-detects the change
+  and never triggers costly re-extraction, which is why **Refresh
   cover** (an always-available planned action, 4.5F; the extractor entry point exists in
   4.5A.1) re-extracts on demand. ShelfOS never silently re-identifies the item as another
   publication, never reattaches by filename/size, and never hashes whole publications for
@@ -782,48 +831,73 @@ EMBEDDED above ONLINE. They were updated to this order, which `METADATA_ENRICHME
   flagged "no persistent cache" can only populate the manual picker for the session.
 - Backups/Portable Knowledge: unchanged; no cover binaries or provider data.
 
-### 18.1 Local-cover storage budget — re-evaluation (proposed; D20 OPEN)
+### 18.1 Local-cover storage policy (D20 APPROVED for the initial 4.5A.1 policy)
 
-Part 1 proposed a flat 512 MiB for regenerable artwork. That figure was an engineering guess
-and is **not owner-approved**. Arithmetic with the §7 policy (stored file ≤ 1600 px, with a
-byte ceiling of ~1 MiB per stored file: a DERIVED JPEG that exceeds it is re-encoded once at
-lower quality; ORIGINAL already ≤ ~1 MiB):
+**Administrator-approved initial policy: no automatic eviction of persisted local
+publication artwork; storage is bounded per item, not by an adaptive total quota.** The
+numeric ceilings below are reviewable constants; the policy shape is approved.
+
+**Superseded (withdrawn, not current policy):** Part 1's flat 512 MiB total quota; Part 2's
+adaptive soft quota (`clamp(8% of free space, 256–768 MiB)`), the ~150 MiB low-storage guard,
+cost-aware automatic artwork eviction, and the earlier ~1 MiB / ~4 Mpx byte-exact ceiling
+and 1600 px default derivative. None of them is implemented or authorized.
+
+Policy:
+
+1. **Per-item bound.** Each stored LOCAL cover is **≈ 512 KiB at most** (§7 rule 1:
+   byte-exact copy when small and within limits, otherwise a bounded derivative, default
+   ≤ 1200 px, fixed recompression ladder, never recursive). One stored file per item and
+   slot; no file sharing between rows (§23.1).
+2. **Write guard (low storage).** Before creating a cover file, and before any expensive
+   decode/extraction work, verify free space: `StatFs(filesDir).availableBytes` (API 18+,
+   so available on `minSdk` 24) minus the anticipated write (the 512 KiB ceiling) must leave
+   **at least 512 MiB free after the write**, and a stricter Android low-storage condition
+   (the platform's own threshold) always wins. `StorageManager.getAllocatableBytes` exists
+   only since API 26 and counts clearable cache as available, so it is not used to loosen
+   the guard; `ACTION_DEVICE_STORAGE_LOW/OK` are deprecated since API 26 and are not relied
+   on (SDK `android-37.0` `api-versions.xml`; verify at implementation).
+3. **If the guard fails:** skip the write; preserve every existing artwork file and row;
+   keep showing the generated fallback; record a retryable `FAILED_TEMPORARY` /
+   `STORAGE_FULL` (no timer; it consumes **no** attempt, because no extraction ran). While
+   the guard fails the scheduler admits no new local-cover work app-wide (one process-level
+   gate, not a retry per item).
+4. **No retry storm on a full device.** `STORAGE_FULL` rows are retried only on a
+   **storage-recovery signal** (proposed): a re-check of free space at most **once per
+   cold start** (idle, after reconciliation, §23.5) and once per foreground session,
+   passing only with hysteresis (≥ 512 MiB + the write + a further 64 MiB), or an explicit
+   Refresh cover, or the user opening that item's details (one on-demand initial attempt).
+   Never per Library render, never on a timer.
+5. **Never delete existing covers to make room.** There is no eviction in 4.5A.1 and no
+   adaptive total-cache quota. A deleted or lost cover file is **not** regenerated on every
+   Library display: a missing file for a `READY` row is queued at most once per trigger
+   window (§23.3) and shows the generated cover meanwhile.
+6. **User-selected covers (4.5F) are durable user data, not regenerable cache**, and are
+   never touched by any cache control.
+
+Growth expectation (planning arithmetic, not a typical claim): the cover store grows
+**linearly with publication count**. At the 512 KiB ceiling, **2,000 covers ≈ 1 GiB is the
+worst-case planning bound** (500 covers ≈ 250 MiB). Typical sizes are far smaller and are
+to be replaced by measurements on the extraction corpus:
 
 | Per-cover size (assumption) | 500 items | 2,000 items | Notes |
 | --- | --- | --- | --- |
-| ~150 KB (light/flat art, 1200–1600 px JPEG q90) | ≈ 75 MB | ≈ 300 MB | low end of the typical range |
-| ~400 KB (detailed comic/manga page at 1600 px) | ≈ 200 MB | ≈ 800 MB | high end of the typical range |
-| 1 MiB (every file at the ceiling) | ≈ 500 MB | ≈ 2.0 GB | theoretical worst case |
+| ~150 KB (light/flat art, 1200 px JPEG q90) | ≈ 75 MB | ≈ 300 MB | low end of the typical range |
+| ~400 KB (detailed comic/manga page, 1200 px) | ≈ 200 MB | ≈ 800 MB | high end of the typical range |
+| 512 KiB (every file at the ceiling) | ≈ 250 MiB | ≈ 1 GiB | **worst-case planning bound** |
 
-Sizes are estimates for planning, to be replaced by measurements on the extraction corpus.
-Consequences:
+Tiers, kept distinct:
 
-- A flat **512 MiB would be exceeded by a typical 2,000-item library** (≈ 0.3–0.8 GB), so
-  the evictor would run constantly and covers would be re-extracted over and over — worst on
-  solid CBR (§19.2). Shrinking the quota makes this worse, not better; the real levers are
-  the stored size and the policy, not a smaller cap.
-- **Recommendation.** (1) Benchmark and prefer the smaller DERIVED size (1200 px, q~85–90)
-  if the Library tile and details pane look right: ≈ 100–250 KB typical → 2,000 items ≈
-  0.2–0.5 GB. (2) Use an **adaptive soft quota** for *local extracted/derived artwork*:
-  `quota = clamp(8% of the filesystem's currently free space, floor 256 MiB, cap 768 MiB)`,
-  re-evaluated at launch/sweep, plus a **low-space guard**: stop writing new regenerable
-  covers when free space is below ~150 MiB (`STORAGE_FULL` → temporary failure, generated
-  cover shown, retried later). Illustrations: a 16 GB tablet (SM-T580) with 5 GB free → 400
-  MiB; a 32 GB phone with 15 GB free → cap 768 MiB; a device with 1 GB free → floor 256 MiB
-  (≈ 25% of free space, which the low-space guard then keeps from running the device out).
-  (3) Eviction is **cost-aware**: least-recently-displayed first, but EPUB/CBZ/PDF rows go
-  before CBR rows (re-extraction cost) and never a row whose source is unavailable. (4) The
-  quota is reviewable (a named constant plus Settings → Storage display later) and bounded.
-- **Tiers, kept distinct:**
-  1. **User-selected durable artwork** (`USER_SELECTED`, 4.5F): never evicted, never counted
-     against the regenerable quota; shown separately.
-  2. **Local extracted/derived artwork** (EPUB/CBZ/CBR/PDF kinds): regenerable from the
-     source **while the source is available**; if the source is unavailable the cached file
-     may be the only copy and is **not evicted**, even over quota (the quota then reports as
-     exceeded rather than deleting).
-  3. **Regenerable grid thumbnails**: memory LRU (§7 rule 7) and, only if the measurement
-     gate fails, a small disk cache counted in this tier.
-- D20 stays OPEN: the owner decides the numbers; the table above is the evidence.
+1. **User-selected durable artwork** (`USER` slot, 4.5F): durable user data.
+2. **Local extracted/derived artwork** (`LOCAL` slot): persisted, not automatically
+   evicted; regenerable from the source *only while the source is available*; if the source
+   is unavailable the file may be the only copy.
+3. **Regenerable grid thumbnails**: memory LRU (§7 rule 7) only; a disk thumbnail cache
+   is not part of this policy.
+
+**Future (not in 4.5A.1):** a cover-storage usage readout in Settings; explicit
+cache-cleanup controls; an adaptive quota only after real measurements. Any future eviction
+requires stable budgets, hysteresis, availability verification and regeneration-cost
+safeguards (solid CBR is the worst case, §19.2) before it is proposed.
 
 ## 19. Background enrichment lifecycle
 
@@ -834,9 +908,11 @@ offline/category)`.
 1. Import commits the item exactly as today (no added latency).
 2. Local pass (4.5A.1 covers, 4.5B fields): runs on `AppContainer.backgroundScope`, bounded
    concurrency 1–2 (**CBR: exactly 1, §19.2**), per-file failure isolation, idempotent,
-   batched writes (§19.1). Its durable state is *derivable*
-   ("no cover row" / "no local-analysis marker"), so process death simply resumes on next
-   launch — no job framework needed. Existing libraries are backfilled the same way.
+   batched writes (§19.1). Its durable state is the cover row
+   plus the durable attempt marker (§23.5): process death is detected at the next startup
+   *before* any extraction is scheduled, an interrupted item is retried only with persisted
+   backoff and is parked after two unexplained interruptions — no job framework needed.
+   Existing libraries are backfilled the same way.
 3. Online pass (4.5C+): only when online enrichment is enabled and the network is available;
    ordered per provider rate limits, newest imports first, persisted `nextEligibleAt` with
    exponential backoff; a per-provider circuit breaker on 403/429/5xx.
@@ -861,33 +937,47 @@ backfill would cause up to 2,000 full re-emissions and recompositions of the gri
 Strategies considered:
 
 - **A. Bounded transactional batches.** Write 25–50 cover rows per Room transaction and
-  `yield()`/pause between batches. Cuts emissions ~25–50× even if covers *were* observed
-  with the list. Necessary hygiene, not sufficient alone.
+  `yield()`/pause between batches — **for cheap rows only** (EPUB covers, small CBZ
+  pages, failure rows). Each **expensive extraction (CBR, PDF render, large derivative)
+  commits its own row immediately after it finishes**, never waiting for a batch, so a
+  process death never strands extracted files uncommitted behind a large batch. Cuts
+  emissions ~25–50× on the cheap path even if covers *were* observed with the list.
+  Necessary hygiene, not sufficient alone.
 - **B. Independently observed cover state.** A separate small query
-  (`SELECT libraryItemId, kind, fileName, storedWidthPx, storedHeightPx, updatedAt FROM
+  (`SELECT libraryItemId, slot, fileName, storedWidthPx, storedHeightPx, updatedAt FROM
   publication_cover WHERE status = 'READY'`) observed as its own `Flow`, reduced to an
-  immutable `Map<libraryItemId, CoverRef>` (precedence applied, §23.1), conflated/
-  `debounce`d (~250–500 ms), and read by the shared renderer. The main
-  `LibraryDao.observe()` query and `LibraryRecord` are **not touched**, so cover writes do not
-  re-emit the Library list, and Notes keeps its own queries (§6.2). Only tiles whose
-  `CoverRef` actually changed recompose (the map is read per item).
+  immutable `Map<libraryItemId, CoverRef>` (slot precedence applied, §23.1),
+  `distinctUntilChanged()` (attempt-marker writes touch the same table but do not change
+  the READY map, so they re-run the query yet emit nothing) and then **conflated with a
+  latest-value throttle** — emit the latest map at most once per minimum interval (proposed
+  ~300 ms, e.g. `sample` or a small leading-plus-trailing `throttleLatest`) — and read by
+  the shared renderer. **Not `debounce`:** a debounce restarts its timer on every upstream
+  emission, so during a steady backfill that writes more often than the debounce window it
+  would emit nothing until the backfill ends and the Library would show generated art
+  throughout; a conflated latest-value throttle guarantees a bounded emission rate *and*
+  continuous visible progress. The main `LibraryDao.observe()` query and `LibraryRecord`
+  are **not touched**, so cover writes do not re-emit the Library list, and Notes keeps its
+  own queries (§6.2). Whether only the tiles whose `CoverRef` changed recompose is a
+  **measurement target** (Compose recomposition counts at validation), not a claim.
 
 **Recommendation: B, with A applied to the writer.** B is the smallest change that removes
 the storm *by construction* (no join, no relation, no new dependency, no Paging) and also
 serves Search and Notes from the same map; A bounds the map's own emission rate. Neither
 needs WorkManager or Paging.
 
-Backfill rules (proposed): scan `library_item` rows with no cover row of the applicable
-kinds (derivable state, so process death resumes at next launch); process **newest/most
-recently read first**; batch 25–50 rows per transaction; keep memory bounded (one
+Backfill rules (proposed): scan `library_item` rows with no LOCAL cover row (absent row =
+never attempted; started, interrupted and failed attempts are tracked durably, §23.5, so
+process death can never cause an unbounded retry); process **newest/most recently read
+first**; commit cheap rows in 25–50-row transactions and each expensive CBR/PDF extraction
+immediately on its own (strategy A); keep memory bounded (one
 decoded bitmap at a time per worker; never hold the whole library's bytes); user-visible
 work wins — the item being opened, the visible grid items and the item being read get
 priority over the idle backfill (an on-demand extraction for a visible tile jumps the
 queue); the backfill is paused while a reader is active (§19.2) and resumes after.
 **Measure at 4.5A.1 validation** with a seeded 2,000-item library: number of
 `LibraryDao.observe()` emissions during backfill (target: **0** attributable to cover
-writes), number of cover-map emissions (target: ≤ ~1 per 250 ms window), recompositions
-of unchanged tiles (target: 0), frame times while flinging the grid during backfill
+writes), number of cover-map emissions (target: ≤ ~1 per throttle interval), recompositions
+of unchanged tiles (measurement target: 0, reported rather than assumed), frame times while flinging the grid during backfill
 (no regression versus idle), peak heap, and time-to-first-visible-real-cover for the first
 screen of tiles.
 
@@ -922,8 +1012,11 @@ Rules (proposed):
    reader has already decoded/extracted may feed the cover store (a DERIVED
    `ARCHIVE_FIRST_PAGE` row) instead of extracting it again — an **optimization, only if it
    is clean** (same page identity, same revision); otherwise skipped.
-5. **Restart-safe progress.** State is derivable (no row = pending; §23.5); a killed
-   extraction leaves only a `.tmp`, swept at startup; no endless retry (§23.3).
+5. **Restart-safe progress.** The attempt is recorded durably *before* native extraction
+   starts (§23.5); a killed extraction leaves an abandoned marker and a `.tmp`, reconciled
+   and swept at startup *before* anything is scheduled; two unexplained interruptions park
+   the item; no endless retry and no startup re-execution of interrupted native work
+   (§23.3, §23.5).
 6. Source archives are never modified; `ArchivePolicy`/`RarContainer` safety limits and
    native boundaries are unchanged; **no native code change is planned**.
 7. A CBR cover extracted through the shared coordinator must not evict the reader's pages
@@ -985,7 +1078,7 @@ compact, expanded, short-landscape and gamepad):
 | Failure | Behavior |
 | --- | --- |
 | No network / airplane mode | Online pass skipped; state `SKIPPED(offline)`; no error UI on Library |
-| Timeout / 5xx | Retry with backoff (proposed 1 min → 6 h cap, max 5 attempts per refresh) |
+| Timeout / 5xx | Retry with persisted backoff (provider schedule defined by the provider slice; local cover extraction uses §23.3's schedule instead) |
 | 403 / 429 / documented limit | Provider circuit opens for the advertised or default window; queue pauses; no hammering |
 | Malformed JSON / unexpected schema | Candidate discarded; logged locally without user data; item unchanged |
 | Oversized / undecodable image | Rejected; prior cover kept |
@@ -1005,87 +1098,94 @@ version (for 4.5B or provider work) is chosen when it is needed and no migration
 reserved. Provider-specific columns (provider id/ref/confidence on covers) are added only
 by the slice that first writes them (4.5C+), and only if justified; they are not part of v6.
 
-### 23.1 v5 → v6 (4.5A.1): `publication_cover`
+### 23.1 v5 → v6 (4.5A.1): `publication_cover` — slot model (D21 APPROVED)
 
 Options considered:
 
 | Option | Shape | Verdict |
 | --- | --- | --- |
-| A. One active-cover row per item (`PRIMARY KEY (libraryItemId)`, `kind` column) | Overwrites the previous evidence whenever a better kind arrives | **Rejected.** "Use file cover" after a user/online choice would need re-extraction; a failed extractor erases a good cover; evidence is lost |
-| B. One row per item **and artwork kind** (`PRIMARY KEY (libraryItemId, kind)`), active cover chosen at read time by precedence | Keeps every meaningful kind; precedence is a pure function (§17) | **Recommended** |
-| C. B plus a separate `active_cover` pointer table | Adds pointer-drift risk for no gain | Rejected; precedence is deterministic |
+| A. One active-cover row per item (`PRIMARY KEY (libraryItemId)`) | Overwrites the previous evidence whenever a better cover arrives | **Rejected.** "Use file cover" after a user/online choice would need re-extraction; a failed extractor erases a good cover |
+| B. One row per item **and source provenance** (EPUB cover, ComicInfo FrontCover, first page, PDF page as separate keyed rows) | Provenance is the key; precedence among local sources | **Rejected (superseded; was the part 1–2 recommendation).** A FrontCover that resolves to page 0 forced two rows sharing one file (reference counting, "distinct fileName" quota sums), and `USER`/`ONLINE` had to be modelled as more provenance values |
+| C. One row per item **and slot** (`PRIMARY KEY (libraryItemId, slot)`), provenance stored as columns | One stored file per publication and slot; resolution is a pure function | **Approved (D21).** No file sharing, no reference counting |
 
-Recommended (Option B) shape:
+Approved shape (column names are implementation details settled in the 4.5A.1 PR and its
+Codex review):
 
 ```sql
 CREATE TABLE publication_cover (
   libraryItemId TEXT NOT NULL,
-  kind TEXT NOT NULL,              -- see kinds below
-  status TEXT NOT NULL,            -- READY | FAILED_PERMANENT | FAILED_TEMPORARY (section 23.3)
-  failureReason TEXT,              -- reason enum, null when READY
+  slot TEXT NOT NULL CHECK (slot IN ('LOCAL','USER','ONLINE')),
+  status TEXT NOT NULL CHECK (status IN ('PENDING','READY','FAILED_PERMANENT','FAILED_TEMPORARY')),
+  failureReason TEXT,              -- reason enum (section 23.3), null when READY
   fileName TEXT,                   -- relative to filesDir/covers/<libraryItemId>/; null unless READY
   mimeType TEXT,
-  representation TEXT,             -- ORIGINAL | DERIVED (null unless READY)
+  representation TEXT CHECK (representation IN ('ORIGINAL','DERIVED')),   -- null unless READY
   sourceWidthPx INTEGER, sourceHeightPx INTEGER,   -- native pixels of the source artwork
   storedWidthPx INTEGER, storedHeightPx INTEGER,   -- pixels of the stored file
   storedBytes INTEGER,
-  sourceRef TEXT,                  -- provenance: archive entry name / page index / "page 1" / device image / (4.5C+) provider ref
-  sourceRevision TEXT,             -- BEST-EFFORT revision evidence captured at extraction time (23.2); not an identity
-  extractorVersion INTEGER NOT NULL,
-  attempts INTEGER NOT NULL DEFAULT 0,
-  nextEligibleAt INTEGER,          -- retry gate for FAILED_TEMPORARY
+  localSource TEXT CHECK (localSource IN ('EPUB_COVER','COMICINFO_FRONT_COVER','ARCHIVE_FIRST_PAGE','PDF_FIRST_PAGE')),  -- LOCAL slot only
+  sourceRef TEXT,                  -- safe locator: entry name / logical page index / equivalent; never a raw path
+  sourceChoice TEXT CHECK (sourceChoice IN ('DECLARED','INFERRED')),      -- LOCAL slot: was the source declared by the file or inferred
+  sourceRevision TEXT,             -- BEST-EFFORT revision evidence at extraction time (23.2); not an identity
+  extractorVersion INTEGER NOT NULL,        -- version that wrote the current row outcome
+  attempts INTEGER NOT NULL DEFAULT 0,      -- attempts consumed in the current trigger window (23.3)
+  interruptions INTEGER NOT NULL DEFAULT 0, -- unexplained interrupted attempts in the window (23.5)
+  attemptStartedAt INTEGER,                 -- non-null = an attempt began and has not been closed (23.5)
+  attemptExtractorVersion INTEGER,          -- extractor version of that attempt
+  nextEligibleAt INTEGER,                   -- not-before time for the next automatic attempt
+  parked INTEGER NOT NULL DEFAULT 0,        -- 1 = no automatic attempts until a trigger (23.3)
   updatedAt INTEGER NOT NULL,
-  PRIMARY KEY (libraryItemId, kind),
+  PRIMARY KEY (libraryItemId, slot),
   FOREIGN KEY (libraryItemId) REFERENCES library_item(id) ON DELETE CASCADE
 );
 ```
 
-Kinds, grounded in what the code can actually produce or will need (the current code
-extracts none of them, §6):
+Slot rules:
 
-| Kind | Produced by | When |
-| --- | --- | --- |
-| `EPUB_COVER` | OPF `meta name="cover"` (EPUB2) / `properties="cover-image"` (EPUB3) image entry | 4.5A.1 |
-| `COMICINFO_FRONT_COVER` | CBZ/CBR page declared `Type="FrontCover"` in ComicInfo `Pages` | 4.5A.1 |
-| `ARCHIVE_FIRST_PAGE` | first page in `ArchivePolicy.pages` / `RarContainer` order | 4.5A.1 |
-| `PDF_FIRST_PAGE` | bounded first-page render through the existing PDF open path | 4.5A.1 (always DERIVED) |
-| `USER_SELECTED` | Choose from device, or a picked online candidate (origin in `sourceRef`) | 4.5F |
-| `ONLINE` | confident high-quality provider cover (§17) | 4.5C+ |
+- **4.5A.1 writes only the `LOCAL` slot.** `USER` (4.5F) and `ONLINE` (4.5C+) are future
+  slots reserved by the `CHECK`; nothing writes them in 4.5A.1 and provider columns arrive
+  only with the slice that first writes them (D16).
+- **One stored file per publication and slot.** `LOCAL` provenance is `localSource` +
+  `sourceRef` + `sourceChoice`. The extractor picks exactly one source: EPUB OPF cover
+  (`EPUB_COVER`, declared); a ComicInfo `FrontCover` page that is in range
+  (`COMICINFO_FRONT_COVER`, declared — **including when it resolves to page 0; no second
+  row and no second file**); otherwise the first page in the logical page order
+  (`ARCHIVE_FIRST_PAGE`, inferred) — also the safe fallback when the declaration is
+  invalid or unavailable; a bounded first-page render (`PDF_FIRST_PAGE`, inferred).
+- **Resolution (pure function, never an overwrite):** `USER` > confident, eligible `ONLINE`
+  (the §17 gate) > `LOCAL` > generated fallback. Only `READY` rows participate. A future
+  `Use file cover` (4.5F) simply ignores the `USER`/`ONLINE` rows; nothing is re-extracted.
+- No row ever references another row's file; deleting a row deletes its own file; no
+  quota arithmetic depends on distinct file names (§18.1 has no quota).
+- Lifecycle (§23.4) is preserved: FK `ON DELETE CASCADE` plus an explicit delete in both
+  removal transactions; guarded final writes; ORIGINAL/DERIVED distinction; original
+  dimensions; `extractorVersion`; source revision evidence; the source is never modified.
 
-Read-time precedence for the displayed cover (pure function, never an overwrite):
-`USER_SELECTED` > `ONLINE` (only if it passes the §17 gate) > `COMICINFO_FRONT_COVER` >
-`EPUB_COVER` > `ARCHIVE_FIRST_PAGE` > `PDF_FIRST_PAGE` > generated. Only `READY` rows
-participate. `Use file cover` (4.5F) simply ignores the `USER_SELECTED`/`ONLINE` rows;
-nothing is re-extracted. 4.5A.1 writes only the four local kinds; `USER_SELECTED` and
-`ONLINE` rows and any provider columns arrive with their own slices.
-
-**Same page as both FrontCover and first page.** When the ComicInfo-declared page *is* the
-archive's first page, the same file must not be stored twice. **Recommendation (smallest
-approach that keeps provenance and correct precedence):** write the artwork file once under
-the `COMICINFO_FRONT_COVER` row and record `ARCHIVE_FIRST_PAGE` as a **second row with the
-same `fileName` and `sourceRef`** (a reference, `storedBytes` counted once in the quota —
-the quota sums distinct `fileName`s). Deletion of a row deletes the file only when no other
-row of the item references it. This keeps both kinds, so a later extractor correction can
-still prefer the declared cover over the heuristic, at the cost of one small row. The
-simpler alternative — a single `ARCHIVE_COVER` kind whose `sourceRef` says whether the
-page was declared or heuristic — halves the rows but cannot represent "declared cover was
-wrong, fall back to page 1" without re-extraction. **D21 stays OPEN and unapproved;** the
-recommendation above is the planning default.
+**Row before artwork.** A `PENDING` row (no file yet) is inserted at the *start* of an
+attempt so the durable attempt marker has somewhere to live (§23.5); absent row = never
+attempted. A re-extraction over an existing `READY` row keeps `READY` and its file
+untouched while only the attempt columns change.
 
 **Index requirements (verified conventions).** `reading_state` declares an FK on its
 primary-key column `itemId` with no extra index, and `bookmark` declares an explicit
-`Index("itemId")` (`core/database/LibraryDao.kt`). For `PRIMARY KEY (libraryItemId, kind)`
+`Index("itemId")` (`core/database/LibraryDao.kt`). For `PRIMARY KEY (libraryItemId, slot)`
 the leading column is the FK child column, so the primary-key index serves FK checks and
 cascading deletes; no separate `Index` is planned. Room's KSP processor warns when an FK
 child column is not covered by an index; whether it counts the composite primary key as
 covering must be **confirmed by the implementation build** (add `Index("libraryItemId")`
-if the warning appears — a one-line change). `kind` is queried only together with the
-item, and the cover-map query (§19.1) scans `status = 'READY'` once; no other index is
-planned.
+if the warning appears). The cover-map query (§19.1) scans `status = 'READY'` once; the
+startup reconciliation scans `attemptStartedAt IS NOT NULL` once (a table scan over at most
+a few thousand rows; no index planned). **Implementation checks:** Room entities cannot
+declare `CHECK` constraints, so the hand-written `Migration(5, 6)` carries them; confirm at
+implementation that Room's schema validation (which compares columns, primary key,
+foreign keys and indices, not `CHECK`) accepts the migrated table; if it does not, enforce
+the value sets in Kotlin enums and keep the raw-SQL migration test on the remaining
+structure.
 
-**Decisions needed (D21):** accept Option B and the kind list; the same-page reference
-rule above; FK `ON DELETE CASCADE` **plus** the explicit delete (recommended, matching
-`reading_state`); whether to collapse the two archive kinds (see above).
+**D21 (approved):** the slot model above; `PRIMARY KEY (libraryItemId, slot)`; slots
+LOCAL/USER/ONLINE with LOCAL-only writes in 4.5A.1; provenance as columns; FK
+`ON DELETE CASCADE` plus explicit delete (matching `reading_state`); the extraction status
+model of §23.3 and the attempt tracking of §23.5 carried by the same row.
 
 ### 23.2 Source revision and availability
 
@@ -1098,19 +1198,25 @@ a stale signal and that a refreshed-at-open revision does not exist yet. Import 
 Model (proposed): `library_item` is **not** changed. At extraction time, while the source
 is open, the extractor reads the *current* size and, **if the provider exposes it**,
 `DocumentsContract.Document.COLUMN_LAST_MODIFIED` via the `ContentResolver` query, and
-stores `"<size>:<lastModified or ''>"` on the **cover row only** (`sourceRevision`). This
-is **best-effort evidence, not an authoritative identity or fingerprint**: not every SAF
-provider returns a reliable or stable `lastModified` (it may be absent, zero or a copy
-time), size can be unchanged by an edit, and a ShelfOS-managed private copy is immutable
-by construction. Rules:
+stores the size and the `lastModified` value on the **LOCAL cover row only**
+(`sourceRevision`). This is **best-effort evidence, not an authoritative identity or
+fingerprint**: not every SAF provider returns a reliable or stable `lastModified` (it may
+be absent, zero or a copy time), size can be unchanged by an edit, and a ShelfOS-managed
+private copy is immutable by construction. Rules:
 
-- A *different* revision on an available source re-triggers extraction of the local kinds;
-  an *identical or unknown* revision never proves the file is unchanged — which is why
-  **Refresh cover** exists (§18) and why no whole-publication hashing is used for
-  freshness.
+- **A zero, absent or unreliable `lastModified` is UNKNOWN.** Revisions are compared only
+  when **both** the stored and the current values are known and comparable (same
+  provider shape, both positive); size alone never triggers a re-extraction. A SAF
+  provider that omits timestamps therefore never causes costly native re-extraction.
+- An actual (known and comparable) *different* revision on an available source is a
+  trigger (§23.3) for the LOCAL slot; an *identical or unknown* revision never proves the
+  file is unchanged — which is why **Refresh cover** exists (§18). No whole-publication
+  hashing is used for freshness and nothing hashes or re-reads a publication on every
+  Library render. A cheap, non-blocking revision check when a reader opens the item may be
+  considered at implementation (it never delays opening and never extracts synchronously).
 - An unavailable source never changes anything (§18: cached artwork is kept); a
-  `FAILED_TEMPORARY(SOURCE_UNAVAILABLE)` row is retried when the Source reconnects or the
-  user taps Refresh cover.
+  `FAILED_TEMPORARY(SOURCE_UNAVAILABLE)` row is retried when the Source reconnects (a
+  trigger) or the user taps Refresh cover.
 - `extractorVersion` stays in the schema; source availability is read from
   `library_item.available`; nothing here reattaches an item to another file.
 - CBR source hashing remains a known limitation carried from Phase 3.
@@ -1118,7 +1224,7 @@ by construction. Rules:
   place a refreshed revision should be introduced) would replace this column's source, not
   its meaning.
 
-### 23.3 Extraction status model (proposed)
+### 23.3 Extraction status model and retry schedule (proposed; D21 carries the model)
 
 Permanent and temporary failures never collapse into one permanent `NONE`, and a failure
 never erases a usable cover.
@@ -1126,48 +1232,88 @@ never erases a usable cover.
 - **PERMANENT** (`FAILED_PERMANENT`), written **only where the evidence supports it**:
   `NO_SUITABLE_ARTWORK` (no cover/page qualifies, e.g. an EPUB with no cover declaration or an
   archive with no image), `UNSUPPORTED_REPRESENTATION` (artwork exists in a form this
-  extractor/device cannot use), `UNDECODABLE_CONTENT` (the bytes were read completely and
-  repeatedly fail to decode — not a truncated read or an out-of-memory). A permanent row is
-  cached so the app does not re-scan on every launch, but it is **eligible for
-  reassessment** on: an `extractorVersion` upgrade, an *actual* source-revision change
-  (§23.2), or an explicit **Refresh cover**; device-dependent
-  `UNSUPPORTED_REPRESENTATION` is also reassessed when the OS level changes (proposed).
+  extractor/device cannot use, or cannot be stored within the 512 KiB bound after the §7
+  ladder), `UNDECODABLE_CONTENT` (the bytes were read completely and repeatedly fail to
+  decode — not a truncated read or an out-of-memory). A permanent row is cached so the app
+  does not re-scan on every launch, but it is **eligible for reassessment** on: an
+  `extractorVersion` upgrade, an *actual* source-revision change (§23.2), or an explicit
+  **Refresh cover**; device-dependent `UNSUPPORTED_REPRESENTATION` is also reassessed when
+  the OS level changes (proposed).
 - **TEMPORARY / RETRYABLE** (`FAILED_TEMPORARY`; the reason is stored): `SOURCE_UNAVAILABLE`
   (source missing/disconnected), `PERMISSION_UNAVAILABLE` (SAF grant or storage permission
   currently lacking — the item may be marked unavailable elsewhere), `INTERRUPTED`
-  (process death or cancellation mid-extraction, detected at startup), `IO_ERROR` (transient
-  read/write failure), `STORAGE_FULL` (insufficient free space or over-quota writing, §18.1),
-  `RESOURCE_EXHAUSTED` (decode out-of-memory or other low-resource condition),
-  `TIMEOUT` (retryable timeout), `EXTRACTOR_CRASH`.
+  (an *unexplained* interruption: the attempt marker was found open at startup — this may
+  be OS process death, a swipe-away or a native crash, and is **never asserted to be a
+  crash**, §23.5), `CANCELLED` (explicit cancellation, e.g. the item was removed; consumes
+  no attempt), `IO_ERROR` (transient read/write failure), `STORAGE_FULL` (the §18.1 write
+  guard failed; consumes no attempt), `RESOURCE_EXHAUSTED` (decode out-of-memory or other
+  low-resource condition), `TIMEOUT` (retryable timeout).
 - **Never** persist a permanent `NONE`/`FAILED_PERMANENT` for a temporary failure. A
-  transient failure **must not erase an existing usable cover**: a failure on kind K writes
-  or updates only K's row, never deletes another kind's `READY` row, and for K itself it
+  transient failure **must not erase an existing usable cover**: a failure on slot S writes
+  or updates only S's row, never deletes another slot's `READY` row, and for S itself it
   keeps the previous `READY` file/row (the old file is replaced only after a new one is
-  complete, §23.5); if K had a `READY` row the failure is recorded as retry metadata
-  without clearing it (or not recorded at all). Coroutine cancellation writes nothing.
-- **Retry eligibility.** Only `FAILED_TEMPORARY` rows with `nextEligibleAt ≤ now` (or null,
-  for source-driven reasons) and attempts below the cap are retried automatically.
-  `SOURCE_UNAVAILABLE`/`PERMISSION_UNAVAILABLE` carry no timer: they are retried when the
-  Source reconnects/the item becomes available again. `STORAGE_FULL` is retried when free
-  space rises above the guard (§18.1), not on a timer.
-- **Backoff evaluation (Part 1 proposal: 1 min, ×4, cap 6 h, max 5 attempts per trigger).**
-  Schedule: 1 min → 4 → 16 → 64 → ~4.3 h (cap 6 h), about 5.4 h total. **Kept** as a
-  sound default for transient I/O (gentle early, bounded late, no polling), **with
-  adjustments (proposed, not an approved contract):** (a) ±20% **jitter** so rows failed
-  together do not retry together; (b) a **max of 4 automatic attempts per trigger**
-  (fewer, because each attempt for a large CBR is expensive and the item stays readable);
-  (c) `nextEligibleAt` is **persisted**, so a restart honors the existing gate instead of
-  retrying everything at once; (d) a **global concurrency cap** (§19, §19.2) and a
-  **per-launch retry cap** (e.g. at most ~25 temporary-failed rows retried per launch
-  pass, newest first) so a process restart after a bad day cannot cause a retry storm;
-  (e) after the cap the row is **parked** (stays `FAILED_TEMPORARY`, no timer) until a
-  trigger; there is **no endless automatic retry loop**.
-- **Triggers that reset attempts/eligibility:** extractor-version bump, a changed source
-  revision, source reconnect, an explicit **Refresh cover** (4.5F; also reassesses
-  `FAILED_PERMANENT`), and a deliberate user action on the item (opening its details may
-  schedule one on-demand attempt per session).
-- A `FAILED_*` row means "generated cover shown", never a `PublicationProblem`, and never
-  blocks opening the item (§22). `extractorVersion` is kept in the schema.
+  complete, §23.5); if S had a `READY` row the failure is recorded as retry metadata
+  without clearing it. Coroutine cancellation records no failure.
+
+**Definitions (one vocabulary for every number below).**
+
+- **Attempt** — one start of extraction work for an item's LOCAL slot, recorded durably
+  *before* the work (§23.5) and counted in `attempts` from that moment.
+- **Trigger window** — the span from a trigger to the next trigger. A trigger resets
+  `attempts`, `interruptions`, `parked` and `nextEligibleAt`.
+- **Initial attempt** — attempt 1 of a window (no earlier failure to back off from).
+- **Automatic retry** — attempts 2–4, each scheduled after a `FAILED_TEMPORARY` outcome
+  (including `INTERRUPTED`). **At most 3 automatic retries, so at most 4 attempts per
+  trigger window.** After the fourth attempt fails the row is **parked**.
+- **Unexplained interrupted attempt** — an attempt whose marker was still open at the next
+  startup. It **consumes one attempt** (the count is taken at attempt start) and increments
+  `interruptions`; **two unexplained interruptions park the item immediately**, i.e.
+  earlier than the four-attempt cap (worst case: parked after attempt 2).
+- **Explicit user-triggered retry** (Refresh cover, 4.5F) — a trigger: one immediate
+  initial attempt (still subject to the storage guard and the one-CBR gate) plus a fresh
+  window of up to 3 automatic retries.
+- **Parked** — `parked = 1`: no automatic attempt, no timer, until a trigger. A parked item
+  keeps its existing `READY` cover or the generated fallback, and the app and Library
+  open normally.
+
+**Triggers** (the only events that open a new window): (1) an **extractor-version change**
+(requalifies `FAILED_*` and parked rows; whether it also re-extracts `READY` rows is
+decided in that bump's change note, default **no**, to avoid a mass re-extraction);
+(2) an **actual source-revision change** (known and comparable, §23.2); (3) an explicit
+**Refresh cover**; (4) **storage recovery** for `STORAGE_FULL` (§18.1); (5) **source
+reconnection / permission restored** for `SOURCE_UNAVAILABLE` / `PERMISSION_UNAVAILABLE`.
+**A new app launch is not a trigger and never resets retry history**: `attempts`,
+`interruptions`, `parked` and the persisted `nextEligibleAt` survive restarts. Opening an
+item's details or showing a tile may start the *initial* attempt of an item that has **no
+row yet**; it never un-parks an item or bypasses `nextEligibleAt`.
+
+**Retry schedule (proposed; a not-before time, never a deadline).** Delays are measured
+from the end of the failed attempt, ±20% jitter, ignoring attempt run time:
+
+| Attempt | Kind | Delay after previous failure | Jittered delay range | Cumulative (nominal) | Cumulative range |
+| --- | --- | --- | --- | --- | --- |
+| 1 | initial | none (at the trigger, subject to the scheduler gates) | — | 0 | 0 |
+| 2 | automatic retry 1 | ~1 min | 0.8–1.2 min | ~1 min | 0.8–1.2 min |
+| 3 | automatic retry 2 | ~4 min | 3.2–4.8 min | ~5 min | 4.0–6.0 min |
+| 4 | automatic retry 3 | ~16 min | 12.8–19.2 min | ~21 min | 16.8–25.2 min |
+| — | after attempt 4 fails | parked, no timer | — | — | — |
+
+The Part 1 schedule (five attempts with a multi-hour cap) is **withdrawn** and no other
+section cites attempt counts or delays. The window therefore spans ≈ 21 minutes of nominal
+delay (≈ 17–25 minutes with jitter) plus attempt run time, and may stretch further because
+the scheduler postpones work while a reader is active or the app is in the background.
+
+**No retry storm after restart.** `nextEligibleAt` is persisted; a restart honors it
+instead of retrying everything; a global concurrency cap (§19, §19.2: one CBR at a time) and a
+**per-launch cap** (proposed: at most ~25 temporary-failed rows retried per launch pass,
+newest first) apply; a `nextEligibleAt` implausibly far in the future (clock moved
+backwards; > now + 25.2 min) is clamped to the maximum jittered delay. `SOURCE_UNAVAILABLE`/
+`PERMISSION_UNAVAILABLE` carry no timer; `STORAGE_FULL` follows §18.1. There is **no endless
+automatic retry loop**: the longest automatic sequence is 4 attempts per window, and
+interruptions shorten it to 2.
+
+A `FAILED_*` row means "generated cover shown" (or the existing cover kept), never a
+`PublicationProblem`, and never blocks opening the item (§22).
 
 ### 23.4 Deletion lifecycle and the removal race
 
@@ -1206,32 +1352,106 @@ paths that delete a `library_item`):
    temp and final file(s) and exits; it never recreates a row. Temp-file cleanup also
    happens on any exception/cancellation (`finally`). This closes the race "extraction
    completes after removal".
-5. **Orphan-file sweep (startup, after reconciliation of sources):** delete `covers/<dir>`
-   with no `library_item`; delete files in an item's directory referenced by no row; delete
-   every `*.tmp`; only then re-queue missing regenerable files. **Orphan-row prevention:**
+5. **Orphan-file sweep (startup; fixed order: reconcile attempt markers → delete orphan
+   rows → sweep orphan files → only then enable the scheduler, §23.5):** delete
+   `covers/<dir>` with no `library_item`; delete files in an item's directory referenced
+   by no row; delete `*.tmp` files (at that point no extraction of this process can be in
+   flight, so none is a legitimate uncommitted write; the sweeper never runs while the
+   scheduler is active); missing regenerable files are queued afterwards, subject to §23.3. **Orphan-row prevention:**
    the FK plus step 4 make orphan rows impossible; a defensive startup `DELETE FROM
    publication_cover WHERE libraryItemId NOT IN (SELECT id FROM library_item)` is a
    one-statement safety net (and enforces that SQLite foreign keys are on, which Room
    enables).
 6. **Source unavailable:** never deletes rows or files (§18); the cover keeps showing.
-   **Process death:** mid-extraction leaves only a `.tmp` (swept) and no row; mid-removal is
-   atomic per step 1, with step 2 repaired by the sweep.
-7. A missing file for a `READY` row: regenerable kinds are re-queued (when the source is
-   available) and render as generated meanwhile; a missing `USER_SELECTED` file is marked
-   unavailable without deleting its row (4.5F).
+   **Process death:** mid-extraction leaves an abandoned attempt marker and possibly a
+   `.tmp`, reconciled and swept at startup (§23.5); mid-removal is atomic per step 1, with
+   step 2 repaired by the sweep.
+7. A missing file for a `READY` row: the `LOCAL` slot is queued once per trigger window
+   (when the source is available; §23.3) and renders as generated meanwhile — never
+   re-queued per Library display; a missing `USER` file is marked unavailable without
+   deleting its row (4.5F).
 
 Alternative considered: no FK, explicit deletes only (like `annotation`) — rejected, because
 it re-creates the orphan class of bug the guarded design avoids.
 
-### 23.5 Restart-safe extraction
+### 23.5 Restart-safe extraction and durable attempt tracking (proposed; closes the native-crash loop)
 
-Write the artwork to `covers/<id>/<kind>.<ext>.tmp`, `fsync`/close, atomically rename to the
-final name, then write/replace the row last in the guarded transaction (§23.4 step 4;
-rows are written in the bounded batches of §19.1 where several items finish together). **No `IN_PROGRESS`
-status is needed**: state is derivable (absent row = pending; `.tmp` or unreferenced file =
-interrupted, cleaned by the startup reconciliation). A replacement keeps the old file and
-row until the new file is fully written. (Alternative: persist `IN_PROGRESS` and reconcile
-at startup — rejected as extra state with no extra safety.)
+**Problem.** Without a durable "started" record, native CBR extraction or decoding that
+kills the process leaves the item looking *pending* (no row, or an old failure), so every
+launch would retry it and kill the process again — an uncounted crash loop. The attempt
+must be recorded durably **before** any expensive work.
+
+**Where the marker lives (compared; recommended: columns on the LOCAL row).**
+
+| Option | For | Against |
+| --- | --- | --- |
+| **A. Attempt columns on the `LOCAL` `publication_cover` row** (`attemptStartedAt`, `attemptExtractorVersion`, `attempts`, `interruptions`, `nextEligibleAt`, `parked`; a `PENDING` row is inserted at attempt start when none exists) | One store; one transaction commits the marker; same FK cascade removes it with the item; counters already needed by §23.3; no second table; reconciliation is one set-based `UPDATE` | The row must exist before the artwork does (hence `PENDING`); a replacement attempt over a `READY` row must keep the cover displayable (so the marker is orthogonal to `status`) |
+| B. A dedicated tiny `cover_attempt` table | Keeps `publication_cover` rows purely "artwork" | A second v6 table, FK, migration test and removal path for the same fields |
+| C. A marker file in `covers/<id>/` | No schema | A second durable store with no atomicity with Room, counters need parsing, directly entangled with the orphan sweeper, easy to leak/forget |
+
+**Recommendation: A.** Room (SQLite WAL) returns from a committed transaction only after
+the commit, so the marker survives process death (OS kill, crash, swipe-away); only a power
+loss can lose the most recent WAL frames, which at worst forgets one attempt.
+
+**Lifecycle per attempt (LOCAL slot).**
+
+1. **Admission** (scheduler): the item has no row, or `nextEligibleAt ≤ now` and `parked =
+   0`, no marker is open in this process, the §18.1 storage guard passes, reader-first and
+   the one-CBR gates allow it.
+2. **Attempt-begin commit — synchronous, before any native archive extraction, expensive
+   decoding or conversion/re-encoding.** One short guarded transaction (§23.4 step 4
+   ownership check): insert a `PENDING` row if absent; set `attemptStartedAt = now`,
+   `attemptExtractorVersion = current`, `attempts = attempts + 1`. Work starts only after
+   the commit returns.
+3. **Work** into `local.<ext>.tmp` (temp-then-rename; the old file and row stay
+   until the new file is complete, so a replacement never blanks a displayed cover).
+4. **Normal full outcome.** Success: rename the file, then one guarded transaction writes
+   `READY` and the provenance columns, **clears `attemptStartedAt`** and resets `attempts`
+   and `interruptions` to 0. Explained failure: one transaction clears `attemptStartedAt`,
+   records the §23.3 reason, computes `nextEligibleAt` from `attempts` (parks after attempt
+   4 or on a permanent reason). Expensive CBR/PDF rows commit **immediately per item**
+   (§19.1), not in a batch.
+5. **Explicit cancellation** (the item was removed, the scope was cancelled, the user
+   asked): handled in `finally` under `NonCancellable`: delete the temp file, clear
+   `attemptStartedAt`, **give back the attempt** (`attempts − 1`), count no interruption.
+   A native CBR extraction cannot be cancelled (§19.2); cancellation takes effect after it
+   returns. If the process dies before this cleanup runs, the marker is simply found open
+   at the next startup (step 6) — conservative by design.
+6. **Startup reconciliation (before anything is scheduled).** Every row with
+   `attemptStartedAt IS NOT NULL` is an abandoned attempt: a previous process ended without
+   closing it. This is recorded as an **unexplained interruption** — `interruptions + 1`,
+   `failureReason = INTERRUPTED` (status `FAILED_TEMPORARY` for a `PENDING` row; a `READY`
+   row stays `READY`), marker cleared — and it is **never assumed to prove a native
+   crash** (the OS may have killed the process; `ApplicationExitInfo` exists only on
+   API 30+ and is not used to decide). If `interruptions ≥ 2` the row is **parked**
+   (`parked = 1`, no timer). Otherwise `nextEligibleAt = now + the next §23.3 backoff
+   delay` (jittered, at least the first-retry delay), so interrupted native work **cannot
+   be eligible at startup**. Reconciliation is a database update only; it **never starts
+   or awaits an extraction**, and it touches each publication independently.
+7. **Startup order (fixed):** (1) reconcile attempt markers; (2) defensive deletion of
+   orphan cover rows (§23.4 step 5); (3) sweep orphan directories, unreferenced files and
+   `*.tmp` (§23.4 step 5) — the sweeper never runs concurrently with extraction, and a
+   `.tmp` is only ever removed at this point, when no extraction of this process exists, so
+   a legitimate uncommitted write cannot be deleted; (4) enable the scheduler after an
+   idle delay (proposed: after first content and a few seconds of quiet, reader-first,
+   §19.2). No previously interrupted native work runs at startup.
+8. **Parked items** are not retried automatically on any launch. A trigger (§23.3 — in
+   particular an explicit Refresh cover or an extractor-version / source-revision
+   requalification) un-parks them with a fresh window. Parking affects only extraction: the
+   app and the Library open normally with the generated or existing cover, and failures are
+   isolated per publication.
+
+**Residual risk (stated):** a swipe-away or low-memory kill during extraction counts as an
+unexplained interruption, so two such events park a perfectly healthy item until the user
+taps Refresh cover. This is the accepted price of a loop that is bounded at two
+interruptions without being able to prove a native crash.
+
+**Tests (4.5A.1; also listed in §27).** JVM state-machine tests for the attempt lifecycle
+and every transition above; an instrumented **kill-process** test (a fake slow extractor,
+`am force-stop` or `Process.killProcess` mid-extraction, then relaunch); a
+startup-reconciliation test; a **parked item not retried on the next 3 launches**; an
+explicit Refresh that un-parks; a **sweeper-ordering** test (a valid in-flight marker and
+temp file survive until reconciliation has run).
 
 ### 23.6 v6 → v7 (4.5A.2): `cover_presentation_preference`
 
@@ -1277,8 +1497,13 @@ write; removed with the item). No change to `annotation`, `annotation_source_sna
 - Instrumented migration tests with the repository's raw-SQLite pattern: create the previous
   version with representative rows (items, reading, preferences, annotations, snapshot,
   legacy bookmarks), migrate, assert every pre-existing row and column is byte-identical
-  and the new tables exist and are empty; for v6 also assert the FK cascade (delete an item,
-  its cover rows vanish).
+  and the new tables exist and are empty; for v6 also assert, with raw SQL (`sqlite_master`,
+  `PRAGMA table_info` / `foreign_key_list` / `index_list`): the `publication_cover` table,
+  its **primary key columns in order `(libraryItemId, slot)`**, the **foreign key to
+  `library_item(id)` with `ON DELETE CASCADE`**, the expected indices, that an insert with
+  a `slot` outside `LOCAL`/`USER`/`ONLINE` (and an invalid `status`, `representation`,
+  `localSource` or `sourceChoice`) is rejected by the `CHECK`, and the **cascade** (delete
+  an item, its cover rows vanish).
 - Existing libraries receive covers through the local backfill (§19), not in the migration.
 - Removal paths (`LibraryDao.removeDeletingKnowledge` / `removeKeepingKnowledge`) gain the
   new tables in the same transaction; cover files are deleted after commit.
@@ -1319,9 +1544,11 @@ write; removed with the item). No change to `annotation`, `annotation_source_sna
   paths rejected via `ArchivePolicy.safeName`); first-page selection order consistent with
   `ArchivePolicy.pages`/`RarContainer`; ISBN-10/13/UPC checksum and normalization;
   filename volume/issue parser corpus (Latin + CJK tokens); cover storage policy (ORIGINAL
-  vs DERIVED thresholds, original dimensions recorded, never-upscale, never duplicating a
-  multi-megabyte page); extraction status transitions (permanent vs temporary, backoff,
-  no permanent state from a temporary failure); cover precedence over per-kind rows; matcher tiers incl. ambiguity
+  vs DERIVED thresholds, the 512 KiB bound, the fixed recompression ladder and its minimum
+  edge, original dimensions recorded, never-upscale, never duplicating a multi-megabyte
+  page); extraction status transitions (permanent vs temporary, the single retry schedule,
+  no permanent state from a temporary failure); the **attempt-marker state machine**
+  (§23.5); slot resolution USER > ONLINE > LOCAL > generated; matcher tiers incl. ambiguity
   and contradiction cases; precedence resolver (USER never replaced); provider JSON parsing
   from **checked-in fixture files**; rate limiter/backoff with a virtual clock.
 - **Fake providers** implement `MetadataProvider` for coordinator tests (success, timeout,
@@ -1338,11 +1565,23 @@ write; removed with the item). No change to `annotation`, `annotation_source_sna
 - **Cover lifecycle/refresh tests (4.5A.1):** guarded insert after item removal writes no
   row and leaves no file; removal rolls back without touching files; startup sweep removes
   orphan directories/`.tmp`; temporary failures never write `FAILED_PERMANENT` and never
-  clear a `READY` row; jittered backoff and the per-launch retry cap on a virtual clock;
-  batched writes cause **no** `LibraryDao.observe()` emission (cover-map `Flow` test);
-  ComicInfo `FrontCover` index in/out of range falls back to the first page; same-page
-  FrontCover/first-page stores one file; quota/low-space guard; one-CBR-at-a-time
-  scheduler and reader-first pause (fake clock/fake session).
+  clear a `READY` row; the §23.3 schedule (attempts 1–4, delays ~1/4/16 min, ±20% jitter,
+  parked after attempt 4, a relaunch is not a trigger and does not reset history) and the
+  per-launch retry cap on a virtual clock; batched writes cause **no**
+  `LibraryDao.observe()` emission (cover-map `Flow` test) and the throttled map keeps
+  emitting under a continuous backfill (a debounce would not); ComicInfo `FrontCover`
+  index in/out of range falls back to the first page; a FrontCover that resolves to page 0
+  stores **one** LOCAL file and one row; free-space guard (≥ 512 MiB after the write),
+  `STORAGE_FULL` with no retry storm and **no eviction ever**; one-CBR-at-a-time scheduler
+  and reader-first pause (fake clock/fake session). **Crash-loop tests (§23.5):** JVM
+  state-machine tests of every attempt transition (start, success, explained failure,
+  explicit cancellation, unexplained interruption, parking at two); an **instrumented
+  kill-process test** (`am force-stop` or `Process.killProcess` mid-extraction with a fake
+  slow extractor, then relaunch); a **startup-reconciliation test** (abandoned marker →
+  `INTERRUPTED`, counter, backoff, no extraction at startup); a **parked item is not
+  retried on the next 3 launches**; an **explicit Refresh un-parks**; a **sweeper-ordering
+  test** (reconcile → sweep → schedule; a marker or `.tmp` is never swept before
+  reconciliation).
 - **Manga corpus (4.5D/4.5G):** the EN/JP/ES ISBN corpus of §12 with the seven recorded
   outcomes per case; no provider coverage figure is asserted.
 
@@ -1358,12 +1597,44 @@ Per the project's phase-closure policy, physical/manual UAT is accumulated and r
   import + reading, memory/scroll smoothness with a large library, and **solid-CBR
   evidence (§19.2): first-page extraction time for solid and non-solid RAR4/RAR5 archives,
   peak memory, and reader contention while a background cover extraction runs**, plus grid
-  tile decode latency against the §7 rule 7 gate and scrolling during a backfill.
+  tile decode latency against the §7 rule 7 gate and scrolling during a backfill, judged
+  against the provisional criteria of §28.1.
 - **Retroid Pocket 5** (Android 13 handheld, controller): controller-only settings, candidate
   picker, Choose from device, focus retention on shape change, short-landscape layout.
 - Physical TalkBack and foldable hardware remain evidence gaps unless available.
 - Slices 4.5A.1–4.5F use emulator/automated validation only; a slice may request an early
   owner spot-check only for a blocking performance doubt on the 2 GB device.
+
+### 28.1 Samsung background-CBR contention — PROPOSED acceptance criteria
+
+**Provisional acceptance thresholds, not observed results.** The repository holds **no**
+SM-T580 cover-extraction or contention measurement (`docs/VALIDATION.md` states that
+SM-T580 performance was not measured for Phase 4's Notes scale tests; the only latency
+numbers there are emulator numbers on a fast x86 host and are not a judgment of the
+SM-T580). The values below are starting points to be replaced by the first real
+measurement, then fixed by the administrator.
+
+- **Reader input is never blocked:** with a background CBR cover extraction running, no
+  reader tap, swipe or key event is dropped, and no main-thread gap over 100 ms is
+  attributable to the extraction (the same "max main-thread gap" metric style Phase 4 used
+  on the emulator, `docs/VALIDATION.md`).
+- **Page-turn regression bounded (PROVISIONAL):** page-turn latency p95 with extraction
+  running is **not worse than the idle baseline by more than 25%**, measured on the same
+  archive on the same device.
+- **Bounded peak memory (PROVISIONAL):** extraction adds no more than ~48 MiB to the
+  baseline peak Java heap and no `OutOfMemoryError`; the cover job releases its lease and
+  bitmaps after each item (§19.2 rule 7). Heap/RSS ceiling to be confirmed on the device.
+- **No crash and no ANR** during the contention run or the 2,000-item backfill.
+- **No automatic concurrent solid-RAR backfill:** at most one CBR extraction at any time
+  (§19.2 rule 1); the idle backfill pauses between extractions and stays paused while a
+  reader is active.
+- **Generated fallback when extraction is too expensive or the source is unavailable:**
+  an item whose measured first-page extraction cost exceeds a provisional budget (to be
+  set from the first SM-T580 measurement; e.g. several seconds) is restricted to
+  on-demand extraction for a visible/opened item instead of the idle backfill, shows the
+  generated cover meanwhile, and an unavailable source keeps its cached cover (§18). The
+  open-ended native call cannot be cancelled, so the budget is an admission rule, not a
+  timeout.
 
 ## 29. Per-slice scope
 
@@ -1388,33 +1659,42 @@ from `main` after 4.5A.1 merges.
 
 #### 4.5A.1 — Local Cover Artwork (Room v6)
 
-- **Scope:** Room v6 with `publication_cover` (§23.1, one row per artwork kind, FK cascade,
-  extraction status model §23.3); EPUB embedded cover (OPF); CBZ/CBR cover extraction
-  (ComicInfo `FrontCover` page if declared, else first page in natural order); PDF
+- **Scope:** Room v6 with `publication_cover` (§23.1, the **LOCAL/USER/ONLINE slot model**,
+  `PRIMARY KEY (libraryItemId, slot)`, FK cascade; **4.5A.1 writes only the LOCAL slot**;
+  provenance in `localSource`/`sourceRef`/`sourceChoice`; extraction status model §23.3);
+  EPUB embedded cover (OPF); CBZ/CBR cover extraction (ComicInfo `FrontCover` page if
+  declared and in range, else first page in natural order; one file, never two); PDF
   first-page preview (bounded, through the existing PDF open path incl. API 24/25 legacy
-  probe); **bounded artwork storage and decoding** (§7 rule 1: ORIGINAL ≤ ~1 MiB/~4 Mpx,
-  else DERIVED ≤ 1600 px, original dimensions recorded; storage budget §18); local cover
-  lifecycle (post-commit background extraction, atomic temp-then-rename, deletion with item
-  removal, startup reconciliation, orphan sweep); safe idempotent backfill for existing
-  libraries (batched transactional writes, bounded concurrency, **one CBR extraction at a
-  time**, reader-first scheduling, per-file failure isolation; §19.1–§19.2); extraction
-  failure semantics (§23.3) and the guarded removal protocol (§23.4); an independently
-  observed cover-reference map so cover writes never re-emit the Library list (§19.1);
-  a **minimal shared cover renderer** (artwork | existing generated visual) used by **every
-  consumer in the §6 inventory — Library grid, Continue Reading, details pane,
-  cover-expand transition, Search results and Notes hub rows (live item → cover, orphan →
-  generated, §6.2)**; a stable loading frame (no generated→real flash, §7 rule 9); the
-  **existing frame presentation** (today's fixed ≈ 2:3 frame) initially — no preference
-  table, no Settings overhaul; details technical line shows cover provenance
-  (embedded/first page/generated, ORIGINAL vs DERIVED); removal of the duplicated
-  `coverColor`/`coverMotif` from `LibraryItem`.
+  probe); **per-item bounded artwork storage** (§7 rule 1: ≈ 512 KiB per cover, ORIGINAL
+  only when small and within limits, else DERIVED ≤ 1200 px with the fixed ladder, original
+  dimensions recorded), the **low-storage write guard (≥ 512 MiB free after the write) and
+  no automatic eviction** (§18.1); **durable per-publication attempt tracking** recorded
+  before native extraction/decoding, reconciled at startup, parking after **two unexplained
+  interruptions**, and the single retry schedule (initial attempt + up to 3 automatic
+  retries; §23.3, §23.5), with **no startup retry loop**; local cover lifecycle
+  (post-commit background extraction, atomic temp-then-rename, deletion with item removal,
+  **startup reconciliation → orphan sweep → scheduler**, in that order); safe idempotent
+  backfill for existing libraries (cheap rows in 25–50-row batches, each expensive CBR/PDF
+  extraction committed immediately, bounded concurrency, **one CBR extraction at a time**,
+  reader-first scheduling, per-file failure isolation; §19.1–§19.2); the guarded removal
+  protocol (§23.4); an independently observed, **distinct and latest-value-throttled**
+  cover-reference map so cover writes never re-emit the Library list (§19.1); a **minimal
+  shared cover renderer** (artwork | existing generated visual) used by **every consumer
+  in the §6 inventory — Library grid, Continue Reading, details pane, cover-expand
+  transition, Search results and Notes hub rows (live item → cover, orphan → generated,
+  §6.2)** showing real artwork with **Crop to fill in the existing fixed-shape frames**
+  (never stretched, §7 rule 11) and a stable loading frame (no generated→real flash, §7
+  rule 9); no preference table, no Settings overhaul; details technical line shows cover
+  provenance (embedded/first page/generated, ORIGINAL vs DERIVED); removal of the
+  duplicated `coverColor`/`coverMotif` from `LibraryItem`.
 - **Non-goals:** any network, permission change, provider, Choose from device (4.5F),
   shapes/Crop/Fit/Original/custom ratio and any preference storage (4.5A.2), metadata
   fields beyond covers, per-Shelf/per-item shapes, Series covers.
 - **Depends on:** nothing in 4.5 (starts from `main`).
 - **Validation:** JVM tests (§27), v5→v6 migration test incl. FK cascade, extraction corpus
-  incl. malformed, oversized and huge-comic-page art, removal-race and interrupted-extraction
-  tests, storage-budget tests, process-death backfill resume, a seeded 2,000-item backfill
+  incl. malformed, oversized and huge-comic-page art, removal-race, kill-process attempt
+  tracking and parked-item tests (§23.5), storage-guard tests (§18.1, no eviction),
+  process-death backfill resume without a retry loop, a seeded 2,000-item backfill
   measuring Library-query emissions, cover-map emissions and recompositions (§19.1),
   thumbnail decode latency against the §7 gate, emulator
   phone/tablet/short-landscape, Classic/Dark, keyboard/D-pad focus retention, 2 GB memory
@@ -1534,9 +1814,11 @@ All categories:
 - Import and reading work identically with online enrichment disabled, offline, or with every
   provider failing; no import latency regression.
 - Source publications are byte-identical before/after (checksummed sample).
-- Cover storage is bounded (§7, §18, §18.1): small supported artwork stored byte-exact,
-  larger artwork as a bounded DERIVED copy that records original pixel dimensions; no
-  unbounded duplication of source pages or of the same page stored twice; covers never
+- Cover storage is bounded per item (§7, §18, §18.1): ≈ 512 KiB per cover, small supported
+  artwork stored byte-exact within limits, larger artwork as a bounded DERIVED copy (default
+  ≤ 1200 px) that records original pixel dimensions; a ≥ 512 MiB-after-write free-space
+  guard; no automatic eviction; no unbounded duplication of source pages and one stored
+  file per publication and slot; no uncounted extraction crash loop (§23.5); covers never
   outlive removed items (§23.4); no permanent `NONE` from a temporary failure (§23.3); a
   cover backfill never re-emits the Library list (§19.1); at most one background CBR
   extraction (§19.2); the source publication byte-identical; display shape is
@@ -1583,25 +1865,25 @@ Stop and ask before implementing any slice whose decision below is unresolved.
 | --- | --- | --- | --- |
 | D1 | Open Library production approval — status **PROMISING / CONDITIONAL**, not approved (on-device cover caching, per-user lazy lookups, attribution placement, use-case registration/clarification of commercial-app use). Keyless access working is not approval. **4.5A.1/4.5A.2 do not depend on it** | Approve only after registering the use case and a lazy, cached, ≤ 3 req/s identified pattern is documented; cover-id URLs, UA contact email, About-screen credit | 4.5C, 4.5D |
 | D2 | Google Books — **REJECTED FOR PHASE 4.5** (application-fee, embedded-credential, caching and presentation restrictions, §14; BYOK does not remove them) unless explicit written Google permission resolves them | Rejected; reopen only with written permission, an owner decision and an ADR. **This replaces the earlier "Google Books fallback" and "BYOK later" wording** | 4.5C |
-| D3 | **Resolved by the administrator (remediation):** Comics acceptance requires an approved, integrated issue-level online provider path in addition to local extraction (§30). There is no local-only exit; without an approved provider 4.5E/4.5G stay open | Fixed; no decision needed. Preferred provider: Metron with per-user tokens | 4.5E, 4.5G |
+| D3 | **Resolved by the administrator (remediation); owner-confirmed in part 3 — Books, Comics and Manga are all required, no local-only Comics acceptance escape:** Comics acceptance requires an approved, integrated issue-level online provider path in addition to local extraction (§30). There is no local-only exit; without an approved provider 4.5E/4.5G stay open | Fixed; no decision needed. Preferred provider: Metron with per-user tokens | 4.5E, 4.5G |
 | D4 | Contact string in `User-Agent` (project address, never the user's) | A project-owned address or the repository URL | 4.5C |
 | D5 | Metron per-user-token provider — **CONDITIONAL**. Prerequisites before approval: (1) the current `metron.cloud` service/API terms reviewed manually (or clarified by Metron) because the commercial-use statement does not replace them; (2) D19 answered; (3) per-user token UX, no bundled account, attribution placement, caching within the documented 20/min and 5,000/day limits agreed. Comic Vine stays rejected | Contact Metron / read the service terms; approve per-user tokens only once (1)-(3) close | 4.5E |
 | D6 | Any specialist manga provider in 4.5 | None; keep the slot | 4.5D |
 | D7 | May an online cover replace an embedded CBZ/CBR first-page cover automatically? | No by default; only via the manual picker | 4.5C–E |
 | D8 | Does confirming a candidate make its fields USER? | No (cover yes) | 4.5F |
-| D9 | **Owner-approved:** default 2:3 Crop; Books, Comics and Manga use the global default; Documents Original; shapes Original/2:3/3:4/4:5/1:1/Custom; no Auto option; Custom limited to 1:2…2:1; never stretch | Recorded; no further decision | 4.5A.2 |
-| D10 | **Owner-approved:** Original = complete artwork, fixed 2:3 grid slot, bottom-aligned, no crop, Fit control irrelevant/disabled, focus border follows the displayed artwork (clamp 1:2…2:1) | Recorded | 4.5A.2 |
-| D11 | **Owner-approved:** details pane shows the original artwork fully, real aspect ratio, height-first, no hardcoded 0.68; cover expansion never stretches and does not change the reader-navigation contract; reduced motion avoids animated reflow | Recorded | 4.5A.2 |
-| D12 | Bounded artwork storage: ORIGINAL ≤ ~1 MiB and ≤ ~4 Mpx else DERIVED with longest edge ≤ 1600 px (benchmark 1200–1600), JPEG ~q90 (PNG only for alpha within the bound), independent total-pixel cap, ~1 MiB stored-byte ceiling, PDF first page always DERIVED with white background | Approve as planning defaults; WebP only if a benchmark justifies lossy WebP (lossless WebP encode is API 30+, verify at implementation) | 4.5A.1 |
+| D9 | **Owner-approved (confirmed in part 3):** default 2:3 Crop; Books, Comics and Manga use the global default; Documents Original; shapes Original/2:3/3:4/4:5/1:1/Custom; no Auto option; Custom limited to 1:2…2:1; never stretch | Recorded; no further decision | 4.5A.2 |
+| D10 | **Owner-approved (confirmed in part 3):** Original = complete artwork, fixed 2:3 grid slot, bottom-aligned, no crop, Fit control irrelevant/disabled, focus border follows the displayed artwork (clamp 1:2…2:1) | Recorded | 4.5A.2 |
+| D11 | **Owner-approved (confirmed in part 3; effective with 4.5A.2):** details pane shows the original artwork fully, real aspect ratio, height-first, no hardcoded 0.68; cover expansion never stretches and does not change the reader-navigation contract; reduced motion avoids animated reflow | Recorded | 4.5A.2 |
+| D12 | **APPROVED (bounded PDF preview and storage encoding).** Bounded artwork storage per §7 rule 1: ≈ 512 KiB per cover; ORIGINAL (byte-exact) only when small and within the size and pixel limits, else DERIVED, default longest edge ≈ 1200 px (1600 px only if later evidence justifies it), JPEG quality ≈ 90 start with a fixed bounded ladder, explicit decoded-pixel cap. **PDF first-page preview:** derived, never labelled original artwork, white background, bounded render and encode, API 24+ compatible, original PDF untouched. WebP only if a benchmark justifies it (WebP constants differ by API level, §7) | Recorded; JPEG q90 stays the safe default | 4.5A.1 |
 | D13 | WorkManager | Not now; revisit only for closed-app enrichment, with dependency review/ADR | 4.5C |
 | D14 | HTTP stack: platform `HttpURLConnection` + `org.json` | Approve | 4.5C |
 | D15 | Online enrichment default ON (with disclosure) or OFF | ON with one-time non-blocking disclosure + toggle | 4.5C |
 | D16 | Provider columns on `publication_cover` | Not in v6 or v7; the slice that first writes provider artwork (4.5C+) adds them, only if justified. Any post-v7 schema version is chosen when needed; no migration is reserved | 4.5A.1 |
 | D17 | Separate `metadata_candidate` table vs one suggestion per item | One suggestion per item unless 4.5F needs more | 4.5B |
 | D18 | Is 4.5A split into 4.5A.1 (local artwork, v6) and 4.5A.2 (presentation, v7) as two PRs | **Resolved by the administrator (remediation)**; recorded here | 4.5A.1, 4.5A.2 |
-| D19 | Metron/CC BY-SA open legal questions (no conclusion drawn): ShareAlike effect on cached data, exports/backups, the open-source repository and the paid theme model; attribution placement; whether any Metron-hosted image may be used | Owner/counsel review before 4.5E; keep provider data and covers out of exports meanwhile | 4.5E |
-| D20 | **OPEN, not approved.** Local-cover storage budget. Part 1's flat 512 MiB is withdrawn as a number to approve: a typical 2,000-item library needs ≈ 0.3–0.8 GB (§18.1) | Adaptive soft quota `clamp(8% of free space, 256 MiB, 768 MiB)` for local extracted artwork, low-space guard (~150 MiB free), cost-aware eviction (CBR last), three tiers distinct; prefer 1200 px if it benchmarks acceptable; no persisted thumbnails unless the §7 rule 7 gate fails | 4.5A.1 |
-| D21 | **OPEN, not approved.** `publication_cover` design: Option B (`PRIMARY KEY (libraryItemId, kind)`), kind list, FK cascade plus explicit delete, `COMICINFO_FRONT_COVER`/`ARCHIVE_FIRST_PAGE` separate or merged, extraction status model (§23.3) | Option B; keep both archive kinds with the second row referencing the same file when the declared cover is page 1 (§23.1); confirm the permanent/temporary lists | 4.5A.1 |
+| D19 | **OPEN (undecided).** Metron/CC BY-SA licensing implications, open legal questions (no conclusion drawn): ShareAlike effect on cached data, exports/backups, the open-source repository and the paid theme model; attribution placement; whether any Metron-hosted image may be used | Owner/counsel review before 4.5E; keep provider data and covers out of exports meanwhile | 4.5E |
+| D20 | **APPROVED for the initial 4.5A.1 policy.** Local-cover storage: **no automatic eviction** of persisted local publication artwork; storage bounded **per item** (≈ 512 KiB per cover); a low-storage write guard (≥ 512 MiB free after the write, stricter Android conditions win; on failure skip the write, keep existing artwork and the generated fallback, record a retryable `STORAGE_FULL`, no repeated attempts until a storage-recovery signal); never delete covers to make room; no auto-regeneration of lost artwork on every Library display; **no adaptive total-cache quota in 4.5A.1**; worst-case planning bound 2,000 × 512 KiB ≈ 1 GiB (§18.1). The earlier adaptive-quota recommendation is **SUPERSEDED** | Recorded. Future (not now): Settings storage usage, explicit cleanup controls, adaptive quota only after measurements | 4.5A.1 |
+| D21 | **APPROVED.** `publication_cover` slot model: `PRIMARY KEY (libraryItemId, slot)`, slots LOCAL/USER/ONLINE (4.5A.1 writes only LOCAL); LOCAL provenance in `localSource` (EPUB_COVER, COMICINFO_FRONT_COVER, ARCHIVE_FIRST_PAGE, PDF_FIRST_PAGE), `sourceRef` and DECLARED/INFERRED `sourceChoice`; one stored file per publication and slot (a FrontCover resolving to page 0 is one file); no file sharing or reference counting; resolution USER > confident eligible ONLINE > LOCAL > generated; FK cascade plus explicit delete; the provenance-as-key design is **SUPERSEDED** (§23.1) | Recorded | 4.5A.1 |
 
 ## 32. Recommended agent workflow
 
@@ -1615,56 +1897,86 @@ Stop and ask before implementing any slice whose decision below is unresolved.
    Each of 4.5A.1 and 4.5A.2 gets its own cycle.
 5. Physical UAT accumulates in the 4.5G checklist.
 
+### Handoff — 4.5A.1 Local Cover Artwork (branch `phase-4.5/4.5a1-local-cover-artwork`)
+
+Preconditions closed in part 3: **D12, D20 and D21 are approved** (§31); D18 is recorded.
+**Included:** the LOCAL/USER/ONLINE slot model with an actual **LOCAL-only** implementation
+(§23.1); the **512 KiB per-cover ceiling** and **1200 px default derivative bound** (§7);
+the **low-storage write guard (≥ 512 MiB free after the write)** and **no automatic
+local-cover eviction** (§18.1); **crash-safe durable attempt tracking** and **parking of
+problematic extraction after two unexplained interruptions** with **no startup retry
+loop** (§23.3, §23.5); **completed startup reconciliation and sweep before any
+extraction is scheduled**; **latest-value cover observation** (§19.1); **Crop to fill in the
+existing fixed-shape frames** (§7 rule 11); **Room v6 migration and tests** (§24, §27);
+**EPUB, CBZ, CBR and PDF local cover extraction**; and **real artwork in Library, Search
+and Notes**. **Excluded:** external provider calls, the `INTERNET` permission, Room v7,
+cover-shape Settings UI, premium/monetization logic, and the Phase 5 PDF Adapted engine.
+
 ### Recommended first implementation prompt (4.5A.1 only)
 
 > Implement **Phase 4.5A.1 — Local Cover Artwork** per
 > `docs/PHASE_4_5_IMPLEMENTATION_PLAN.md` §6, §7, §17, §18, §18.1, §19 (incl. §19.1–§19.2),
-> §23.1–§23.5 (v6 only), §24, §27 and §29, from fresh `main`, branch
+> §23.1–§23.5 (v6 only), §24, §27, §28.1 and §29, from fresh `main`, branch
 > `phase-4.5/4.5a1-local-cover-artwork`. This is an independently reviewable slice; 4.5A.2
-> follows only after it merges. **Preconditions:** the owner has reviewed D12, D20 and D21
-> (they are OPEN in the plan; implement the plan's recommendations only as far as the owner
-> confirmed, and stop to ask about the rest). **Scope:** Room v6 with `publication_cover`
-> (one row per artwork kind, `PRIMARY KEY (libraryItemId, kind)`, FK `ON DELETE CASCADE`
-> plus explicit delete in both removal transactions, status READY/FAILED_PERMANENT/
+> follows only after it merges. **Preconditions (closed):** D12, D20 and D21 are
+> administrator-approved in §31; implement exactly those, and stop to ask about anything
+> the plan still marks proposed-but-unconfirmed (the retry delays, the recompression
+> ladder, the Samsung thresholds and the other (proposed) constants are reviewable).
+> **Scope:** Room v6 with `publication_cover` (slot model, `PRIMARY KEY (libraryItemId,
+> slot)`, slots LOCAL/USER/ONLINE with **only LOCAL written**, `localSource` +
+> `sourceRef` + `sourceChoice`, FK `ON DELETE CASCADE` plus explicit delete in both
+> removal transactions, `CHECK`s on the value sets, status PENDING/READY/FAILED_PERMANENT/
 > FAILED_TEMPORARY with the permanent/temporary reason lists, `extractorVersion`,
-> best-effort `sourceRevision` on the cover row only, jittered persisted `nextEligibleAt`)
-> via a hand-written additive `MIGRATION_5_6` (legacy `bookmark` untouched, no
-> `library_item` change) and a raw-SQLite migration test including the cascade; local
-> artwork extraction for **EPUB** (EPUB2 `meta name="cover"`, EPUB3 `properties="cover-image"`,
-> path-safe through `ArchivePolicy`), **CBZ/CBR** (ComicInfo `FrontCover` only when its
-> index is in range of the logical page list, else the first page in `ArchivePolicy.pages` /
-> `RarContainer` natural order; the same page is never stored twice) and **PDF** (bounded
-> first-page render through the existing PDF open path: longest edge ≤ 1600 px, total-pixel
-> cap, white background, JPEG ~q90, `PDF_FIRST_PAGE`/DERIVED); the **bounded storage
-> policy** (ORIGINAL only ≤ ~1 MiB and ≤ ~4 Mpx, otherwise DERIVED; original pixel
-> dimensions recorded; stored-byte ceiling; never duplicate large comic pages) and the
-> storage budget exactly as the owner confirmed D20 (never evict a user-selected cover or
-> the only copy of an unavailable source's cover); temp file then atomic rename and the row
-> last in a guarded transaction that re-checks the item still exists; **extraction failure
-> semantics** (§23.3: no permanent state from a temporary failure, no endless retry, no
-> retry storm after restart, a failure never erases a usable cover); **safe backfill**
-> (post-commit extraction on `AppContainer.backgroundScope`; bounded batches of 25–50 rows
-> per transaction; an independently observed cover-reference map so cover writes never
-> re-emit `LibraryDao.observe()`; at most one background CBR extraction at a time,
-> reader-first scheduling, no aggressive full-library CBR backfill; startup reconciliation
-> and orphan sweep; removal deletes rows in the transaction and files after commit);
-> **consumers:** one minimal shared cover renderer (artwork | existing generated visual)
-> used by the Library grid, Continue Reading, details pane, cover-expand transition,
-> **Search results** (`feature/home/ShelfApp.kt`) and **Notes hub rows**
-> (`feature/notes/NotesScreen.kt`; live item → cover, orphan → generated, no Notes query
-> change), with the **existing frame presentation** and a stable loading frame; remove the
-> duplicated `coverColor`/`coverMotif` from `LibraryItem`; decode with `inSampleSize` into a
-> bounded `ByteBudgetedLruCache`; a details technical line showing cover provenance;
-> source files byte-identical. **Exclude:** cover-shape Settings, per-category preferences,
-> the full Crop/Fit/Original/Custom UI (4.5A.2), any provider API, the `INTERNET`
-> permission or manifest change, metadata networking, Google Books, Metron integration,
-> provider schemas, Choose from device, Room v7, and any Phase 5 work; no new dependency.
-> **Validate** with focused JVM unit tests (storage policy, status transitions and backoff,
-> href resolution, ComicInfo index fallback, first-page selection, precedence, quota/low-space,
-> one-CBR scheduler) and instrumented tests (migration incl. cascade, guarded insert after
-> removal, interrupted extraction, orphan sweep, an extraction corpus including malformed,
-> oversized and huge comic pages, a seeded 2,000-item backfill with Library-emission
-> counts), plus emulator phone/tablet/short-landscape in Classic and Dark. Record evidence in
+> best-effort `sourceRevision` on the cover row only (zero/absent/unreliable
+> `lastModified` = UNKNOWN), and the attempt-tracking columns `attemptStartedAt`,
+> `attemptExtractorVersion`, `attempts`, `interruptions`, `nextEligibleAt`, `parked`) via a
+> hand-written additive `MIGRATION_5_6` (legacy `bookmark` untouched, no `library_item`
+> change) and a raw-SQLite migration test asserting the table, primary key, foreign key,
+> indices, `CHECK` values and the cascade; local artwork extraction for **EPUB** (EPUB2
+> `meta name="cover"`, EPUB3 `properties="cover-image"`, path-safe through `ArchivePolicy`),
+> **CBZ/CBR** (ComicInfo `FrontCover` only when its index is in range of the logical page
+> list, else the first page in `ArchivePolicy.pages` / `RarContainer` natural order; **one
+> file per publication and slot**, never two) and **PDF** (bounded first-page render
+> through the existing PDF open path: default longest edge ≈ 1200 px, total-pixel cap,
+> white background, JPEG ≈ q90, `PDF_FIRST_PAGE`/DERIVED); the **per-item bounded storage
+> policy** (≈ 512 KiB per cover; ORIGINAL only when small and within limits, otherwise
+> DERIVED with the fixed ladder; original pixel dimensions recorded; never duplicate large
+> comic pages), the **free-space guard (≥ 512 MiB free after the write; on failure skip,
+> keep existing artwork, record retryable `STORAGE_FULL`, no repeated attempts)** and
+> **no automatic eviction and no adaptive quota** (§18.1); temp file then atomic rename and
+> the row last in a guarded transaction that re-checks the item still exists;
+> **extraction failure semantics and the single retry schedule** (§23.3: initial attempt +
+> up to 3 automatic retries, no permanent state from a temporary failure, no endless retry,
+> no retry storm after restart, a relaunch is not a trigger); **crash-safe attempt
+> tracking** (§23.5: marker committed *before* native extraction/decoding/conversion;
+> startup reconciliation before scheduling; park after two unexplained interruptions;
+> reconcile → sweep → schedule; no startup execution of interrupted native work); **safe
+> backfill** (post-commit extraction on `AppContainer.backgroundScope`; cheap rows in
+> 25–50-row batches, each expensive CBR/PDF extraction committed immediately; an
+> independently observed, `distinctUntilChanged` and latest-value-throttled cover-reference
+> map so cover writes never re-emit `LibraryDao.observe()`; at most one background CBR
+> extraction at a time, reader-first scheduling, no aggressive full-library CBR backfill;
+> removal deletes rows in the transaction and files after commit); **consumers:** one
+> minimal shared cover renderer (artwork | existing generated visual) used by the Library
+> grid, Continue Reading, details pane, cover-expand transition, **Search results**
+> (`feature/home/ShelfApp.kt`) and **Notes hub rows** (`feature/notes/NotesScreen.kt`;
+> live item → cover, orphan → generated, no Notes query change), showing **Crop to fill in
+> the existing fixed-shape frames** (never stretched) with a stable loading frame; remove
+> the duplicated `coverColor`/`coverMotif` from `LibraryItem`; decode with `inSampleSize`
+> into a bounded `ByteBudgetedLruCache`; a details technical line showing cover provenance;
+> source files byte-identical. **Exclude:** external provider calls, the `INTERNET`
+> permission or any manifest change, Room v7, cover-shape Settings and per-category
+> preferences, the full Crop/Fit/Original/Custom UI (4.5A.2), premium/monetization logic,
+> Choose from device, metadata networking, Google Books, Metron integration, provider
+> schemas, and any Phase 5 PDF Adapted work; no new dependency. **Validate** with focused
+> JVM unit tests (storage policy and ladder, status transitions and the retry schedule, the
+> attempt state machine, href resolution, ComicInfo index fallback, first-page selection,
+> slot resolution, free-space guard, one-CBR scheduler) and instrumented tests (migration
+> incl. cascade, guarded insert after removal, **kill-process mid-extraction with a fake
+> slow extractor**, startup reconciliation, parked item not retried on 3 launches, explicit
+> refresh un-parks, sweeper ordering, an extraction corpus including malformed, oversized
+> and huge comic pages, a seeded 2,000-item backfill with Library-emission counts), plus
+> emulator phone/tablet/short-landscape in Classic and Dark. Record evidence in
 > `docs/VALIDATION.md`. Commit locally; do not push. Then stop for independent Codex High
 > review.
 

@@ -10,9 +10,9 @@ Current state at Room v5: only EPUB title/creator and ComicInfo title/writer/man
 are extracted; every Library cover is generated; there is no network access. Phase 4.5
 requires Books, Comics **and** Manga enrichment for acceptance (§17 below is reconciled);
 for Comics this means an approved, integrated issue-level online provider in addition to
-local extraction (local artwork alone does not satisfy it). Stored cover artwork is bounded:
-small supported images byte-exact, larger ones as a bounded derivative that records the
-original dimensions (plan §7, §18).
+local extraction (local artwork alone does not satisfy it). Stored cover artwork is bounded per item (≈ 512 KiB per cover): small supported images byte-exact within limits, larger
+ones as a bounded derivative that records the original dimensions; no automatic eviction
+and a low-storage write guard (plan §7, §18.1).
 
 ## 1. Goal
 
@@ -130,8 +130,9 @@ every case.
 ### Cover presentation (accepted 2026-10-15)
 
 Cover source and cover display are separate. ShelfOS keeps the best available artwork under
-a bounded storage policy (small originals byte-exact, larger ones as a bounded derivative
-that records the original dimensions; the source publication is never modified) and never
+a per-item bounded storage policy (≈ 512 KiB per cover; small originals byte-exact within
+limits, larger ones as a bounded derivative that records the original dimensions; no
+automatic eviction; the source publication is never modified) and never
 rewrites it into a fixed shape. A shared cover renderer applies the effective display
 shape — **Original, 2:3, 3:4, 4:5, 1:1 or Custom W:H** (custom ratios 1:2 to 2:1; no Auto
 option; default 2:3 Crop, Documents Original) — with
@@ -422,9 +423,12 @@ Vine, GCD, MangaDex, AniList and others) are in the
 `metron.cloud`) is the preferred, **conditional** Comics candidate on the basis of its
 official commercial-use statement of 2026-10-04: CC BY-SA 4.0 data permits commercial use
 with attribution and ShareAlike; each user supplies their own account/token (no shared
-bundled account); tokens are preferred and Basic auth will be retired; limits are 20
-requests/minute and 5,000/day; caching is expected; publisher cover images are **not**
-under that license. It is not approved until the current service terms are reviewed and the
+bundled account — the statement says not to ship one account shared by all users); tokens
+are recommended and "Basic Auth will be retired eventually"; limits are 20 requests/minute
+and 5,000/day (a donation can raise the daily limit up to 25,000); caching is recommended;
+publisher cover images are **not** under that license (Metron hosts them as fair use, which
+does not automatically extend to ShelfOS). `metron.live` is unrelated to Metron comic
+metadata, and the `metron.cloud` service terms stay unresolved. It is not approved until the current service terms are reviewed and the
 ShareAlike questions are answered (plan D5, D19).
 
 ## 11. Local-first caching
