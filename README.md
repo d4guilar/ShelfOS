@@ -41,8 +41,9 @@ device does not exercise).
 This is not a release: ShelfOS remains an early development prototype. The next
 roadmap area is Phase 4 (Notes and Knowledge Layer), which has started: 4A through
 4D are merged, including the Room-v5 global Notes hub in PR #38. Phase 4E —
-Portable Knowledge & Restore planning is complete, with an independent Codex High PASS,
-and is ready for PR; implementation has not started. 4F has not started. Phase 4 is
+Portable Knowledge & Restore is implemented and independently reviewed / accepted
+(final Codex High verdict PASS; findings M1–M5 CLOSED; accepted code HEAD `ecf6f62`)
+but not yet merged. 4F has not started. Phase 4 is
 not complete or accepted, and physical acceptance remains deferred to 4F.
 
 Global destinations are Library, Search, Notes, Shelves and Settings. Notes is a real

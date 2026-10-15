@@ -1,5 +1,66 @@
 # Documentation Changelog
 
+## Phase 4E acceptance status finalization (2026-10-14)
+
+- Phase 4E — Portable Knowledge & Restore is now documented as **IMPLEMENTED AND
+  INDEPENDENTLY REVIEWED / ACCEPTED**. Final independent Codex High verdict: **PASS**.
+  All implementation findings M1–M5 are CLOSED. Accepted code HEAD
+  `ecf6f621d24cbcb40c38f323ec9ed407d45e6314`; canonical chain: base `87ea50970c93839a587a385267b1f27b4aca2209`,
+  initial implementation `ed074f275b25a1b1c21ad874b323016e98d7f3db`, M1–M4 remediation
+  `0e6e98b08352f9e6f953da930b894102e945dc69`, M5 remediation `ecf6f62`.
+- **Phase 4F — Acceptance remains NOT STARTED, and Phase 4 as a whole remains NOT
+  complete or accepted.** 4F still owns the Samsung SM-T580 accumulated manual UAT,
+  physical keyboard/controller acceptance where applicable, TalkBack, provider
+  diversity, endurance, modest-hardware performance and the accumulated Phase 4
+  regression/acceptance checklist. None of that is claimed as done.
+- `docs/VALIDATION.md`: new current-status acceptance record at the top (accepted
+  functionality, M1–M5 closures, final targeted evidence, Phase 4F deferrals). The
+  earlier 2026-10-13 implementation and M1–M4 remediation entries are retained for
+  chronology and explicitly labelled historical/superseded, with their original
+  `PortableKnowledgeTest` 10/10 figure left intact and the current 12/12 figure noted.
+- `docs/PHASE_4_IMPLEMENTATION_PLAN.md` (header status and §13.5),
+  `docs/ROADMAP.md` (Phase 3 scope note and Phase 4 "Current status"), `README.md`,
+  `docs/features/ANNOTATIONS.md` (status and the Portable Knowledge section heading),
+  `docs/features/LIBRARY_SOURCES.md` (§"Phase 4E knowledge restore is not publication
+  restore"): stale "IMPLEMENTED LOCALLY / PENDING INDEPENDENT CODEX HIGH REVIEW" and
+  "implemented locally and pending independent Codex High review" wording replaced with
+  the accepted wording above.
+- Documentation only: no Kotlin, test, Gradle, Room schema, dependency, manifest or
+  behavior change; no merge, no PR, no squash of existing commits.
+
+## Phase 4E implementation review remediation (2026-10-13)
+
+- Independent Codex High implementation review returned **FAIL: REMEDIATION REQUIRED**
+  for four MEDIUM findings (M1-M4); no BLOCKER or HIGH finding. Remediation is implemented
+  locally and awaits fresh independent review. Phase 4E is not accepted; Phase 4F is not started.
+- Export now writes from bounded canonical keyset pages, with one bounded grouped lookup
+  per page for contextless orphan format inference. Snapshot CREATE follows final NEW statuses.
+  Unknown JSON values are discarded without string/number materialization; known fields
+  are bounded while decoding. The RP5 focused Enter regression now uses native keyboard
+  events after confirming the focused Export button.
+- Focused JVM, API 24 and RP5 tests pass; see `docs/VALIDATION.md` for counts and limits.
+
+## Phase 4E Portable Knowledge & Restore implemented locally (2026-10-13)
+
+Historical record (superseded; see the 2026-10-14 acceptance entry above).
+
+- At the time of this entry Phase 4E was **IMPLEMENTED LOCALLY / PENDING INDEPENDENT
+  CODEX HIGH REVIEW**. Phase 4D remains MERGED / IMPLEMENTATION COMPLETE; Phase 4F was
+  NOT STARTED and Phase 4 remained NOT COMPLETE / NOT ACCEPTED. Phase 4E has since been
+  ACCEPTED after a final independent Codex High PASS with M1–M5 CLOSED.
+- Added canonical `shelfos.knowledge` JSON v1 export/import, deterministic id ordering,
+  opaque locator and timestamp fidelity, bounded streaming validation, additive exact-id
+  classification, stale-preview protection and one-transaction Room v5 restore.
+- Added human-readable Markdown export, all/one-publication/current-filter scopes that
+  exhaust keyset pages, explicit SAF CreateDocument/OpenDocument flows, preview/result UI,
+  localized EN/ES/PT-BR messaging and focused JVM/Room/SAF/UI evidence.
+- Excerpt-to-note audit: the existing highlight-with-body and selection-note flows already
+  satisfy the planned need; **NO PRODUCTION CHANGES REQUIRED**. Added the docs-only future
+  dictionary/provider boundary. No schema, migration, dependency, cloud/account/sync,
+  fingerprint/relink, OCR/ink, publication-byte backup or source mutation was added.
+- Physical/manual portability UAT remains deferred to Phase 4F. No implementation-review
+  PASS, merge, Phase 4 completion or physical Samsung result is claimed.
+
 ## Phase 4E planning finalized after Codex High PASS (2026-10-12)
 
 - Final focused independent planning re-review: **PASS**, with no BLOCKER, HIGH,

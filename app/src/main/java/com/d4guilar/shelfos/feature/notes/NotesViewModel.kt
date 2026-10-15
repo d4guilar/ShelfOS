@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos.feature.notes
 
+import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -10,8 +11,11 @@ import com.d4guilar.shelfos.core.reader.EpubBookmarkPresentation
 import com.d4guilar.shelfos.core.reader.presentStoredEpubLocator
 import com.d4guilar.shelfos.data.annotations.AnnotationRepository
 import com.d4guilar.shelfos.data.annotations.NOTES_PAGE_SIZE
+import com.d4guilar.shelfos.data.annotations.PortableExportFormat
+import com.d4guilar.shelfos.data.annotations.PortableKnowledgeFiles
 import com.d4guilar.shelfos.domain.annotations.*
 import com.d4guilar.shelfos.domain.annotations.Annotation
+import com.d4guilar.shelfos.domain.annotations.portable.*
 import com.d4guilar.shelfos.feature.reader.AnnotationFilter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
@@ -40,6 +44,8 @@ data class NotesUiState(
     /** The annotation being edited, loaded in full (list rows are never the source of an edit). */
     val editing: Annotation? = null, val deleteId: String? = null, val deleteOrphanGroupId: String? = null,
     val notice: UiMessage? = null,
+    val exportOptions: Boolean = false, val portableBusy: Boolean = false,
+    val importPreview: PortableImportPreview? = null, val importResult: PortableImportResult? = null,
 ) {
     val filtering: Boolean get() = query.isNotBlank() || filter != AnnotationFilter.ALL || publicationId != null
 }
@@ -50,8 +56,14 @@ data class NotesUiState(
  * committed edit is already in Room. Reloads on any annotation/snapshot/library change keep as many rows as are already
  * shown, so an edit or delete never throws the reader back to the top of a long list.
  */
+enum class PortableExportScope { ALL, PUBLICATION, FILTER }
+
 @OptIn(FlowPreview::class)
-class NotesViewModel(private val annotations: AnnotationRepository, private val saved: SavedStateHandle) : ViewModel() {
+class NotesViewModel(
+    private val annotations: AnnotationRepository,
+    private val saved: SavedStateHandle,
+    private val portable: PortableKnowledgeFiles? = null,
+) : ViewModel() {
     private val query = saved.getStateFlow(KEY_QUERY, "")
     private val filter = saved.getStateFlow(KEY_FILTER, AnnotationFilter.ALL.ordinal)
     private val publication = saved.getStateFlow<String?>(KEY_PUBLICATION, null)
@@ -68,6 +80,8 @@ class NotesViewModel(private val annotations: AnnotationRepository, private val 
     private var current = NotesQuery()
     private var loading: Job? = null
     private var generation = 0
+    private var importUri: Uri? = null
+    private var importDocument: PortableKnowledgeDocument? = null
 
     init {
         // Controls show at once; the database is only asked after typing pauses.
@@ -109,6 +123,83 @@ class NotesViewModel(private val annotations: AnnotationRepository, private val 
     fun selectPublication(id: String?) { saved[KEY_PUBLICATION] = id }
     fun selectSort(value: NotesSort) { saved[KEY_SORT] = value.ordinal }
     fun dismissNotice() { _state.update { it.copy(notice = null) } }
+    fun showExportOptions() { _state.update { it.copy(exportOptions = true) } }
+    fun closeExportOptions() { _state.update { it.copy(exportOptions = false) } }
+    fun dismissPortableResult() { _state.update { it.copy(importResult = null) } }
+    fun cancelImportPreview() { importUri = null; importDocument = null; _state.update { it.copy(importPreview = null) } }
+
+    fun export(uri: Uri?, format: PortableExportFormat, scope: PortableExportScope, labels: PortableMarkdownLabels) {
+        closeExportOptions()
+        if (uri == null) return
+        val service = portable ?: return
+        val controls = _state.value
+        val exportQuery = when (scope) {
+            PortableExportScope.ALL -> NotesQuery()
+            PortableExportScope.PUBLICATION -> NotesQuery(publicationId = controls.publicationId)
+            PortableExportScope.FILTER -> NotesQuery(
+                kinds = when (controls.filter) {
+                    AnnotationFilter.ALL -> null
+                    AnnotationFilter.NOTES -> setOf(AnnotationKind.NOTE)
+                    AnnotationFilter.HIGHLIGHTS -> setOf(AnnotationKind.HIGHLIGHT)
+                    AnnotationFilter.BOOKMARKS -> setOf(AnnotationKind.BOOKMARK)
+                }, publicationId = controls.publicationId, text = controls.query, sort = controls.sort)
+        }
+        viewModelScope.launch {
+            _state.update { it.copy(portableBusy = true) }
+            try {
+                service.export(uri, format, exportQuery, labels)
+                notice(R.string.knowledge_export_complete)
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { notice(R.string.knowledge_export_failed) }
+            finally { _state.update { it.copy(portableBusy = false) } }
+        }
+    }
+
+    fun previewImport(uri: Uri?) {
+        if (uri == null) return
+        val service = portable ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(portableBusy = true, importPreview = null, importResult = null) }
+            try {
+                val (document, preview) = service.preview(uri)
+                importUri = uri
+                importDocument = document
+                _state.update { it.copy(importPreview = preview) }
+            } catch (e: CancellationException) { throw e }
+            catch (_: UnsupportedPortableKnowledgeVersionException) { notice(R.string.knowledge_import_unsupported) }
+            catch (_: InvalidPortableKnowledgeException) { notice(R.string.knowledge_import_invalid) }
+            catch (_: Exception) { notice(R.string.knowledge_import_read_failed) }
+            finally { _state.update { it.copy(portableBusy = false) } }
+        }
+    }
+
+    fun confirmImport() {
+        val uri = importUri ?: return
+        val document = importDocument ?: return
+        val preview = _state.value.importPreview ?: return
+        val service = portable ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(portableBusy = true) }
+            try {
+                val result = service.import(uri, document, preview)
+                importUri = null
+                importDocument = null
+                _state.update { it.copy(importPreview = null, importResult = result) }
+            } catch (e: CancellationException) { throw e }
+            catch (_: StalePortableKnowledgePreviewException) {
+                importUri = null
+                importDocument = null
+                _state.update { it.copy(importPreview = null) }
+                notice(R.string.knowledge_import_stale)
+            } catch (_: InvalidPortableKnowledgeException) {
+                importUri = null
+                importDocument = null
+                _state.update { it.copy(importPreview = null) }
+                notice(R.string.knowledge_import_invalid)
+            } catch (_: Exception) { notice(R.string.knowledge_import_failed) }
+            finally { _state.update { it.copy(portableBusy = false) } }
+        }
+    }
 
     /** Loads the first page again ([reset] = back to one page, otherwise as many rows as are already shown) and replaces the list. */
     private fun reload(criteria: NotesQuery, reset: Boolean) {

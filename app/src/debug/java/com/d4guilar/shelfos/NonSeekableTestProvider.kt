@@ -35,12 +35,27 @@ class NonSeekableTestProvider : ContentProvider() {
     override fun getType(uri: Uri) = "application/pdf"
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
+        if (mode.contains('w')) {
+            val (read, write) = ParcelFileDescriptor.createReliablePipe()
+            thread(name = "ShelfOS-test-provider-output") {
+                try {
+                    if (uri.lastPathSegment == "knowledge-write-failure") {
+                        read.closeWithError("Injected write failure")
+                    } else {
+                        knowledgeOutput = ParcelFileDescriptor.AutoCloseInputStream(read).use { it.readBytes() }
+                    }
+                } catch (_: Exception) { runCatching { read.close() } }
+            }
+            return write
+        }
         require(mode == "r")
         val (read, write) = ParcelFileDescriptor.createReliablePipe()
         thread(name = "ShelfOS-test-provider") {
             try {
                 ParcelFileDescriptor.AutoCloseOutputStream(write).use { output ->
-                    if (uri.lastPathSegment == "interrupted") {
+                    if (uri.lastPathSegment?.startsWith("knowledge-") == true) {
+                        output.write(knowledgeInput)
+                    } else if (uri.lastPathSegment == "interrupted") {
                         output.write(pdf, 0, pdf.size / 2)
                         output.flush()
                         write.closeWithError("Injected interrupted copy")
@@ -54,10 +69,17 @@ class NonSeekableTestProvider : ContentProvider() {
     }
 
     override fun insert(uri: Uri, values: ContentValues?) = null
-    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?) = 0
+    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int {
+        deleteAttempts++
+        knowledgeOutput = null
+        return 1
+    }
     override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?) = 0
 
-    private companion object {
+    companion object {
+        @Volatile var knowledgeInput: ByteArray = byteArrayOf()
+        @Volatile var knowledgeOutput: ByteArray? = null
+        @Volatile var deleteAttempts: Int = 0
         val pdf: ByteArray by lazy {
             val document = PdfDocument()
             try {
