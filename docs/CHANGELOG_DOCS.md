@@ -22,6 +22,26 @@ implemented and no production code changed. All accepted decisions are unchanged
 D10, D11, D12, D18, D20, D21; D19 open; Open Library and Metron conditional; Google Books
 rejected).
 
+## Phase 4.5A.1 QA remediation (2026-10-15, implemented locally under review)
+
+Closes 1 MEDIUM + selected LOW findings from the first independent Codex High review of
+4.5A.1 on branch `phase-4.5/4.5a1-local-cover-artwork`. Implementation is local, under
+review, not accepted/merged.
+
+- **M1 (MEDIUM) — Production CBR cover path:** test seam via injectable `openSession`
+  parameter on `LocalCoverExtractor` (production default: real native session).
+  Instrumented CBR failure-path tests against vendored `.uu` fixtures
+  (`NO_SUITABLE_ARTWORK`, `UNSUPPORTED_REPRESENTATION`, SHA-256 unchanged, no
+  crash/ANR). Success path via `FakeRarArchiveSession` (JVM). Image-bearing RAR fixture
+  gap recorded in plan §33.
+- **L1 (LOW) — Waiting queue item loss:** `CoverScheduler.run()` checks priority before
+  peeking waiting; waiting items removed only when selected.
+- **L2 (LOW) — ComicInfo multi-value Type:** whitespace-separated token parsing, no
+  unsafe substring match.
+- **L3 (LOW) — Cover memory cache lifecycle:** `CoverArtwork.trimMemory(Int)` wired to
+  `MainActivity.onTrimMemory`/`onLowMemory`.
+- **L6 (LOW) — Reader-first scheduling test:** `CoverSchedulerTest` verifies reader gate.
+
 - **One Room schema (plan sections 23.1, 24, 27, 29, 32):** `MIGRATION_5_6` executes the
   Room-exported `6.json` `createSql` exactly; the migration-only `CHECK` constraints and the
   "Room cannot declare CHECK" caveat are removed. Allowed values are enforced by typed

@@ -29,6 +29,21 @@ instrumentation status stream (scripts in the session scratchpad, not committed)
 | Full instrumented regression (69 classes, build before two lint-only edits) | 447 started, 427 passed, 18 failed, 2 skipped by design. 17 failures are the documented API 24 WebView 52 limits (`EpubAnnotationsTest` 13/27, `EpubManagedFontLiveSwitchTest` 0/2, `EpubManagedFontProofTest` 0/1, `NotesEpubJumpTest` 1, identical to the Phase 4F API 24 record). 1 was `NotesHubUiTest` orphan-edit (Save not found); rerun on the final build **20/20** |
 | Final build rerun | `CoverMigrationTest` 2/2, `CoverExtractionCorpusTest` 7/7, `CoverLifecycleTest` 12/12, `CoverRendererUiTest` 1/1, `NotesHubUiTest` 20/20, `LibraryPersistenceTest` 10/10, `NavigationSmokeTest` 28/28 |
 
+## QA remediation (2026-10-15, after first Codex High review of 4.5A.1)
+
+Closes 1 MEDIUM + selected LOW findings without redesigning the cover architecture. Branch
+`phase-4.5/4.5a1-local-cover-artwork`, local only, under review, not accepted/merged.
+
+| Check | Result |
+| --- | --- |
+| JVM `testDebugUnitTest` | **All pass** — new `CoverSchedulerTest` (waiting-queue dedup, priority-first, reader-first gate), new `CoverSourceSelectionTest` ComicInfo cases (whitespace-separated `Type` tokens, invalid/absent Type, malformed `Image`), all pre-existing tests unchanged |
+| `lintDebug` | 0 errors, 60 warnings (same as baseline) |
+| `LocalCoverExtractorCbrTest` (instrumented) | **NOT RUN — no emulator/device available.** Covers `NO_SUITABLE_ARTWORK` (plain RAR4), `UNSUPPORTED_REPRESENTATION` (RAR4/RAR5 encrypted), SHA-256 unchanged across 5 repeated attempts. Manual emulator repro required for the image-bearing RAR success path (no RAR creation tool available). |
+| `CoverSchedulerTest` reader-first gate | 10/10 pass — `setReaderActive` state change, `attempt()` proceeds when reader inactive |
+| `EmbeddedMetadata.kt` ComicInfo fix | 2/2 new JVM tests pass — `FrontCover InnerCover`, `InnerCover FrontCover`, `InnerCover` only, `BackCover`, `FrontCoverX`, malformed `Image` |
+| Cover memory cache (`CoverArtwork.trimMemory`) | Compiles and passes lint; runtime verification requires emulator with memory-pressure simulation |
+| `git diff --check` | Clean — no whitespace errors |
+
 **Found and fixed during validation:** `Os.link` (hard-link finalize) fails with `EACCES` in
 app storage on Android; finalize now uses an exists-checked rename (plan §33 item 1).
 

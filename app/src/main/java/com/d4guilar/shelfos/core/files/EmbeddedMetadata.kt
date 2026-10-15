@@ -98,8 +98,15 @@ object EmbeddedMetadataReader {
         val number = field("Number")
         val title = field("Title") ?: series?.let { if (number != null) "$it $number" else it }
         val frontCover = info.children().firstOrNull { it.localName().equals("Pages", true) }?.children()
-            ?.firstOrNull { it.localName().equals("Page", true) && it.attr("Type").trim().equals("FrontCover", true) }
-            ?.attr("Image")?.trim()?.toIntOrNull()
+            ?.filter { it.localName().equals("Page", true) }
+            ?.mapNotNull { page ->
+                val type = page.attr("Type").trim()
+                // ComicInfo schema: Type is whitespace-separated tokens, e.g. "FrontCover InnerCover".
+                // Match only exact tokens — never substring — so "BackCover" never matches "FrontCover".
+                if (type.split(Regex("\\s+")).none { it.equals("FrontCover", true) }) null
+                else page.attr("Image")?.trim()?.toIntOrNull()
+            }
+            ?.firstOrNull()
         return EmbeddedMetadata(title, field("Writer"), field("Manga").equals("YesAndRightToLeft", ignoreCase = true), frontCover)
     }
 

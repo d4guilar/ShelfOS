@@ -7,6 +7,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
+import android.os.ParcelFileDescriptor
 import androidx.core.graphics.createBitmap
 import com.d4guilar.shelfos.core.files.*
 import com.d4guilar.shelfos.domain.library.*
@@ -40,7 +41,12 @@ fun interface CoverExtractor {
  * for the OPF and ComicInfo, and [FixedReaderFactory] for the PDF first page (white background, API 24/25 probe).
  * Exactly one page or image is read per publication. Bumping [VERSION] requalifies failed/parked rows (§23.3).
  */
-class LocalCoverExtractor(private val files: PublicationFiles, private val fixedReaders: FixedReaderFactory) : CoverExtractor {
+internal class LocalCoverExtractor(
+    private val files: PublicationFiles,
+    private val fixedReaders: FixedReaderFactory,
+    /** Test seam: injects a RAR session factory. Production defaults to the real [openRarArchiveSession]. */
+    private val openSession: (ParcelFileDescriptor) -> RarArchiveSession = ::openRarArchiveSession,
+) : CoverExtractor {
     override fun extract(item: LibraryItem, output: File, admitTemporary: (Long) -> Boolean): ExtractedCover = mapFailures {
         val revision = files.revision(item)
         when (item.format) {
@@ -81,7 +87,7 @@ class LocalCoverExtractor(private val files: PublicationFiles, private val fixed
      * a linked source gets an ephemeral namespace (no reuse). The cache lease is released right after the copy.
      */
     private fun cbr(item: LibraryItem, output: File, admitTemporary: (Long) -> Boolean): ExtractedCover = files.open(item).use { descriptor ->
-        val container = RarContainer.open(openRarArchiveSession(descriptor), files.rarCacheRoot, item.rarCacheSourceKey())
+        val container = RarContainer.open(openSession(descriptor), files.rarCacheRoot, item.rarCacheSourceKey())
         try {
             // ComicInfo.xml is materialized too; its declared size is not exposed, so the fixed reserve covers it.
             if (!admitTemporary(CoverStoragePolicy.UNKNOWN_TEMP_RESERVE_BYTES)) fail(CoverFailureReason.STORAGE_FULL)

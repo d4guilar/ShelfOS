@@ -112,4 +112,15 @@ class MainActivity : AppCompatActivity() {
     // Cover extraction runs only while the Library is in the foreground (reading wins, plan §19.2).
     override fun onStart() { super.onStart(); (application as ShelfApplication).container.coverScheduler.setForeground(true) }
     override fun onStop() { (application as ShelfApplication).container.coverScheduler.setForeground(false); super.onStop() }
+
+    /** Trim the decoded-cover bitmap cache on memory pressure so reading never competes for cover RAM. */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        (application as ShelfApplication).container.coverArtwork?.trimMemory(level)
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        (application as ShelfApplication).container.coverArtwork?.trimMemory(80 /* TRIM_MEMORY_COMPLETE */)
+    }
 }

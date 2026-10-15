@@ -92,12 +92,30 @@ class CoverScheduler(
         waiting += covers.waiting(WAITING, PER_LAUNCH_RETRY_CAP).map { it.id }
         while (true) {
             awaitGates()
-            val queued = waiting.removeFirstOrNull()
-            val (id, missing) = nextPriority() ?: queued?.let { it to false }
-                ?: covers.candidates(retriesThisLaunch < PER_LAUNCH_RETRY_CAP, 1).firstOrNull()?.let { it.id to false }
-                ?: run { idle(); null } ?: continue
-            val format = attempt(id, missing, reassessWaiting = queued == id) ?: continue
-            if (format == PublicationFormat.CBR) delay(cbrPauseMillis) else yield()
+            // Priority first: a visible/details-picked item jumps the idle backfill.
+            val priority = nextPriority()
+            if (priority != null) {
+                val (id, missing) = priority
+                val format = attempt(id, missing, reassessWaiting = false) ?: continue
+                if (format == PublicationFormat.CBR) delay(cbrPauseMillis) else yield()
+                continue
+            }
+            // Waiting: peek, remove only when we actually process it — priority never discards waiting work.
+            val waitingId = waiting.firstOrNull()
+            if (waitingId != null) {
+                waiting.removeFirst()
+                val format = attempt(waitingId, missing = false, reassessWaiting = true) ?: continue
+                if (format == PublicationFormat.CBR) delay(cbrPauseMillis) else yield()
+                continue
+            }
+            // Idle backfill candidates.
+            val candidate = covers.candidates(retriesThisLaunch < PER_LAUNCH_RETRY_CAP, 1).firstOrNull()?.id
+            if (candidate != null) {
+                val format = attempt(candidate, missing = false, reassessWaiting = false) ?: continue
+                if (format == PublicationFormat.CBR) delay(cbrPauseMillis) else yield()
+                continue
+            }
+            idle()
         }
     }
 

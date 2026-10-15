@@ -64,6 +64,28 @@ class CoverSourceSelectionTest {
         assertNull(comicInfo("").frontCoverImage)
     }
 
+    @Test fun comicInfoWhitespaceSeparatedTypeTokensMatchFrontCover() {
+        // "FrontCover InnerCover" — FrontCover token present
+        assertEquals(2, comicInfo("""<Page Image="2" Type="FrontCover InnerCover"/>""").frontCoverImage)
+        // "InnerCover FrontCover" — FrontCover token present, order-independent
+        assertEquals(5, comicInfo("""<Page Image="5" Type="InnerCover FrontCover"/>""").frontCoverImage)
+        // "InnerCover" only — no FrontCover token
+        assertNull(comicInfo("""<Page Image="7" Type="InnerCover"/>""").frontCoverImage)
+        // "BackCover" — substring must not match
+        assertNull(comicInfo("""<Page Image="1" Type="BackCover"/>""").frontCoverImage)
+        // "FrontCoverX" — not an exact token
+        assertNull(comicInfo("""<Page Image="3" Type="FrontCoverX"/>""").frontCoverImage)
+        // Multiple Page elements, only one has FrontCover token
+        assertEquals(4, comicInfo("""<Page Image="0" Type="Story"/><Page Image="4" Type="FrontCover InnerCover"/><Page Image="8" Type="BackCover"/>""").frontCoverImage)
+    }
+
+    @Test fun comicInfoMalformedImageValueFallsThrough() {
+        // Non-numeric Image attribute → null, no crash
+        assertNull(comicInfo("""<Page Image="abc" Type="FrontCover"/>""").frontCoverImage)
+        // Negative index parses as an Int; chooseArchiveCover rejects out-of-range
+        assertEquals(-1, comicInfo("""<Page Image="-1" Type="FrontCover"/>""").frontCoverImage)
+    }
+
     private fun zip(entries: List<Pair<String, ByteArray>>): File = Files.createTempFile("cover", ".cbz").toFile().also { file ->
         temporary += file
         ZipOutputStream(file.outputStream()).use { out -> entries.forEach { (name, bytes) -> out.putNextEntry(ZipEntry(name)); out.write(bytes); out.closeEntry() } }

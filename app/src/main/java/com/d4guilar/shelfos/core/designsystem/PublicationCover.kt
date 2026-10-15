@@ -65,6 +65,19 @@ class CoverArtwork(
         result?.also { cache.put(key, it) } ?: CoverImage.Failed
     }
 
+    /** Lifecycle-aware trim/clear on Android memory pressure (§L3). No listener leak, no main-thread decode,
+     * no stale keys: a replaced cover has a new fileName and therefore a new cache key.
+     * [level] is one of `android.app.ComponentCallbacks2.TRIM_MEMORY_*` constants. */
+    fun trimMemory(level: Int) {
+        when (level) {
+            60, // TRIM_MEMORY_UI_HIDDEN
+            40, // TRIM_MEMORY_BACKGROUND
+            20, // TRIM_MEMORY_RUNNING_CRITICAL
+            80  -> cache.clear() // TRIM_MEMORY_COMPLETE
+            else -> Unit
+        }
+    }
+
     companion object {
         /** §7 rule 7: ≤ ~24 MiB of decoded covers (≈ 60 grid tiles at 3x density). */
         const val DEFAULT_BUDGET_BYTES = 24L * 1024 * 1024

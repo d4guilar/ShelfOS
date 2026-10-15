@@ -2315,3 +2315,37 @@ scheduler "launch"), not an OS process kill; SM-T580 decode latency, CBR content
 memory evidence (§7 rule 7, §19.2, §28.1) and RP5 controller checks remain 4.5G; the Library
 has no list mode (no list consumer exists); 4.5A.2 owns shapes, Fit/Original, real-ratio
 details pane and artwork-bounds cover expansion.
+
+**QA remediation (2026-10-15, after Codex High review findings):** 1 MEDIUM + selected LOW
+findings closed without redesigning the cover architecture:
+
+- **M1 (MEDIUM) — Production CBR cover path:** `LocalCoverExtractor` gained a test seam
+  — an optional `openSession: (ParcelFileDescriptor) -> RarArchiveSession` constructor
+  parameter defaulting to `::openRarArchiveSession` (production keeps the real native
+  session). `FakeRarArchiveSession` is injected only in tests. Instrumented CBR tests
+  (`LocalCoverExtractorCbrTest`) run against the vendored `.uu` fixtures covering
+  `NO_SUITABLE_ARTWORK` (plain RAR4 without images), `UNSUPPORTED_REPRESENTATION`
+  (RAR4/RAR5 encrypted), input SHA-256 unchanged across repeated attempts, and no
+  crash/ANR. Success path with real image bytes is exercised via `FakeRarArchiveSession`
+  at the JVM level (FrontCover selection, invalid FrontCover → first page, page-order
+  match, single-page extraction, resource release, ORIGINAL/DERIVED labeling, source
+  dimensions, no duplicate LOCAL slot). The image-bearing RAR fixture gap is recorded
+  above.
+- **L1 (LOW) — Waiting queue item loss (`CoverScheduler`):** `run()` now checks priority
+  before peeking the waiting queue, so a priority item never discards a waiting item;
+  waiting items are removed only when actually selected. Regression tests cover
+  queue-waiting + priority, dedup, and cancellation not losing eligible work.
+- **L2 (LOW) — ComicInfo multi-value type (`EmbeddedMetadata`):** `Type` is parsed as
+  whitespace-separated tokens per the ComicInfo schema (`FrontCover InnerCover`,
+  `InnerCover FrontCover`, `InnerCover` only); invalid/absent Type and malformed
+  `Page Image` values fall through; no unsafe substring match; zero-based Image index
+  convention and first-page fallback preserved. JVM tests added.
+- **L3 (LOW) — Cover memory cache lifecycle:** `CoverArtwork.trimMemory(Int)` clears the
+  decoded-cover LRU on `TRIM_MEMORY_UI_HIDDEN`/`TRIM_MEMORY_BACKGROUND`/`TRIM_MEMORY_RUNNING_CRITICAL`/
+  `TRIM_MEMORY_COMPLETE`; `MainActivity.onTrimMemory`/`onLowMemory` wire it to the app
+  lifecycle. No listener leak, no new dependency, no main-thread decode, no stale keys
+  (replaced cover → new fileName → new cache key).
+- **L6 (LOW) — Reader-first scheduling test:** `CoverSchedulerTest` verifies the reader
+  gate: `setReaderActive(true)` blocks new background extraction via `awaitGates()`,
+  `setReaderActive(false)` resumes scheduling, and `attempt()` itself is unaffected by
+  the gate (the gate lives in `run()`, not per-attempt).
