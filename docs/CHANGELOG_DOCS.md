@@ -1,5 +1,19 @@
 # Documentation Changelog
 
+## Phase 4F final owner physical UAT (2026-10-15)
+
+- Recorded owner Samsung Galaxy Tab A SM-T580 physical UAT **PASS** on the final
+  APK from `16635bd`, including its SHA-256 and accumulated checklist scope,
+  with no blocking defect found. Recorded Retroid Pocket 5 physical/controller
+  UAT **PASS**, closing the earlier injected-input-only evidence gap.
+- Reconciled VALIDATION, the Phase 4 plan, ROADMAP and README to **PHYSICAL UAT
+  COMPLETE / READY FOR FINAL INDEPENDENT REVIEW**. Phase 4 is **NOT YET COMPLETE**
+  or accepted: final independent Codex High closure review and merge remain.
+- Preserved the unverified physical TalkBack gap, existing evidence limits and
+  administrator decision to retain the legacy `bookmark` table through closure
+  at Room v5; deletion remains a future dedicated maintenance migration, with
+  no v6 in 4F. Documentation only; no test suite rerun.
+
 ## Phase 4F Notes hub short-landscape remediation (2026-10-15)
 
 - `docs/VALIDATION.md` gains "4F final narrow remediation: Notes hub short landscape": below 480 dp of available height the hub controls scroll with the list; RP5 `NotesHubUiTest` 20/20 (was 11/20) with per-method classification, phone/tablet 20/20, injected (non-physical) controller sanity, honest gaps. Plan section 13.6 status updated. The owner physical-controller pass is added to the UAT checklist and remains pending; Phase 4 is NOT yet accepted (pending owner Samsung UAT and administrator review).

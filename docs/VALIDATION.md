@@ -1,5 +1,61 @@
 # Validation
 
+## PHASE 4F — FINAL OWNER PHYSICAL UAT (2026-10-15)
+
+**Phase 4F: PHYSICAL UAT COMPLETE / READY FOR FINAL INDEPENDENT REVIEW.**
+**Phase 4: NOT YET COMPLETE / NOT YET ACCEPTED.** Final independent Codex High
+closure review and merge remain required.
+
+### Samsung owner UAT
+
+**Samsung Galaxy Tab A SM-T580 physical UAT: PASS.** The owner completed the
+Phase 4F Samsung manual acceptance checklist with no blocking defect found.
+Device: Android 8.1 / API 27, 2 GB RAM.
+
+- Final APK: `C:\Users\dagui\Documents\ShelfOS-UAT\ShelfOS-Phase4F-UAT.apk`.
+- SHA-256: `862adba59438a6a95b5204352b8f22b9329a5804c8e11eb33f8b6f6563e35508`.
+- Source production commit: `16635bd` on `phase-4/4f-acceptance`.
+- Checklist: `ShelfOS-Phase4F-UAT-Checklist.md` beside the APK.
+
+The accumulated checklist covered upgrade/open of existing ShelfOS data;
+bookmark, highlight and note persistence; EPUB annotation restoration/jump;
+fixed-layout PDF/CBZ/CBR annotations; Publication Notebook; Global Notes Hub;
+portrait/landscape behavior; KEEP/DELETE removal; Markdown export; JSON
+export/import; orphan knowledge; restart/reopen; on-screen keyboard/Back draft
+preservation; short-landscape Notes Hub usability; modest-hardware usability
+and performance; and publication sources remaining usable. This records the
+owner's overall PASS, not new measurements or individual observations.
+
+### RP5 owner physical/controller UAT
+
+**Retroid Pocket 5 physical/controller UAT: PASS.** Device: Android 13. The
+owner confirmed final physical-device/controller acceptance. This closes the
+outstanding actual-hardware-controls evidence gap left by the earlier
+ADB-injected key-event checks. No exact button-by-button observations were
+provided or are claimed here.
+
+### Remaining evidence limits and closure decision
+
+- **TalkBack: NOT VERIFIED for Phase 4F.** TalkBack was unavailable on the RP5
+  and no owner physical TalkBack result was supplied. This remains an acceptance
+  evidence gap covered only by available semantic/accessibility automation;
+  those tests are not a physical TalkBack PASS.
+- Existing automation/environment limitations and unexecuted checks below
+  remain as documented. The owner PASS does not establish new performance
+  measurements, third-party SAF-provider coverage, fold-hardware coverage or
+  an extended endurance result beyond the manual checklist. The known need to
+  hide the keyboard to reach editor Save/Cancel in a short window is unchanged.
+- Administrator decision remains intact: Room stays at **v5**; the legacy
+  `bookmark` table is intentionally retained through Phase 4 closure. Deletion
+  is deferred to a future dedicated maintenance migration after Phase 4
+  acceptance; **no v6 migration in 4F**.
+- This update records owner evidence only. Final independent Codex High closure
+  review and merge are still pending; Phase 4 is not complete or accepted.
+
+The dated evidence passes below are historical records. Their pending Samsung
+and physical-controller wording describes those passes and is superseded by
+the owner results above; their recorded test results and limitations are retained.
+
 ## PHASE 4F ACCEPTANCE — EVIDENCE PASS (first pass) (2026-10-14)
 
 **Status: Phase 4 is NOT yet accepted: pending owner Samsung SM-T580 UAT and administrator review.** This is the first, evidence-gathering pass of 4F. No production code, schema, dependency or UI behavior was changed (`git diff main..HEAD` is documentation only). No product defect was found that required a fix; see "Failures and classification" for the RP5 results that are NOT clean and are NOT fully explained. No Samsung PASS, no TalkBack acceptance and no physical-controller acceptance is claimed.
