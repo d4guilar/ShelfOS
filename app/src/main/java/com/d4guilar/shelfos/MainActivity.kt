@@ -116,11 +116,11 @@ class MainActivity : AppCompatActivity() {
     /** Trim the decoded-cover bitmap cache on memory pressure so reading never competes for cover RAM. */
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        (application as ShelfApplication).container.coverArtwork?.trimMemory(level)
+        (application as ShelfApplication).container.coverArtwork.trimMemory(level)
     }
 
     override fun onLowMemory() {
         super.onLowMemory()
-        (application as ShelfApplication).container.coverArtwork?.trimMemory(80 /* TRIM_MEMORY_COMPLETE */)
+        (application as ShelfApplication).container.coverArtwork.trimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE)
     }
 }

@@ -2308,44 +2308,28 @@ removal transactions delete cover rows; files are deleted after commit.
 
 **Remaining gaps (not claimed):** no source-revision comparison trigger (Refresh cover in
 4.5F covers changed files); no extractor-version requalification pass (only one version
-exists); no real RAR image fixture — CBR is proven at the container level (JVM fake session:
-ordering, FrontCover, exact-page reuse, ephemeral namespace) and through the shared image
-writer; the kill-process test is simulated (an attempt left open, then a new repository +
+exists); no RAR4 image fixture (the real-native image path is proven on ShelfOS-authored RAR5
+fixtures, see the QA remediation below); the kill-process test is simulated (an attempt left open, then a new repository +
 scheduler "launch"), not an OS process kill; SM-T580 decode latency, CBR contention and
 memory evidence (§7 rule 7, §19.2, §28.1) and RP5 controller checks remain 4.5G; the Library
 has no list mode (no list consumer exists); 4.5A.2 owns shapes, Fit/Original, real-ratio
 details pane and artwork-bounds cover expansion.
 
-**QA remediation (2026-10-15, after Codex High review findings):** 1 MEDIUM + selected LOW
-findings closed without redesigning the cover architecture:
+**QA remediation (2026-10-15, two passes; awaiting review).** Production changes stay small:
+an `openSession` test seam on `LocalCoverExtractor` (default `::openRarArchiveSession`);
+`CoverScheduler.run()` dispatches priority, then waiting, then backfill without dropping
+queued work (L1); ComicInfo `Type` matched as whitespace-separated tokens (L2);
+`CoverArtwork.trimMemory` from `MainActivity.onTrimMemory`/`onLowMemory` using the SDK's named
+levels: RUNNING_LOW halves the decoded-cover cache; RUNNING_CRITICAL and every more severe
+level (UI_HIDDEN, BACKGROUND, MODERATE, COMPLETE) empty it (L3, `ByteBudgetedLruCache.trimTo`).
+Evidence, including the correction of the first pass's unexecuted claims, is in
+[VALIDATION](VALIDATION.md) "TARGETED QA REMEDIATION 2". The real-native image-bearing CBR
+gate is met with ShelfOS-authored RAR5 fixtures (non-solid and solid); a RAR4 image fixture
+cannot be produced (RAR 7 dropped RAR4 creation).
 
-- **M1 (MEDIUM) — Production CBR cover path:** `LocalCoverExtractor` gained a test seam
-  — an optional `openSession: (ParcelFileDescriptor) -> RarArchiveSession` constructor
-  parameter defaulting to `::openRarArchiveSession` (production keeps the real native
-  session). `FakeRarArchiveSession` is injected only in tests. Instrumented CBR tests
-  (`LocalCoverExtractorCbrTest`) run against the vendored `.uu` fixtures covering
-  `NO_SUITABLE_ARTWORK` (plain RAR4 without images), `UNSUPPORTED_REPRESENTATION`
-  (RAR4/RAR5 encrypted), input SHA-256 unchanged across repeated attempts, and no
-  crash/ANR. Success path with real image bytes is exercised via `FakeRarArchiveSession`
-  at the JVM level (FrontCover selection, invalid FrontCover → first page, page-order
-  match, single-page extraction, resource release, ORIGINAL/DERIVED labeling, source
-  dimensions, no duplicate LOCAL slot). The image-bearing RAR fixture gap is recorded
-  above.
-- **L1 (LOW) — Waiting queue item loss (`CoverScheduler`):** `run()` now checks priority
-  before peeking the waiting queue, so a priority item never discards a waiting item;
-  waiting items are removed only when actually selected. Regression tests cover
-  queue-waiting + priority, dedup, and cancellation not losing eligible work.
-- **L2 (LOW) — ComicInfo multi-value type (`EmbeddedMetadata`):** `Type` is parsed as
-  whitespace-separated tokens per the ComicInfo schema (`FrontCover InnerCover`,
-  `InnerCover FrontCover`, `InnerCover` only); invalid/absent Type and malformed
-  `Page Image` values fall through; no unsafe substring match; zero-based Image index
-  convention and first-page fallback preserved. JVM tests added.
-- **L3 (LOW) — Cover memory cache lifecycle:** `CoverArtwork.trimMemory(Int)` clears the
-  decoded-cover LRU on `TRIM_MEMORY_UI_HIDDEN`/`TRIM_MEMORY_BACKGROUND`/`TRIM_MEMORY_RUNNING_CRITICAL`/
-  `TRIM_MEMORY_COMPLETE`; `MainActivity.onTrimMemory`/`onLowMemory` wire it to the app
-  lifecycle. No listener leak, no new dependency, no main-thread decode, no stale keys
-  (replaced cover → new fileName → new cache key).
-- **L6 (LOW) — Reader-first scheduling test:** `CoverSchedulerTest` verifies the reader
-  gate: `setReaderActive(true)` blocks new background extraction via `awaitGates()`,
-  `setReaderActive(false)` resumes scheduling, and `attempt()` itself is unaffected by
-  the gate (the gate lives in `run()`, not per-attempt).
+**Accepted deferrals:** L4 in-place linked-source revision detection → 4.5F; L5
+extractor-version requalification implemented and tested before the first version bump; L7
+solid-CBR double native pass (ComicInfo, then the page) measured in 4.5G on the SM-T580; L10
+cover map/query scale measured in 4.5G; plus the 4.5G items above (old-device latency and
+memory, RP5/controller, real process-kill recovery, API 26+ storage at runtime, frame/decode
+performance).

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos.core.designsystem
 
+import android.content.ComponentCallbacks2
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -44,7 +45,7 @@ class CoverArtwork(
     val request: (String) -> Unit,
     private val reportMissing: (String) -> Unit,
     val provenance: (String) -> Flow<CoverProvenance?>,
-    budgetBytes: Long = DEFAULT_BUDGET_BYTES,
+    private val budgetBytes: Long = DEFAULT_BUDGET_BYTES,
 ) {
     private val cache = ByteBudgetedLruCache<String, CoverImage>(budgetBytes, MAX_ENTRIES) {
         (it as? CoverImage.Loaded)?.bitmap?.let { b -> b.width.toLong() * b.height * 4 } ?: 0L
@@ -65,24 +66,25 @@ class CoverArtwork(
         result?.also { cache.put(key, it) } ?: CoverImage.Failed
     }
 
-    /** Lifecycle-aware trim/clear on Android memory pressure (§L3). No listener leak, no main-thread decode,
-     * no stale keys: a replaced cover has a new fileName and therefore a new cache key.
-     * [level] is one of `android.app.ComponentCallbacks2.TRIM_MEMORY_*` constants. */
-    fun trimMemory(level: Int) {
-        when (level) {
-            60, // TRIM_MEMORY_UI_HIDDEN
-            40, // TRIM_MEMORY_BACKGROUND
-            20, // TRIM_MEMORY_RUNNING_CRITICAL
-            80  -> cache.clear() // TRIM_MEMORY_COMPLETE
-            else -> Unit
-        }
-    }
+    /** Applies [coverCacheTrimTarget] for a `ComponentCallbacks2.onTrimMemory` [level]; evicted covers re-decode on demand. */
+    fun trimMemory(level: Int) { coverCacheTrimTarget(level, budgetBytes)?.let(cache::trimTo) }
 
     companion object {
         /** §7 rule 7: ≤ ~24 MiB of decoded covers (≈ 60 grid tiles at 3x density). */
         const val DEFAULT_BUDGET_BYTES = 24L * 1024 * 1024
         private const val MAX_ENTRIES = 256
     }
+}
+
+/**
+ * Bounded memory-pressure policy for the decoded-cover cache: null keeps it; RUNNING_LOW halves it; RUNNING_CRITICAL and
+ * every more severe level (UI_HIDDEN, BACKGROUND, MODERATE, COMPLETE) empty it. The levels are ordered by severity.
+ */
+@Suppress("DEPRECATION") // the RUNNING_* levels are deprecated on API 35+ but still delivered on the API 24+ devices ShelfOS targets
+fun coverCacheTrimTarget(level: Int, budgetBytes: Long): Long? = when {
+    level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL -> 0L
+    level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> budgetBytes / 2
+    else -> null
 }
 
 val LocalCoverArtwork = staticCompositionLocalOf<CoverArtwork?> { null }

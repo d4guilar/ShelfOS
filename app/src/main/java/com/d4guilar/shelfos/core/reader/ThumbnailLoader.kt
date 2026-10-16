@@ -55,9 +55,9 @@ class ByteBudgetedLruCache<K, V>(
      * back within *both* [budgetBytes] and [maxEntries]. A cache size that never grows proportionally with how many
      * distinct keys have ever been put -- only with how many distinct values currently fit the budget/count bounds
      * -- is exactly this loop's job; either bound alone (see the class doc) is insufficient on its own. */
-    private fun evict() {
+    private fun evict(limitBytes: Long = budgetBytes) {
         val iterator = entries.entries.iterator()
-        while ((usedBytes > budgetBytes || entries.size > maxEntries) && iterator.hasNext()) {
+        while ((usedBytes > limitBytes || entries.size > maxEntries) && iterator.hasNext()) {
             val removed = iterator.next()
             usedBytes -= sizeOf(removed.value)
             iterator.remove()
@@ -65,6 +65,8 @@ class ByteBudgetedLruCache<K, V>(
     }
 
     @Synchronized fun clear() { entries.clear(); usedBytes = 0L }
+    /** Evicts least-recently-used entries until at most [bytes] remain accounted (memory pressure). */
+    @Synchronized fun trimTo(bytes: Long) = evict(bytes)
     val sizeBytes: Long @Synchronized get() = usedBytes
     val count: Int @Synchronized get() = entries.size
 

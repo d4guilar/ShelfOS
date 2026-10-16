@@ -22,51 +22,17 @@ implemented and no production code changed. All accepted decisions are unchanged
 D10, D11, D12, D18, D20, D21; D19 open; Open Library and Metron conditional; Google Books
 rejected).
 
-## Phase 4.5A.1 QA remediation (2026-10-15, implemented locally under review)
+## Phase 4.5A.1 targeted QA remediation (2026-10-15, awaiting review)
 
-Closes 1 MEDIUM + selected LOW findings from the first independent Codex High review of
-4.5A.1 on branch `phase-4.5/4.5a1-local-cover-artwork`. Implementation is local, under
-review, not accepted/merged.
-
-- **M1 (MEDIUM) — Production CBR cover path:** test seam via injectable `openSession`
-  parameter on `LocalCoverExtractor` (production default: real native session).
-  Instrumented CBR failure-path tests against vendored `.uu` fixtures
-  (`NO_SUITABLE_ARTWORK`, `UNSUPPORTED_REPRESENTATION`, SHA-256 unchanged, no
-  crash/ANR). Success path via `FakeRarArchiveSession` (JVM). Image-bearing RAR fixture
-  gap recorded in plan §33.
-- **L1 (LOW) — Waiting queue item loss:** `CoverScheduler.run()` checks priority before
-  peeking waiting; waiting items removed only when selected.
-- **L2 (LOW) — ComicInfo multi-value Type:** whitespace-separated token parsing, no
-  unsafe substring match.
-- **L3 (LOW) — Cover memory cache lifecycle:** `CoverArtwork.trimMemory(Int)` wired to
-  `MainActivity.onTrimMemory`/`onLowMemory`.
-- **L6 (LOW) — Reader-first scheduling test:** `CoverSchedulerTest` verifies reader gate.
-
-- **One Room schema (plan sections 23.1, 24, 27, 29, 32):** `MIGRATION_5_6` executes the
-  Room-exported `6.json` `createSql` exactly; the migration-only `CHECK` constraints and the
-  "Room cannot declare CHECK" caveat are removed. Allowed values are enforced by typed
-  Kotlin enums plus repository/DAO validation, with safe reads of unknown stored values;
-  `@ColumnInfo(defaultValue)` must equal the migration defaults. Schema-equality tests added.
-- **Atomic cover replacement (7, 19.1, 23.4, 23.5, 27):** each successful extraction writes
-  a new immutable `local-<token>.<ext>`; the Room row is updated in a guarded transaction
-  (exactly one updated row) before the old file is deleted; failures keep the old row and
-  artwork; the sweeper deletes files not referenced by any row and `*.tmp`; the bitmap
-  cache key follows `fileName`.
-- **Retry exhaustion (23.3, 23.5):** park at attempts >= 4 or interruptions >= 2,
-  whichever first; attempt 4 ending in a temporary failure or interruption parks with no
-  further backoff; a parked item ignores timers; the clock-skew clamp is the largest single
-  delay, 19.2 minutes (not the 25.2-minute cumulative bound). Retry schedule unchanged.
-- **CBR cover reuse (19.2):** reuse a reader page only when it is exactly the page the
-  extractor would choose, with one shared page-ordering function; provenance stays LOCAL
-  with ORIGINAL or DERIVED from the stored bytes. The stale "DERIVED ARCHIVE_FIRST_PAGE"
-  rule is gone.
-- **Storage guard (18.1):** admission counts bounded temporary extraction (declared size
-  capped by archive limits, else a proposed fixed reserve); API 26+ may use
-  `getAllocatableBytes`/`getUuidForPath` (verified API 26), API 24/25 use `StatFs`;
-  `STORAGE_FULL` during work closes the attempt normally. D20 numbers unchanged.
-- **Lifecycle compatibility (23.4):** checklist for the sweep, cascade, pending and
-  parked rows, migration, orphan annotations and the bitmap cache.
-- Plan section 32 now carries the eight mandatory safeguards for the 4.5A.1 prompt.
+- VALIDATION: the first remediation's table (`2f718ee`) is replaced. It reported an
+  unexecuted `LocalCoverExtractorCbrTest`, JVM fake-session coverage that did not exist, and a
+  scheduler gate test that never ran `run()`. The new section records executed classes and
+  counts, the real-native and injected-session CBR evidence, run-loop tests, mutation checks,
+  the reviewer-attributed 619 JVM and Notes Hub 3x20/20 evidence, and the accepted deferrals.
+- Plan §33: QA remediation summary rewritten (L1, L2, L3 named levels, test seam); the
+  image-bearing CBR gate met with ShelfOS-authored RAR5 fixtures; deferrals L4/L5/L7/L10.
+- README: concise 4.5A.1 status (branch shows local artwork; not accepted).
+- `androidTest/assets/libarchive_fixtures/README.md`: provenance of the two synthetic fixtures.
 
 ## Phase 4.5 plan remediation, part 3 (2026-10-15)
 
