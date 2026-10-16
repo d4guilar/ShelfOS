@@ -1,5 +1,17 @@
 # Documentation Changelog
 
+## Phase 4.5A.1 targeted QA remediation (2026-10-15, awaiting review)
+
+- VALIDATION: the first remediation's table (`2f718ee`) is replaced. It reported an
+  unexecuted `LocalCoverExtractorCbrTest`, JVM fake-session coverage that did not exist, and a
+  scheduler gate test that never ran `run()`. The new section records executed classes and
+  counts, the real-native and injected-session CBR evidence, run-loop tests, mutation checks,
+  the reviewer-attributed 619 JVM and Notes Hub 3x20/20 evidence, and the accepted deferrals.
+- Plan §33: QA remediation summary rewritten (L1, L2, L3 named levels, test seam); the
+  image-bearing CBR gate met with ShelfOS-authored RAR5 fixtures; deferrals L4/L5/L7/L10.
+- README: concise 4.5A.1 status (branch shows local artwork; not accepted).
+- `androidTest/assets/libarchive_fixtures/README.md`: provenance of the two synthetic fixtures.
+
 ## Phase 4.5A.1 local cover artwork implementation (2026-10-15)
 
 Implementation PR documentation (awaiting independent Codex High review; not accepted).
@@ -22,17 +34,31 @@ implemented and no production code changed. All accepted decisions are unchanged
 D10, D11, D12, D18, D20, D21; D19 open; Open Library and Metron conditional; Google Books
 rejected).
 
-## Phase 4.5A.1 targeted QA remediation (2026-10-15, awaiting review)
-
-- VALIDATION: the first remediation's table (`2f718ee`) is replaced. It reported an
-  unexecuted `LocalCoverExtractorCbrTest`, JVM fake-session coverage that did not exist, and a
-  scheduler gate test that never ran `run()`. The new section records executed classes and
-  counts, the real-native and injected-session CBR evidence, run-loop tests, mutation checks,
-  the reviewer-attributed 619 JVM and Notes Hub 3x20/20 evidence, and the accepted deferrals.
-- Plan §33: QA remediation summary rewritten (L1, L2, L3 named levels, test seam); the
-  image-bearing CBR gate met with ShelfOS-authored RAR5 fixtures; deferrals L4/L5/L7/L10.
-- README: concise 4.5A.1 status (branch shows local artwork; not accepted).
-- `androidTest/assets/libarchive_fixtures/README.md`: provenance of the two synthetic fixtures.
+- **One Room schema (plan sections 23.1, 24, 27, 29, 32):** `MIGRATION_5_6` executes the
+  Room-exported `6.json` `createSql` exactly; the migration-only `CHECK` constraints and the
+  "Room cannot declare CHECK" caveat are removed. Allowed values are enforced by typed
+  Kotlin enums plus repository/DAO validation, with safe reads of unknown stored values;
+  `@ColumnInfo(defaultValue)` must equal the migration defaults. Schema-equality tests added.
+- **Atomic cover replacement (7, 19.1, 23.4, 23.5, 27):** each successful extraction writes
+  a new immutable `local-<token>.<ext>`; the Room row is updated in a guarded transaction
+  (exactly one updated row) before the old file is deleted; failures keep the old row and
+  artwork; the sweeper deletes files not referenced by any row and `*.tmp`; the bitmap
+  cache key follows `fileName`.
+- **Retry exhaustion (23.3, 23.5):** park at attempts >= 4 or interruptions >= 2,
+  whichever first; attempt 4 ending in a temporary failure or interruption parks with no
+  further backoff; a parked item ignores timers; the clock-skew clamp is the largest single
+  delay, 19.2 minutes (not the 25.2-minute cumulative bound). Retry schedule unchanged.
+- **CBR cover reuse (19.2):** reuse a reader page only when it is exactly the page the
+  extractor would choose, with one shared page-ordering function; provenance stays LOCAL
+  with ORIGINAL or DERIVED from the stored bytes. The stale "DERIVED ARCHIVE_FIRST_PAGE"
+  rule is gone.
+- **Storage guard (18.1):** admission counts bounded temporary extraction (declared size
+  capped by archive limits, else a proposed fixed reserve); API 26+ may use
+  `getAllocatableBytes`/`getUuidForPath` (verified API 26), API 24/25 use `StatFs`;
+  `STORAGE_FULL` during work closes the attempt normally. D20 numbers unchanged.
+- **Lifecycle compatibility (23.4):** checklist for the sweep, cascade, pending and
+  parked rows, migration, orphan annotations and the bitmap cache.
+- Plan section 32 now carries the eight mandatory safeguards for the 4.5A.1 prompt.
 
 ## Phase 4.5 plan remediation, part 3 (2026-10-15)
 
