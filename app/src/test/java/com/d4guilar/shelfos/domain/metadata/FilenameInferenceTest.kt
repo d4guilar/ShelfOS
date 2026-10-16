@@ -47,4 +47,17 @@ class FilenameInferenceTest {
         check("Invoice #12 (2024).pdf", DOCUMENT, "Invoice #12")
         check("Les Misérables Tome 2.epub", BOOK, "Les Misérables", volume = "2")
     }
+
+    /** L-1: comic/manga conventions never rewrite a Book title; each category keeps its own explicit tokens. */
+    @Test fun bookTitlesAreNotParsedWithComicOrMangaConventions() {
+        check("The No. 1 Ladies' Detective Agency.epub", BOOK, "The No. 1 Ladies' Detective Agency")
+        check("Python v3.epub", BOOK, "Python v3")
+        check("Catch #22 Notes.epub", BOOK, "Catch #22 Notes")
+        check("The Lord of the Rings Volume 2.epub", BOOK, "The Lord of the Rings", volume = "2")
+        check("Spawn No. 7.cbz", COMIC, "Spawn", series = "Spawn", issue = "7")
+        check("Python v3.cbz", COMIC, "Python", series = "Python", volume = "3")
+        check("Blame! v03.cbz", MANGA, "Blame!", series = "Blame!", volume = "3")
+        check("Blame! #12.cbz", MANGA, "Blame! #12")
+        check("Annual Report No. 3.pdf", DOCUMENT, "Annual Report No. 3")
+    }
 }

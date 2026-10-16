@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.room.Room
@@ -60,20 +61,48 @@ class MetadataUiTest {
         repo.apply(item.id, values.proposals(embedded), 1)
     }
 
-    private fun show(initial: LibraryItem) {
+    /** Metadata saves the editor issued (H-1 double-save check). */
+    private val saves = java.util.concurrent.atomic.AtomicInteger()
+
+    private fun show(initial: LibraryItem, restoration: StateRestorationTester? = null) {
         var item by mutableStateOf(initial)
-        compose.setContent {
+        val content: @androidx.compose.runtime.Composable () -> Unit = {
             ShelfTheme(ThemeId.CLASSIC) {
                 CompositionLocalProvider(LocalMetadataAccess provides MetadataAccess(repo::observe)) {
                     Box(Modifier.size(360.dp, 640.dp).testTag("window")) {
                         PublicationDetails(item, false, {}, Modifier.fillMaxSize(), onRead = {}, onEdit = { _, _, _ -> }, onRemove = {},
                             knowledgeCounts = AnnotationCounts.None,
-                            onEditMetadata = { original, edited -> CoroutineScope(Dispatchers.IO).launch { repo.editByUser(item.id, original, edited) } })
+                            onEditMetadata = { original, edited ->
+                                saves.incrementAndGet()
+                                CoroutineScope(Dispatchers.IO).launch { repo.editByUser(item.id, original, edited) }
+                            })
                     }
                 }
             }
         }
+        if (restoration != null) restoration.setContent(content) else compose.setContent(content)
     }
+
+    // The write's Flow emission is let settle on the UI thread before the test touches the editor again.
+    private fun background(id: String, field: MetadataField, value: String) {
+        runBlocking { assertTrue(repo.apply(id, listOf(Proposed(field, value, embedded)), 2)) }
+        compose.waitForIdle()
+    }
+
+    private fun openEditor() {
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("edit_action").fetchSemanticsNodes().any { it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Text) } }
+        compose.onNodeWithTag("edit_action").performScrollTo()
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithTag("edit_action").assertIsEnabled() }.isSuccess }
+        compose.onNodeWithTag("edit_action").performClick()
+        compose.onNodeWithTag("editor_save").assertExists()
+    }
+
+    private fun save() {
+        compose.onNodeWithTag("editor_save").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("editor_save").fetchSemanticsNodes().isEmpty() }
+    }
+
+    private fun row(id: String) = runBlocking { repo.resolved(id)!! }
 
     private fun waitFor(id: String, check: (ResolvedMetadata) -> Boolean) =
         compose.waitUntil(5_000) { runBlocking { repo.resolved(id)?.let(check) == true } }
@@ -152,5 +181,95 @@ class MetadataUiTest {
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("edit_subtitle").fetchSemanticsNodes().isEmpty() }
         assertEquals("saving without changes writes no USER field", MetadataOrigin.EMBEDDED,
             runBlocking { repo.resolved("b1")!!.origin(MetadataField.PUBLISHER) })
+    }
+
+    // ---- H-1: the editor diffs against the snapshot taken when editing began, never against live Room values ----
+
+    @Test fun h1aBackgroundWriteWhileEditingIsKeptAndOnlyTheEditedFieldBecomesUser() {
+        seed(item("a", MediaCategory.COMIC), MetadataValues(series = "Saga"))
+        show(item("a", MediaCategory.COMIC))
+        openEditor()
+        background("a", MetadataField.PUBLISHER, "Image Comics")   // analysis lands while the editor shows an empty Publisher
+        compose.waitForIdle()
+        compose.onNodeWithTag("edit_description").performScrollTo().performTextReplacement("Two soldiers")
+        save()
+        waitFor("a") { it.values.description == "Two soldiers" }
+        val m = row("a")
+        assertEquals("Image Comics", m.values.publisher)
+        assertEquals(MetadataOrigin.EMBEDDED, m.origin(MetadataField.PUBLISHER))
+        assertEquals(MetadataOrigin.USER, m.origin(MetadataField.DESCRIPTION))
+        assertEquals(MetadataOrigin.EMBEDDED, m.origin(MetadataField.SERIES))
+    }
+
+    @Test fun h1bSnapshotAndDraftSurviveSavedStateRestoration() {
+        seed(item("b", MediaCategory.COMIC), MetadataValues(series = "Saga"))
+        val restoration = StateRestorationTester(compose)
+        show(item("b", MediaCategory.COMIC), restoration)
+        openEditor()
+        compose.onNodeWithTag("edit_issue").performScrollTo().performTextReplacement("7")
+        background("b", MetadataField.PUBLISHER, "Image Comics")
+        restoration.emulateSavedInstanceStateRestore()                // activity/editor recreation
+        compose.onNodeWithTag("edit_issue").performScrollTo().assertTextContains("7")   // the draft survived
+        compose.onNodeWithTag("edit_description").performScrollTo().performTextReplacement("After recreation")
+        save()
+        waitFor("b") { it.values.description == "After recreation" }
+        val m = row("b")
+        assertEquals("the background value survives recreation", "Image Comics", m.values.publisher)
+        assertEquals(MetadataOrigin.EMBEDDED, m.origin(MetadataField.PUBLISHER))
+        assertEquals("7", m.values.issue); assertEquals(MetadataOrigin.USER, m.origin(MetadataField.ISSUE))
+    }
+
+    @Test fun h1cDeliberateClearIsUserAndNeverRefilled() {
+        seed(item("c", MediaCategory.COMIC), MetadataValues(publisher = "Image"))
+        show(item("c", MediaCategory.COMIC))
+        openEditor()
+        compose.onNodeWithTag("edit_publisher").performScrollTo().performTextReplacement("")
+        save()
+        waitFor("c") { it.origin(MetadataField.PUBLISHER) == MetadataOrigin.USER }
+        assertNull(row("c").values.publisher)
+        background("c", MetadataField.PUBLISHER, "Image")
+        assertNull("analysis never refills a user clear", row("c").values.publisher)
+        assertEquals(MetadataOrigin.USER, row("c").origin(MetadataField.PUBLISHER))
+    }
+
+    @Test fun h1dSameFieldConflictTakesTheUsersValue() {
+        seed(item("d", MediaCategory.COMIC), MetadataValues(publisher = "A"))
+        show(item("d", MediaCategory.COMIC))
+        openEditor()
+        background("d", MetadataField.PUBLISHER, "B")
+        compose.onNodeWithTag("edit_publisher").performScrollTo().performTextReplacement("C")
+        save()
+        waitFor("d") { it.values.publisher == "C" }
+        assertEquals(MetadataOrigin.USER, row("d").origin(MetadataField.PUBLISHER))
+    }
+
+    @Test fun h1eNoOpSaveWritesNothingAndCreatesNoUserOrigin() {
+        seed(item("e", MediaCategory.COMIC), MetadataValues(publisher = "A", series = "S"))
+        show(item("e", MediaCategory.COMIC))
+        openEditor()
+        background("e", MetadataField.SERIES, "S2")
+        save()
+        compose.waitForIdle(); Thread.sleep(300)
+        assertEquals("no metadata save was issued", 0, saves.get())
+        val m = row("e")
+        assertEquals("S2", m.values.series)
+        assertTrue("no field became USER", MetadataField.entries.none { m.origin(it) == MetadataOrigin.USER })
+    }
+
+    @Test fun h1RemovedWhileEditingIsNeverRecreatedAndSaveRunsOnce() {
+        seed(item("r", MediaCategory.COMIC), MetadataValues(publisher = "A"))
+        show(item("r", MediaCategory.COMIC))
+        openEditor()
+        runBlocking { RoomLibraryRepository(db.library()).remove("r") }
+        compose.onNodeWithTag("edit_description").performScrollTo().performTextReplacement("Too late")
+        val button = compose.onNodeWithTag("editor_save")
+        button.performClick(); runCatching { button.performClick() }   // a second tap before the dialog closes
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("editor_save").fetchSemanticsNodes().isEmpty() }
+        Thread.sleep(300)
+        assertEquals("exactly one save per editor session", 1, saves.get())
+        assertNull("the removed item is not resurrected", runBlocking { repo.resolved("r") })
+        db.openHelper.writableDatabase.query("SELECT COUNT(*) FROM publication_metadata WHERE libraryItemId = 'r'").use {
+            it.moveToFirst(); assertEquals(0, it.getInt(0))
+        }
     }
 }

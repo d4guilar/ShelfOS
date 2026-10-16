@@ -93,10 +93,44 @@ class MetadataPrecedenceTest {
             MetadataCodec.provenance("[[\"SERIES\",\"FROM_THE_FUTURE\",null,null,null,null],[\"NEW_FIELD\",\"USER\",null,null,null,null]]"))
     }
 
+    /** L-5: real calendar dates only, at the precision written. */
+    @Test fun publicationDatesAreStrictCalendarDates() {
+        for (valid in listOf("2024-02-29", "2021-12-31", "2000-02-29", "2021-04-30", "2021-04", "2021"))
+            assertEquals(valid, valid, normalizedDate(valid))
+        for (invalid in listOf("2023-02-29", "2021-02-30", "2021-04-31", "1900-02-29", "2021-00", "2021-13", "2021-00-10", "2021-01-00",
+            "2021-01-32", "", "   ", "21-01-01", "year 2021"))
+            assertNull(invalid, normalizedDate(invalid))
+    }
+
+    /** L-4: a non-blank value whose provenance is missing, malformed or unknown is never replaced automatically. */
+    @Test fun untrustedProvenanceProtectsExistingValuesButNotUserEdits() {
+        val unknown = item(values = MetadataValues(publisher = "Kept Press"), provenance = mapOf(MetadataField.PUBLISHER to FieldProvenance(MetadataOrigin.UNKNOWN)))
+        val missing = item(values = MetadataValues(publisher = "Kept Press", series = "Mine"),
+            provenance = mapOf(MetadataField.SERIES to user))   // publisher has no provenance at all (partial/malformed JSON)
+        for (current in listOf(unknown, missing)) {
+            for (auto in listOf(embedded, exact, filename))
+                assertEquals("$auto must not replace an untrusted value", "Kept Press",
+                    resolveMetadata(current, listOf(Proposed(MetadataField.PUBLISHER, "Other", auto))).values.publisher)
+            val edited = resolveMetadata(current, listOf(Proposed(MetadataField.PUBLISHER, "Mine Press", user)))
+            assertEquals("an explicit user edit still succeeds", "Mine Press", edited.values.publisher)
+            assertEquals(MetadataOrigin.USER, edited.origin(MetadataField.PUBLISHER))
+            assertEquals("the origin is not invented", current.provenance[MetadataField.PUBLISHER],
+                resolveMetadata(current, listOf(Proposed(MetadataField.PUBLISHER, "Other", embedded))).provenance[MetadataField.PUBLISHER])
+        }
+        assertEquals("a valid USER neighbour is untouched", "Mine",
+            resolveMetadata(missing, listOf(Proposed(MetadataField.SERIES, "Auto", embedded))).values.series)
+        assertEquals("an empty field with unknown origin is still filled", "Image",
+            resolveMetadata(item(provenance = mapOf(MetadataField.PUBLISHER to FieldProvenance(MetadataOrigin.UNKNOWN))),
+                listOf(Proposed(MetadataField.PUBLISHER, "Image", embedded))).values.publisher)
+        val decoded = MetadataCodec.provenance("[[\"PUBLISHER\",\"???\",null,null,null,null],[\"SERIES\",\"USER\",null,null,null,\"5\"]]")
+        assertEquals(MetadataOrigin.UNKNOWN, decoded.getValue(MetadataField.PUBLISHER).origin)
+        assertEquals(MetadataOrigin.USER, decoded.getValue(MetadataField.SERIES).origin)
+    }
+
     @Test fun datesAndLanguagesAreValidatedNotGuessed() {
         assertEquals("2012-10-10", normalizedDate("2012-10-10T00:00:00Z"))
         assertEquals("2012", normalizedDate("2012"))
-        assertEquals("2012", normalizedDate("2012-13-01"))
+        assertNull("an invalid month is rejected, not truncated", normalizedDate("2012-13-01"))
         assertNull(normalizedDate("October 2012"))
         assertNull(normalizedDate("0999"))
         assertEquals("pt-BR", normalizedLanguage("pt_BR"))

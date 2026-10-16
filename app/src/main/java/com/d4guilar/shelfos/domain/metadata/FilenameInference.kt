@@ -29,6 +29,7 @@ object FilenameInference {
         Regex("""(?i)(?:^|[\s\p{Z}_\-(\[])v$NUM$END"""),
         Regex("""第?$S*$NUM$S*巻"""),
     )
+    private const val BARE_V = 1  // index of the bare "v03" pattern above
     private val issuePatterns = listOf(
         Regex("""#$S*$NUM$END"""),
         Regex("""(?i)(?:^|[\s\p{Z}_\-(\[])(?:issue|no\.?|nº|n°)$S*$NUM$END"""),
@@ -49,8 +50,12 @@ object FilenameInference {
         rest = ofCount.replace(rest, " ")
         var volume: String? = null
         var issue: String? = null
-        volumePatterns.firstNotNullOfOrNull { it.find(rest) }?.let { m -> volume = number(m.groupValues[1]); rest = rest.removeRange(m.range) }
-        issuePatterns.firstNotNullOfOrNull { it.find(rest) }?.let { m -> issue = number(m.groupValues[1]); rest = rest.removeRange(m.range) }
+        // Category-aware (L-1): Books keep only explicit volume words ("Python v3" is a version, "No. 1 Ladies'" a title);
+        // the bare v03 form is Comics/Manga, and issue tokens are Comics only.
+        val volumes = if (category == MediaCategory.BOOK) volumePatterns.filterIndexed { i, _ -> i != BARE_V } else volumePatterns
+        volumes.firstNotNullOfOrNull { it.find(rest) }?.let { m -> volume = number(m.groupValues[1]); rest = rest.removeRange(m.range) }
+        if (category == MediaCategory.COMIC)
+            issuePatterns.firstNotNullOfOrNull { it.find(rest) }?.let { m -> issue = number(m.groupValues[1]); rest = rest.removeRange(m.range) }
         if (volume == null && issue == null) paddedTrailing.find(bracketed.replace(rest, " ").trimEnd())?.let { m ->
             val n = number(m.groupValues[1])
             if (category == MediaCategory.COMIC) issue = n else if (category == MediaCategory.MANGA) volume = n

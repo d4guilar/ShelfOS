@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos.data.metadata
 
+import com.d4guilar.shelfos.core.database.LocalCursor
 import com.d4guilar.shelfos.domain.library.LibraryItem
 import com.d4guilar.shelfos.domain.library.MediaCategory
 import com.d4guilar.shelfos.domain.library.PublicationFormat
@@ -37,8 +38,10 @@ class MetadataCoordinatorTest {
             return true
         }
         override fun observe(id: String): Flow<StoredMetadata?> = emptyFlow()
-        override suspend fun pendingLocal(version: Int, exclude: Collection<String>, limit: Int) =
-            items.keys.filter { (versions[it] ?: 0) < version && it !in exclude }.take(limit)
+        // Insertion order stands for "newest first"; the same keyset rule as the Room query.
+        override suspend fun pendingLocal(version: Int, after: LocalCursor?, limit: Int) =
+            items.keys.mapIndexed { i, id -> LocalCursor(id, -i.toLong()) }.filter { c -> (versions[c.id] ?: 0) < version &&
+                (after == null || c.addedAt < after.addedAt || (c.addedAt == after.addedAt && c.id > after.id)) }.take(limit)
     }
 
     private class FakeProvider(override val id: String, override val categories: Set<MediaCategory>,

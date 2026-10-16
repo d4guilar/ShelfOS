@@ -84,6 +84,17 @@ class MetadataEditState(private val original: MetadataValues, private val texts:
         else textFields.fold(original) { v, f -> v.with(f, texts.getValue(f).value.trim().ifEmpty { null }) }
 }
 
+/**
+ * The editor's original values, captured ONCE when editing starts and kept (saveable) for the whole session, so a value
+ * analysis writes while the editor is open is never mistaken for a user change. Only the editable text fields are kept;
+ * identifiers and credits are not edited here and stay untouched by the save.
+ */
+// An ArrayList instance (Bundle-saveable) behind a read-only type.
+fun captureEditSnapshot(values: MetadataValues?): List<String> = ArrayList(textFields.map { (values?.get(it) as String?).orEmpty() })
+
+fun snapshotValues(snapshot: List<String>): MetadataValues =
+    textFields.foldIndexed(MetadataValues()) { i, v, f -> v.with(f, snapshot.getOrNull(i)?.ifEmpty { null }) }
+
 @Composable
 fun rememberMetadataEditState(id: String, original: MetadataValues): MetadataEditState {
     // Fixed field order, so the saveable keys are stable across recompositions.

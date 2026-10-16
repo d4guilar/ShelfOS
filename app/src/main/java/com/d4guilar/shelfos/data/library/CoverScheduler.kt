@@ -121,7 +121,8 @@ class CoverScheduler(
                 if (format == PublicationFormat.CBR) delay(cbrPauseMillis) else yield()
                 continue
             }
-            val other = idleWork()
+            // Lower-priority work never stops cover scheduling: an expected failure just idles this turn.
+            val other = try { idleWork() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
             if (other != null) { if (other == PublicationFormat.CBR) delay(cbrPauseMillis) else yield(); continue }
             idle()
         }

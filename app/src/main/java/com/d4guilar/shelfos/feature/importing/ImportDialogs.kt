@@ -58,6 +58,8 @@ fun PublicationEditor(item: LibraryItem, action: String, onCancel: () -> Unit,
     var category by rememberSaveable(item.id) { mutableStateOf(item.category) }
     val fields = metadata?.let { rememberMetadataEditState(item.id, it) }
     val edited = fields?.result
+    // One save per editor session: a second tap before the dialog closes never writes twice.
+    var saved by remember { mutableStateOf(false) }
     AlertDialog(onDismissRequest = onCancel, title = { Text(action) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (notice != null) Text(notice.resolve())
@@ -70,11 +72,13 @@ fun PublicationEditor(item: LibraryItem, action: String, onCancel: () -> Unit,
             if (fields != null) MetadataEditorFields(fields, category)
         }
     }, confirmButton = {
-        val save = {
+        val save = save@{
+            if (saved) return@save
+            saved = true
             onSave(title, creator, category)
             if (metadata != null && edited != null && edited != metadata) onSaveMetadata(metadata, edited)
         }
-        TextButton(save, Modifier.testTag("editor_save"), enabled = title.isNotBlank() && (fields == null || edited != null)) { Text(action) }
+        TextButton(save, Modifier.testTag("editor_save"), enabled = !saved && title.isNotBlank() && (fields == null || edited != null)) { Text(action) }
     },
         dismissButton = { TextButton(onCancel) { Text(stringResource(R.string.action_cancel)) } })
 }

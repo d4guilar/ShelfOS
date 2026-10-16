@@ -89,10 +89,12 @@ fun isBlankValue(value: Any?): Boolean = value == null || (value is String && va
 fun canReplace(field: MetadataField, current: FieldProvenance?, currentBlank: Boolean, proposed: FieldProvenance): Boolean = when {
     proposed.origin == MetadataOrigin.USER -> true
     current?.origin == MetadataOrigin.USER -> false
+    currentBlank -> proposed.origin.external.not() || field != MetadataField.TITLE || proposed.confidence == MatchConfidence.VERY_HIGH
+    // L-4: a stored value whose provenance is missing, unreadable or unknown cannot be trusted as weak; only a user edit
+    // replaces it. Nothing is invented: the origin stays unknown.
+    current == null || current.origin == MetadataOrigin.UNKNOWN -> false
     proposed.origin.external -> (field != MetadataField.TITLE || proposed.confidence == MatchConfidence.VERY_HIGH) &&
-        (currentBlank || current == null || current.origin == MetadataOrigin.FILENAME_INFERENCE || current.origin == MetadataOrigin.UNKNOWN ||
-            (current.origin.external && proposed.origin.ordinal <= current.origin.ordinal))
-    currentBlank || current == null -> true
+        (current.origin == MetadataOrigin.FILENAME_INFERENCE || (current.origin.external && proposed.origin.ordinal <= current.origin.ordinal))
     else -> proposed.origin.ordinal <= current.origin.ordinal
 }
 
@@ -125,14 +127,22 @@ private fun normalizeEdit(value: Any?): Any? = when (value) {
 private val DATE = Regex("^(\\d{4})(?:-(\\d{2})(?:-(\\d{2}))?)?")
 private val LANGUAGE = Regex("^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{1,8})*$")
 
-/** The leading `YYYY[-MM[-DD]]` of a date string, with month/day range checks; null when there is none. */
+/**
+ * The leading `YYYY[-MM[-DD]]` of a date string when it is a real calendar date (L-5: leap years, month lengths), at the
+ * precision it was written; null otherwise. An invalid date is rejected, never moved to another day or truncated.
+ */
 fun normalizedDate(raw: String?): String? {
     val m = DATE.find(raw?.trim() ?: return null) ?: return null
     val (y, mo, d) = m.destructured
-    if (y.toInt() !in 1000..2999) return null
-    if (mo.isNotEmpty() && mo.toInt() !in 1..12) return y
-    if (d.isNotEmpty() && d.toInt() !in 1..31) return "$y-$mo"
-    return m.value
+    val year = y.toInt()
+    if (year !in 1000..2999) return null
+    if (mo.isEmpty()) return m.value
+    val month = mo.toInt()
+    if (month !in 1..12) return null
+    if (d.isEmpty()) return m.value
+    val leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+    val days = when (month) { 2 -> if (leap) 29 else 28; 4, 6, 9, 11 -> 30; else -> 31 }
+    return m.value.takeIf { d.toInt() in 1..days }
 }
 
 /** A syntactically valid BCP 47-style tag (`en`, `pt-BR`, `ja`), else null. Never guessed from text. */

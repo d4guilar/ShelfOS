@@ -1,5 +1,35 @@
 # Validation
 
+## PHASE 4.5B — TARGETED QA REMEDIATION (2026-10-16, implemented / under review)
+
+**Not accepted, not merged.** Fixes the Codex High findings on `46d1c61` (CHANGES REQUIRED: H-1,
+L-1, L-3, L-4, L-5; L-2 deferred to before 4.5E). Isolated API 24 emulator `emulator-5554` only;
+no owner device attached or used; same per-class `am instrument` procedure as below.
+
+| Command / class | Tests | Pass | Fail | Result | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `gradlew.bat :app:testDebugUnitTest` | 675 | 675 | 0 | PASS | 671 + 4 new: Book file names (L-1), strict dates (L-5), untrusted provenance (L-4), failing idle work never stops covers/spins/runs under a reader (`CoverSchedulerTest`, L-3) |
+| `MetadataUiTest` | 9 | 9 | 0 | PASS | 3 earlier + 6 new H-1 tests on the real editor and a real Room repository: (A) background Publisher write during editing kept EMBEDDED, only Description USER; (B) snapshot and draft survive `StateRestorationTester` saved-state restoration, background value kept; (C) deliberate clear is USER and never refilled; (D) same-field conflict takes the user's value; (E) no-op save issues no write, no USER origin; removal while editing writes nothing and a double tap saves once. Run 3 consecutive times: 9/9 each |
+| `MetadataBackfillLimitTest` | 1 | 1 | 0 | PASS | Real SQLite: 1,100 unreadable items before one readable item; reached with no bind-limit error; each item read exactly once; then stops (no retry); failures stay pending |
+| `LocalMetadataBackfillTest`, `MetadataMigrationTest`, `MetadataParsingDeviceTest` | 5 | 5 | 0 | PASS | Updated to the keyset API |
+| `CoverLifecycleTest`, `CoverPresentationUiTest`, `CoverRendererUiTest` | 21 | 21 | 0 | PASS | Cover scheduling with the idle-work boundary |
+| `NotesHubUiTest`, `NavigationSmokeTest`, `CbrProductIntegrationTest`, `RemovalDialogKnowledgeTest`, `LibraryPersistenceTest` | 70 | 70 | 0 | PASS | |
+| `assembleDebug`, `assembleDebugAndroidTest` | — | — | — | PASS | |
+| `lintDebug` | — | — | — | PASS | 0 errors, 60 warnings (one new `MutableCollectionMutableState` warning was fixed) |
+
+Instrumented on the final APKs: **106/106 across 13 classes** (not all 20 classes of the
+implementation pass were rerun; the migration-only classes are unchanged by this remediation).
+Intermediate runs: `MetadataUiTest` 3/9 (test helper scrolled a dialog button), then 8/9 (a
+test-thread recomposition race after a background write; the helper now waits for idle) — test-
+side fixes only.
+
+**Mutation check (temporary, reverted):** feeding the editor live Room values again fails H-1 A,
+B and E (6/9).
+
+**Deferred:** L-2 (Comics corroboration uses file-name evidence) is a mandatory prerequisite before
+the first live Comics provider (4.5E): trustworthy evidence provenance in queries, no VERY_HIGH
+from weak file-name signals alone, a contradictory Comics corpus.
+
 ## PHASE 4.5B — METADATA CORE IMPLEMENTATION (2026-10-16, implemented / under review)
 
 **Not accepted, not merged.** Branch `phase-4.5/4.5b-metadata-core` from `main` `1d949be`.

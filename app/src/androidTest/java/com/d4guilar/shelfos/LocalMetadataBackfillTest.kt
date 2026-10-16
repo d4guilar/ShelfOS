@@ -58,7 +58,7 @@ class LocalMetadataBackfillTest {
         val watcher = launch(Dispatchers.Default) { container.library.publications.drop(1).collect { emissions++ } }
         container.coverScheduler.setForeground(true)
         withTimeout(60_000) {
-            while (container.metadata.pendingLocal(LocalMetadataAnalyzer.VERSION, emptyList(), 10).intersect(setOf("test-epub", "bf-comic")).isNotEmpty()) delay(250)
+            while (container.metadata.pendingLocal(LocalMetadataAnalyzer.VERSION, null, 10).map { it.id }.intersect(setOf("test-epub", "bf-comic")).isNotEmpty()) delay(250)
         }
         delay(1_000)
         watcher.cancel()
@@ -76,7 +76,7 @@ class LocalMetadataBackfillTest {
         assertEquals("an embedded title outranks a file-name title", "Original Reading Room", epub.title)
         assertEquals(MetadataOrigin.EMBEDDED, epub.origin(MetadataField.TITLE))
         assertTrue("the missing item is not marked analysed (retried next launch)",
-            "bf-missing" in container.metadata.pendingLocal(LocalMetadataAnalyzer.VERSION, emptyList(), 10))
+            "bf-missing" in container.metadata.pendingLocal(LocalMetadataAnalyzer.VERSION, null, 10).map { it.id })
         // Only the EPUB's real title change touches library_item; metadata rows never re-emit the Library list.
         assertTrue("Library re-emissions during backfill: $emissions", emissions <= 2)
     }

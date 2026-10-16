@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos.data.metadata
 
+import com.d4guilar.shelfos.core.database.LocalCursor
 import com.d4guilar.shelfos.domain.library.LibraryItem
 import com.d4guilar.shelfos.domain.library.PublicationFormat
 import com.d4guilar.shelfos.domain.metadata.*
@@ -21,8 +22,9 @@ class LocalMetadataAnalyzer(
     private val publication: suspend (String) -> LibraryItem?,
     private val read: suspend (LibraryItem) -> LocalMetadataEvidence,
 ) {
-    // Items whose source could not be read this launch: skipped until the next launch (no retry loop, no permanent mark).
-    private val failed = HashSet<String>()
+    // Keyset position of this launch's traversal: every item is visited at most once per launch, so an unreadable item is
+    // skipped until the next launch (no retry loop, no permanent mark) and any number of them costs no bind parameters.
+    private var cursor: LocalCursor? = null
 
     fun proposals(item: LibraryItem, evidence: LocalMetadataEvidence?): List<Proposed> {
         val embedded = FieldProvenance(MetadataOrigin.EMBEDDED)
@@ -40,14 +42,16 @@ class LocalMetadataAnalyzer(
 
     /** Analyses the next pending available item; returns its format when one was processed, null when none is pending. */
     suspend fun analyzeNext(): PublicationFormat? {
-        val id = store.pendingLocal(VERSION, failed, 1).firstOrNull() ?: return null
-        val item = publication(id) ?: run { failed += id; return PublicationFormat.PDF }
-        // Per-item isolation: any failure skips this item until the next launch and never stops the worker.
+        // The query is inside the recoverable boundary too: a database error idles this pass, it never stops the worker.
+        val next = try { store.pendingLocal(VERSION, cursor, 1).firstOrNull() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+            ?: return null
+        cursor = next
+        val item = publication(next.id) ?: return PublicationFormat.PDF
+        // Per-item isolation: an expected failure (unreadable source, parse error) skips only this item for this launch.
         try {
-            val evidence = read(item)
             // A late result for an item removed meanwhile is dropped by the store, never recreated.
-            if (!store.apply(id, proposals(item, evidence), VERSION)) failed += id
-        } catch (e: CancellationException) { throw e } catch (_: Exception) { failed += id }
+            store.apply(item.id, proposals(item, read(item)), VERSION)
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { }
         return item.format
     }
 

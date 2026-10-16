@@ -2470,10 +2470,12 @@ invalid dates/languages and malformed XML are dropped safely; entity-bearing XML
 refused. Title/creator/FrontCover/manga direction behave as before. PDFs declare nothing ShelfOS
 reads (no OCR, no text reconstruction). Sources are never modified.
 
-**File-name inference** — `FilenameInference`: `Vol`, `Vol.`, `Volume`, `v03`, `Tome`, `Tomo`,
-`Band`, `巻`/`第N巻` (full-width digits), `#12`, `Issue`, `No.`, `nº`; `(of 12)` ignored;
-years in parentheses; a zero-padded trailing number is an issue for Comics and a volume for
-Manga, never for Books; Documents keep only the cleaned name. Results are FILENAME_INFERENCE
+**File-name inference** — `FilenameInference`, category-aware (corrected in the QA remediation
+below): explicit volume words `Vol`, `Vol.`, `Volume`, `Tome`, `Tomo`, `Band`, `巻`/`第N巻`
+(full-width digits) for Books, Comics and Manga; the bare `v03` form for Comics and Manga only;
+issue tokens `#12`, `Issue`, `No.`, `nº` for Comics only; `(of 12)` ignored; years in
+parentheses; a zero-padded trailing number is an issue for Comics and a volume for Manga, never
+for Books; Documents keep only the cleaned name. Results are FILENAME_INFERENCE
 candidates; titles are never transliterated or rewritten. **Deviation:** the displayed title
 keeps the import behaviour (the file name without its extension); the cleaned title is used only
 for matching queries. Creator inference is not attempted (bracketed names are usually groups).
@@ -2544,3 +2546,37 @@ candidates; no cover candidate handling; title/creator provenance detail beyond 
 column is stored only for external values; ComicInfo `Volume` is stored as written (a series
 start year for many comics, a tankōbon number for manga); RTL/real-library corpora and SM-T580
 backfill timing are 4.5G measurements.
+
+**4.5B targeted QA remediation (2026-10-16; Codex High CHANGES REQUIRED: 1 HIGH, 5 LOW; still
+under review).**
+- **H-1 editor snapshot (HIGH, fixed).** The editor diffed its fields against *live* Room values,
+  so a value analysis wrote while it was open (e.g. Publisher) was saved as a false USER clear.
+  Now the editable text fields are captured once when Edit is pressed (`captureEditSnapshot`),
+  held in `rememberSaveable` keyed by item (survives recomposition and saved-state restoration,
+  never reused for another item, never refreshed from Room while editing). Save sends only the
+  fields changed relative to that snapshot (`userEdits`) to the existing transactional
+  `MetadataStore.apply`/`resolveMetadata` against the current row, so background values the user
+  did not touch keep their origin, deliberate clears stay USER, and a removed item is never
+  written. One save per editor session (a second tap writes nothing).
+- **L-1 file names (fixed).** "The No. 1 Ladies' Detective Agency" and "Python v3" are no longer
+  given an issue/volume as Books (see the corrected paragraph above). Earlier text claiming Book
+  titles were already protected was inaccurate for these tokens.
+- **L-3 bounded traversal (fixed).** The pending query used `NOT IN (:failed)`, which could exceed
+  SQLite's 999 bind variables on API 24 and, being outside the per-item boundary, stop metadata and
+  cover scheduling for the launch. It is now a keyset traversal over `(addedAt DESC, id)` with a
+  fixed parameter count: each item is visited at most once per launch, failures stay pending for
+  the next launch, the query sits inside a recoverable `Exception` boundary (never `Throwable`),
+  and the cover scheduler isolates idle-work failures so covers keep running.
+- **L-4 untrusted provenance (fixed).** A non-blank stored value whose provenance is missing,
+  malformed or unknown is never replaced automatically; only an explicit USER edit replaces it.
+  The unknown origin is kept as is (nothing invented); an empty field with unknown origin is
+  still filled; valid neighbouring fields are unaffected.
+- **L-5 strict dates (fixed).** `YYYY`, `YYYY-MM`, `YYYY-MM-DD` must be real calendar dates (leap
+  years, month lengths); anything else is rejected (never truncated or shifted), at the written
+  precision.
+- **L-2 Comics match provenance — DEFERRED, mandatory before 4.5E.** The matcher can count
+  file-name-derived series/issue/year toward the Comics corroboration rule for VERY_HIGH. No
+  production provider exists, so nothing is exposed today. **Before the first live Comics
+  provider:** carry trustworthy evidence provenance into `MetadataQuery`, never let weak
+  file-name signals alone produce VERY_HIGH, keep the issue/volume identity checks, and add a
+  contradictory Comics test corpus.

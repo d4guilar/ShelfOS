@@ -58,9 +58,11 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
     val inputMode = LocalInputModeManager.current.inputMode
     LaunchedEffect(Unit) { if (focusPrimaryAction && inputMode == InputMode.Keyboard) runCatching { readFocus.requestFocus() } }
     val metadata = rememberStoredMetadata(item.id)
-    if (editing) PublicationEditor(item, stringResource(R.string.action_save_changes), { editing = false }, { title, creator, category ->
-        onEdit(title, creator, category); editing = false
-    }, metadata = if (onEditMetadata != null) metadata.stored?.values ?: MetadataValues() else null,
+    // Captured when Edit is pressed and never refreshed from Room while editing (H-1); per item, survives recreation.
+    var editSnapshot by rememberSaveable(item.id) { mutableStateOf<List<String>?>(null) }
+    if (editing) PublicationEditor(item, stringResource(R.string.action_save_changes), { editing = false; editSnapshot = null }, { title, creator, category ->
+        onEdit(title, creator, category); editing = false; editSnapshot = null
+    }, metadata = if (onEditMetadata != null) editSnapshot?.let(::snapshotValues) else null,
         onSaveMetadata = { original, edited -> onEditMetadata?.invoke(original, edited) })
     val hasKnowledge = knowledgeCounts != null && knowledgeCounts.total > 0
     if (removing) AlertDialog(onDismissRequest = { removing = false }, title = { Text(stringResource(R.string.dialog_remove_title)) },
@@ -115,7 +117,8 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
             }
             Row {
                 // Editing waits for the stored metadata, so it never opens on (and saves) blank placeholders.
-                TextButton({ editing = true }, Modifier.testTag("edit_action"), enabled = metadata.loaded) { Text(stringResource(R.string.action_edit)) }
+                TextButton({ editSnapshot = captureEditSnapshot(metadata.stored?.values); editing = true }, Modifier.testTag("edit_action"),
+                    enabled = metadata.loaded) { Text(stringResource(R.string.action_edit)) }
                 TextButton({ removing = true }, Modifier.testTag("remove_action")) { Text(stringResource(R.string.action_remove)) }
             }
             HorizontalDivider(color = t.colors.divider)

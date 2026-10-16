@@ -1,5 +1,13 @@
 # Documentation Changelog
 
+## Phase 4.5B targeted QA remediation (2026-10-16, under review)
+
+- Plan §35: H-1 editor snapshot fix, L-1 corrected file-name inference paragraph, L-3 keyset
+  traversal, L-4 untrusted-provenance policy, L-5 strict dates, and the mandatory pre-4.5E L-2
+  gate.
+- VALIDATION: new remediation section with executed counts, intermediate runs and the mutation
+  check.
+
 ## Phase 4.5B metadata core implementation (2026-10-16, under review)
 
 - Plan: status (4.5A.1 and 4.5A.2 merged; 4.5B implemented / under review) and new §35: Room v8

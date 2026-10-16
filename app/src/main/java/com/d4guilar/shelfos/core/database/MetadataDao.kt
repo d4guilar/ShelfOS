@@ -23,6 +23,9 @@ data class PublicationMetadataEntity(
     val localAnalysisVersion: Int, val updatedAt: Long,
 )
 
+/** A position in the local-analysis traversal (`addedAt DESC, id`). */
+data class LocalCursor(val id: String, val addedAt: Long)
+
 /** The `library_item` columns metadata resolution reads and may write. */
 data class MetadataHead(val id: String, val title: String, val creator: String, val titleOrigin: String, val creatorOrigin: String)
 
@@ -38,9 +41,14 @@ abstract class MetadataDao {
         "WHERE id = :id AND (title != :title OR titleOrigin != :titleOrigin OR creator != :creator OR creatorOrigin != :creatorOrigin)")
     abstract suspend fun updateHead(id: String, title: String, titleOrigin: String, creator: String, creatorOrigin: String)
 
-    /** Available items whose local analysis is missing or older than [version], newest imports first. */
-    @Query("SELECT li.id FROM library_item li LEFT JOIN publication_metadata pm ON pm.libraryItemId = li.id " +
-        "WHERE li.available = 1 AND (pm.libraryItemId IS NULL OR pm.localAnalysisVersion < :version) AND li.id NOT IN (:exclude) " +
-        "ORDER BY li.addedAt DESC LIMIT :limit")
-    abstract suspend fun pendingLocal(version: Int, exclude: List<String>, limit: Int): List<String>
+    /**
+     * Available items whose local analysis is missing or older than [version], newest imports first, strictly after the
+     * keyset cursor ([afterAddedAt], [afterId]) in `addedAt DESC, id` order. A fixed number of bind parameters, so any
+     * number of skipped items fits SQLite's variable limit (L-3).
+     */
+    @Query("SELECT li.id, li.addedAt FROM library_item li LEFT JOIN publication_metadata pm ON pm.libraryItemId = li.id " +
+        "WHERE li.available = 1 AND (pm.libraryItemId IS NULL OR pm.localAnalysisVersion < :version) " +
+        "AND (li.addedAt < :afterAddedAt OR (li.addedAt = :afterAddedAt AND li.id > :afterId)) " +
+        "ORDER BY li.addedAt DESC, li.id LIMIT :limit")
+    abstract suspend fun pendingLocal(version: Int, afterAddedAt: Long, afterId: String, limit: Int): List<LocalCursor>
 }

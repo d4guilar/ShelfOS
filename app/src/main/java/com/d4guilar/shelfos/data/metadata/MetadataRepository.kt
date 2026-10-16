@@ -2,6 +2,7 @@
 package com.d4guilar.shelfos.data.metadata
 
 import androidx.room.withTransaction
+import com.d4guilar.shelfos.core.database.LocalCursor
 import com.d4guilar.shelfos.core.database.MetadataDao
 import com.d4guilar.shelfos.core.database.MetadataHead
 import com.d4guilar.shelfos.core.database.PublicationMetadataEntity
@@ -21,7 +22,8 @@ interface MetadataStore {
      */
     suspend fun apply(id: String, proposals: List<Proposed>, analysisVersion: Int? = null): Boolean
     fun observe(id: String): Flow<StoredMetadata?>
-    suspend fun pendingLocal(version: Int, exclude: Collection<String>, limit: Int): List<String>
+    /** Pending items after [after] (null = from the newest) in `addedAt DESC, id` order. */
+    suspend fun pendingLocal(version: Int, after: LocalCursor?, limit: Int): List<LocalCursor>
 
     /** A manual edit: every field changed from [original] (what the editor showed) becomes `USER` (§16); others keep their provenance. */
     suspend fun editByUser(id: String, original: MetadataValues, edited: MetadataValues, at: Long = System.currentTimeMillis()): Boolean =
@@ -60,7 +62,8 @@ class RoomMetadataRepository(private val database: ShelfDatabase, private val cl
         row?.let { StoredMetadata(values(it), MetadataCodec.provenance(it.provenanceJson)) }
     }.distinctUntilChanged()
 
-    override suspend fun pendingLocal(version: Int, exclude: Collection<String>, limit: Int) = dao.pendingLocal(version, exclude.toList(), limit)
+    override suspend fun pendingLocal(version: Int, after: LocalCursor?, limit: Int) =
+        dao.pendingLocal(version, after?.addedAt ?: Long.MAX_VALUE, after?.id ?: "", limit)
 
     private fun resolve(head: MetadataHead, row: PublicationMetadataEntity?): ResolvedMetadata {
         val stored = MetadataCodec.provenance(row?.provenanceJson)

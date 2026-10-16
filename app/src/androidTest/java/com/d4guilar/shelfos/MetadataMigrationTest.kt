@@ -134,7 +134,7 @@ class MetadataMigrationTest {
             library.remove("item-cbz", KnowledgePolicy.DELETE)
             sql.query("SELECT COUNT(*) FROM publication_metadata").use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
             sql.query("SELECT COUNT(*) FROM annotation WHERE libraryItemId = 'item-epub'").use { it.moveToFirst(); assertEquals("KEEP keeps notes", 1, it.getInt(0)) }
-            assertEquals(listOf("item-pdf"), repo.pendingLocal(1, emptyList(), 10))
+            assertEquals(listOf("item-pdf"), repo.pendingLocal(1, null, 10).map { it.id })
         } finally { reopened.close(); context.deleteDatabase(name) }
     }
 }
