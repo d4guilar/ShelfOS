@@ -393,7 +393,9 @@ restore the JSON without publication-identity guessing.
 
 **Next active milestone (planning, 2026-10-15).** Phase 4 is complete. Phase 4.5 is
 inserted between Phase 4 and Phase 5; Phase 5 remains Advanced PDF Ingestion and the
-numbering of every later phase is unchanged. No 4.5 slice is implemented yet. The
+numbering of every later phase is unchanged. **4.5A.1 Local Cover Artwork is implemented
+(Room v6) and awaiting independent Codex High review; it is not accepted** (plan §33,
+[validation](VALIDATION.md)). No other 4.5 slice is implemented. The
 implementation authority is [`PHASE_4_5_IMPLEMENTATION_PLAN.md`](PHASE_4_5_IMPLEMENTATION_PLAN.md);
 behavior is owned by [Metadata enrichment](features/METADATA_ENRICHMENT.md).
 

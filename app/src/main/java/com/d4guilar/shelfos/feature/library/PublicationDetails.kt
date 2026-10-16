@@ -21,7 +21,11 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.d4guilar.shelfos.R
+import com.d4guilar.shelfos.core.designsystem.LocalCoverArtwork
 import com.d4guilar.shelfos.core.designsystem.shelfAction
+import com.d4guilar.shelfos.domain.library.CoverLocalSource
+import com.d4guilar.shelfos.domain.library.CoverRepresentation
+import kotlinx.coroutines.flow.flowOf
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import com.d4guilar.shelfos.domain.annotations.AnnotationCounts
 import com.d4guilar.shelfos.domain.annotations.KnowledgePolicy
@@ -113,10 +117,31 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
                 stringResource(R.string.detail_title_origin, originLabel(item.titleOrigin)),
                 stringResource(R.string.detail_creator_origin, originLabel(item.creatorOrigin)),
                 stringResource(if (item.managedPath == null) R.string.detail_source_linked else R.string.detail_source_private_copy),
-                stringResource(R.string.detail_cover_generated),
+                coverDetail(item.id),
             ).joinToString("\n"), style = MaterialTheme.typography.bodySmall, color = t.colors.secondary)
         }
     }
+}
+
+/** The technical cover provenance line: where the local artwork came from and whether it is an exact or reduced copy. */
+@Composable
+private fun coverDetail(id: String): String {
+    val artwork = LocalCoverArtwork.current
+    val flow = remember(artwork, id) { artwork?.provenance?.invoke(id) ?: flowOf(null) }
+    val provenance by flow.collectAsState(null)
+    val source = when (provenance?.source) {
+        CoverLocalSource.EPUB_COVER -> R.string.detail_cover_epub
+        CoverLocalSource.COMICINFO_FRONT_COVER -> R.string.detail_cover_comicinfo
+        CoverLocalSource.ARCHIVE_FIRST_PAGE -> R.string.detail_cover_first_page
+        CoverLocalSource.PDF_FIRST_PAGE -> R.string.detail_cover_pdf_preview
+        null -> return stringResource(R.string.detail_cover_generated)
+    }
+    val copy = when (provenance?.representation) {
+        CoverRepresentation.ORIGINAL -> R.string.detail_cover_original
+        CoverRepresentation.DERIVED -> R.string.detail_cover_derived
+        null -> return stringResource(source)
+    }
+    return stringResource(R.string.detail_cover_line, stringResource(source), stringResource(copy))
 }
 
 /** Discloses the saved items removal affects and what each explicit choice does; only shown when the total is not 0. */

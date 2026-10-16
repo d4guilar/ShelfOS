@@ -91,6 +91,18 @@ object LegacyDatabases {
         }
     }
 
+    const val SNAPSHOT_V5 = "CREATE TABLE `annotation_source_snapshot` (`libraryItemId` TEXT NOT NULL, `title` TEXT NOT NULL, `creator` TEXT NOT NULL, `category` TEXT NOT NULL, `format` TEXT NOT NULL, PRIMARY KEY(`libraryItemId`))"
+
+    /** Creates a real v5 database: everything v4 has plus `annotation_source_snapshot` (5.json), with one orphan snapshot. */
+    fun createV5(context: Context, name: String, items: List<Pair<String, String>>, annotations: List<V4Annotation>) {
+        createV4(context, name, items, annotations)
+        context.openOrCreateDatabase(name, 0, null).use { db ->
+            db.execSQL(SNAPSHOT_V5)
+            db.execSQL("INSERT INTO annotation_source_snapshot VALUES('gone-item', 'Removed \"title\"', 'Someone', 'COMIC', 'CBZ')")
+            db.version = 5
+        }
+    }
+
     /** All rows of [table] as lists of column values, ordered by [orderBy], read through a raw SQLite connection. */
     fun dump(db: SQLiteDatabase, table: String, orderBy: String): List<List<String?>> =
         db.rawQuery("SELECT * FROM $table ORDER BY $orderBy", null).use(::rows)
@@ -105,7 +117,7 @@ object LegacyDatabases {
         db.rawQuery("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", arrayOf(table)).use { it.moveToFirst(); it.getInt(0) == 1 }
 
     fun open(context: Context, name: String) = Room.databaseBuilder(context, ShelfDatabase::class.java, name)
-        .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3, ShelfDatabase.MIGRATION_3_4, ShelfDatabase.MIGRATION_4_5).build()
+        .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3, ShelfDatabase.MIGRATION_3_4, ShelfDatabase.MIGRATION_4_5, ShelfDatabase.MIGRATION_5_6).build()
 }
 
 /**

@@ -43,9 +43,10 @@ and Knowledge Layer) is **complete** (2026-10-15; 4A–4F merged, final acceptan
 owner Samsung SM-T580 UAT and RP5 physical/controller UAT both PASS, and the final
 independent Codex High closure review returned PASS WITH NOTES. Evidence and the remaining
 TalkBack gap are recorded in `docs/VALIDATION.md`. The next active milestone is **Phase
-4.5 — Metadata, Covers & Library Presentation** (planning only; see
-[the plan](docs/PHASE_4_5_IMPLEMENTATION_PLAN.md)); Library covers are still generated
-placeholders today. Phase 5 remains Advanced PDF Ingestion.
+4.5 — Metadata, Covers & Library Presentation**. Slice 4.5A.1 (local cover artwork:
+EPUB, CBZ/CBR and PDF first-page covers with the generated cover as fallback) is implemented on
+branch `phase-4.5/4.5a1-local-cover-artwork` and is **under independent review, not accepted or
+merged**; `main` still shows generated covers. Phase 5 remains Advanced PDF Ingestion.
 
 Global destinations are Library, Search, Notes, Shelves and Settings. Notes is a real
 cross-library hub (Phase 4D, merged and implementation complete); Shelves is a

@@ -19,10 +19,7 @@ data class LibraryItem(
     val titleOrigin: String = "filename", val creatorOrigin: String = "unknown",
     val progress: Int = 0, val lastRead: Long = 0, val locator: String? = null,
     val preferences: String = "{}",
-) {
-    val coverColor: Long get() = listOf(0xFFAD6758L, 0xFF304856L, 0xFF426455L, 0xFF72516DL)[(id.hashCode() and Int.MAX_VALUE) % 4]
-    val coverMotif: Int get() = (id.hashCode() and Int.MAX_VALUE) % 3
-}
+)
 
 /**
  * Phase 3E-D R1A (HIGH-2): the ONE production factory deciding whether a persistent RAR extraction-cache

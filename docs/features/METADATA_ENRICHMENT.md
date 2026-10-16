@@ -6,8 +6,10 @@ phases; none is implemented in the Phase 0 prototype. See ADR-0016.
 
 **Implementation authority (2026-10-15):** this specification is delivered by
 [Phase 4.5 — Metadata, Covers & Library Presentation](../PHASE_4_5_IMPLEMENTATION_PLAN.md).
-Current state at Room v5: only EPUB title/creator and ComicInfo title/writer/manga-direction
-are extracted; every Library cover is generated; there is no network access. Phase 4.5
+Current state (Room v6, 4.5A.1 awaiting review): only EPUB title/creator and ComicInfo
+title/writer/manga-direction are extracted as metadata; local cover artwork (EPUB cover,
+ComicInfo FrontCover or first archive page, first-page PDF preview) is extracted in the
+background with the generated cover as fallback; there is no network access. Phase 4.5
 requires Books, Comics **and** Manga enrichment for acceptance (§17 below is reconciled);
 for Comics this means an approved, integrated issue-level online provider in addition to
 local extraction (local artwork alone does not satisfy it). Stored cover artwork is bounded per item (≈ 512 KiB per cover): small supported images byte-exact within limits, larger

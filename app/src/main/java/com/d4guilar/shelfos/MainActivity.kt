@@ -24,6 +24,7 @@ import androidx.window.layout.WindowInfoTracker
 import com.d4guilar.shelfos.core.reader.FoldOrientation
 import com.d4guilar.shelfos.core.reader.FoldRect
 import com.d4guilar.shelfos.core.reader.ReaderFoldDescriptor
+import com.d4guilar.shelfos.core.designsystem.LocalCoverArtwork
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import com.d4guilar.shelfos.core.theme.ShelfTheme
 import com.d4guilar.shelfos.core.theme.ThemeId
@@ -62,6 +63,7 @@ class MainActivity : AppCompatActivity() {
         enableEdgeToEdge()
         val container = (application as ShelfApplication).container
         setContent {
+          CompositionLocalProvider(LocalCoverArtwork provides container.coverArtwork) {
             val settings: SettingsViewModel = viewModel(factory = viewModelFactory { initializer { SettingsViewModel(container.themes, container.library, container.languages) } })
             val library: LibraryViewModel = viewModel(factory = viewModelFactory { initializer {
                 LibraryViewModel(container.library, createSavedStateHandle())
@@ -103,6 +105,22 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+          }
         }
+    }
+
+    // Cover extraction runs only while the Library is in the foreground (reading wins, plan §19.2).
+    override fun onStart() { super.onStart(); (application as ShelfApplication).container.coverScheduler.setForeground(true) }
+    override fun onStop() { (application as ShelfApplication).container.coverScheduler.setForeground(false); super.onStop() }
+
+    /** Trim the decoded-cover bitmap cache on memory pressure so reading never competes for cover RAM. */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        (application as ShelfApplication).container.coverArtwork.trimMemory(level)
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        (application as ShelfApplication).container.coverArtwork.trimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE)
     }
 }

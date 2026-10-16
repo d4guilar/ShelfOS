@@ -2,6 +2,7 @@
 package com.d4guilar.shelfos.data.library
 
 import com.d4guilar.shelfos.core.database.*
+import com.d4guilar.shelfos.core.files.CoverFiles
 import com.d4guilar.shelfos.core.files.PrivateCopyUsage
 import com.d4guilar.shelfos.core.files.PublicationFiles
 import com.d4guilar.shelfos.domain.annotations.KnowledgePolicy
@@ -37,7 +38,7 @@ interface PrivateCopyStore {
     suspend fun deleteUnusedPrivateCopies(): PrivateCopyUsage
 }
 
-class RoomLibraryRepository(private val dao: LibraryDao, private val files: PublicationFiles? = null) : LibraryRepository, PrivateCopyStore {
+class RoomLibraryRepository(private val dao: LibraryDao, private val files: PublicationFiles? = null, private val covers: CoverFiles? = null) : LibraryRepository, PrivateCopyStore {
     override val publications = dao.observe().map { rows -> rows.map(::item) }
     override val globalPreferences = dao.globalPreferences()
     override fun publication(id: String) = dao.observeRecord(id).map { row -> row?.let(::item) }
@@ -56,8 +57,12 @@ class RoomLibraryRepository(private val dao: LibraryDao, private val files: Publ
             KnowledgePolicy.DELETE -> dao.removeDeletingKnowledge(id)
             KnowledgePolicy.KEEP -> dao.removeKeepingKnowledge(id)
         }
-        // Release platform access only when no remaining item needs it; files are never deleted here.
-        withContext(Dispatchers.IO) { files?.releaseAccess(removed.sourceUri, dao.bySource(removed.sourceUri) != null) }
+        // Release platform access only when no remaining item needs it; publication files are never deleted here.
+        // Cover rows went with the transaction; their files go only after it committed (a leftover is swept at startup).
+        withContext(Dispatchers.IO) {
+            files?.releaseAccess(removed.sourceUri, dao.bySource(removed.sourceUri) != null)
+            covers?.deleteItem(id)
+        }
     }
     override suspend fun available(id: String, available: Boolean) = dao.available(id, available)
     override suspend fun reading(id: String, locator: String, progress: Int) = dao.saveReading(ReadingEntity(id, locator, progress.coerceIn(0, 100), System.currentTimeMillis()))

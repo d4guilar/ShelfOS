@@ -1,5 +1,30 @@
 # Documentation Changelog
 
+## Phase 4.5A.1 targeted QA remediation (2026-10-15, awaiting review)
+
+- VALIDATION: the first remediation's table (`2f718ee`) is replaced. It reported an
+  unexecuted `LocalCoverExtractorCbrTest`, JVM fake-session coverage that did not exist, and a
+  scheduler gate test that never ran `run()`. The new section records executed classes and
+  counts, the real-native and injected-session CBR evidence, run-loop tests, mutation checks,
+  the reviewer-attributed 619 JVM and Notes Hub 3x20/20 evidence, and the accepted deferrals.
+- Plan §33: QA remediation summary rewritten (L1, L2, L3 named levels, test seam); the
+  image-bearing CBR gate met with ShelfOS-authored RAR5 fixtures; deferrals L4/L5/L7/L10.
+- README: concise 4.5A.1 status (branch shows local artwork; not accepted).
+- `androidTest/assets/libarchive_fixtures/README.md`: provenance of the two synthetic fixtures.
+
+## Phase 4.5A.1 local cover artwork implementation (2026-10-15)
+
+Implementation PR documentation (awaiting independent Codex High review; not accepted).
+
+- Plan status and new §33: what 4.5A.1 delivers, ten implementation decisions/deviations
+  (rename-based finalize, no row batching, unavailable sources give the attempt back,
+  READY failures record counters only, CBR reuse through the reader's cache key, 0-based
+  FrontCover, implemented triggers, scheduling gates, rendering, constants) and the
+  remaining gaps.
+- ROADMAP, ARCHITECTURE §15 and METADATA_ENRICHMENT current-state lines: Room v6 and local
+  artwork, awaiting review.
+- VALIDATION: new 4.5A.1 section with commands, counts and environment limits.
+
 ## Phase 4.5 final QA reconciliation (2026-10-15)
 
 Documentation only; closes the LOW notes of the final independent Codex High review (PASS

@@ -1,5 +1,113 @@
 # Validation
 
+## PHASE 4.5A.1 — LOCAL COVER ARTWORK IMPLEMENTATION (2026-10-15, awaiting review)
+
+**Not accepted.** Implementation evidence for the independent Codex High review. Branch
+`phase-4.5/4.5a1-local-cover-artwork` from `main` @ `0bf1063cc6c2e711b9135dda161216675cfe0ebb`.
+Scope, decisions and gaps: [plan §33](PHASE_4_5_IMPLEMENTATION_PLAN.md#33-45a1-implementation-record-2026-10-15-awaiting-review).
+
+**Environment, stated plainly.** API 24 x86_64 emulator `shelfos-api24` (`emulator-5554`,
+WebView 52, 1080x1920 @ 420 dpi) only. The connected RP5 was deliberately not used
+(instrumentation clears app data on the owner's device). No Samsung SM-T580, tablet,
+short-landscape, Dark-theme visual, physical controller or TalkBack run in this slice;
+those remain 4.5G. The emulator is a fast x86 host: its timings are not SM-T580 evidence.
+
+**Commands.** `gradlew.bat :app:testDebugUnitTest :app:lintDebug`;
+`gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest`; `gradlew.bat
+:app:kspDebugKotlin --rerun` (no Room FK-index warning); APKs installed and every class run
+as its own `adb shell am instrument -w -r -e class <class>` after `pm clear`, counted from the
+instrumentation status stream (scripts in the session scratchpad, not committed).
+
+| Check | Result |
+| --- | --- |
+| JVM `testDebugUnitTest` | **610 tests, 0 failures** (53 result files; 587 before). New: `CoverPolicyTest` (retry schedule ±20%, park at 4 attempts / 2 interruptions, attempt give-back for STORAGE_FULL/unavailable/cancel, permanent vs temporary, 19.2-min clamp, slot resolution, FrontCover range, ORIGINAL thresholds, ladder, storage admission incl. temporary CBR reserve, persistence-boundary validation, throttle vs debounce under continuous backfill, migration SQL == `6.json` createSql), `CoverSourceSelectionTest` (EPUB2/EPUB3 references, unsafe/remote/escaping hrefs, ComicInfo FrontCover parsing, CBZ natural order, CBR exact-page reuse via the reader's cache key, ephemeral namespace for linked sources) |
+| `lintDebug` | 0 errors, 60 warnings (same count and categories as the Phase 4 baseline) |
+| `CoverMigrationTest` | 2/2: real v5 file → v6, every pre-existing table byte-identical (items, reading state, preferences, legacy `bookmark`, annotations, snapshot); columns, defaults `0`, PK `(libraryItemId, slot)`, FK `CASCADE`, only the PK autoindex, no `CHECK`; schema identical to a fresh Room v6 database and to the exported createSql; cascade deletes covers, never annotations |
+| `CoverLifecycleTest` | 12/12: unique immutable file + READY row; replacement writes a new file, old kept during work and deleted only after commit; zero-row guarded write and a throwing commit keep the old cover and discard the new file; removal mid-extraction → no row, no file; guarded begin after removal inserts nothing; removal deletes rows then files; abandoned attempt → INTERRUPTED + backoff, never eligible at startup, `.tmp` swept; second interruption parks; parked item not retried on 3 launches, explicit refresh un-parks; sweep after reconcile and before any extraction; storage guard (no work, attempt 0, no timer, READY artwork kept) and mid-work STORAGE_FULL (no interruption, no attempt consumed); unknown stored enum strings → generated, no crash; **2,000-item backfill: ~19 s, `LibraryDao.observe()` 1 emission (initial only), cover map 62–64 emissions, all 2,000 published** |
+| `CoverExtractionCorpusTest` | 7/7: EPUB3 small JPEG byte-exact ORIGINAL; EPUB2 1800x2700 PNG → DERIVED 800x1200 JPEG ≤ 512 KiB with source dims; SVG → UNSUPPORTED_REPRESENTATION; no cover / escaping href / missing entry → NO_SUITABLE_ARTWORK; garbage bytes → UNDECODABLE_CONTENT; CBZ FrontCover page chosen, out-of-range/negative → first page; 400 Mpx PNG header rejected without allocation; noisy 2400x3600 page bounded; PDF 600x800 pt → 900x1200 DERIVED preview, white background; missing source → SOURCE_UNAVAILABLE; every source file SHA-256 identical afterwards |
+| `CoverRendererUiTest` | 1/1: neutral frame before the map loads (no generated flash, no request); artwork in the 0.68 frame (cropped, ratio asserted); item without cover → generated + one request; missing file reported → generated; replaced file shows new artwork |
+| Full instrumented regression (69 classes, build before two lint-only edits) | 447 started, 427 passed, 18 failed, 2 skipped by design. 17 failures are the documented API 24 WebView 52 limits (`EpubAnnotationsTest` 13/27, `EpubManagedFontLiveSwitchTest` 0/2, `EpubManagedFontProofTest` 0/1, `NotesEpubJumpTest` 1, identical to the Phase 4F API 24 record). 1 was `NotesHubUiTest` orphan-edit (Save not found); rerun on the final build **20/20** |
+| Final build rerun | `CoverMigrationTest` 2/2, `CoverExtractionCorpusTest` 7/7, `CoverLifecycleTest` 12/12, `CoverRendererUiTest` 1/1, `NotesHubUiTest` 20/20, `LibraryPersistenceTest` 10/10, `NavigationSmokeTest` 28/28 |
+
+## PHASE 4.5A.1 — TARGETED QA REMEDIATION 2 (2026-10-15, awaiting review)
+
+**Not accepted.** Closes the second Codex High review (CHANGES REQUIRED: 2 MEDIUM, several
+LOW) on branch `phase-4.5/4.5a1-local-cover-artwork`, starting at `2f718ee`.
+
+**Correction of the previous remediation record (`2f718ee`).** Its table was not accurate
+and is replaced by this section. `LocalCoverExtractorCbrTest` was never executed, and once
+run it failed: its fixtures sat in `cacheDir` while `PublicationFiles(context)` resolved
+private copies under `filesDir/publications`, so every case returned `SOURCE_UNAVAILABLE`
+before the native open (reproduced here on the emulator with the old APK). No test injected a
+fake session into `LocalCoverExtractor`, so there was no CBR success-path coverage. The
+`CoverSchedulerTest` reader-gate tests called `attempt()` or the setter and never ran
+`run()`/`awaitGates()` ("10/10" was not an executed count; the class had 7 tests); its stub
+DAO returned 0 from `updateReady`, and it wrote `app/fake/` into the source tree.
+
+**Reviewer-confirmed evidence (independent Codex High review, not re-attributed here):** JVM
+619 tests, 0 failures, on `2f718ee`; `NotesHubUiTest` 3 independent runs, 20/20 each.
+
+**Executed in this remediation.** Environment: isolated API 24 x86_64 emulator
+`shelfos-api24` (`emulator-5554`) only; the owner's RP5 and SM-T580 were not used. The
+emulator's previously installed APKs (different signing key) were uninstalled first. Each
+instrumented class ran as `adb shell am instrument -w -r -e class <class>
+com.d4guilar.shelfos.test/androidx.test.runner.AndroidJUnitRunner` after `pm clear`, counted
+from the status stream with every test name present.
+
+| Command / class | Tests | Pass | Fail | Skip | What it proves |
+| --- | --- | --- | --- | --- | --- |
+| `gradlew.bat :app:testDebugUnitTest` | 618 | 618 | 0 | 0 | 55 result files: 619 − 3 vacuous scheduler tests removed + 2 new trim tests |
+| JVM `data.library.CoverSchedulerTest` | 4 | 4 | 0 | 0 | Runs the **real `CoverScheduler.run()`**: priority B dispatched before waiting A, A stays queued and then runs, each committed exactly once (L1); reader active while A runs → A completes (never cancelled), B does not start, reader inactive → B runs, each once (L6); no dispatch while in background. The stub DAO's begin and guarded commit succeed (one row) |
+| JVM `core.designsystem.CoverCacheTrimTest` | 2 | 2 | 0 | 0 | SDK named levels (5/10/15/20/40/60/80) → keep / halve / empty; `trimTo` LRU eviction and refill (L3) |
+| `core.reader.LocalCoverExtractorCbrTest` (instrumented) | 7 | 7 | 0 | 0 | All through `LocalCoverExtractor.extract()`'s CBR branch; detail below |
+| `CoverRendererUiTest` | 1 | 1 | 0 | 0 | Renderer after the trim change |
+| `CoverLifecycleTest` | 12 | 12 | 0 | 0 | Lifecycle on the final build |
+| `NotesHubUiTest` | 20 | 20 | 0 | 0 | One rerun here (Notes uses the changed renderer) |
+
+`LocalCoverExtractorCbrTest` detail:
+
+- **Real native RAR, negative paths (native code genuinely reached):** plain RAR4 without
+  images → `NO_SUITABLE_ARTWORK`; the production `openRarArchiveSession` ran once, the session
+  closed once, no entry extracted. Encrypted RAR4 and RAR5 → `UNSUPPORTED_REPRESENTATION`; the
+  native whole-archive open refuses them, so no session exists. 25 repeated rounds of both
+  after a 3-round warm-up: correct reason every time, every opened session closed exactly
+  once, `/proc/self/fd` count within baseline + 5. Source SHA-256 identical before/after.
+- **Real native RAR, success (new ShelfOS-authored RAR5 fixtures, non-solid and solid):** the
+  ComicInfo `FrontCover` page `p2.png` (logical page 1) is stored byte-exact `ORIGINAL`, 64x96,
+  `COMICINFO_FRONT_COVER`/`DECLARED`, correct green pixel; only ComicInfo and the chosen page
+  are extracted, by physical index (`[1, 2]` non-solid, `[0, 3]` solid); admission sequence
+  `[32 MiB reserve, 160 B declared]`; session closed; source SHA-256 unchanged.
+- **Injected fake sessions (the `openSession` seam), same production branch:** invalid
+  FrontCover → first logical page, only that page extracted; a 1800x2700 page → `DERIVED`
+  ≤ 1200 px and ≤ 512 KiB with source dimensions recorded; an undeclared size → the 32 MiB
+  reserve; refused admission → `STORAGE_FULL` with the page never extracted; corrupt page →
+  `UNDECODABLE_CONTENT` with no output; sessions closed. "A failure never replaces usable
+  artwork" is the scheduler's contract and stays covered by `CoverLifecycleTest`.
+
+**Mutation checks (temporary, reverted; production files back to their committed state):**
+removing `!reader` from `awaitGates()` fails the L6 test ("B must not start while a reader is
+active"); dispatching waiting work before priority fails the L1 test (`[A, B]` instead of
+`[B]`); ignoring ComicInfo FrontCover in the production CBR branch fails both the real-native
+and the fake-session CBR tests.
+
+**Other gates:** `assembleDebug` and `assembleDebugAndroidTest` built; `lintDebug` 0 errors,
+60 warnings (same categories as before); `git diff --check` clean; no test artifacts in the
+repository (`app/fake/` removed; scheduler tests use JUnit `TemporaryFolder`).
+
+**Image-bearing real-native CBR gate:** met at evidence level A — legally clean synthetic RAR5
+fixtures (solid-colour pages generated for ShelfOS, no third-party artwork; provenance in
+`app/src/androidTest/assets/libarchive_fixtures/README.md`) through the real libarchive path
+on the emulator. Not done: a RAR4 image fixture (RAR 7 can no longer create RAR4) and an owner
+CBR displayed in the running app.
+
+**Accepted deferrals (not verified here):** L4 in-place linked-source revision detection →
+4.5F. L5 extractor-version requalification must be implemented and tested before the first
+extractor-version increase. L7 solid-CBR double native pass (ComicInfo, then the page)
+measured in 4.5G on the SM-T580. L10 cover map/query scale measured in 4.5G. Also 4.5G:
+Samsung latency and memory, RP5/controller input, a real OS process-kill recovery, API 26+
+storage checks at runtime, frame and decode performance. Memory-pressure trimming is
+unit-tested only (no on-device `am send-trim-memory` run).
+
 ## PHASE 4F — FINAL OWNER PHYSICAL UAT (2026-10-15)
 
 **Phase 4F: ACCEPTED.** Final independent Codex High closure review: **PASS WITH

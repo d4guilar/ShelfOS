@@ -22,6 +22,8 @@ dedicated foldable hardware was used. Do not describe ShelfOS as a public releas
 Phase 4 (Notes and Knowledge Layer) is complete (2026-10-15, Room v5). The next active
 milestone is Phase 4.5 — Metadata, Covers & Library Presentation
 ([plan](PHASE_4_5_IMPLEMENTATION_PLAN.md)); Phase 5 remains Advanced PDF Ingestion.
+Slice 4.5A.1 (local cover artwork, Room v6 `publication_cover`) is implemented and awaiting
+independent review (plan §33).
 
 [PHASE_1_PLAN](PHASE_1_PLAN.md) scopes that first slice. Accepted ADRs 0018–0022
 extend the target architecture; they do not claim the new ingestion, Series,
@@ -519,7 +521,12 @@ local artwork. Cover *source* and cover *presentation* are separate: artwork is 
 the shared cover renderer applies the user's display shape (Original,
 2:3, 3:4, 4:5, 1:1, Custom) with Crop or Fit, never stretching. See
 [`PHASE_4_5_IMPLEMENTATION_PLAN.md`](PHASE_4_5_IMPLEMENTATION_PLAN.md) §7 and §17.
-Today (Room v5) every cover is the generated visual; no artwork is extracted yet.
+With 4.5A.1 (Room v6, awaiting review) the LOCAL slot holds an EPUB cover, a ComicInfo
+FrontCover or first archive page, or a first-page PDF preview, extracted in the background
+(`core/reader/CoverExtractor.kt`, `data/library/CoverScheduler.kt`) and shown with Crop to
+fill in the existing fixed frames through one shared renderer
+(`core/designsystem/PublicationCover.kt`); the generated visual remains the fallback.
+Configurable shapes and Fit/Original arrive with 4.5A.2.
 
 Generated covers should still look intentional and fit the active ShelfOS design language.
 
