@@ -1,5 +1,11 @@
 # Documentation Changelog
 
+## Phase 4.5C.0 decisions recorded (2026-10-16, planning only)
+
+- D23 approved (ADR-0026 Accepted) and D30 approved as corrected; D1/D31 remain unresolved
+  gates for production Open Library access; 4.5C.1 authorized independently of D1, no live
+  HTTP. D22, D24–D29 not changed in this commit.
+
 ## Phase 4.5C.0 planning revisions (2026-10-16, planning only)
 
 - D30 corrected (agreement ranks/corroborates, never bypasses 4.5B matching); Books cover

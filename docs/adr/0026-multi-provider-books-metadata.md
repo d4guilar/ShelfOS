@@ -2,8 +2,9 @@
 
 ## Status
 
-**Proposed** 2026-10-16 (Phase 4.5C.0, planning only). Not accepted until the administrator
-approves decisions D22–D31 in `docs/PHASE_4_5_IMPLEMENTATION_PLAN.md` §31. Nothing is
+**Accepted** 2026-10-16 (Phase 4.5C.0, planning only) via plan D23, with D30 approved in its
+corrected form (`docs/PHASE_4_5_IMPLEMENTATION_PLAN.md` §31). 4.5C.1 may proceed without D1;
+D1 and D31 remain open gates for production Open Library access (4.5C.2). Nothing is
 implemented; no network, manifest, dependency or Room change is authorized by this ADR.
 
 ## Context
