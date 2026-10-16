@@ -22,9 +22,14 @@ dedicated foldable hardware was used. Do not describe ShelfOS as a public releas
 Phase 4 (Notes and Knowledge Layer) is complete (2026-10-15, Room v5). The next active
 milestone is Phase 4.5 — Metadata, Covers & Library Presentation
 ([plan](PHASE_4_5_IMPLEMENTATION_PLAN.md)); Phase 5 remains Advanced PDF Ingestion.
-Slice 4.5A.1 (local cover artwork, Room v6 `publication_cover`) is merged (PR #44). Slice 4.5A.2
-(cover presentation, Room v7 `cover_presentation_preference`) is implemented and under review
-(plan §34).
+Slice 4.5A.1 (local cover artwork, Room v6 `publication_cover`) is merged (PR #44), as is slice
+4.5A.2 (cover presentation, Room v7 `cover_presentation_preference`, PR #45). Slice 4.5B (metadata
+core, Room v8 `publication_metadata`) is implemented and under review (plan §35): field-level
+provenance with one precedence rule (`domain/metadata`), identifier detection, extended
+`EmbeddedMetadataReader`, file-name inference, a provider-neutral `MetadataProvider` contract and
+deterministic `MetadataMatcher`, a fake-tested `MetadataEnrichmentService` (no production provider,
+no network), and offline local analysis (`data/metadata`) recorded at import and backfilled on
+the cover scheduler's worker.
 
 [PHASE_1_PLAN](PHASE_1_PLAN.md) scopes that first slice. Accepted ADRs 0018–0022
 extend the target architecture; they do not claim the new ingestion, Series,
@@ -527,7 +532,7 @@ FrontCover or first archive page, or a first-page PDF preview, extracted in the 
 (`core/reader/CoverExtractor.kt`, `data/library/CoverScheduler.kt`) and shown with Crop to
 fill in the existing fixed frames through one shared renderer
 (`core/designsystem/PublicationCover.kt`); the generated visual remains the fallback.
-4.5A.2 (Room v7, under review) replaces the fixed frames: `CoverPresentations.effective(category)`
+4.5A.2 (Room v7, merged) replaces the fixed frames: `CoverPresentations.effective(category)`
 (`domain/library/CoverPresentation.kt`; category override, else Documents → Original, else the
 global default, 2:3 Crop) feeds one layout function, `coverLayout`, and one drawing rectangle,
 `artworkRect` (one uniform scale, never stretched), inside the same shared renderer. Original

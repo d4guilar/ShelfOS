@@ -58,6 +58,8 @@ abstract class LibraryDao {
     @Query("DELETE FROM annotation WHERE libraryItemId = :id") protected abstract suspend fun deleteAnnotations(id: String)
     // Covers are owned derived state, never knowledge: both removal policies delete them (the FK cascade is a backstop).
     @Query("DELETE FROM publication_cover WHERE libraryItemId = :id") protected abstract suspend fun deleteCovers(id: String)
+    // Metadata is derived or per-item state, not knowledge: both removal policies delete it (the FK cascade is a backstop).
+    @Query("DELETE FROM publication_metadata WHERE libraryItemId = :id") protected abstract suspend fun deleteMetadata(id: String)
     /**
      * Deletes ShelfOS-owned state for one item under `KnowledgePolicy.DELETE`: preferences, reading state, every
      * canonical annotation row, cover rows and the item, atomically in one transaction. Other items and all source files are
@@ -65,7 +67,7 @@ abstract class LibraryDao {
      * the whole removal back). The legacy `bookmark` table keeps its own cascade foreign key and is cleared by the
      * item delete; nothing reads it any more. This is the only code path that removes a `library_item` row.
      */
-    @Transaction open suspend fun removeDeletingKnowledge(id: String) { deletePreferences(id); deleteReading(id); deleteAnnotations(id); deleteSnapshot(id); deleteCovers(id); deleteItem(id) }
+    @Transaction open suspend fun removeDeletingKnowledge(id: String) { deletePreferences(id); deleteReading(id); deleteAnnotations(id); deleteSnapshot(id); deleteCovers(id); deleteMetadata(id); deleteItem(id) }
 
     @Query("SELECT COUNT(*) FROM annotation WHERE libraryItemId = :id") protected abstract suspend fun annotationCount(id: String): Int
     @Query("DELETE FROM annotation_source_snapshot WHERE libraryItemId = :id") protected abstract suspend fun deleteSnapshot(id: String)
@@ -81,7 +83,7 @@ abstract class LibraryDao {
      */
     @Transaction open suspend fun removeKeepingKnowledge(id: String) {
         if (annotationCount(id) > 0) saveSnapshot(id) else deleteSnapshot(id)
-        deletePreferences(id); deleteReading(id); deleteCovers(id); deleteItem(id)
+        deletePreferences(id); deleteReading(id); deleteCovers(id); deleteMetadata(id); deleteItem(id)
     }
     @Upsert abstract suspend fun saveReading(state: ReadingEntity)
     @Upsert abstract suspend fun savePreferences(state: ReaderPreferenceEntity)

@@ -103,6 +103,30 @@
     <string name="origin_embedded">Embedded in publication</string>
     <string name="origin_filename">From the file name</string>
     <string name="origin_unknown">Not provided</string>
+    <string name="metadata_subtitle">Subtitle</string>
+    <string name="metadata_description">Description</string>
+    <string name="metadata_publisher">Publisher</string>
+    <string name="metadata_published">Published</string>
+    <string name="metadata_language">Language</string>
+    <string name="metadata_series">Series</string>
+    <string name="metadata_volume">Volume</string>
+    <string name="metadata_issue">Issue</string>
+    <string name="metadata_number">Number</string>
+    <string name="metadata_identifiers">Identifiers</string>
+    <string name="metadata_credits">Credits</string>
+    <string name="credit_writer">Writer</string>
+    <string name="credit_penciller">Penciller</string>
+    <string name="credit_inker">Inker</string>
+    <string name="credit_colorist">Colorist</string>
+    <string name="credit_letterer">Letterer</string>
+    <string name="credit_cover_artist">Cover artist</string>
+    <string name="credit_editor">Editor</string>
+    <string name="credit_translator">Translator</string>
+    <string name="detail_label_value">%1$s: %2$s</string>
+    <string name="metadata_error_date">Use YYYY, YYYY-MM or YYYY-MM-DD.</string>
+    <string name="metadata_error_language">Use a language code such as en, es or pt-BR.</string>
+    <string name="origin_external_identifier">Online match, exact identifier</string>
+    <string name="origin_external_match">Online match</string>
 
     <!-- Import -->
     <string name="import_dialog_adding_title">Adding publication</string>

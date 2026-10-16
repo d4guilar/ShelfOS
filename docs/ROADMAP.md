@@ -394,9 +394,10 @@ restore the JSON without publication-identity guessing.
 **Next active milestone (planning, 2026-10-15).** Phase 4 is complete. Phase 4.5 is
 inserted between Phase 4 and Phase 5; Phase 5 remains Advanced PDF Ingestion and the
 numbering of every later phase is unchanged. **4.5A.1 Local Cover Artwork (Room v6) is merged
-(PR #44)**; its physical UAT is part of 4.5G. **4.5A.2 Cover Presentation (Room v7) is
-implemented on branch `phase-4.5/4.5a2-cover-presentation` and under independent review; it is
-not accepted or merged** (plan §33-§34, [validation](VALIDATION.md)). No other 4.5 slice is
+(PR #44)** and **4.5A.2 Cover Presentation (Room v7) is merged (PR #45)**; their physical UAT is
+part of 4.5G. **4.5B Metadata Core (Room v8, offline) is implemented on branch
+`phase-4.5/4.5b-metadata-core` and under independent review; it is not accepted or merged** (plan
+§35, [validation](VALIDATION.md)). No online enrichment is shipped and no other 4.5 slice is
 implemented. The
 implementation authority is [`PHASE_4_5_IMPLEMENTATION_PLAN.md`](PHASE_4_5_IMPLEMENTATION_PLAN.md);
 behavior is owned by [Metadata enrichment](features/METADATA_ENRICHMENT.md).

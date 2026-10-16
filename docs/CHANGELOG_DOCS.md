@@ -1,6 +1,17 @@
 # Documentation Changelog
 
-## Phase 4.5A.2 low-finding polish (2026-10-16, under review)
+## Phase 4.5B metadata core implementation (2026-10-16, under review)
+
+- Plan: status (4.5A.1 and 4.5A.2 merged; 4.5B implemented / under review) and new §35: Room v8
+  schema and decisions (`creditsJson`; no `enrichment_state`/`metadata_candidate` yet),
+  provenance and precedence, identifiers, embedded and file-name extraction, matcher tiers,
+  fake-only coordinator, local analysis lifecycle, editor/details, network boundary design,
+  deviations and limitations.
+- ROADMAP, ARCHITECTURE, README, METADATA_ENRICHMENT: current state; no online enrichment shipped.
+- VALIDATION: new 4.5B section with executed counts, the two ICU regex defects found on device,
+  mutation checks and NOT RUN items; 4.5A.2 sections marked merged.
+
+## Phase 4.5A.2 low-finding polish (2026-10-16; merged in PR #45)
 
 - Plan §34: L-1…L-4 resolutions, explicit L-5 deferral to 4.5G, ES/PT-BR wording.
 - VALIDATION: new polish section with executed counts and the 89 → 107 correction of the

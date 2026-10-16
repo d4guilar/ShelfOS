@@ -2,9 +2,13 @@
 package com.d4guilar.shelfos.domain.importing
 
 import com.d4guilar.shelfos.domain.library.*
+import com.d4guilar.shelfos.domain.metadata.MetadataValues
 
-/** An inspected source awaiting review; nothing is committed to the library yet. */
-data class PreparedImport(val item: LibraryItem, val acquiredGrant: Boolean)
+/**
+ * An inspected source awaiting review; nothing is committed to the library yet. [embedded] is the other metadata the
+ * inspection already read (4.5B), recorded after the commit so local analysis needs no second pass.
+ */
+data class PreparedImport(val item: LibraryItem, val acquiredGrant: Boolean, val embedded: MetadataValues = MetadataValues())
 
 /** A publication import's progress, as a locale-neutral identifier rather than text — UI-layer code maps each
  * case to a localized string (see core.designsystem's ImportProgressMessages), keeping this pure and

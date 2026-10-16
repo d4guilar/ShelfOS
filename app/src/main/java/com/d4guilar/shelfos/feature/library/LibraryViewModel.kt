@@ -5,6 +5,8 @@ import androidx.lifecycle.*
 import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.core.designsystem.UiMessage
 import com.d4guilar.shelfos.data.library.LibraryRepository
+import com.d4guilar.shelfos.data.metadata.MetadataStore
+import com.d4guilar.shelfos.domain.metadata.MetadataValues
 import com.d4guilar.shelfos.domain.annotations.KnowledgePolicy
 import com.d4guilar.shelfos.domain.library.*
 import kotlinx.coroutines.CancellationException
@@ -18,7 +20,8 @@ data class LibraryUiState(
     val loading: Boolean = true,
 )
 
-class LibraryViewModel(val repository: LibraryRepository, private val saved: SavedStateHandle) : ViewModel() {
+class LibraryViewModel(val repository: LibraryRepository, private val saved: SavedStateHandle,
+    private val metadata: MetadataStore? = null) : ViewModel() {
     private val filter = saved.getStateFlow("filter", LibraryFilter.BOOKS.name)
     private val selection = saved.getStateFlow("selection", "")
     val query = saved.getStateFlow("query", "")
@@ -44,6 +47,8 @@ class LibraryViewModel(val repository: LibraryRepository, private val saved: Sav
         require(title.isNotBlank())
         repository.edit(id, title, creator, category)
     }
+    /** Manual metadata edits (4.5B): changed fields become `USER` and are never overwritten by automatic analysis. */
+    fun editMetadata(id: String, original: MetadataValues, edited: MetadataValues) = action { metadata?.editByUser(id, original, edited) }
     fun dismissError() { _error.value = null }
     private fun action(block: suspend () -> Unit) { viewModelScope.launch {
         try { block() } catch (e: CancellationException) { throw e }

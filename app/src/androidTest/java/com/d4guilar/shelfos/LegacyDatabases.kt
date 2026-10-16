@@ -121,6 +121,17 @@ object LegacyDatabases {
         }
     }
 
+    /** Creates a real v7 database: everything v6 has plus `cover_presentation_preference` (7.json) with saved preferences. */
+    fun createV7(context: Context, name: String, items: List<Pair<String, String>>, annotations: List<V4Annotation>) {
+        createV6(context, name, items, annotations)
+        context.openOrCreateDatabase(name, 0, null).use { db ->
+            db.execSQL(com.d4guilar.shelfos.core.database.ShelfDatabase.COVER_PRESENTATION_CREATE_SQL)
+            db.execSQL("INSERT INTO cover_presentation_preference VALUES('GLOBAL', 'RATIO_1_1', NULL, NULL, 'FIT')")
+            db.execSQL("INSERT INTO cover_presentation_preference VALUES('MANGA', 'CUSTOM', 5, 7, 'CROP')")
+            db.version = 7
+        }
+    }
+
     /** All rows of [table] as lists of column values, ordered by [orderBy], read through a raw SQLite connection. */
     fun dump(db: SQLiteDatabase, table: String, orderBy: String): List<List<String?>> =
         db.rawQuery("SELECT * FROM $table ORDER BY $orderBy", null).use(::rows)

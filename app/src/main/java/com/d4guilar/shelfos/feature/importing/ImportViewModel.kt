@@ -10,6 +10,7 @@ import com.d4guilar.shelfos.core.designsystem.toUiMessage
 import com.d4guilar.shelfos.data.library.LibraryRepository
 import com.d4guilar.shelfos.domain.importing.*
 import com.d4guilar.shelfos.domain.library.*
+import com.d4guilar.shelfos.domain.metadata.MetadataValues
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
@@ -27,7 +28,9 @@ data class ImportState(val busy: Boolean = false, val cancellable: Boolean = tru
  */
 class ImportViewModel(private val importer: PublicationImporter, private val repository: LibraryRepository,
     private val cleanupScope: CoroutineScope, private val beforeImport: suspend () -> Unit = {},
-    private val leases: ImportLeases = ImportLeases()) : ViewModel() {
+    private val leases: ImportLeases = ImportLeases(),
+    /** Records the committed item's local metadata (4.5B) in [cleanupScope]; the import never waits for it. */
+    private val recordMetadata: suspend (LibraryItem, MetadataValues) -> Unit = { _, _ -> }) : ViewModel() {
     private val _state = MutableStateFlow(ImportState())
     val state = _state.asStateFlow()
     /** The preparation under review. A save takes it over; dismissing, replacing or clearing abandons it. */
@@ -91,6 +94,9 @@ class ImportViewModel(private val importer: PublicationImporter, private val rep
                     if (id != item.id) withContext(Dispatchers.IO) { importer.discard(prepared, sourceStillUsed = true) }
                     leases.committed(original.sourceUri)
                     _state.value = ImportState(imported = item.copy(id = id))
+                    if (id == item.id) cleanupScope.launch {
+                        try { recordMetadata(item, prepared.embedded) } catch (e: CancellationException) { throw e } catch (_: Exception) { /* The backfill retries it. */ }
+                    }
                 } catch (_: Exception) {
                     // Not saved: the review takes the preparation back for a retry; without a review it is abandoned.
                     if (save.isActive) {

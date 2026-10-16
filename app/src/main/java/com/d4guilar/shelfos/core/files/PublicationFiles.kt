@@ -233,13 +233,21 @@ class PublicationFiles(
             val creator = metadata.creator
             PreparedImport(LibraryItem(id, title ?: name.substringBeforeLast('.', name).ifBlank { name }, creator.orEmpty(),
                 suggestedCategory(format, metadata.rightToLeftManga), sourceUri, format, name, size, managedPath = owned?.name,
-                titleOrigin = if (title != null) "embedded" else "filename", creatorOrigin = if (creator != null) "embedded" else "unknown"), acquired)
+                titleOrigin = if (title != null) "embedded" else "filename", creatorOrigin = if (creator != null) "embedded" else "unknown"), acquired,
+                metadata.values)
         } catch (error: Throwable) {
             owned?.delete()
             if (acquired) release(sourceUri)
             throw error
         }
     }
+
+    /**
+     * Local metadata analysis of an existing item (4.5B backfill): the same inspection import performs, without the PDF
+     * page check (PDFs declare nothing ShelfOS reads). Blocking; call off the main thread. Never modifies the source.
+     */
+    fun embeddedMetadata(item: LibraryItem): EmbeddedMetadata =
+        if (item.format == PublicationFormat.PDF) EmbeddedMetadata() else open(item).use { inspect(it).second }
 
     private suspend fun copyToPrivateStorage(uri: Uri, id: String, size: Long?, stage: (ImportProgressStage) -> Unit): File {
         stage(ImportProgressStage.CopyingOffline)

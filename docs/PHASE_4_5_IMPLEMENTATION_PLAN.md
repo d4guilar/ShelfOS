@@ -1,9 +1,10 @@
 # Phase 4.5 Implementation Plan — Metadata, Covers & Library Presentation
 
-Status (2026-10-16): **4.5A.1 Local Cover Artwork MERGED (PR #44)**; record §33, physical UAT
-in 4.5G. **4.5A.2 Cover Presentation IMPLEMENTED / UNDER REVIEW on branch
-`phase-4.5/4.5a2-cover-presentation` (not accepted, not merged).** Record and deviations: §34.
-No other slice is implemented.
+Status (2026-10-16): **4.5A.1 Local Cover Artwork MERGED (PR #44)** (record §33) and **4.5A.2
+Cover Presentation MERGED (PR #45)** (record §34); their physical UAT is part of 4.5G. **4.5B
+Metadata Core IMPLEMENTED / UNDER REVIEW on branch `phase-4.5/4.5b-metadata-core` (not accepted,
+not merged)**; record, network-boundary design and deviations: §35. No online enrichment is
+shipped; no other slice is implemented.
 Phase 4 (Notes and Knowledge Layer) is COMPLETE (Phase 4F acceptance merged
 in PR #42). Phase 4.5 is the next active milestone. Phase 5 remains Advanced PDF Ingestion;
 numbering after 4.5 is unchanged.
@@ -2335,7 +2336,7 @@ cover map/query scale measured in 4.5G; plus the 4.5G items above (old-device la
 memory, RP5/controller, real process-kill recovery, API 26+ storage at runtime, frame/decode
 performance).
 
-## 34. 4.5A.2 implementation record (2026-10-16, implemented / under review)
+## 34. 4.5A.2 implementation record (2026-10-16; merged in PR #45)
 
 Branch `phase-4.5/4.5a2-cover-presentation` from `main` `340074f`. Not accepted or merged;
 next gate: independent Codex High review. Evidence: [VALIDATION](VALIDATION.md) "PHASE 4.5A.2".
@@ -2413,3 +2414,133 @@ review).**
   shape relayout is visibly distracting; implement the minimal loading-state fix only if it is.
 - **Locales:** ES/PT-BR "Category override" no longer shares "Ajuste" with Cover fit:
   "Configuración propia de la categoría" / "Configuração própria da categoria".
+
+## 35. 4.5B implementation record (2026-10-16, implemented / under review)
+
+Branch `phase-4.5/4.5b-metadata-core` from `main` `1d949be` (4.5A.1 and 4.5A.2 merged). Not
+accepted or merged; next gate: independent Codex High implementation QA. Evidence:
+[VALIDATION](VALIDATION.md) "PHASE 4.5B". Fully offline: no `INTERNET` permission, no manifest
+change, no HTTP code, no provider, no new dependency.
+
+**Room v8 — `publication_metadata` (§23.7).** `libraryItemId` PK with FK cascade to
+`library_item`; nullable `subtitle`, `description`, `publisher`, `publishedDate`, `language`,
+`seriesName`, `volume`, `issue`, `identifiersJson`, `creditsJson`, `provenanceJson`;
+`localAnalysisVersion INTEGER NOT NULL`, `updatedAt INTEGER NOT NULL`. Additive `MIGRATION_7_8`
+runs the exported `8.json` createSql (`ShelfDatabase.PUBLICATION_METADATA_CREATE_SQL`) and is in
+`ALL_MIGRATIONS`; the migration never opens a publication. Title/creator stay on
+`library_item` with their existing `titleOrigin`/`creatorOrigin` strings (`user`, `embedded`,
+`filename`, `unknown` read as before; external origins add `exact_identifier_match`,
+`high_confidence_external_match`, `inferred_external_match`). Both removal policies delete the
+row explicitly (the FK is a backstop); every write runs in one transaction that first checks
+the item exists, so a late result never resurrects a removed publication.
+
+**Schema decisions.** (1) One added column versus §23.7: `creditsJson` (ComicInfo creator
+roles), because the details pane must show credits and there was no other place for them.
+(2) `enrichment_state` and `metadata_candidate` are **not** created: the 4.5B coordinator keeps
+no durable state (no production provider, no candidate UI); they arrive with the slice that
+needs them (4.5C+/4.5F, D17). (3) JSON columns are small arrays of string arrays written and
+read by `domain.metadata.MetadataCodec` (no JSON dependency); every value is re-validated on
+read and anything unknown degrades to "unknown"/absent.
+
+**Provenance (§9, §16)** — `domain/metadata/PublicationMetadata.kt`. `MetadataOrigin` (USER >
+EMBEDDED > EXACT_IDENTIFIER_MATCH > HIGH_CONFIDENCE_EXTERNAL_MATCH > INFERRED_EXTERNAL_MATCH >
+FILENAME_INFERENCE > UNKNOWN), `FieldProvenance(origin, providerId?, providerRef?, confidence?,
+resolvedAt?)`, `MatchConfidence` (VERY_HIGH, MEDIUM, LOW). One rule, `canReplace` /
+`resolveMetadata`, decides every write: USER replaces anything and is never replaced
+automatically (a user-cleared field stays cleared); a blank proposal never deletes; external
+values fill only empty/filename/unknown fields (or refresh a weaker-or-equal external one) and
+never replace EMBEDDED; a title needs a VERY_HIGH external match; otherwise a stronger-or-equal
+origin replaces. Manual edits mark only the fields changed relative to what the editor opened
+with (`userEdits`), so a value written by analysis while the editor was open is not overwritten.
+A confirmed external value stays external, never USER.
+
+**Identifiers** — `IdentifierDetector`: ISBN-13 (978/979, checksum), ISBN-10 (checksum, `X`,
+only with an ISBN label, `urn:isbn:` or an EPUB ISBN scheme), hyphen/space/Unicode-dash
+normalization, ISBN-10 ≡ ISBN-13 comparison; UPC-A with checksum and an optional 2/5-digit
+supplement; ComicInfo GTIN (UPC-A, EAN-13, a Bookland EAN reported as ISBN-13). Years, page
+counts, issue numbers and file-name digits never qualify.
+
+**Embedded extraction (extended, not replaced)** — `EmbeddedMetadataReader`. EPUB: identifiers
+(`opf:scheme`, EPUB3 `identifier-type` incl. ONIX 02/15), subtitle (`title-type`), publisher,
+date, language, description (markup stripped, ≤ 4,000 chars), series/position (EPUB3
+`belongs-to-collection` or calibre). ComicInfo: Series, Number, Volume, Year/Month/Day,
+Publisher, Summary, LanguageISO, GTIN and the credit roles Writer, Penciller, Inker, Colorist,
+Letterer, CoverArtist, Editor, Translator (comma-separated). ComicInfo's `-1` "unknown" numbers,
+invalid dates/languages and malformed XML are dropped safely; entity-bearing XML is still
+refused. Title/creator/FrontCover/manga direction behave as before. PDFs declare nothing ShelfOS
+reads (no OCR, no text reconstruction). Sources are never modified.
+
+**File-name inference** — `FilenameInference`: `Vol`, `Vol.`, `Volume`, `v03`, `Tome`, `Tomo`,
+`Band`, `巻`/`第N巻` (full-width digits), `#12`, `Issue`, `No.`, `nº`; `(of 12)` ignored;
+years in parentheses; a zero-padded trailing number is an issue for Comics and a volume for
+Manga, never for Books; Documents keep only the cleaned name. Results are FILENAME_INFERENCE
+candidates; titles are never transliterated or rewritten. **Deviation:** the displayed title
+keeps the import behaviour (the file name without its extension); the cleaned title is used only
+for matching queries. Creator inference is not attempted (bracketed names are usually groups).
+**Portability:** patterns use explicit `\p{Nd}`/`\p{Z}` and escaped brackets, because Android's
+ICU regex rejects Java's `(?U)` flag and unescaped `}` — found by the on-device test.
+
+**Provider contract and matcher** — `domain/metadata/Matching.kt`. One `MetadataProvider`
+(`id`, `categories`, `capabilities`, `lookup(identifier)`, `search(query)`), `MetadataQuery`
+(category, identifiers, title, creator, series, volume, issue, year, language, publisher,
+`titleIsInferred`), `MetadataCandidate`, `CoverCandidate`, `MetadataCapability`. Providers
+return no confidence and write nothing. `MetadataMatcher` records agreeing/contradicting signals
+and decides: VERY_HIGH = exact identifier with no contradiction, or (Comics only) series + issue
+plus two of creator/publisher/year; a different volume/issue or category is a hard rejection;
+any other contradiction (title, creator, language, publisher, year, edition kind such as
+omnibus/collection, a missing volume/issue for sequential art, a different ISBN) caps at MEDIUM;
+Manga and Books without an identifier reach at most MEDIUM; Documents need an identifier; title
+equality alone is never VERY_HIGH; two disagreeing VERY_HIGH candidates both drop to MEDIUM. A
+file-name title may agree but never contradicts. Normalization is NFKC, case-folded,
+punctuation-free, with no translation or transliteration. `fetchCover` (§10 sketch) is not
+added: no cover is fetched or applied in 4.5B.
+
+**Coordinator** — `MetadataEnrichmentService`: query from local metadata → providers eligible by
+category → identifier lookup first, search only if that found nothing safe (Documents are never
+searched) → matcher → only an unambiguous VERY_HIGH candidate is applied, through the store's
+precedence rule, with EXACT_IDENTIFIER_MATCH or HIGH_CONFIDENCE_EXTERNAL_MATCH provenance.
+Outcomes: APPLIED, NEEDS_REVIEW (best MEDIUM, nothing written), NO_MATCH, SKIPPED. One failing
+provider never fails the others. Cover candidates are ignored. **No production provider is
+registered**; the service is not wired into the app and is exercised with fakes only.
+
+**Local analysis lifecycle** — `LocalMetadataAnalyzer` (`VERSION = 1`). New imports record the
+evidence inspection already read (`PreparedImport.embedded`) after the commit, in the app's
+background scope; the import never waits (tested). Existing items are backfilled one at a time
+through a new `idleWork` hook on the cover scheduler: it runs only when no cover work is due,
+under the same foreground/no-reader gates and CBR pause, so it never overlaps a cover extraction
+or a reader. Pending = available items without a row at the current version; an unreadable or
+missing source is skipped until the next launch (no retry loop, nothing marked); a parser change
+bumps `VERSION` and user choices survive re-analysis. Metadata writes do not touch `library_item`
+unless title/creator really change, so the Library list is not re-emitted per item. **Known
+cost:** an existing CBR gets one extra native ComicInfo read during its backfill (once per
+version); new CBR imports need none.
+
+**Manual editing and details.** The existing editor (details → Edit) adds the category's fields:
+Books subtitle, series, volume, publisher, published, language, description; Comics series,
+issue, volume, publisher, published, language, description; Manga series, volume, publisher,
+published, language, description; Documents subtitle, publisher, published, language,
+description. Text is only trimmed; an invalid date (`YYYY[-MM[-DD]]`) or language tag blocks
+saving with a message. Edit is enabled once the stored metadata has loaded. The details pane shows
+the same category fields plus credits (not for Documents) and the description (6 lines);
+identifiers appear in the technical details. EN/ES/PT-BR strings. No candidate picker, cover
+search, device cover, bulk wizard or per-field revert (4.5F).
+
+**Network boundary — design only (§21; nothing implemented).** The first provider slice (4.5C,
+4.5D or 4.5E, after its own authorization gate) adds the `INTERNET` permission with a manifest
+and privacy review and one `core.network` helper behind `MetadataProvider`:
+- HTTPS only (no cleartext, no redirect to HTTP), no cookies, a `User-Agent` with a project
+  contact (D4), gzip accepted; platform `HttpURLConnection` + `org.json` (D14).
+- Timeouts ≈ 10 s connect / 15 s read; response caps ≈ 1 MiB for metadata JSON and ≈ 5 MiB for an
+  image before decoding; per-provider rate limits and a circuit breaker on 403/429/5xx (§19).
+- Requests carry only what the query needs (identifiers, title, creator, series, volume/issue,
+  year, language): never file bytes, file names or paths, notes, reading state or account data;
+  no provider credentials embedded in the open-source APK.
+- Online enrichment never blocks import or reading; failures leave local metadata untouched.
+- Provider gates stay as recorded: Open Library conditional (D1), Google Books rejected (D2),
+  Metron conditional on its own terms, tokens and artwork-licence decisions (D5, D19).
+
+**Accepted limitations.** No online enrichment or provider; no durable enrichment state or
+candidates; no cover candidate handling; title/creator provenance detail beyond the origin
+column is stored only for external values; ComicInfo `Volume` is stored as written (a series
+start year for many comics, a tankōbon number for manga); RTL/real-library corpora and SM-T580
+backfill timing are 4.5G measurements.

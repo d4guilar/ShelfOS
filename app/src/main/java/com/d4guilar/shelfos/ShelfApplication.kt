@@ -25,6 +25,9 @@ import com.d4guilar.shelfos.core.reader.ManagedFontRepository
 import com.d4guilar.shelfos.domain.importing.ImportLeases
 import kotlinx.coroutines.*
 import com.d4guilar.shelfos.data.preferences.RoomThemeRepository
+import com.d4guilar.shelfos.data.metadata.LocalMetadataAnalyzer
+import com.d4guilar.shelfos.data.metadata.LocalMetadataEvidence
+import com.d4guilar.shelfos.data.metadata.RoomMetadataRepository
 import com.d4guilar.shelfos.data.preferences.RoomCoverPresentationRepository
 import com.d4guilar.shelfos.domain.library.CoverPresentations
 import com.d4guilar.shelfos.data.preferences.AppCompatLanguageRepository
@@ -62,7 +65,17 @@ class AppContainer(application: Application) {
         try { library.reconcileSources() } catch (e: CancellationException) { throw e } catch (_: Exception) { /* Retried next launch. */ }
     }
     /** Local cover backfill (Phase 4.5A.1): reconcile → sweep → then idle, gated scheduling. Never blocks startup. */
-    val coverScheduler by lazy { CoverScheduler(covers, coverFiles, { id -> library.publication(id).first() }, LocalCoverExtractor(files, fixedReaders)) }
+    /** Phase 4.5B local metadata: the only metadata writer; analysis is offline and never blocks import or reading. */
+    val metadata by lazy { RoomMetadataRepository(database) }
+    val localMetadata by lazy {
+        LocalMetadataAnalyzer(metadata, { id -> library.publication(id).first() }) { item ->
+            withContext(Dispatchers.IO) { files.embeddedMetadata(item).let { LocalMetadataEvidence(it.title, it.creator, it.values) } }
+        }
+    }
+    val coverScheduler by lazy {
+        CoverScheduler(covers, coverFiles, { id -> library.publication(id).first() }, LocalCoverExtractor(files, fixedReaders),
+            idleWork = localMetadata::analyzeNext)
+    }
     /** What the shared cover renderer reads; one instance (one bitmap cache) per process. */
     val coverArtwork by lazy {
         CoverArtwork(covers.covers.stateIn<Map<String, CoverRef>?>(backgroundScope, SharingStarted.Eagerly, null),

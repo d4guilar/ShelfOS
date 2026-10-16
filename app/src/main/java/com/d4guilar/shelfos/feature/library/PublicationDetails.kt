@@ -32,6 +32,7 @@ import com.d4guilar.shelfos.domain.annotations.KnowledgePolicy
 import com.d4guilar.shelfos.feature.reader.activateOnGamepadConfirm
 import com.d4guilar.shelfos.domain.library.LibraryItem
 import com.d4guilar.shelfos.domain.library.MediaCategory
+import com.d4guilar.shelfos.domain.metadata.MetadataValues
 import com.d4guilar.shelfos.feature.importing.PublicationEditor
 import com.d4guilar.shelfos.feature.importing.formatSize
 import com.d4guilar.shelfos.feature.importing.originLabel
@@ -44,6 +45,8 @@ import com.d4guilar.shelfos.feature.importing.originLabel
 @Composable
 fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> Unit, modifier: Modifier = Modifier,
     onRead: (Rect?) -> Unit, onEdit: (String, String, MediaCategory) -> Unit, onRemove: (KnowledgePolicy) -> Unit, focusPrimaryAction: Boolean = false,
+    /** Saves manual metadata edits (original, edited); null hides the metadata fields in the editor. */
+    onEditMetadata: ((MetadataValues, MetadataValues) -> Unit)? = null,
     /** Canonical annotation counts for this item; null while still loading, which keeps removal unconfirmable (never remove with an undisclosed choice). */
     knowledgeCounts: AnnotationCounts?) {
     val t = LocalShelfTokens.current
@@ -54,9 +57,11 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
     val readFocus = remember { FocusRequester() }
     val inputMode = LocalInputModeManager.current.inputMode
     LaunchedEffect(Unit) { if (focusPrimaryAction && inputMode == InputMode.Keyboard) runCatching { readFocus.requestFocus() } }
+    val metadata = rememberStoredMetadata(item.id)
     if (editing) PublicationEditor(item, stringResource(R.string.action_save_changes), { editing = false }, { title, creator, category ->
         onEdit(title, creator, category); editing = false
-    })
+    }, metadata = if (onEditMetadata != null) metadata.stored?.values ?: MetadataValues() else null,
+        onSaveMetadata = { original, edited -> onEditMetadata?.invoke(original, edited) })
     val hasKnowledge = knowledgeCounts != null && knowledgeCounts.total > 0
     if (removing) AlertDialog(onDismissRequest = { removing = false }, title = { Text(stringResource(R.string.dialog_remove_title)) },
         text = {
@@ -94,6 +99,7 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
             Text(item.title, style = MaterialTheme.typography.headlineMedium)
             if (item.creator.isNotBlank()) Text(item.creator, color = t.colors.secondary)
             Text("${stringResource(item.category.singularRes())} · ${item.format}", style = MaterialTheme.typography.bodySmall, color = t.colors.secondary)
+            MetadataSummary(item.category, metadata.stored)
             ReadingProgress(item.progress)
             if (!item.available) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(stringResource(R.string.original_file_unavailable_title), style = MaterialTheme.typography.titleMedium)
@@ -108,7 +114,8 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
                     .padding(16.dp), style = MaterialTheme.typography.labelLarge)
             }
             Row {
-                TextButton({ editing = true }) { Text(stringResource(R.string.action_edit)) }
+                // Editing waits for the stored metadata, so it never opens on (and saves) blank placeholders.
+                TextButton({ editing = true }, Modifier.testTag("edit_action"), enabled = metadata.loaded) { Text(stringResource(R.string.action_edit)) }
                 TextButton({ removing = true }, Modifier.testTag("remove_action")) { Text(stringResource(R.string.action_remove)) }
             }
             HorizontalDivider(color = t.colors.divider)
@@ -121,7 +128,7 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
                 stringResource(R.string.detail_creator_origin, originLabel(item.creatorOrigin)),
                 stringResource(if (item.managedPath == null) R.string.detail_source_linked else R.string.detail_source_private_copy),
                 coverDetail(item.id),
-            ).joinToString("\n"), style = MaterialTheme.typography.bodySmall, color = t.colors.secondary)
+            ).plus(identifierLines(metadata.stored)).joinToString("\n"), style = MaterialTheme.typography.bodySmall, color = t.colors.secondary)
         }
     }
 }

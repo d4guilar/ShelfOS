@@ -32,6 +32,12 @@ class CoverScheduler(
     private val cbrPauseMillis: Long = 3_000,
     private val pollMillis: Long = 30_000,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /**
+     * Lower-priority local work run on this same worker when no cover work is due (4.5B local metadata analysis), so it
+     * shares the foreground/no-reader gates and never overlaps a cover extraction. Returns the processed item's format,
+     * or null when it has nothing to do.
+     */
+    private val idleWork: suspend () -> PublicationFormat? = { null },
 ) {
     private val foreground = MutableStateFlow(false)
     private val readerActive = MutableStateFlow(false)
@@ -115,6 +121,8 @@ class CoverScheduler(
                 if (format == PublicationFormat.CBR) delay(cbrPauseMillis) else yield()
                 continue
             }
+            val other = idleWork()
+            if (other != null) { if (other == PublicationFormat.CBR) delay(cbrPauseMillis) else yield(); continue }
             idle()
         }
     }
