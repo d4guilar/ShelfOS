@@ -146,6 +146,23 @@ class ImportViewModelTest {
         vm.viewModelScope.cancel()
     }
 
+    @Test fun committingNeverWaitsForLocalMetadataAndRecordsTheEvidenceInspectionRead() = runTest {
+        val library = TestLibrary()
+        val importer = FakeImporter()
+        val embedded = com.d4guilar.shelfos.domain.metadata.MetadataValues(publisher = "Image", series = "Saga")
+        importer.prepare = { uri, _ -> PreparedImport(candidate(uri), true, embedded) }
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val recorded = mutableListOf<Pair<LibraryItem, com.d4guilar.shelfos.domain.metadata.MetadataValues>>()
+        val vm = ImportViewModel(importer, library, this, recordMetadata = { item, values -> recorded += item to values; release.await() })
+        vm.choose("content://docs/meta"); advanceUntilIdle()
+        vm.confirm("Candidate", "", MediaCategory.COMIC); advanceUntilIdle()
+        assertEquals("the import finished while metadata recording is still suspended", library.added.single().id, vm.state.value.imported?.id)
+        assertFalse(vm.state.value.busy)
+        assertEquals(listOf(library.added.single() to embedded), recorded)
+        release.complete(Unit)
+        vm.viewModelScope.cancel()
+    }
+
     @Test fun similarFilesAreFlaggedButNeverMerged() = runTest {
         val library = TestLibrary()
         val importer = FakeImporter()

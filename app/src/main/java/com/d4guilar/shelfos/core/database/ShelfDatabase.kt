@@ -26,13 +26,14 @@ interface AppearanceDao {
     suspend fun save(preference: AppearancePreference)
 }
 
-@Database(entities = [AppearancePreference::class, LibraryEntity::class, ReadingEntity::class, ReaderPreferenceEntity::class, BookmarkEntity::class, AnnotationEntity::class, AnnotationSourceSnapshotEntity::class, PublicationCoverEntity::class, CoverPresentationPreferenceEntity::class], version = 7, exportSchema = true)
+@Database(entities = [AppearancePreference::class, LibraryEntity::class, ReadingEntity::class, ReaderPreferenceEntity::class, BookmarkEntity::class, AnnotationEntity::class, AnnotationSourceSnapshotEntity::class, PublicationCoverEntity::class, CoverPresentationPreferenceEntity::class, PublicationMetadataEntity::class], version = 8, exportSchema = true)
 abstract class ShelfDatabase : RoomDatabase() {
     abstract fun appearance(): AppearanceDao
     abstract fun library(): LibraryDao
     abstract fun annotations(): AnnotationDao
     abstract fun covers(): CoverDao
     abstract fun coverPresentation(): CoverPresentationDao
+    abstract fun metadata(): MetadataDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -112,7 +113,19 @@ abstract class ShelfDatabase : RoomDatabase() {
         }
         /** Must equal `7.json`'s `cover_presentation_preference.createSql` with the table name substituted (asserted by the migration test). */
         const val COVER_PRESENTATION_CREATE_SQL = "CREATE TABLE IF NOT EXISTS `cover_presentation_preference` (`scope` TEXT NOT NULL, `shape` TEXT NOT NULL, `customWidth` INTEGER, `customHeight` INTEGER, `fit` TEXT NOT NULL, PRIMARY KEY(`scope`))"
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+        /**
+         * v7 -> v8 (Phase 4.5B): purely additive. Creates the empty `publication_metadata` table with EXACTLY the `createSql`
+         * Room exported to `schemas/.../8.json`. No existing table, row or index is touched; existing items are analysed
+         * later by the bounded local backfill, so the migration never opens a publication.
+         */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(PUBLICATION_METADATA_CREATE_SQL)
+            }
+        }
+        /** Must equal `8.json`'s `publication_metadata.createSql` with the table name substituted (asserted by the migration test). */
+        const val PUBLICATION_METADATA_CREATE_SQL = "CREATE TABLE IF NOT EXISTS `publication_metadata` (`libraryItemId` TEXT NOT NULL, `subtitle` TEXT, `description` TEXT, `publisher` TEXT, `publishedDate` TEXT, `language` TEXT, `seriesName` TEXT, `volume` TEXT, `issue` TEXT, `identifiersJson` TEXT, `creditsJson` TEXT, `provenanceJson` TEXT, `localAnalysisVersion` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`libraryItemId`), FOREIGN KEY(`libraryItemId`) REFERENCES `library_item`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
         /** Must equal `6.json`'s `publication_cover.createSql` with the table name substituted (asserted by the migration test). */
         const val PUBLICATION_COVER_CREATE_SQL = "CREATE TABLE IF NOT EXISTS `publication_cover` (`libraryItemId` TEXT NOT NULL, `slot` TEXT NOT NULL, `status` TEXT NOT NULL, `failureReason` TEXT, `fileName` TEXT, `mimeType` TEXT, `representation` TEXT, `sourceWidthPx` INTEGER, `sourceHeightPx` INTEGER, `storedWidthPx` INTEGER, `storedHeightPx` INTEGER, `storedBytes` INTEGER, `localSource` TEXT, `sourceRef` TEXT, `sourceChoice` TEXT, `sourceRevision` TEXT, `extractorVersion` INTEGER NOT NULL, `attempts` INTEGER NOT NULL DEFAULT 0, `interruptions` INTEGER NOT NULL DEFAULT 0, `attemptStartedAt` INTEGER, `attemptExtractorVersion` INTEGER, `nextEligibleAt` INTEGER, `parked` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`libraryItemId`, `slot`), FOREIGN KEY(`libraryItemId`) REFERENCES `library_item`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
         fun create(context: Context): ShelfDatabase = Room.databaseBuilder(

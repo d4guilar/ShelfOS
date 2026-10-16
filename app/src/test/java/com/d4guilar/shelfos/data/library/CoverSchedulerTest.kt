@@ -137,6 +137,26 @@ class CoverSchedulerTest {
         dao.committedLatch("A").ok("A runs in the foreground")
     }
 
+    /** 4.5B L-3: idle work (local metadata analysis) that keeps failing never stops covers, never spins, never runs under a reader. */
+    @Test fun failingIdleWorkNeverStopsCoversNorSpinsNorRunsWhileReading() {
+        val dao = StubDao(waitingIds = emptyList())
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val s = CoverScheduler(RoomCoverRepository(dao, throttleMillis = 0), CoverFiles(temp.newFolder("covers"), { Long.MAX_VALUE }),
+            { id -> item(id) }, GatedExtractor(), idleDelayMillis = 0, cbrPauseMillis = 0, pollMillis = 20,
+            idleWork = { calls.incrementAndGet(); throw java.io.IOException("unreadable") })
+        s.setForeground(true)
+        scope.launch { s.run() }
+        Thread.sleep(500)
+        assertTrue("idle work ran, paced by the idle poll (no busy loop): ${calls.get()}", calls.get() in 1..60)
+        s.request("C")
+        dao.committedLatch("C").ok("covers still run after idle work failed")
+        s.setReaderActive(true)
+        Thread.sleep(100)
+        val whileReading = calls.get()
+        Thread.sleep(300)
+        assertEquals("no idle work while a reader is open", whileReading, calls.get())
+    }
+
     @Test fun unavailableItemYieldsNoExtraction() = runBlocking {
         val extractor = GatedExtractor()
         assertNull(scheduler(StubDao(emptyList()), extractor).attempt("unavailable"))

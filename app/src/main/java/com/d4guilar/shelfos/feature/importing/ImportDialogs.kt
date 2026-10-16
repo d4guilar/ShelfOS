@@ -19,7 +19,10 @@ import com.d4guilar.shelfos.core.designsystem.UiMessage
 import com.d4guilar.shelfos.core.designsystem.resolve
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import com.d4guilar.shelfos.domain.library.*
+import com.d4guilar.shelfos.domain.metadata.MetadataValues
+import com.d4guilar.shelfos.feature.library.MetadataEditorFields
 import com.d4guilar.shelfos.feature.library.labelRes
+import com.d4guilar.shelfos.feature.library.rememberMetadataEditState
 
 @Composable
 fun ImportDialogs(state: ImportState, onCancel: () -> Unit, onCopy: () -> Unit,
@@ -41,13 +44,22 @@ fun ImportDialogs(state: ImportState, onCancel: () -> Unit, onCopy: () -> Unit,
     }
 }
 
+/**
+ * Title, creator and category; with [metadata] (the loaded stored values, 4.5B) also the category's other fields.
+ * [onSaveMetadata] receives the values the editor opened with and the edited ones, so only real changes become `USER`.
+ */
 @Composable
 fun PublicationEditor(item: LibraryItem, action: String, onCancel: () -> Unit,
-    onSave: (String, String, MediaCategory) -> Unit, notice: UiMessage? = null) {
+    onSave: (String, String, MediaCategory) -> Unit, notice: UiMessage? = null,
+    metadata: MetadataValues? = null, onSaveMetadata: (MetadataValues, MetadataValues) -> Unit = { _, _ -> }) {
     val t = LocalShelfTokens.current
     var title by rememberSaveable(item.id) { mutableStateOf(item.title) }
     var creator by rememberSaveable(item.id) { mutableStateOf(item.creator) }
     var category by rememberSaveable(item.id) { mutableStateOf(item.category) }
+    val fields = metadata?.let { rememberMetadataEditState(item.id, it) }
+    val edited = fields?.result
+    // One save per editor session: a second tap before the dialog closes never writes twice.
+    var saved by remember { mutableStateOf(false) }
     AlertDialog(onDismissRequest = onCancel, title = { Text(action) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (notice != null) Text(notice.resolve())
@@ -57,8 +69,17 @@ fun PublicationEditor(item: LibraryItem, action: String, onCancel: () -> Unit,
                 color = t.colors.secondary, style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(creator, { creator = it }, label = { Text(stringResource(R.string.import_creator_field)) })
             MediaCategory.entries.forEach { option -> ShelfChoiceChip(category == option, { category = option }, stringResource(option.labelRes())) }
+            if (fields != null) MetadataEditorFields(fields, category)
         }
-    }, confirmButton = { TextButton({ onSave(title, creator, category) }, enabled = title.isNotBlank()) { Text(action) } },
+    }, confirmButton = {
+        val save = save@{
+            if (saved) return@save
+            saved = true
+            onSave(title, creator, category)
+            if (metadata != null && edited != null && edited != metadata) onSaveMetadata(metadata, edited)
+        }
+        TextButton(save, Modifier.testTag("editor_save"), enabled = !saved && title.isNotBlank() && (fields == null || edited != null)) { Text(action) }
+    },
         dismissButton = { TextButton(onCancel) { Text(stringResource(R.string.action_cancel)) } })
 }
 
@@ -68,6 +89,8 @@ fun originLabel(origin: String) = when (origin) {
     "user" -> stringResource(R.string.origin_user)
     "embedded" -> stringResource(R.string.origin_embedded)
     "filename" -> stringResource(R.string.origin_filename)
+    "exact_identifier_match" -> stringResource(R.string.origin_external_identifier)
+    "high_confidence_external_match", "inferred_external_match" -> stringResource(R.string.origin_external_match)
     else -> stringResource(R.string.origin_unknown)
 }
 

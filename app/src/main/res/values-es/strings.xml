@@ -103,6 +103,30 @@
     <string name="origin_embedded">Incluido en la publicación</string>
     <string name="origin_filename">Del nombre del archivo</string>
     <string name="origin_unknown">No proporcionado</string>
+    <string name="metadata_subtitle">Subtítulo</string>
+    <string name="metadata_description">Descripción</string>
+    <string name="metadata_publisher">Editorial</string>
+    <string name="metadata_published">Publicación</string>
+    <string name="metadata_language">Idioma</string>
+    <string name="metadata_series">Serie</string>
+    <string name="metadata_volume">Volumen</string>
+    <string name="metadata_issue">Número de edición</string>
+    <string name="metadata_number">Número</string>
+    <string name="metadata_identifiers">Identificadores</string>
+    <string name="metadata_credits">Créditos</string>
+    <string name="credit_writer">Guion</string>
+    <string name="credit_penciller">Lápiz</string>
+    <string name="credit_inker">Tinta</string>
+    <string name="credit_colorist">Color</string>
+    <string name="credit_letterer">Rotulación</string>
+    <string name="credit_cover_artist">Portada</string>
+    <string name="credit_editor">Edición</string>
+    <string name="credit_translator">Traducción</string>
+    <string name="detail_label_value">%1$s: %2$s</string>
+    <string name="metadata_error_date">Usa AAAA, AAAA-MM o AAAA-MM-DD.</string>
+    <string name="metadata_error_language">Usa un código de idioma como en, es o pt-BR.</string>
+    <string name="origin_external_identifier">Coincidencia en línea, identificador exacto</string>
+    <string name="origin_external_match">Coincidencia en línea</string>
 
     <!-- Importación -->
     <string name="import_dialog_adding_title">Añadiendo publicación</string>

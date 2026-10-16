@@ -102,7 +102,7 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
     val unusedCopies by settings.unusedCopies.collectAsStateWithLifecycle()
     val importing: ImportViewModel = viewModel(factory = viewModelFactory { initializer {
         ImportViewModel(container.files, container.library, container.backgroundScope, beforeImport = { container.sourceMaintenance.join() },
-            leases = container.importLeases)
+            leases = container.importLeases, recordMetadata = container.localMetadata::recordImport)
     } })
     val importState by importing.state.collectAsStateWithLifecycle()
     val libraryError by library.error.collectAsStateWithLifecycle()
@@ -239,7 +239,8 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                         LibraryScreen(libraryState, layout.showDetails, library::selectFilter, library::select,
                             onOpen = { id -> library.select(id); if (!layout.showDetails) openDetails(id) },
                             onFavorite = library::toggleFavorite, onRead = ::openReader, onEdit = library::edit, onRemove = library::remove,
-                            knowledgeCounts = rememberKnowledgeCounts(container, libraryState.selected?.id), restoreFocus = restoreFocus)
+                            knowledgeCounts = rememberKnowledgeCounts(container, libraryState.selected?.id), restoreFocus = restoreFocus,
+                            onEditMetadata = library::editMetadata)
                     }
                     composable("details/{id}") { backStack ->
                         val item = library.publication(backStack.arguments?.getString("id"))
@@ -247,7 +248,8 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                             onFavorite = { library.toggleFavorite(item.id) }, modifier = Modifier.fillMaxWidth().testTag("details_screen"),
                             onRead = { openReader(item.id) }, onEdit = { title, creator, category -> library.edit(item.id, title, creator, category) },
                             onRemove = { policy -> library.remove(item.id, policy); nav.popBackStack() }, focusPrimaryAction = true,
-                            knowledgeCounts = rememberKnowledgeCounts(container, item.id))
+                            knowledgeCounts = rememberKnowledgeCounts(container, item.id),
+                            onEditMetadata = { original, edited -> library.editMetadata(item.id, original, edited) })
                         else PlaceholderScreen(stringResource(R.string.publication_unavailable_title), stringResource(R.string.publication_unavailable_body))
                     }
                     composable("reader/{id}?annotation={annotation}", arguments = listOf(navArgument("annotation") { type = NavType.StringType; nullable = true; defaultValue = null })) { backStack ->

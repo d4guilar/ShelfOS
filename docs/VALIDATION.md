@@ -1,6 +1,89 @@
 # Validation
 
-## PHASE 4.5A.2 — LOW-FINDING POLISH (2026-10-16, implemented / under review)
+## PHASE 4.5B — TARGETED QA REMEDIATION (2026-10-16, implemented / under review)
+
+**Not accepted, not merged.** Fixes the Codex High findings on `46d1c61` (CHANGES REQUIRED: H-1,
+L-1, L-3, L-4, L-5; L-2 deferred to before 4.5E). Isolated API 24 emulator `emulator-5554` only;
+no owner device attached or used; same per-class `am instrument` procedure as below.
+
+| Command / class | Tests | Pass | Fail | Result | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `gradlew.bat :app:testDebugUnitTest` | 675 | 675 | 0 | PASS | 671 + 4 new: Book file names (L-1), strict dates (L-5), untrusted provenance (L-4), failing idle work never stops covers/spins/runs under a reader (`CoverSchedulerTest`, L-3) |
+| `MetadataUiTest` | 9 | 9 | 0 | PASS | 3 earlier + 6 new H-1 tests on the real editor and a real Room repository: (A) background Publisher write during editing kept EMBEDDED, only Description USER; (B) snapshot and draft survive `StateRestorationTester` saved-state restoration, background value kept; (C) deliberate clear is USER and never refilled; (D) same-field conflict takes the user's value; (E) no-op save issues no write, no USER origin; removal while editing writes nothing and a double tap saves once. Run 3 consecutive times: 9/9 each |
+| `MetadataBackfillLimitTest` | 1 | 1 | 0 | PASS | Real SQLite: 1,100 unreadable items before one readable item; reached with no bind-limit error; each item read exactly once; then stops (no retry); failures stay pending |
+| `LocalMetadataBackfillTest`, `MetadataMigrationTest`, `MetadataParsingDeviceTest` | 5 | 5 | 0 | PASS | Updated to the keyset API |
+| `CoverLifecycleTest`, `CoverPresentationUiTest`, `CoverRendererUiTest` | 21 | 21 | 0 | PASS | Cover scheduling with the idle-work boundary |
+| `NotesHubUiTest`, `NavigationSmokeTest`, `CbrProductIntegrationTest`, `RemovalDialogKnowledgeTest`, `LibraryPersistenceTest` | 70 | 70 | 0 | PASS | |
+| `assembleDebug`, `assembleDebugAndroidTest` | — | — | — | PASS | |
+| `lintDebug` | — | — | — | PASS | 0 errors, 60 warnings (one new `MutableCollectionMutableState` warning was fixed) |
+
+Instrumented on the final APKs: **106/106 across 13 classes** (not all 20 classes of the
+implementation pass were rerun; the migration-only classes are unchanged by this remediation).
+Intermediate runs: `MetadataUiTest` 3/9 (test helper scrolled a dialog button), then 8/9 (a
+test-thread recomposition race after a background write; the helper now waits for idle) — test-
+side fixes only.
+
+**Mutation check (temporary, reverted):** feeding the editor live Room values again fails H-1 A,
+B and E (6/9).
+
+**Deferred:** L-2 (Comics corroboration uses file-name evidence) is a mandatory prerequisite before
+the first live Comics provider (4.5E): trustworthy evidence provenance in queries, no VERY_HIGH
+from weak file-name signals alone, a contradictory Comics corpus.
+
+## PHASE 4.5B — METADATA CORE IMPLEMENTATION (2026-10-16, implemented / under review)
+
+**Not accepted, not merged.** Branch `phase-4.5/4.5b-metadata-core` from `main` `1d949be`.
+Environment: isolated API 24 x86_64 emulator `shelfos-api24` (`emulator-5554`) only; no owner
+device was attached or used. Instrumented classes ran one at a time as `adb -s emulator-5554
+shell am instrument -w -r -e class <class> com.d4guilar.shelfos.test/androidx.test.runner.AndroidJUnitRunner`
+after `pm clear`, counted from the status stream.
+
+| Command / class | Tests | Pass | Fail | Result | What it proves |
+| --- | --- | --- | --- | --- | --- |
+| `gradlew.bat :app:testDebugUnitTest` | 671 | 671 | 0 | PASS | 64 result files; 635 before + 36 new |
+| JVM `domain.metadata.IdentifierDetectorTest` | 4 | 4 | 0 | PASS | ISBN-13/ISBN-10 checksums, `X`, labels/URN/schemes, hyphens/spaces, ISBN-10 ≡ 13, UPC-A + 2/5 supplement, GTIN/EAN, no false positives (years, page counts, issue numbers, bad checksums, wrong lengths) |
+| JVM `domain.metadata.FilenameInferenceTest` | 3 | 3 | 0 | PASS | Comic issue tokens (#, Issue, No., zero-padded, #0, 1.5, of N), manga volume tokens (Vol/Volume/v03/Tome/Tomo/Band/巻/第N巻, full-width digits, Korean/Japanese titles kept), misleading numbers (Catch-22, 1984, Fahrenheit 451, Documents) |
+| JVM `domain.metadata.MetadataPrecedenceTest` | 8 | 8 | 0 | PASS | USER never replaced (even cleared), embedded > filename, external never over embedded, blank never deletes, title needs VERY_HIGH, only changed fields become USER, confirmed external stays external, legacy origin strings, codec round trip and malformed/unknown fallback, date/language validation |
+| JVM `domain.metadata.MetadataMatcherTest` | 10 | 10 | 0 | PASS | Exact ISBN VERY_HIGH; contradictory editions (language, author, different ISBN); title-only never VERY_HIGH; same title different author; Saga #1 vs collection/compendium; Batman runs; #0 and fractional issues; manga vol 1 vs 10, omnibus, series record, translated edition; two disagreeing VERY_HIGH demoted; Documents and category mismatch; filename titles never contradict; script-neutral normalization |
+| JVM `core.files.EmbeddedMetadataTest` | 4 | 4 | 0 | PASS | EPUB3 and EPUB2/calibre fixtures, ComicInfo fields/credits/GTIN, `-1` defaults, invalid values, malformed and entity XML |
+| JVM `data.metadata.MetadataCoordinatorTest` | 6 | 6 | 0 | PASS | Fake providers: identifier first, provenance, covers untouched, user edits survive enrichment and re-analysis, MEDIUM/LOW never applied, provider eligibility, Documents never searched, failing provider isolated, removed item dropped, bounded idempotent backfill with failure isolation, import evidence without a second pass |
+| JVM `ImportViewModelTest` (+1) | 1 | 1 | 0 | PASS | The import completes while metadata recording is still suspended (never waits) |
+| `assembleDebug`, `assembleDebugAndroidTest` | — | — | — | PASS | |
+| `lintDebug` | — | — | — | PASS | 0 errors, 60 warnings (unchanged baseline) |
+| `MetadataMigrationTest` | 3 | 3 | 0 | PASS | Real raw-SQL v7 file (cover rows READY/parked/open attempt, cover preferences, annotations, orphan snapshot, reader data, legacy bookmark) → v8: all 9 pre-existing tables byte-identical, empty new table, FK cascade, no CHECK, identical to fresh v8 and `8.json`; v1, v3, v6 reach v8; provenance, credits and identifiers round-trip; user edits survive reopen and a later automatic pass; removed item never resurrected; malformed stored values degrade; both removal policies delete the row (KEEP keeps notes) |
+| `MetadataUiTest` | 3 | 3 | 0 | PASS | Comic details (series, issue, publisher, credits, description; no subtitle); editor shows category fields, rejects invalid date/language without rewriting text, saves only changed fields as USER, hidden fields kept; Documents conservative; malformed JSON tolerated; Read in view; editor opened and saved with D-pad Center/Enter |
+| `MetadataParsingDeviceTest` | 1 | 1 | 0 | PASS | File-name inference, normalization, identifiers, dates and languages on Android's ICU regex engine |
+| `LocalMetadataBackfillTest` | 1 | 1 | 0 | PASS | Real `AppContainer`: pre-existing items analysed on the cover worker once foregrounded; embedded beats file name; a prior user edit survives; a missing source is skipped and left pending; Library re-emissions ≤ 2 |
+| `CoverMigrationTest`, `CoverPresentationMigrationTest` | 5 | 5 | 0 | PASS | Chains now end at v8 |
+| `AnnotationMigrationTest`, `NotesSnapshotMigrationTest` | 10 | 10 | 0 | PASS | Version assertions updated to 8 |
+| `LibraryPersistenceTest`, `BookmarkPersistenceTest`, `FixedAnnotationRepositoryTest` | 25 | 25 | 0 | PASS | |
+| `RoomPersistenceTest`, `AppearanceRestorationTest`, `RemovalDialogKnowledgeTest` | 8 | 8 | 0 | PASS | Removal paths with the new delete |
+| `CoverLifecycleTest`, `CoverRendererUiTest`, `CoverPresentationUiTest` | 21 | 21 | 0 | PASS | Cover scheduler with the idle hook |
+| `NotesHubUiTest`, `CbrProductIntegrationTest`, `NavigationSmokeTest` | 54 | 54 | 0 | PASS | Import, details, edit, CBR |
+
+Instrumented total on the final APKs: **131/131 across 20 classes**.
+
+**Found and fixed during validation:** the first device run of `NotesHubUiTest` and
+`NavigationSmokeTest` (19/20, 27/28) crashed the app in the backfill:
+`FilenameInference` used Java's `(?U)` regex flag, which Android's ICU engine rejects (an
+`ExceptionInInitializerError`, invisible to the JVM suite). After switching to explicit
+`\p{Nd}`/`\p{Z}`, the new `MetadataParsingDeviceTest` caught a second ICU difference (an
+unescaped `}` outside a character class). Both are fixed, the analyser now isolates any
+per-item exception, and every class above was rerun on the final APKs.
+
+**Mutation checks (temporary, reverted):** letting external values replace EMBEDDED and
+disabling the two-VERY_HIGH demotion together fail 4 tests across `MetadataPrecedenceTest`,
+`MetadataMatcherTest` and `MetadataCoordinatorTest`.
+
+**Import/backfill performance evidence:** the import commit never waits for metadata recording
+(JVM test); new imports reuse the inspection's evidence (no second pass; JVM test); the backfill
+processes one item per idle turn on the gated cover worker; metadata rows never re-emit the
+Library list (≤ 2 re-emissions measured with three items, from one real title change); no main-
+thread archive parsing (the reader runs on `Dispatchers.IO`). **NOT RUN:** timing on the SM-T580
+and a 2,000-item library (4.5G), a real-library EN/JP/ES corpus (4.5D/4.5G), TalkBack, a visual
+check of the details pane in the running app.
+
+## PHASE 4.5A.2 — LOW-FINDING POLISH (2026-10-16; merged in PR #45)
 
 **Not accepted, not merged.** Follows the independent Codex High review of `713a7d1` (PASS WITH
 NON-BLOCKING FINDINGS: 0 blocker/high/medium; L-1…L-5). Environment: isolated API 24 x86_64
@@ -42,7 +125,7 @@ unchanged since `713a7d1`); TalkBack itself (semantics asserted instead); 4.5G p
 cold-start relayout of a non-default shape is visibly distracting; add the minimal loading-state
 fix only if that evidence warrants it.
 
-## PHASE 4.5A.2 — COVER PRESENTATION IMPLEMENTATION (2026-10-16, implemented / under review)
+## PHASE 4.5A.2 — COVER PRESENTATION IMPLEMENTATION (2026-10-16; merged in PR #45)
 
 **Not accepted, not merged.** Branch `phase-4.5/4.5a2-cover-presentation` from `main`
 `340074f` (4.5A.1 merged in PR #44). Environment: isolated API 24 x86_64 emulator

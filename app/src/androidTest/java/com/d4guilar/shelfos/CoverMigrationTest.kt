@@ -47,7 +47,7 @@ class CoverMigrationTest {
         try {
             val sql = migrated.openHelper.writableDatabase
             SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READONLY).use { raw ->
-                assertEquals(7, raw.version)
+                assertEquals(8, raw.version)
                 for ((table, order) in tables) assertEquals("$table must be unchanged by v5 -> v7", before.getValue(table), LegacyDatabases.dump(raw, table, order))
             }
             sql.query("SELECT COUNT(*) FROM publication_cover").use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }

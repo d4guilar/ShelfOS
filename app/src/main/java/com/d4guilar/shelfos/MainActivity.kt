@@ -29,6 +29,8 @@ import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import com.d4guilar.shelfos.core.theme.ShelfTheme
 import com.d4guilar.shelfos.core.theme.ThemeId
 import com.d4guilar.shelfos.feature.home.ShelfApp
+import com.d4guilar.shelfos.feature.library.LocalMetadataAccess
+import com.d4guilar.shelfos.feature.library.MetadataAccess
 import com.d4guilar.shelfos.feature.library.LibraryViewModel
 import com.d4guilar.shelfos.feature.settings.SettingsViewModel
 import kotlinx.coroutines.flow.map
@@ -63,10 +65,11 @@ class MainActivity : AppCompatActivity() {
         enableEdgeToEdge()
         val container = (application as ShelfApplication).container
         setContent {
-          CompositionLocalProvider(LocalCoverArtwork provides container.coverArtwork) {
+          CompositionLocalProvider(LocalCoverArtwork provides container.coverArtwork,
+              LocalMetadataAccess provides remember { MetadataAccess(container.metadata::observe) }) {
             val settings: SettingsViewModel = viewModel(factory = viewModelFactory { initializer { SettingsViewModel(container.themes, container.library, container.languages, container.coverPresentation) } })
             val library: LibraryViewModel = viewModel(factory = viewModelFactory { initializer {
-                LibraryViewModel(container.library, createSavedStateHandle())
+                LibraryViewModel(container.library, createSavedStateHandle(), container.metadata)
             } })
             val theme by settings.theme.collectAsStateWithLifecycle()
             // Phase 3D Codex R1 remediation, finding 3: maps EVERY `FoldingFeature` the platform currently

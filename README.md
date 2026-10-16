@@ -45,9 +45,10 @@ independent Codex High closure review returned PASS WITH NOTES. Evidence and the
 TalkBack gap are recorded in `docs/VALIDATION.md`. The next active milestone is **Phase
 4.5 — Metadata, Covers & Library Presentation**. Slice 4.5A.1 (local cover artwork:
 EPUB, CBZ/CBR and PDF first-page covers with the generated cover as fallback) is merged (PR #44).
-Slice 4.5A.2 (configurable cover shape and fit in Settings → Library appearance) is implemented
-on branch `phase-4.5/4.5a2-cover-presentation` and is **under independent review, not accepted or
-merged**. Phase 5 remains Advanced PDF Ingestion.
+Slice 4.5A.2 (configurable cover shape and fit in Settings → Library appearance) is merged (PR #45).
+Slice 4.5B (offline metadata core: identifiers, publisher, dates, series/volume/issue, credits and
+user edits with field-level provenance) is implemented on branch `phase-4.5/4.5b-metadata-core`
+and is **under independent review, not accepted or merged**; there is no online enrichment. Phase 5 remains Advanced PDF Ingestion.
 
 Global destinations are Library, Search, Notes, Shelves and Settings. Notes is a real
 cross-library hub (Phase 4D, merged and implementation complete); Shelves is a
