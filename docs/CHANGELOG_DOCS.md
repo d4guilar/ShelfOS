@@ -1,5 +1,11 @@
 # Documentation Changelog
 
+## Phase 4.5A.2 low-finding polish (2026-10-16, under review)
+
+- Plan §34: L-1…L-4 resolutions, explicit L-5 deferral to 4.5G, ES/PT-BR wording.
+- VALIDATION: new polish section with executed counts and the 89 → 107 correction of the
+  implementation handoff's instrumented total.
+
 ## Phase 4.5A.2 cover presentation implementation (2026-10-16, under review)
 
 - Plan: status line (4.5A.1 merged in PR #44; 4.5A.2 implemented / under review), §7 rule 11

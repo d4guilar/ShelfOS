@@ -14,7 +14,8 @@ class CoverPresentationCopyTest {
         "settings_cover_fit", "cover_shape_original", "cover_shape_ratio", "cover_shape_custom", "cover_shape_custom_ratio", "cover_fit_crop",
         "cover_fit_fit", "settings_cover_width", "settings_cover_height", "content_desc_decrease", "content_desc_increase",
         "settings_cover_per_category", "settings_cover_use_default", "settings_cover_category_override", "settings_cover_fit_original_note",
-        "settings_cover_summary", "settings_cover_default_summary", "settings_cover_override_summary")
+        "settings_cover_summary", "settings_cover_default_summary", "settings_cover_override_summary", "state_expanded", "state_collapsed",
+        "settings_cover_stepper_value", "settings_cover_stepper_number")
 
     private fun strings(locale: String): Map<String, String> {
         val file = listOf(File("src/main/res/$locale/strings.xml"), File("app/src/main/res/$locale/strings.xml")).first { it.exists() }
@@ -35,7 +36,13 @@ class CoverPresentationCopyTest {
             }
         }
         // Words, not the ratio/summary patterns, must actually be translated.
-        for (key in listOf("settings_library_appearance_title", "cover_fit_crop", "cover_fit_fit", "settings_cover_use_default"))
+        for (key in listOf("settings_library_appearance_title", "cover_fit_crop", "cover_fit_fit", "settings_cover_use_default", "state_expanded"))
             for (locale in locales - "values") assertTrue("$locale/$key untranslated", strings(locale)[key] != english[key])
+        // Cover fit and Category override are different controls; they must not share their leading word.
+        for (locale in locales) {
+            val s = strings(locale)
+            assertTrue("$locale: fit and override labels are distinguishable",
+                s.getValue("settings_cover_fit").substringBefore(' ') != s.getValue("settings_cover_category_override").substringBefore(' '))
+        }
     }
 }

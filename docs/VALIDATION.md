@@ -1,5 +1,47 @@
 # Validation
 
+## PHASE 4.5A.2 — LOW-FINDING POLISH (2026-10-16, implemented / under review)
+
+**Not accepted, not merged.** Follows the independent Codex High review of `713a7d1` (PASS WITH
+NON-BLOCKING FINDINGS: 0 blocker/high/medium; L-1…L-5). Environment: isolated API 24 x86_64
+emulator `shelfos-api24` (`emulator-5554`) only; the owner's RP5 and SM-T580 were not used.
+Same per-class `am instrument` procedure as the section below.
+
+**Correction:** the 4.5A.2 implementation handoff reported "89" instrumented tests; the classes
+in the table below actually total **107** (3+4+1+2+6+4+10+7+8+2+12+20+28). Those 107 were not
+all rerun here; only the classes listed in this table were.
+
+| Command / class | Tests | Pass | Fail | Result | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `gradlew.bat :app:testDebugUnitTest` | 635 | 635 | 0 | PASS | `CoverPresentationCopyTest` now also covers the 4 new strings and that Cover fit / Category override do not share a leading word in any locale |
+| `CoverPresentationUiTest` | 8 | 8 | 0 | PASS | 4 earlier tests + 4 new (below). Intermediate runs: 5/8 (two tests still read the stepper value as raw text; one used `captureToImage`, which needs API 26), then 7/8 (ring sampled 1 dp too far out); test-side fixes only |
+| `CoverRendererUiTest` | 1 | 1 | 0 | PASS | |
+| `NavigationSmokeTest` | 28 | 28 | 0 | PASS | Library tile focus and keyboard activation after the ring move |
+| `NotesHubUiTest` | 20 | 20 | 0 | PASS | `shelfAction` default unchanged |
+| `ThumbnailNavigationUiTest` | 7 | 7 | 0 | PASS | `shelfAction` default unchanged |
+| `assembleDebug`, `assembleDebugAndroidTest` | — | — | — | PASS | |
+| `lintDebug` | — | — | — | PASS | 0 errors, 60 warnings (unchanged) |
+
+New tests: `stepperKeepsDpadFocusAtItsLimitAndNeverWritesAnInvalidValue` (L-1: real D-pad Center
+from 2:4 to 8:4; focus stays on the unavailable step, which is exposed as disabled; Center,
+`BUTTON_A` and a click write nothing and every write is valid; D-pad Left reaches Decrease, which
+works), `appearanceControlsExposeExpandedStateValuesAndUnavailableSteps` (L-3),
+`originalFocusRingFollowsTheVisibleArtwork` (L-2: a UiAutomation screenshot shows the ink ring
+just outside a 2:1 Original artwork and nothing in the empty slot area or on the tile's edge),
+`libraryGridKeepsSelectionScrollAndFocusAcrossPresentationChanges` (L-4: the real
+`LibraryScreen` `LazyVerticalGrid`, 40 items, scrolled to item 25 and focused; 1:1 Crop,
+Original and Custom 3:5 Fit keep it displayed, focused and selected with the first row still
+scrolled away; D-pad Right then moves to item 26; no extraction requested).
+
+**Mutation check (temporary, reverted):** restoring `enabled = target != null` on the step
+button and the tile's outer focus ring fails exactly the L-1 and L-2 tests (6/8).
+
+**NOT RUN here:** the migration and persistence classes (schema, migration and preference code
+unchanged since `713a7d1`); TalkBack itself (semantics asserted instead); 4.5G physical items.
+**L-5 deferred to 4.5G** (administrator decision): on the SM-T580, measure whether the one-time
+cold-start relayout of a non-default shape is visibly distracting; add the minimal loading-state
+fix only if that evidence warrants it.
+
 ## PHASE 4.5A.2 — COVER PRESENTATION IMPLEMENTATION (2026-10-16, implemented / under review)
 
 **Not accepted, not merged.** Branch `phase-4.5/4.5a2-cover-presentation` from `main`

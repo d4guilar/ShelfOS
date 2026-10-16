@@ -147,11 +147,15 @@
     <string name="content_desc_increase">Aumentar %1$s</string>
     <string name="settings_cover_per_category">Por categoria</string>
     <string name="settings_cover_use_default">Usar padrão</string>
-    <string name="settings_cover_category_override">Ajuste da categoria</string>
+    <string name="settings_cover_category_override">Configuração própria da categoria</string>
     <string name="settings_cover_fit_original_note">Original sempre mostra a imagem inteira, então o ajuste da capa não se aplica.</string>
     <string name="settings_cover_summary">%1$s · %2$s</string>
     <string name="settings_cover_default_summary">Usar padrão: %1$s</string>
-    <string name="settings_cover_override_summary">Ajuste da categoria: %1$s</string>
+    <string name="settings_cover_override_summary">Configuração própria: %1$s</string>
+    <string name="state_expanded">Expandido</string>
+    <string name="state_collapsed">Recolhido</string>
+    <string name="settings_cover_stepper_value">%1$s: %2$d</string>
+    <string name="settings_cover_stepper_number">%1$d</string>
     <string name="settings_theme_planned">Planejado</string>
     <string name="settings_storage_title">Armazenamento</string>
     <string name="settings_storage_description">Quando um provedor não consegue oferecer acesso duradouro, o ShelfOS guarda uma cópia privada offline. Remover uma publicação mantém sua cópia até que você a exclua aqui. Os arquivos originais nunca são alterados ou excluídos.</string>

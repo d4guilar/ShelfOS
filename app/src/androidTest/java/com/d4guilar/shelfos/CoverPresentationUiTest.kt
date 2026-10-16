@@ -14,7 +14,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
@@ -26,6 +28,8 @@ import com.d4guilar.shelfos.core.theme.ShelfTheme
 import com.d4guilar.shelfos.core.theme.ThemeId
 import com.d4guilar.shelfos.domain.annotations.AnnotationCounts
 import com.d4guilar.shelfos.domain.library.*
+import com.d4guilar.shelfos.feature.library.LibraryScreen
+import com.d4guilar.shelfos.feature.library.LibraryUiState
 import com.d4guilar.shelfos.feature.library.PublicationDetails
 import com.d4guilar.shelfos.feature.library.PublicationTile
 import com.d4guilar.shelfos.feature.settings.LibraryAppearanceSection
@@ -92,7 +96,7 @@ class CoverPresentationUiTest {
         // Custom starts at 2:3 and steps within 1…20 and 1:2…2:1; out-of-range steps are disabled.
         node("cover_global_shape_custom").performClick()
         assertEquals(CoverPresentation(CoverShape.CUSTOM, CoverFit.FIT, 2, 3), covers.global)
-        node("cover_global_width_value").assertTextEquals("2")
+        compose.onNodeWithTag("cover_global_width_value", useUnmergedTree = true).assertContentDescriptionEquals("Width: 2")
         node("cover_global_width_decrease").assertIsNotEnabled() // 1:3 is narrower than 1:2
         node("cover_global_height_increase").performClick()          // 2:4
         node("cover_global_width_decrease").assertIsNotEnabled()
@@ -219,5 +223,141 @@ class CoverPresentationUiTest {
             val read = bounds("read_action")
             assertTrue("$id in $window: Read is in view without scrolling", read.bottom <= root.bottom + 1f && read.top >= cover.bottom)
         }
+    }
+
+    private fun keyboardMode() { instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_TAB); compose.waitForIdle() }
+    private fun key(code: Int) { instrumentation.sendKeyDownUpSync(code); compose.waitForIdle() }
+
+    /** L-1: a stepper at its limit keeps D-pad focus, ignores further activation, is exposed as disabled, and focus moves on. */
+    @Test fun stepperKeepsDpadFocusAtItsLimitAndNeverWritesAnInvalidValue() {
+        var covers by mutableStateOf(CoverPresentations(global = CoverPresentation(CoverShape.CUSTOM, CoverFit.CROP, 2, 4)))
+        val writes = mutableListOf<CoverPresentation>()
+        compose.setContent {
+            ShelfTheme(ThemeId.CLASSIC) {
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                    LibraryAppearanceSection(covers, { writes += it; covers = covers.copy(global = it) }, { _, _ -> })
+                }
+            }
+        }
+        keyboardMode()
+        val increase = compose.onNodeWithTag("cover_global_width_increase")
+        increase.performScrollTo().performSemanticsAction(SemanticsActions.RequestFocus)
+        repeat(6) { key(KeyEvent.KEYCODE_DPAD_CENTER) }            // 2:4 → 8:4, the 2:1 limit
+        assertEquals(8, covers.global.customWidth)
+        increase.assertIsFocused().assertIsNotEnabled()             // focus kept on the now-unavailable step
+        compose.onNodeWithTag("cover_global_width_value", useUnmergedTree = true).assertContentDescriptionEquals("Width: 8")
+        val before = writes.size
+        key(KeyEvent.KEYCODE_DPAD_CENTER); key(KeyEvent.KEYCODE_BUTTON_A); increase.performClick()
+        assertEquals("activating an unavailable step writes nothing", before, writes.size)
+        assertTrue("every write was valid", writes.all { coverPresentation(it.shape, it.fit, it.customWidth, it.customHeight) == it })
+        increase.assertIsFocused()
+        key(KeyEvent.KEYCODE_DPAD_LEFT)
+        compose.onNodeWithTag("cover_global_width_decrease").assertIsFocused().assertIsEnabled()
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(7, covers.global.customWidth)
+    }
+
+    /** L-3: expand/collapse state, polite live regions, spoken stepper value and disabled steps. */
+    @Test fun appearanceControlsExposeExpandedStateValuesAndUnavailableSteps() {
+        var covers by mutableStateOf(CoverPresentations(global = CoverPresentation(CoverShape.CUSTOM, CoverFit.CROP, 1, 2)))
+        compose.setContent {
+            ShelfTheme(ThemeId.CLASSIC) {
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                    LibraryAppearanceSection(covers, { covers = covers.copy(global = it) }, { c, p ->
+                        covers = covers.copy(overrides = if (p == null) covers.overrides - c else covers.overrides + (c to p))
+                    })
+                }
+            }
+        }
+        val polite = SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite)
+        compose.onNodeWithTag("cover_global_width_value", useUnmergedTree = true).assertContentDescriptionEquals("Width: 1").assert(polite)
+        compose.onNodeWithTag("cover_global_width_decrease").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled))
+            .assertContentDescriptionEquals("Decrease Width")
+        compose.onNodeWithTag("cover_global_width_increase").performScrollTo().performClick()
+        compose.onNodeWithTag("cover_global_width_value", useUnmergedTree = true).assertContentDescriptionEquals("Width: 2")
+
+        val row = compose.onNodeWithTag("cover_category_comic").performScrollTo()
+        row.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed"))
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.Expand)).assert(SemanticsMatcher.keyNotDefined(SemanticsActions.Collapse))
+        row.assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, false)) // never presented as a selected option
+        row.performSemanticsAction(SemanticsActions.Expand)
+        row.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Expanded"))
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.Collapse))
+        val summary = compose.onNodeWithTag("cover_category_comic_summary", useUnmergedTree = true).assert(polite)
+        summary.assertTextContains("Use default", substring = true)
+        compose.onNodeWithTag("cover_category_comic_override").performScrollTo().performClick()
+        summary.assertTextContains("Category override", substring = true)
+        row.performSemanticsAction(SemanticsActions.Collapse)
+        row.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed"))
+        compose.onAllNodesWithTag("cover_category_comic_default").assertCountEquals(0)
+    }
+
+    /** L-2 (D10): in Original the visible focus ring is on the artwork's bounds, not the empty slot or the tile's edge. */
+    @Test fun originalFocusRingFollowsTheVisibleArtwork() {
+        jpeg("local-00000000000000c1.jpg", 900, 450)
+        presentations.value = CoverPresentations(global = CoverPresentation(CoverShape.ORIGINAL, CoverFit.CROP))
+        compose.setContent {
+            ShelfTheme(ThemeId.CLASSIC) {
+                CompositionLocalProvider(LocalCoverArtwork provides artwork(mapOf("wide" to CoverRef("wide", "local-00000000000000c1.jpg", 900, 450)))) {
+                    PublicationTile(item("wide"), selected = false, Modifier.width(160.dp), onFocus = {}, onOpen = {})
+                }
+            }
+        }
+        compose.waitUntil(5_000) { artworkBounds().size == 1 }
+        keyboardMode()
+        compose.onNodeWithTag("publication_wide").performSemanticsAction(SemanticsActions.RequestFocus)
+        compose.onNodeWithTag("publication_wide").assertIsFocused()
+        compose.waitForIdle()
+        // captureToImage needs API 26; on the API 24 emulator the screen is captured and read in window coordinates.
+        android.os.SystemClock.sleep(300)
+        val tile = compose.onNodeWithTag("publication_wide").fetchSemanticsNode().boundsInWindow
+        val art = compose.onNodeWithTag("cover_artwork", useUnmergedTree = true).fetchSemanticsNode().boundsInWindow
+        val image = instrumentation.uiAutomation.takeScreenshot()
+        val px = with(compose.density) { 1.dp.toPx() }
+        fun dark(x: Float, y: Float) = image.getPixel(x.toInt(), y.toInt()).let {
+            android.graphics.Color.red(it) < 90 && android.graphics.Color.green(it) < 90 && android.graphics.Color.blue(it) < 90 }
+        // The 2 dp focus border is drawn on the frame's edge, 3 dp outside the artwork (inside the frame's padding).
+        assertTrue("focus ring above the artwork", dark(art.center.x, art.top - 2 * px))
+        assertTrue("focus ring left of the artwork", dark(art.left - 2 * px, art.center.y))
+        assertFalse("no ring in the empty part of the 2:3 slot", dark(art.center.x, tile.top + 8 * px))
+        assertFalse("no ring on the tile's outer edge", dark(tile.left + 1 * px, tile.top + 8 * px))
+    }
+
+    /** L-4: the real Library LazyVerticalGrid keeps selection, scroll position and D-pad focus across shape changes. */
+    @Test fun libraryGridKeepsSelectionScrollAndFocusAcrossPresentationChanges() {
+        jpeg("local-00000000000000d1.jpg", 600, 900); jpeg("local-00000000000000d2.jpg", 900, 600)
+        val items = (0 until 40).map { item("item-$it") }
+        val map = items.associate { it.id to CoverRef(it.id, if (it.id.last().digitToInt() % 2 == 0) "local-00000000000000d1.jpg" else "local-00000000000000d2.jpg",
+            if (it.id.last().digitToInt() % 2 == 0) 600 else 900, if (it.id.last().digitToInt() % 2 == 0) 900 else 600) }
+        var state by mutableStateOf(LibraryUiState(filter = LibraryFilter.BOOKS, items = items, all = items, loading = false))
+        compose.setContent {
+            ShelfTheme(ThemeId.CLASSIC) {
+                CompositionLocalProvider(LocalCoverArtwork provides artwork(map)) {
+                    Box(Modifier.size(400.dp, 700.dp)) {
+                        LibraryScreen(state, expanded = false, onFilter = {}, onSelect = { id -> state = state.copy(selected = items.first { it.id == id }) },
+                            onOpen = {}, onFavorite = {}, onRead = { _, _ -> }, onEdit = { _, _, _, _ -> }, onRemove = { _, _ -> },
+                            knowledgeCounts = AnnotationCounts.None)
+                    }
+                }
+            }
+        }
+        keyboardMode()
+        compose.onNodeWithTag("library_grid").performScrollToKey("item-25")
+        compose.onNodeWithTag("publication_item-25").performSemanticsAction(SemanticsActions.RequestFocus)
+        compose.onNodeWithTag("publication_item-25").assertIsFocused()
+        assertEquals("item-25", state.selected?.id)
+        for (p in listOf(CoverPresentation(CoverShape.RATIO_1_1, CoverFit.CROP), CoverPresentation(CoverShape.ORIGINAL, CoverFit.CROP),
+            CoverPresentation(CoverShape.CUSTOM, CoverFit.FIT, 3, 5))) {
+            presentations.value = CoverPresentations(global = p)
+            compose.waitForIdle()
+            compose.onNodeWithTag("publication_item-25").assertIsDisplayed().assertIsFocused().assertIsSelected()
+            assertEquals("$p keeps the selection", "item-25", state.selected?.id)
+            assertTrue("$p keeps the scroll position (the first rows stay scrolled away)",
+                compose.onAllNodesWithTag("publication_item-0").fetchSemanticsNodes().none { it.boundsInRoot.bottom > 0f && it.boundsInRoot.top < 700f * compose.density.density })
+        }
+        key(KeyEvent.KEYCODE_DPAD_RIGHT)
+        compose.onNodeWithTag("publication_item-26").assertIsFocused()
+        assertEquals("D-pad traversal still works after the changes", "item-26", state.selected?.id)
+        assertTrue("a presentation change never asks for extraction", synchronized(requested) { requested.isEmpty() })
     }
 }

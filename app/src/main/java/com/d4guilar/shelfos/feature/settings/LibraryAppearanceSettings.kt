@@ -12,7 +12,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.collapse
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.expand
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -43,15 +50,23 @@ fun LibraryAppearanceSection(covers: CoverPresentations, onGlobal: (CoverPresent
         val tag = "cover_category_${category.name.lowercase()}"
         val summary = override?.let { stringResource(R.string.settings_cover_override_summary, presentationLabel(it)) }
             ?: stringResource(R.string.settings_cover_default_summary, presentationLabel(covers.inherited(category)))
-        Row(Modifier.fillMaxWidth().testTag(tag).shelfAction(selected = open == category, onClick = { open = if (open == category) null else category })
-            .padding(vertical = 12.dp, horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        val expanded = open == category
+        val toggle = { open = if (expanded) null else category }
+        // An expand/collapse control, not a selectable option: its state is announced as expanded/collapsed.
+        val state = stringResource(if (expanded) R.string.state_expanded else R.string.state_collapsed)
+        Row(Modifier.fillMaxWidth().testTag(tag).shelfAction(onClick = toggle).semantics {
+            stateDescription = state
+            if (expanded) collapse { toggle(); true } else expand { toggle(); true }
+        }.padding(vertical = 12.dp, horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(stringResource(category.labelRes()))
-                Text(summary, color = t.colors.secondary, style = MaterialTheme.typography.bodySmall)
+                // Polite: announces "Use default" ↔ "Category override" changes once, after the radio row's own announcement.
+                Text(summary, color = t.colors.secondary, style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("${tag}_summary").semantics { liveRegion = LiveRegionMode.Polite })
             }
-            Text(if (open == category) "−" else "+", color = t.colors.secondary)
+            Text(if (expanded) "−" else "+", color = t.colors.secondary, modifier = Modifier.clearAndSetSemantics { })
         }
-        if (open == category) Column(Modifier.padding(start = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (expanded) Column(Modifier.padding(start = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             RadioRow(stringResource(R.string.settings_cover_use_default), override == null, "${tag}_default") { onOverride(category, null) }
             // An explicit override starts from what the category shows now, so enabling it changes nothing visible.
             RadioRow(stringResource(R.string.settings_cover_category_override), override != null, "${tag}_override") {
@@ -101,16 +116,21 @@ private fun RadioRow(label: String, selected: Boolean, tag: String, enabled: Boo
     }
 }
 
-/** Two buttons around the value; a step that would leave 1…20 or the 1:2…2:1 bound is disabled, never clamped silently. */
+/**
+ * Two buttons around the value. A step that would leave 1…20 or the 1:2…2:1 bound is unavailable, never clamped silently:
+ * the button stays focusable (a D-pad user at the limit keeps focus), activating it does nothing, and it is exposed as
+ * disabled. The value is read as "Width: 3" and changes are announced once through a polite live region.
+ */
 @Composable
 private fun Stepper(label: String, value: Int, tag: String, decrease: CoverPresentation?, increase: CoverPresentation?,
     onChange: (CoverPresentation) -> Unit) {
     val t = LocalShelfTokens.current
-    val valueText = "%d".format(value)
+    val spoken = stringResource(R.string.settings_cover_stepper_value, label, value)
     Row(Modifier.fillMaxWidth().padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f))
+        Text(label, Modifier.weight(1f).clearAndSetSemantics { })
         StepButton("−", stringResource(R.string.content_desc_decrease, label), "${tag}_decrease", decrease, onChange)
-        Text(valueText, Modifier.width(40.dp).testTag("${tag}_value"), textAlign = TextAlign.Center)
+        Text(stringResource(R.string.settings_cover_stepper_number, value), Modifier.width(40.dp).testTag("${tag}_value")
+            .clearAndSetSemantics { contentDescription = spoken; liveRegion = LiveRegionMode.Polite }, textAlign = TextAlign.Center)
         StepButton("+", stringResource(R.string.content_desc_increase, label), "${tag}_increase", increase, onChange)
     }
     HorizontalDivider(color = t.colors.divider)
@@ -119,9 +139,11 @@ private fun Stepper(label: String, value: Int, tag: String, decrease: CoverPrese
 @Composable
 private fun StepButton(symbol: String, description: String, tag: String, target: CoverPresentation?, onChange: (CoverPresentation) -> Unit) {
     val t = LocalShelfTokens.current
-    Box(Modifier.size(48.dp).testTag(tag).semantics { contentDescription = description }
-        .shelfAction(enabled = target != null, onClick = { target?.let(onChange) }), contentAlignment = Alignment.Center) {
-        Text(symbol, color = if (target != null) t.colors.ink else t.colors.secondary, style = MaterialTheme.typography.titleLarge)
+    Box(Modifier.size(48.dp).testTag(tag)
+        .shelfAction(onClick = { target?.let(onChange) })
+        .semantics { contentDescription = description; if (target == null) disabled() }, contentAlignment = Alignment.Center) {
+        Text(symbol, color = if (target != null) t.colors.ink else t.colors.secondary, style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.clearAndSetSemantics { })
     }
 }
 

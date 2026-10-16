@@ -29,20 +29,24 @@ import com.d4guilar.shelfos.core.input.ShelfCommand
 import com.d4guilar.shelfos.core.input.shelfCommand
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 
-/** One focus/activation policy for touch, keyboard, D-pad and gamepad controls. */
+/**
+ * One focus/activation policy for touch, keyboard, D-pad and gamepad controls. [focusIndicator] false is only for a
+ * caller that draws its own visible focus ring (the Library tile draws it on the cover's visible artwork, D10).
+ */
 fun Modifier.shelfAction(
     selected: Boolean = false,
     enabled: Boolean = true,
     role: Role = Role.Button,
     onFocused: () -> Unit = {},
+    focusIndicator: Boolean = true,
     onClick: () -> Unit,
 ): Modifier = composed {
     val tokens = LocalShelfTokens.current
     var focused by remember { mutableStateOf(false) }
     this
         .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocused() }
-        .border(if (focused) tokens.focus.width else 0.dp,
-            if (focused) tokens.colors.ink else Color.Transparent, tokens.shapes.extraSmall)
+        .border(if (focused && focusIndicator) tokens.focus.width else 0.dp,
+            if (focused && focusIndicator) tokens.colors.ink else Color.Transparent, tokens.shapes.extraSmall)
         .semantics { this.selected = selected }
         .onKeyEvent { event ->
             val native = event.nativeKeyEvent

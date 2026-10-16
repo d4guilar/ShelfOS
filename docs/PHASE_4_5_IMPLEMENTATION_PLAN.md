@@ -2386,10 +2386,30 @@ next gate: independent Codex High review. Evidence: [VALIDATION](VALIDATION.md) 
 2. "Progress 0 matches the tile" is met as "matches the cover the transition starts from": in
    the current app only the details cover starts the transition, and it shows the whole artwork.
 3. On cold start the preference flow starts at the defaults until Room's first emission, so a
-   non-default shape can relayout once in the first frames. Not observed as a problem; measured
-   in 4.5G.
+   non-default shape can relayout once in the first frames (L-5, deferred to 4.5G below).
 4. There is no in-app reduce-motion setting; the system setting is honored as before. Shape
    changes are instant (no animated reflow).
 5. Running-app responsiveness (rotation, tablet, short landscape), Classic/Dark comparison,
    TalkBack, SM-T580 performance and RP5 controller UAT are 4.5G items; Compose window-size tests
    cover the details pane here.
+
+**Low-finding polish (2026-10-16, after Codex High PASS WITH NON-BLOCKING FINDINGS; still under
+review).**
+- **L-1 stepper focus:** a step that would leave the bounds no longer disables the button (Compose
+  dropped D-pad focus); it stays focusable, activation is a no-op, and it is exposed with
+  disabled semantics. 48 dp targets kept; no invalid write is possible.
+- **L-2 Original focus (D10, resolved, not weakened):** `shelfAction` gains `focusIndicator`
+  (default true, so every other screen is unchanged). The Library tile turns its outer ring off
+  and draws focus (2 dp) and selection (1 dp) rings on the cover's visible frame, which in
+  Original is the artwork, not the empty slot. The whole tile stays the focus and hit target with
+  the same semantics. In shaped modes the frame is the whole cover, so the ring now outlines the
+  cover rather than cover plus title.
+- **L-3 semantics:** category rows announce Expanded/Collapsed with expand/collapse actions and
+  are no longer reported as selected; their summary is a polite live region; the "+"/"−" glyphs
+  are hidden from accessibility; the stepper value is read as "Width: 3" in a polite live region;
+  unavailable steps are disabled.
+- **L-4:** a real `LazyVerticalGrid` test (VALIDATION).
+- **L-5 deferred to 4.5G (administrator):** on the SM-T580, measure whether the one-time cold-start
+  shape relayout is visibly distracting; implement the minimal loading-state fix only if it is.
+- **Locales:** ES/PT-BR "Category override" no longer shares "Ajuste" with Cover fit:
+  "Configuración propia de la categoría" / "Configuração própria da categoria".
