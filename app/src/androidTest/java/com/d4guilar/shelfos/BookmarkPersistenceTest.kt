@@ -45,7 +45,7 @@ class BookmarkPersistenceTest {
             db.version = 2
         }
         fun open() = Room.databaseBuilder(context, ShelfDatabase::class.java, name)
-            .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3, ShelfDatabase.MIGRATION_3_4, ShelfDatabase.MIGRATION_4_5, ShelfDatabase.MIGRATION_5_6).build()
+            .addMigrations(*ShelfDatabase.ALL_MIGRATIONS).build()
         try {
             val db = open()
             try {

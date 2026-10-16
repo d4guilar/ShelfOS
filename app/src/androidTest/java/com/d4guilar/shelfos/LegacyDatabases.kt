@@ -103,6 +103,24 @@ object LegacyDatabases {
         }
     }
 
+    /**
+     * Creates a real v6 database: everything v5 has plus `publication_cover` (6.json) holding a READY LOCAL cover, a parked
+     * FAILED_PERMANENT row and an open attempt marker, so a later migration can prove cover state survives byte-for-byte.
+     */
+    fun createV6(context: Context, name: String, items: List<Pair<String, String>>, annotations: List<V4Annotation>) {
+        createV5(context, name, items, annotations)
+        context.openOrCreateDatabase(name, 0, null).use { db ->
+            db.execSQL(com.d4guilar.shelfos.core.database.ShelfDatabase.PUBLICATION_COVER_CREATE_SQL)
+            db.execSQL("INSERT INTO publication_cover (libraryItemId, slot, status, fileName, mimeType, representation, sourceWidthPx, sourceHeightPx, storedWidthPx, storedHeightPx, storedBytes, localSource, sourceRef, sourceChoice, extractorVersion, attempts, updatedAt) " +
+                "VALUES ('${items[0].first}', 'LOCAL', 'READY', 'local-0123456789abcdef.jpg', 'image/jpeg', 'DERIVED', 1800, 2700, 800, 1200, 120000, 'EPUB_COVER', 'images/cover.jpg', 'DECLARED', 1, 1, 7000)")
+            db.execSQL("INSERT INTO publication_cover (libraryItemId, slot, status, failureReason, extractorVersion, attempts, interruptions, nextEligibleAt, parked, updatedAt) " +
+                "VALUES ('${items[1].first}', 'LOCAL', 'FAILED_PERMANENT', 'UNDECODABLE_CONTENT', 1, 4, 1, NULL, 1, 7100)")
+            db.execSQL("INSERT INTO publication_cover (libraryItemId, slot, status, extractorVersion, attempts, attemptStartedAt, attemptExtractorVersion, updatedAt) " +
+                "VALUES ('${items[2].first}', 'LOCAL', 'PENDING', 1, 2, 7200, 1, 7200)")
+            db.version = 6
+        }
+    }
+
     /** All rows of [table] as lists of column values, ordered by [orderBy], read through a raw SQLite connection. */
     fun dump(db: SQLiteDatabase, table: String, orderBy: String): List<List<String?>> =
         db.rawQuery("SELECT * FROM $table ORDER BY $orderBy", null).use(::rows)
@@ -117,7 +135,7 @@ object LegacyDatabases {
         db.rawQuery("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", arrayOf(table)).use { it.moveToFirst(); it.getInt(0) == 1 }
 
     fun open(context: Context, name: String) = Room.databaseBuilder(context, ShelfDatabase::class.java, name)
-        .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3, ShelfDatabase.MIGRATION_3_4, ShelfDatabase.MIGRATION_4_5, ShelfDatabase.MIGRATION_5_6).build()
+        .addMigrations(*ShelfDatabase.ALL_MIGRATIONS).build()
 }
 
 /**

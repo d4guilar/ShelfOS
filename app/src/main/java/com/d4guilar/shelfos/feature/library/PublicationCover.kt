@@ -5,8 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.d4guilar.shelfos.domain.library.LibraryItem
 
-/** A Library item's cover through the one shared renderer (local artwork, else the generated visual). */
+/** A Library item's cover through the one shared renderer, in the item's own category presentation. */
 @Composable
-fun PublicationCover(item: LibraryItem, modifier: Modifier = Modifier) {
-    com.d4guilar.shelfos.core.designsystem.PublicationCover(item.id, item.title, modifier)
+fun PublicationCover(item: LibraryItem, modifier: Modifier = Modifier, frame: Modifier = Modifier, whole: Boolean = false) {
+    com.d4guilar.shelfos.core.designsystem.PublicationCover(item.id, item.title, modifier, item.category, frame, whole)
 }

@@ -1,8 +1,9 @@
 # Phase 4.5 Implementation Plan — Metadata, Covers & Library Presentation
 
-Status (2026-10-15): **4.5A.1 Local Cover Artwork IMPLEMENTED on branch
-`phase-4.5/4.5a1-local-cover-artwork`, awaiting independent Codex High review (not
-accepted).** Implementation record and deviations: §33. No other slice is implemented.
+Status (2026-10-16): **4.5A.1 Local Cover Artwork MERGED (PR #44)**; record §33, physical UAT
+in 4.5G. **4.5A.2 Cover Presentation IMPLEMENTED / UNDER REVIEW on branch
+`phase-4.5/4.5a2-cover-presentation` (not accepted, not merged).** Record and deviations: §34.
+No other slice is implemented.
 Phase 4 (Notes and Knowledge Layer) is COMPLETE (Phase 4F acceptance merged
 in PR #42). Phase 4.5 is the next active milestone. Phase 5 remains Advanced PDF Ingestion;
 numbering after 4.5 is unchanged.
@@ -422,7 +423,7 @@ Rules:
     the loading frame and the generated fallback add no extra semantics; the
     focus border and selection state are conveyed by more than colour (existing
     `shelfAction` behavior).
-11. **4.5A.1 rendering until 4.5A.2 (proposed).** Until configurable presentation exists,
+11. **4.5A.1 rendering until 4.5A.2 (superseded by 4.5A.2, §34).** Until configurable presentation exists,
     stored artwork is shown with **Crop to fill** inside the *existing* fixed-shape frames
     (Library tile `aspectRatio(0.68f)`, Continue Reading, Search 52 dp, Notes 48 dp box and
     the details frame): it is never stretched or squashed. Full-cover details presentation
@@ -2333,3 +2334,62 @@ solid-CBR double native pass (ComicInfo, then the page) measured in 4.5G on the 
 cover map/query scale measured in 4.5G; plus the 4.5G items above (old-device latency and
 memory, RP5/controller, real process-kill recovery, API 26+ storage at runtime, frame/decode
 performance).
+
+## 34. 4.5A.2 implementation record (2026-10-16, implemented / under review)
+
+Branch `phase-4.5/4.5a2-cover-presentation` from `main` `340074f`. Not accepted or merged;
+next gate: independent Codex High review. Evidence: [VALIDATION](VALIDATION.md) "PHASE 4.5A.2".
+
+**Delivered.**
+- **Room v7** `cover_presentation_preference` (§23.6) exactly as planned: `scope` TEXT PK
+  (GLOBAL/BOOK/COMIC/MANGA/DOCUMENT), `shape`, `customWidth`, `customHeight`, `fit`; no CHECK.
+  Additive `MIGRATION_6_7` runs the exported `7.json` createSql
+  (`ShelfDatabase.COVER_PRESENTATION_CREATE_SQL`); no row is backfilled (no row = default).
+  `ShelfDatabase.ALL_MIGRATIONS` is the one chain used by the app and tests.
+- **Model and resolution** (`domain/library/CoverPresentation.kt`): `CoverShape`, `CoverFit`,
+  `CoverScope`; `coverPresentation(...)` is the validated constructor (Custom sides 1…20, ratio
+  1:2…2:1, otherwise rejected); `CoverPresentations.effective(category) = override ?:
+  (Documents → Original, else global)`; "Use default" deletes the override row. Stored rows with
+  any unknown or invalid value are ignored, so that scope uses its default. The repository
+  writes only presentations the validated constructor accepts. No theme code reads or writes it.
+- **One renderer, one geometry** (`core/designsystem/PublicationCover.kt`): `coverLayout`
+  (slot, frame, crop, neutral fill) and `artworkRect` (one uniform scale, centered; Original
+  stands on the bottom edge). The bitmap is drawn into that rectangle, so the tested math is the
+  rendered math. Fit paints the theme's `muted` surface; no blur, gradient or accent. Generated
+  covers are drawn natively at the frame (Original → 2:3). Loading frame, fallback, sampled
+  decode, LRU and file-name keys are unchanged; a shape change can re-decode the stored file at a
+  new sample size but never requests extraction.
+- **Original (D10):** fixed 2:3 slot; visible frame = native ratio clamped to 1:2…2:1,
+  bottom-aligned; the complete artwork is fitted inside the frame without fill; the tile's
+  selection border is applied to the frame (`frame` modifier), not the slot.
+- **Details (D11):** whole-artwork mode at the real (clamped) ratio, sized height-first: at most
+  40 % of the pane height and 352 dp (the old 240 dp × 0.68 ceiling) and never wider than the pane;
+  the hard-coded 0.68 is gone. The provenance line is unchanged.
+- **Cover expansion:** the start rectangle is the details cover (the only caller that supplies
+  bounds, unchanged); `coverExpandTarget` fits that same ratio into the reader area, so every
+  frame keeps one ratio and progress 1 shows the whole artwork. `PendingCoverTransition.proceed`,
+  navigation, back and the reduced-motion skip are unchanged.
+- **Consumers:** Library grid, Continue Reading, Search, details, transition and Notes (live
+  and orphan, using the row's category) all go through the shared renderer with the item's own
+  category, so Favorites and other cross-category views resolve per item. Shelves has no covers
+  yet (placeholder screen).
+- **Settings → Library appearance** (`feature/settings/LibraryAppearanceSettings.kt`): Cover
+  shape and Cover fit radio rows (`Role.RadioButton`), Custom width/height steppers (48 dp
+  targets, out-of-range steps disabled), fit disabled with an explanation in Original, and four
+  category rows (Use default / Category override, then the same controls). Enabling an override
+  starts from what the category already shows. EN/ES/PT-BR strings.
+
+**Deviations and notes.**
+1. Layout uses the stored image's dimensions (`storedWidthPx`/`storedHeightPx`, already in the
+   cover map), not the recorded source dimensions: DERIVED copies preserve the ratio, so the two
+   agree within rounding, and the stored ratio is what is drawn.
+2. "Progress 0 matches the tile" is met as "matches the cover the transition starts from": in
+   the current app only the details cover starts the transition, and it shows the whole artwork.
+3. On cold start the preference flow starts at the defaults until Room's first emission, so a
+   non-default shape can relayout once in the first frames. Not observed as a problem; measured
+   in 4.5G.
+4. There is no in-app reduce-motion setting; the system setting is honored as before. Shape
+   changes are instant (no animated reflow).
+5. Running-app responsiveness (rotation, tablet, short landscape), Classic/Dark comparison,
+   TalkBack, SM-T580 performance and RP5 controller UAT are 4.5G items; Compose window-size tests
+   cover the details pane here.

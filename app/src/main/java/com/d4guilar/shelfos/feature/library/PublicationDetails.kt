@@ -82,12 +82,15 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
         },
         dismissButton = { val cancel = { removing = false }; TextButton(cancel, Modifier.testTag("cancel_remove").activateOnGamepadConfirm(onActivate = cancel)) { Text(stringResource(R.string.action_cancel)) } })
     BoxWithConstraints(modifier.fillMaxHeight()) {
-        // The cover yields height first so the primary Read action stays in view on compact windows.
-        val coverWidth = minOf(240.dp, maxHeight * 0.4f * 0.68f)
+        // The complete artwork at its real ratio (D11), sized height-first: it yields height so the primary Read action
+        // stays in view on compact windows, and never overflows the pane's width.
+        val coverHeight = minOf(DETAILS_COVER_MAX_HEIGHT, maxHeight * 0.4f)
+        val coverMaxWidth = maxWidth - t.spacing.large * 2
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(t.spacing.large),
             verticalArrangement = Arrangement.spacedBy(t.spacing.medium)) {
-            PublicationCover(item, Modifier.width(coverWidth).align(Alignment.CenterHorizontally)
-                .onGloballyPositioned { coverBounds = it.boundsInWindow() })
+            PublicationCover(item, Modifier.sizeIn(maxWidth = coverMaxWidth, maxHeight = coverHeight)
+                .align(Alignment.CenterHorizontally).testTag("details_cover")
+                .onGloballyPositioned { coverBounds = it.boundsInWindow() }, whole = true)
             Text(item.title, style = MaterialTheme.typography.headlineMedium)
             if (item.creator.isNotBlank()) Text(item.creator, color = t.colors.secondary)
             Text("${stringResource(item.category.singularRes())} · ${item.format}", style = MaterialTheme.typography.bodySmall, color = t.colors.secondary)
@@ -122,6 +125,9 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
         }
     }
 }
+
+/** The previous fixed details cover was at most 240 dp wide at 0.68 (≈ 353 dp tall); kept as the height ceiling. */
+private val DETAILS_COVER_MAX_HEIGHT = 352.dp
 
 /** The technical cover provenance line: where the local artwork came from and whether it is an exact or reduced copy. */
 @Composable

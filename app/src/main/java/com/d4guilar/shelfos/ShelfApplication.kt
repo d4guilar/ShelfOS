@@ -25,6 +25,8 @@ import com.d4guilar.shelfos.core.reader.ManagedFontRepository
 import com.d4guilar.shelfos.domain.importing.ImportLeases
 import kotlinx.coroutines.*
 import com.d4guilar.shelfos.data.preferences.RoomThemeRepository
+import com.d4guilar.shelfos.data.preferences.RoomCoverPresentationRepository
+import com.d4guilar.shelfos.domain.library.CoverPresentations
 import com.d4guilar.shelfos.data.preferences.AppCompatLanguageRepository
 
 class ShelfApplication : Application() {
@@ -34,6 +36,7 @@ class ShelfApplication : Application() {
 class AppContainer(application: Application) {
     private val database by lazy { ShelfDatabase.create(application) }
     val themes by lazy { RoomThemeRepository(database.appearance()) }
+    val coverPresentation by lazy { RoomCoverPresentationRepository(database.coverPresentation()) }
     val languages by lazy { AppCompatLanguageRepository() }
     val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val files = PublicationFiles(application)
@@ -63,7 +66,8 @@ class AppContainer(application: Application) {
     /** What the shared cover renderer reads; one instance (one bitmap cache) per process. */
     val coverArtwork by lazy {
         CoverArtwork(covers.covers.stateIn<Map<String, CoverRef>?>(backgroundScope, SharingStarted.Eagerly, null),
-            { ref -> coverFiles.file(ref.libraryItemId, ref.fileName) }, coverScheduler::request, coverScheduler::reportMissing, covers::provenance)
+            { ref -> coverFiles.file(ref.libraryItemId, ref.fileName) }, coverScheduler::request, coverScheduler::reportMissing, covers::provenance,
+            presentations = coverPresentation.presentations.stateIn(backgroundScope, SharingStarted.Eagerly, CoverPresentations()))
     }
     val coverWork: Job = backgroundScope.launch {
         sourceMaintenance.join()

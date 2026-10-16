@@ -139,7 +139,8 @@ fun PublicationTile(item: LibraryItem, selected: Boolean, modifier: Modifier = M
     val t = LocalShelfTokens.current
     Column(modifier.testTag("publication_${item.id}").shelfAction(selected, onFocused = onFocus, onClick = onOpen)
         .padding(4.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        PublicationCover(item, Modifier.fillMaxWidth().border(
+        // The selection border decorates the visible artwork (in Original, not the empty part of the 2:3 slot).
+        PublicationCover(item, Modifier.fillMaxWidth(), frame = Modifier.border(
             t.surfaces.border, if (selected) t.colors.ink else androidx.compose.ui.graphics.Color.Transparent,
         ).padding(3.dp))
         Text(item.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)

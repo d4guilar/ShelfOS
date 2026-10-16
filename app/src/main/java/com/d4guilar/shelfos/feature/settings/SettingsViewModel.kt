@@ -10,17 +10,22 @@ import com.d4guilar.shelfos.core.localization.AppLanguage
 import com.d4guilar.shelfos.core.theme.ThemeId
 import com.d4guilar.shelfos.data.library.PrivateCopyStore
 import com.d4guilar.shelfos.data.preferences.AppLanguageRepository
+import com.d4guilar.shelfos.data.preferences.CoverPresentationRepository
+import com.d4guilar.shelfos.domain.library.CoverPresentation
+import com.d4guilar.shelfos.domain.library.CoverPresentations
+import com.d4guilar.shelfos.domain.library.MediaCategory
 import com.d4guilar.shelfos.data.preferences.ThemeRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class SettingsViewModel(private val repository: ThemeRepository, private val copies: PrivateCopyStore? = null,
-    private val languages: AppLanguageRepository? = null) : ViewModel() {
+    private val languages: AppLanguageRepository? = null, private val covers: CoverPresentationRepository? = null) : ViewModel() {
     private val _error = MutableStateFlow<UiMessage?>(null)
     val error = _error.asStateFlow()
     val language = languages?.language ?: MutableStateFlow(AppLanguage.SYSTEM_DEFAULT).asStateFlow()
@@ -41,6 +46,25 @@ class SettingsViewModel(private val repository: ThemeRepository, private val cop
                 repository.select(id)
                 _error.value = null
             } catch (failure: Exception) {
+                if (failure is CancellationException) throw failure
+                _error.value = UiMessage.Resource(R.string.settings_error_appearance_save_failed)
+            }
+        }
+    }
+
+    /** Library cover shape/fit; independent of [theme], which never reads or writes it. */
+    val coverPresentations = (covers?.presentations ?: flowOf(CoverPresentations())).catch { failure ->
+        if (failure is CancellationException) throw failure
+        _error.value = UiMessage.Resource(R.string.settings_error_appearance_load_failed)
+        emit(CoverPresentations())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, CoverPresentations())
+
+    fun setCoverGlobal(presentation: CoverPresentation) = saveCovers { covers?.setGlobal(presentation) }
+    fun setCoverOverride(category: MediaCategory, presentation: CoverPresentation?) = saveCovers { covers?.setOverride(category, presentation) }
+
+    private fun saveCovers(block: suspend () -> Unit) {
+        viewModelScope.launch {
+            try { block(); _error.value = null } catch (failure: Exception) {
                 if (failure is CancellationException) throw failure
                 _error.value = UiMessage.Resource(R.string.settings_error_appearance_save_failed)
             }

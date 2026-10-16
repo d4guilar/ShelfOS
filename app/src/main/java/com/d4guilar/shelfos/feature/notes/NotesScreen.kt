@@ -343,7 +343,7 @@ private fun NoteRow(row: NotesItem.Row, onOpen: () -> Unit, onEdit: () -> Unit, 
             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
             Box(Modifier.width(48.dp).testTag(if (source.live) "notes_cover" else "notes_cover_fallback")) {
                 // Shared renderer: a live item shows its cover; an orphan has no cover row (removed with its item) and stays generated.
-                PublicationCover(source.libraryItemId, publication, Modifier.fillMaxWidth())
+                PublicationCover(source.libraryItemId, publication, Modifier.fillMaxWidth(), source.category)
             }
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -1,6 +1,57 @@
 # Validation
 
-## PHASE 4.5A.1 — LOCAL COVER ARTWORK IMPLEMENTATION (2026-10-15, awaiting review)
+## PHASE 4.5A.2 — COVER PRESENTATION IMPLEMENTATION (2026-10-16, implemented / under review)
+
+**Not accepted, not merged.** Branch `phase-4.5/4.5a2-cover-presentation` from `main`
+`340074f` (4.5A.1 merged in PR #44). Environment: isolated API 24 x86_64 emulator
+`shelfos-api24` (`emulator-5554`) only. The owner's RP5 was attached over USB and was **not**
+used (every command named `-s emulator-5554`); the SM-T580 was not used. Instrumented classes
+ran one at a time as `adb -s emulator-5554 shell am instrument -w -r -e class <class>
+com.d4guilar.shelfos.test/androidx.test.runner.AndroidJUnitRunner` after `pm clear`, counted
+from the status stream (started / passed / failed).
+
+| Command / class | Tests | Pass | Fail | Result | What it proves |
+| --- | --- | --- | --- | --- | --- |
+| `gradlew.bat :app:testDebugUnitTest` | 635 | 635 | 0 | PASS | 58 result files; 618 before + 17 new |
+| JVM `domain.library.CoverPresentationTest` | 8 | 8 | 0 | PASS | Defaults (global 2:3 Crop; Books/Comics/Manga inherit; Documents Original; null category → global), category override and clearing, explicit Documents override, Custom 1…20 and 1:2…2:1 bounds, shape ratios, Original clamp with invalid-ratio fallback, unknown/invalid stored rows → defaults, repository writes validated rows, clears overrides, rejects invalid presentations |
+| JVM `core.designsystem.CoverLayoutTest` | 8 | 8 | 0 | PASS | Slot/frame per mode; Original 2:3 slot with clamped native frame (fit irrelevant); whole mode ignores the preference; crop and fit rectangles; no-stretch invariant over 4 frames × 7 ratios × crop/fit × bottom; derived-copy ratio; cover-expand target keeps one ratio for every interpolated frame |
+| JVM `CoverPresentationCopyTest` | 1 | 1 | 0 | PASS | All 21 new strings in EN/ES/PT-BR with identical placeholders; words translated |
+| `assembleDebug`, `assembleDebugAndroidTest` | — | — | — | PASS | Both APKs built |
+| `lintDebug` | — | — | — | PASS | 0 errors, 60 warnings (unchanged baseline) |
+| `CoverPresentationMigrationTest` | 3 | 3 | 0 | PASS | Real raw-SQL v6 file (READY, parked FAILED_PERMANENT and open-attempt cover rows, annotations, orphan snapshot, reader/appearance preferences, legacy bookmark) → v7: every pre-existing table byte-identical, new table empty, columns/PK/no CHECK, identical to a fresh v7 database and to `7.json`'s createSql; preferences survive closing and reopening and leave `publication_cover` unchanged; an unknown stored shape falls back; v1 and v5 files reach v7 |
+| `CoverPresentationUiTest` | 4 | 4 | 0 | PASS | Settings radio rows, Custom steppers with disabled out-of-range steps, category override → change → Use default, Original disables and explains fit; real D-pad Down/Center and controller `BUTTON_A` select rows and step Custom with no text entry; real JPEGs (2:1, 2:3, 1:3): Original frames follow the visible artwork, clamped, bottom-aligned; 1:1 Crop / 1:1 Fit / Custom 4:5 frames; focus kept across shape changes; generated cover at the shape; no extraction request from a shape change; details cover whole at 2:1 and clamped 1:2 in 360×420, 300×900 and 840×360 dp windows, ≤ 40 % height, Read in view without scrolling, under a 1:1 grid preference |
+| `CoverRendererUiTest` | 1 | 1 | 0 | PASS | 4.5A.1 renderer contract on the new renderer (default 2:3 frame) |
+| `CoverMigrationTest` | 2 | 2 | 0 | PASS | v5 → v7 chain; `publication_cover` unchanged |
+| `AnnotationMigrationTest` | 6 | 6 | 0 | PASS | First run 5/6: a stale "current version is 6" assertion; updated to 7 and rerun 6/6 |
+| `NotesSnapshotMigrationTest` | 4 | 4 | 0 | PASS | First run 3/4: same stale version assertion; updated and rerun 4/4 |
+| `LibraryPersistenceTest` | 10 | 10 | 0 | PASS | Full chain to v7 |
+| `BookmarkPersistenceTest` | 7 | 7 | 0 | PASS | Legacy bookmark path to v7 |
+| `FixedAnnotationRepositoryTest` | 8 | 8 | 0 | PASS | Includes "Room is at schema version 7" |
+| `RoomPersistenceTest`, `AppearanceRestorationTest` | 2 | 2 | 0 | PASS | Theme persistence unaffected |
+| `CoverLifecycleTest` | 12 | 12 | 0 | PASS | 4.5A.1 extraction lifecycle unchanged |
+| `NotesHubUiTest` | 20 | 20 | 0 | PASS | Notes rows on the new renderer (live and orphan) |
+| `NavigationSmokeTest` | 28 | 28 | 0 | PASS | Includes Search, details, the reader-entry cover transition, and `readerEntryTransitionIsSkippedUnderReducedMotion` |
+
+The regression classes ran on a build whose production code is identical to the final one
+(only test files and a reverted mutation changed afterwards). The three new and the 4.5A.1
+renderer classes were rerun on the final APKs: 4/4, 3/3, 1/1.
+
+**Mutation checks (temporary, reverted):** making Documents inherit the global default fails
+5 of 8 `CoverPresentationTest` tests; centering instead of bottom-aligning the Original frame
+fails `rendererShapesOriginalBoundsFocusAndGeneratedFallback` (bottom 322 px instead of 482 px).
+
+**Visual check:** one emulator screenshot of Settings → Library appearance (phone portrait,
+Classic): quiet radio rows matching Theme/Language, "Use default: 2:3 · Crop to fill" and
+"Documents — Use default: Original".
+
+**NOT RUN / deferred to 4.5G (physical acceptance):** phone landscape, tablet portrait and
+landscape and short-landscape handheld in the running app (covered here only by Compose window
+sizes for the details pane); Classic/Dark side-by-side; rotation and process death in the
+running app (Room reopen is tested; the expanded category row uses `rememberSaveable`); a
+TalkBack pass (semantics: radio role and selection, disabled state, stepper descriptions);
+SM-T580 performance with shape changes; RP5 controller UAT in the running app.
+
+## PHASE 4.5A.1 — LOCAL COVER ARTWORK IMPLEMENTATION (2026-10-15; merged in PR #44)
 
 **Not accepted.** Implementation evidence for the independent Codex High review. Branch
 `phase-4.5/4.5a1-local-cover-artwork` from `main` @ `0bf1063cc6c2e711b9135dda161216675cfe0ebb`.
@@ -29,7 +80,7 @@ instrumentation status stream (scripts in the session scratchpad, not committed)
 | Full instrumented regression (69 classes, build before two lint-only edits) | 447 started, 427 passed, 18 failed, 2 skipped by design. 17 failures are the documented API 24 WebView 52 limits (`EpubAnnotationsTest` 13/27, `EpubManagedFontLiveSwitchTest` 0/2, `EpubManagedFontProofTest` 0/1, `NotesEpubJumpTest` 1, identical to the Phase 4F API 24 record). 1 was `NotesHubUiTest` orphan-edit (Save not found); rerun on the final build **20/20** |
 | Final build rerun | `CoverMigrationTest` 2/2, `CoverExtractionCorpusTest` 7/7, `CoverLifecycleTest` 12/12, `CoverRendererUiTest` 1/1, `NotesHubUiTest` 20/20, `LibraryPersistenceTest` 10/10, `NavigationSmokeTest` 28/28 |
 
-## PHASE 4.5A.1 — TARGETED QA REMEDIATION 2 (2026-10-15, awaiting review)
+## PHASE 4.5A.1 — TARGETED QA REMEDIATION 2 (2026-10-15; merged in PR #44)
 
 **Not accepted.** Closes the second Codex High review (CHANGES REQUIRED: 2 MEDIUM, several
 LOW) on branch `phase-4.5/4.5a1-local-cover-artwork`, starting at `2f718ee`.

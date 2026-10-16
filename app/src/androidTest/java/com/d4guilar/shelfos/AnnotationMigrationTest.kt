@@ -94,7 +94,7 @@ class AnnotationMigrationTest {
             raw.use {
                 for ((table, order) in listOf("library_item" to "id", "reading_state" to "itemId", "reader_preference" to "itemId", "bookmark" to "id", "appearance_preference" to "id"))
                     assertEquals("$table must be unchanged by the migration", tables.getValue(table), LegacyDatabases.dump(it, table, order))
-                assertEquals(6, it.version)
+                assertEquals(7, it.version)
             }
 
             // The compatibility BookmarkRepository returns equivalent data in the exact legacy order.
@@ -185,7 +185,7 @@ class AnnotationMigrationTest {
         }
         assertFailsAndStaysV3(name, bookmarks.size) {
             Room.databaseBuilder(context, ShelfDatabase::class.java, name)
-                .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3, failingLate, ShelfDatabase.MIGRATION_4_5, ShelfDatabase.MIGRATION_5_6).build()
+                .addMigrations(ShelfDatabase.MIGRATION_1_2, ShelfDatabase.MIGRATION_2_3, failingLate, ShelfDatabase.MIGRATION_4_5, ShelfDatabase.MIGRATION_5_6, ShelfDatabase.MIGRATION_6_7).build()
         }
         // And the real migration still succeeds on that same untouched file afterwards.
         val db = LegacyDatabases.open(context, name)

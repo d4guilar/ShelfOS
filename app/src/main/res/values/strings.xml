@@ -131,6 +131,27 @@
 
     <!-- Settings -->
     <string name="settings_appearance_description">Choose a quiet backdrop for your library.</string>
+    <string name="settings_library_appearance_title">Library appearance</string>
+    <string name="settings_library_appearance_description">How covers look in the Library, Search and Notes. Your artwork files are never changed.</string>
+    <string name="settings_cover_shape">Cover shape</string>
+    <string name="settings_cover_fit">Cover fit</string>
+    <string name="cover_shape_original">Original</string>
+    <string name="cover_shape_ratio">%1$d:%2$d</string>
+    <string name="cover_shape_custom">Custom</string>
+    <string name="cover_shape_custom_ratio">Custom %1$d:%2$d</string>
+    <string name="cover_fit_crop">Crop to fill</string>
+    <string name="cover_fit_fit">Fit entire artwork</string>
+    <string name="settings_cover_width">Width</string>
+    <string name="settings_cover_height">Height</string>
+    <string name="content_desc_decrease">Decrease %1$s</string>
+    <string name="content_desc_increase">Increase %1$s</string>
+    <string name="settings_cover_per_category">Per category</string>
+    <string name="settings_cover_use_default">Use default</string>
+    <string name="settings_cover_category_override">Category override</string>
+    <string name="settings_cover_fit_original_note">Original always shows the whole artwork, so cover fit does not apply.</string>
+    <string name="settings_cover_summary">%1$s · %2$s</string>
+    <string name="settings_cover_default_summary">Use default: %1$s</string>
+    <string name="settings_cover_override_summary">Category override: %1$s</string>
     <string name="settings_theme_planned">Planned</string>
     <string name="settings_storage_title">Storage</string>
     <string name="settings_storage_description">When a provider can\'t offer lasting access, ShelfOS keeps a private offline copy. Removing a publication keeps its copy until you delete it here. Original files are never changed or deleted.</string>

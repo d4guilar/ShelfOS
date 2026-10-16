@@ -26,12 +26,13 @@ interface AppearanceDao {
     suspend fun save(preference: AppearancePreference)
 }
 
-@Database(entities = [AppearancePreference::class, LibraryEntity::class, ReadingEntity::class, ReaderPreferenceEntity::class, BookmarkEntity::class, AnnotationEntity::class, AnnotationSourceSnapshotEntity::class, PublicationCoverEntity::class], version = 6, exportSchema = true)
+@Database(entities = [AppearancePreference::class, LibraryEntity::class, ReadingEntity::class, ReaderPreferenceEntity::class, BookmarkEntity::class, AnnotationEntity::class, AnnotationSourceSnapshotEntity::class, PublicationCoverEntity::class, CoverPresentationPreferenceEntity::class], version = 7, exportSchema = true)
 abstract class ShelfDatabase : RoomDatabase() {
     abstract fun appearance(): AppearanceDao
     abstract fun library(): LibraryDao
     abstract fun annotations(): AnnotationDao
     abstract fun covers(): CoverDao
+    abstract fun coverPresentation(): CoverPresentationDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -99,10 +100,23 @@ abstract class ShelfDatabase : RoomDatabase() {
                 db.execSQL(PUBLICATION_COVER_CREATE_SQL)
             }
         }
+        /**
+         * v6 -> v7 (Phase 4.5A.2): purely additive. Creates the empty `cover_presentation_preference` table with EXACTLY the
+         * `createSql` Room exported to `schemas/.../7.json`. No existing table, row or index (covers included) is touched;
+         * an empty table means every scope uses its default, so nothing is backfilled.
+         */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(COVER_PRESENTATION_CREATE_SQL)
+            }
+        }
+        /** Must equal `7.json`'s `cover_presentation_preference.createSql` with the table name substituted (asserted by the migration test). */
+        const val COVER_PRESENTATION_CREATE_SQL = "CREATE TABLE IF NOT EXISTS `cover_presentation_preference` (`scope` TEXT NOT NULL, `shape` TEXT NOT NULL, `customWidth` INTEGER, `customHeight` INTEGER, `fit` TEXT NOT NULL, PRIMARY KEY(`scope`))"
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
         /** Must equal `6.json`'s `publication_cover.createSql` with the table name substituted (asserted by the migration test). */
         const val PUBLICATION_COVER_CREATE_SQL = "CREATE TABLE IF NOT EXISTS `publication_cover` (`libraryItemId` TEXT NOT NULL, `slot` TEXT NOT NULL, `status` TEXT NOT NULL, `failureReason` TEXT, `fileName` TEXT, `mimeType` TEXT, `representation` TEXT, `sourceWidthPx` INTEGER, `sourceHeightPx` INTEGER, `storedWidthPx` INTEGER, `storedHeightPx` INTEGER, `storedBytes` INTEGER, `localSource` TEXT, `sourceRef` TEXT, `sourceChoice` TEXT, `sourceRevision` TEXT, `extractorVersion` INTEGER NOT NULL, `attempts` INTEGER NOT NULL DEFAULT 0, `interruptions` INTEGER NOT NULL DEFAULT 0, `attemptStartedAt` INTEGER, `attemptExtractorVersion` INTEGER, `nextEligibleAt` INTEGER, `parked` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`libraryItemId`, `slot`), FOREIGN KEY(`libraryItemId`) REFERENCES `library_item`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
         fun create(context: Context): ShelfDatabase = Room.databaseBuilder(
             context.applicationContext, ShelfDatabase::class.java, "shelfos.db",
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build()
+        ).addMigrations(*ALL_MIGRATIONS).build()
     }
 }

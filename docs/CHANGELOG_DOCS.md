@@ -1,5 +1,13 @@
 # Documentation Changelog
 
+## Phase 4.5A.2 cover presentation implementation (2026-10-16, under review)
+
+- Plan: status line (4.5A.1 merged in PR #44; 4.5A.2 implemented / under review), §7 rule 11
+  marked superseded by 4.5A.2, new §34 implementation record and deviations.
+- ROADMAP, ARCHITECTURE, README: 4.5A.1 merged; 4.5A.2 implemented on its branch, not accepted.
+- VALIDATION: new 4.5A.2 section with commands, executed counts per class, mutation checks
+  and NOT RUN items.
+
 ## Phase 4.5A.1 targeted QA remediation (2026-10-15, awaiting review)
 
 - VALIDATION: the first remediation's table (`2f718ee`) is replaced. It reported an
