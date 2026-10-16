@@ -62,7 +62,7 @@ class MetadataCoordinatorTest {
         val store = FakeStore().apply { add("b", "the book") }
         store.apply("b", listOf(Proposed(MetadataField.IDENTIFIERS, listOf(isbn), FieldProvenance(MetadataOrigin.EMBEDDED))))
         val provider = FakeProvider("fake", setOf(MediaCategory.BOOK), byIdentifier = listOf(match), bySearch = listOf(match.copy(providerRef = "never")))
-        val result = MetadataEnrichmentService(listOf(provider), store) { 42 }.enrich(item("b"))
+        val result = enrichment(listOf(provider), store) { 42 }.enrich(item("b"))
         assertEquals(MetadataEnrichmentService.Outcome.APPLIED, result.outcome)
         assertEquals("search is not needed after a safe identifier match", listOf("lookup"), provider.calls)
         val m = store.items.getValue("b")
@@ -78,7 +78,7 @@ class MetadataCoordinatorTest {
         store.apply("b", userEdits(MetadataValues(), MetadataValues(publisher = "Mine", identifiers = listOf(isbn)), 1) +
             listOf(Proposed(MetadataField.IDENTIFIERS, listOf(isbn), FieldProvenance(MetadataOrigin.EMBEDDED))))
         val before = store.items.getValue("b")
-        MetadataEnrichmentService(listOf(FakeProvider("fake", setOf(MediaCategory.BOOK), byIdentifier = listOf(match))), store).enrich(item("b"))
+        enrichment(listOf(FakeProvider("fake", setOf(MediaCategory.BOOK), byIdentifier = listOf(match))), store).enrich(item("b"))
         val after = store.items.getValue("b")
         assertEquals("My Title", after.title)
         assertEquals("Mine", after.values.publisher)
@@ -94,29 +94,29 @@ class MetadataCoordinatorTest {
         val store = FakeStore().apply { add("b", "Saga", MetadataOrigin.EMBEDDED, "Brian K. Vaughan") }
         val medium = MetadataCandidate("fake", "s1", "Saga", "Vaughan, Brian K.", MediaCategory.BOOK, MetadataValues(publisher = "Image"))
         val before = store.items.getValue("b")
-        val result = MetadataEnrichmentService(listOf(FakeProvider("fake", setOf(MediaCategory.BOOK), bySearch = listOf(medium))), store).enrich(item("b"))
+        val result = enrichment(listOf(FakeProvider("fake", setOf(MediaCategory.BOOK), bySearch = listOf(medium))), store).enrich(item("b"))
         assertEquals(MetadataEnrichmentService.Outcome.NEEDS_REVIEW, result.outcome)
         assertEquals(before, store.items.getValue("b"))
         val low = MetadataCandidate("fake", "s2", "Saga", "Someone Else")
         assertEquals(MetadataEnrichmentService.Outcome.NO_MATCH,
-            MetadataEnrichmentService(listOf(FakeProvider("fake", setOf(MediaCategory.BOOK), bySearch = listOf(low))), store).enrich(item("b")).outcome)
+            enrichment(listOf(FakeProvider("fake", setOf(MediaCategory.BOOK), bySearch = listOf(low))), store).enrich(item("b")).outcome)
         assertEquals(before, store.items.getValue("b"))
     }
 
     @Test fun eligibilityDocumentsFailingProvidersAndRemovedItems() = runBlocking {
         val store = FakeStore().apply { add("d", "Report"); add("b", "Book") }
         val comicsOnly = FakeProvider("comics", setOf(MediaCategory.COMIC))
-        assertEquals(MetadataEnrichmentService.Outcome.SKIPPED, MetadataEnrichmentService(listOf(comicsOnly), store).enrich(item("b")).outcome)
+        assertEquals(MetadataEnrichmentService.Outcome.SKIPPED, enrichment(listOf(comicsOnly), store).enrich(item("b")).outcome)
         assertTrue("a provider for another category is never asked", comicsOnly.calls.isEmpty())
         val docs = FakeProvider("docs", setOf(MediaCategory.DOCUMENT), bySearch = listOf(MetadataCandidate("docs", "r", "Report", category = MediaCategory.DOCUMENT)))
-        assertEquals(MetadataEnrichmentService.Outcome.NO_MATCH, MetadataEnrichmentService(listOf(docs), store).enrich(item("d", MediaCategory.DOCUMENT)).outcome)
+        assertEquals(MetadataEnrichmentService.Outcome.NO_MATCH, enrichment(listOf(docs), store).enrich(item("d", MediaCategory.DOCUMENT)).outcome)
         assertTrue("Documents are never searched by title", "search" !in docs.calls)
         val failing = FakeProvider("down", setOf(MediaCategory.BOOK), fail = true)
         val working = FakeProvider("fake", setOf(MediaCategory.BOOK), byIdentifier = listOf(match))
         store.apply("b", listOf(Proposed(MetadataField.IDENTIFIERS, listOf(isbn), FieldProvenance(MetadataOrigin.EMBEDDED))))
         assertEquals("one failing provider never fails the others", MetadataEnrichmentService.Outcome.APPLIED,
-            MetadataEnrichmentService(listOf(failing, working), store).enrich(item("b")).outcome)
-        assertEquals(MetadataEnrichmentService.Outcome.SKIPPED, MetadataEnrichmentService(listOf(working), store).enrich(item("gone")).outcome)
+            enrichment(listOf(failing, working), store).enrich(item("b")).outcome)
+        assertEquals(MetadataEnrichmentService.Outcome.SKIPPED, enrichment(listOf(working), store).enrich(item("gone")).outcome)
         assertFalse("a late result for a removed item is dropped", "gone" in store.items)
     }
 

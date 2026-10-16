@@ -4,8 +4,9 @@
 
 **Accepted** 2026-10-16 (Phase 4.5C.0, planning only) via plan D23, with D30 approved in its
 corrected form (`docs/PHASE_4_5_IMPLEMENTATION_PLAN.md` §31). 4.5C.1 may proceed without D1;
-D1 and D31 remain open gates for production Open Library access (4.5C.2). Nothing is
-implemented; no network, manifest, dependency or Room change is authorized by this ADR.
+D1 and D31 remain open gates for production Open Library access (4.5C.2). The registry,
+policy engine and clustering are implemented with fakes in 4.5C.1; no network, manifest, dependency or
+Room change is authorized by this ADR.
 
 ## Context
 
@@ -18,7 +19,7 @@ ShelfOS is open source, free-core, donation-supported with optional paid cosmeti
 every provider is assessed as a commercial-model distributed app, and a public endpoint is not
 a redistribution licence.
 
-## Decision (proposed)
+## Decision
 
 1. Replace the single-provider design with a **compiled-in provider registry**. A provider is
    active only when its `termsStatus` is `APPROVED` (set only by an approved decision row), the

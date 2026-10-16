@@ -1,8 +1,10 @@
 # Books Metadata & Cover Providers — Multi-Provider Plan (Phase 4.5C.0)
 
-Status: **PLANNING ONLY** (2026-10-16). Nothing here is implemented or authorized. No network
-call, `INTERNET` permission, manifest change, dependency or Room change exists or is approved
-by this document. Decision record: [ADR-0026](../adr/0026-multi-provider-books-metadata.md).
+Status (2026-10-16): planning accepted in 4.5C.0 (PR #47, ADR-0026 Accepted). **4.5C.1 infrastructure
+(registry, policy engine, clustering and ranking, fakes only) is implemented on branch
+`phase-4.5/4.5c1-provider-infrastructure`, pending independent review**; see plan §36. 4.5C.2 and
+later are not implemented and Open Library D1/D31 remain unresolved. No network call, `INTERNET`
+permission, manifest change, dependency or Room change exists or is approved by this document. Decision record: [ADR-0026](../adr/0026-multi-provider-books-metadata.md).
 Supersedes the single-provider "Open Library primary" framing of
 [`PHASE_4_5_IMPLEMENTATION_PLAN.md`](../PHASE_4_5_IMPLEMENTATION_PLAN.md) §11; every earlier
 provider rejection and authorization decision (§14, D1, D2, D5–D7) is **preserved unchanged**.
@@ -226,6 +228,10 @@ stay 4.5F). Cost: pulls the USER-slot write path and picker accessibility into 4
   knowledge only); every "other independent" row.
 
 ## 6. Slice plan and approval gates
+
+*Implementation note (4.5C.1):* search runs only for an item without an ISBN (§3.2 as written);
+the 4.5B coordinator's "search after an ISBN miss" was removed.
+
 
 | Slice | Content | Gate before start |
 | --- | --- | --- |
