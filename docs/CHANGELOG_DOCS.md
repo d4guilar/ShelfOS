@@ -1,5 +1,11 @@
 # Documentation Changelog
 
+## Phase 4.5C.0 remaining decisions recorded (2026-10-16, planning only)
+
+- D22 conditional (LoC metadata-only; endpoint, limits, terms unverified), D24/D26/D27
+  rejected as default/rejected, D25 conditional BYOK-only, D28 optional 4.5C.5, D29 approved.
+  D1 and D31 remain open authorization gates; D23/D30 unchanged.
+
 ## Phase 4.5C.0 decisions recorded (2026-10-16, planning only)
 
 - D23 approved (ADR-0026 Accepted) and D30 approved as corrected; D1/D31 remain unresolved
