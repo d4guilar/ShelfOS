@@ -23,8 +23,8 @@ provider rejection and authorization decision (§14, D1, D2, D5–D7) is **prese
 | Provider | Kind | Covers | Auth | Limits | Cache / storage | Commercial-model fit | Verdict |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Open Library** | Independent catalog (Internet Archive), editions + works | Yes (S/M/L; cover-id/OLID unlimited, ISBN/OCLC/LCCN 100 per IP per 5 min) | None; `User-Agent` with app + contact; 3x limit when identified | 1 req/s anonymous, 3 req/s identified. CONFIRMED | "Cache responses whenever possible." Covers API "intended for displaying covers on public facing websites and not for bulk download"; "do not crawl". CONFIRMED | API "not meant for high-traffic commercial infrastructure"; wants "useful, time-sensitive requests on behalf of human users"; no hundreds of single-book requests; violations may be rate limited/blocked. Distributed-client use **not** stated as approved | **CONDITIONAL — D1 unchanged** (not approved) |
-| **Library of Congress** (loc.gov JSON/YAML API) | Independent national catalog, bibliographic | No book-cover service found; image services are for digitized collections | None (no key) | JSON/YAML API **20 req/min, 1 h block**; MARCXML 30/min, **72 h block**; 429 and HTML CAPTCHA possible below limits. CONFIRMED | Not stated on the limits page | Limits page has no terms/attribution; "Legal" page **not read**. Catalog moved to a new platform 2025-06-30 and API data is "not fully synced" — ISBN coverage may be incomplete. CONFIRMED | **CONDITIONAL, metadata-only secondary** — needs its terms read (D22) |
-| **Gutendex** | Third-party wrapper of Project Gutenberg metadata (public domain only) | No cover field documented | None | Not documented | Not documented. Docs: "for long-term use, please run your own server" | No terms published; hobby-hosted. Scope limited to public-domain texts | **REJECTED as a client dependency** (public instance); out of scope for Books of the user's own files |
+| **Library of Congress** (loc.gov JSON/YAML API; catalog SRU is a separate service, §3.11) | Independent national catalog, bibliographic | No book-cover service found; image services are for digitized collections | None (no key) | JSON/YAML API **20 req/min, 1 h block**; MARCXML 30/min, **72 h block**; 429 and HTML CAPTCHA possible below limits. CONFIRMED | Not stated on the limits page | Limits page has no terms/attribution; "Legal" page **not read**. Catalog moved to a new platform 2025-06-30 and API data is "not fully synced" — ISBN coverage may be incomplete. CONFIRMED | **CONDITIONAL, metadata-only secondary** — needs its terms read (D22) |
+| **Gutendex** | Third-party wrapper of Project Gutenberg metadata (public domain only) | No cover field documented, but the live `formats` map carries an `image/jpeg` entry (§3.12) | None | Not documented | Not documented. Docs: "for long-term use, please run your own server" | No terms published; hobby-hosted. Scope limited to public-domain texts | **REJECTED as a client dependency** (public instance); out of scope for Books of the user's own files |
 | **Hardcover** | Community book platform, GraphQL | Yes | Personal account token, "not meant to be shared"; may be reset "without notice" in beta | Official page 403 in this pass; 429 documented; "60/min" is third-party, UNCONFIRMED | Not reviewed | Docs say you can't use the API to access/use someone else's data; ownership rules match site content; third party reports "same licensing as OpenLibrary" — UNCONFIRMED. Beta | **RESEARCH → BYOK-only candidate** (D25); never default |
 | **OverDrive** | Commercial library-lending platform | Yes (Discovery API) | Vendor/partner request form; OverDrive issues client key **and secret** | Not read | Terms not read | Approval is manual; Libby/Sora branding required when titles shown; secret cannot ship in an open-source APK; reflects library collections, not an independent catalog | **REJECTED for default** (D26) |
 | **Google Books** | Commercial catalog | Thumbnails | Key required for public data (CONFIRMED); ToS §4(b)(1) bars credentials in open-source projects (read 2026-10-15) | Per-key | §5(e) no permanent copies (read 2026-10-15) | "You may not charge users any fee for the use of your application" (CONFIRMED again 2026-10-16) — ShelfOS Plus conflicts | **REJECTED — D2 unchanged.** No new evidence to reopen |
@@ -94,9 +94,12 @@ format, pages, volume)`. Clustering: (1) group by shared normalized ISBN-13 (ISB
 (2) merge clusters that share a provider-neutral identifier (LCCN/OCLC) *and* agree on
 title+creator; (3) never merge across ISBNs by title alone — different editions stay separate
 **edition candidates**, grouped under a work only for display. Existing `MetadataMatcher` tiers
-(plan §15) apply per cluster; independent providers agreeing on the same ISBN **corroborates**
-(raises confidence only from MEDIUM→VERY_HIGH if no contradiction); disagreement demotes both
-to MEDIUM (plan rule: two disagreeing VERY_HIGH demote). Cover duplicates collapse by
+(plan §15) apply per cluster; independent providers agreeing on the same ISBN **ranks and corroborates** candidates
+(ordering and a tie-break signal), but **never bypasses** the 4.5B edition, identifier and
+contradiction rules: tier assignment, hard rejections, language/volume contradictions and the
+"title alone is never VERY_HIGH" safety rules stay exactly as in plan §15. Agreement cannot
+lift a candidate the matcher would cap, and disagreement still demotes both (two disagreeing
+VERY_HIGH candidates demote). Cover duplicates collapse by
 identical bytes/URL, then by perceptual hash of the thumbnails already downloaded for the picker
 (no extra downloads for hashing).
 
@@ -109,20 +112,28 @@ a candidate and reverts non-USER fields it supplied (plan §16).
 
 ### 3.7 Cover size and quality rules
 
-Candidate must: decode to a valid bitmap; have shortest edge ≥ 200 px for automatic apply
-(≥ 120 px selectable but flagged "low resolution" in the picker); aspect ratio within 1:2…2:1;
-not be a provider placeholder (known blank sizes, 1×1, near-uniform image, `?default=false` /
-404 handling for Open Library, ids ≤ 0 dropped per plan §15); respect the 40 Mpx decode cap and
-bounded storage. Prefer the largest provider size that fits the storage policy; thumbnails
-(`-M`/small) for the picker, full size only on select/auto-apply. A candidate lower resolution
-than the existing local cover never auto-replaces it.
+Candidate must: decode to a valid bitmap; not be a provider placeholder (known blank sizes,
+1×1, near-uniform image, `?default=false` / 404 handling for Open Library, ids ≤ 0 dropped per
+plan §15); respect the 40 Mpx decode cap and bounded storage. **Automatic apply uses the
+accepted plan §17 "high quality" gate unchanged**: at least the existing cover's pixel area or
+a provider-large size (proposed ≥ 600 px long edge), correct orientation (portrait unless the
+local art is landscape), VERY_HIGH match. In the **manual picker**, smaller images remain
+selectable but are flagged "low resolution". Prefer the largest provider size that fits the
+storage policy; thumbnails (`-M`/small) for the picker, full size only on select/auto-apply.
+Previous artwork is kept until the new file is fully downloaded and decoded.
 
 ### 3.8 Automatic enrichment vs manual selection
 
-- **Automatic**: only VERY_HIGH (exact ISBN-13 + no contradiction, optionally corroborated);
-  fills unset non-USER text fields; applies a cover only when the item has **no real local
-  cover** (generated fallback or weak art, plan §17) and passes §3.7. D7 stands: an online
-  cover never silently replaces an embedded EPUB/CBZ/CBR cover.
+- **Automatic**: only VERY_HIGH (exact ISBN-13 + no contradiction; provider agreement may
+  rank/corroborate but does not change the tier); fills unset non-USER text fields.
+- **Cover precedence is the accepted plan §17 order, restored:**
+  `USER > confident high-quality ONLINE > usable embedded/LOCAL > generated`. For **Books**, a
+  VERY_HIGH online cover passing the §3.7 gate may therefore replace a usable embedded cover
+  (e.g. an EPUB cover) automatically; this is not limited to items without a local cover.
+- **Comics and Manga keep D7**: an online cover does not replace an embedded CBZ/CBR
+  first-page/ComicInfo cover automatically (it also requires the exact issue/volume match, and
+  the default is off); replacement there is manual-picker only unless the administrator
+  changes D7. Ambiguous remote artwork never replaces good local artwork.
 - **Manual**: everything else (MEDIUM, search-only, series images, cross-provider disagreement,
   replacing a real local cover). Candidates are shown, never applied silently.
 - A user-selected cover (USER slot) is never replaced by any automatic path.
@@ -142,6 +153,27 @@ malformed, terms-disabled). Failures are recorded per provider/item with retry-a
 thrown into import, library list or reader, and never convert to a permanent `NONE` (plan
 §23.3). Books, Comics and Manga share the same pipeline; per-category matching rules (plan
 §12–13) are unchanged, and Comics remain gated on the Metron path (D5/D19).
+
+### 3.11 Library of Congress access paths
+
+Two different services exist and must not be conflated. (a) The **loc.gov JSON/YAML API**
+(loc.gov/apis; limits in §2) serves LoC *collections* data built for the loc.gov website; the
+page does not mention ISBN search. (b) The **catalog** (catalog.loc.gov) with "Search/Retrieval
+via URL" (SRU)/Z39.50 is listed by LoC as an additional service "maintained by the Library
+separately from the loc.gov API"; its protocol, current status, limits and terms were **not
+verified** (the apis page does not name SRU or give dates). Which path is the right ISBN
+lookup for D22 is unresolved: 4.5C.4 must identify the supported ISBN path, read its
+limits/terms and prove coverage with ISBN fixtures before any approval.
+
+### 3.12 Gutendex image/jpeg availability
+
+The Gutendex docs define `formats` as a MIME-type→URL map and name no cover field. A live query
+(2026-10-16, *Pride and Prejudice*, id 1342) returned an `image/jpeg` entry pointing to
+`gutenberg.org/cache/epub/1342/pg1342.cover.medium.jpg`, a Project Gutenberg generated cover.
+This is **observed, not documented**: presence may vary per book and it is not necessarily the
+publisher's edition cover. It does not change D24 (no published terms or limits; the public
+instance asks for self-hosting; public-domain texts only) and is not a basis for an ISBN
+edition cover.
 
 ## 4. Unified Find Cover experience (Phase 4.5F design)
 
@@ -198,8 +230,8 @@ stay 4.5F). Cost: pulls the USER-slot write path and picker accessibility into 4
 | Slice | Content | Gate before start |
 | --- | --- | --- |
 | **4.5C.0** | This planning pass + ADR-0026 | **G0** administrator approves plan/ADR (D22–D31) |
-| **4.5C.1** | `ProviderRegistry`/descriptors, rate-limit/concurrency/breaker engine, cross-provider clustering + corroboration, all **fake providers**; no network, no manifest, no Room | G0 |
-| **4.5C.2** | `INTERNET` permission, `core.network` helper (D14), Settings master + per-provider toggles and disclosure, **Open Library** ISBN-first provider (metadata only, then cover ids) | **G1** D1 closed (OL written clarification), D4 contact string, D15; **G2** manifest/privacy review |
+| **4.5C.1** | `ProviderRegistry`/descriptors, rate-limit/concurrency/breaker engine, cross-provider clustering + ranking, all **fake providers**; no network, no manifest, no Room. **Independent of Open Library production approval (D1)**: no Open Library code or endpoint | G0 only |
+| **4.5C.2** | `INTERNET` permission, `core.network` helper (D14), Settings master + per-provider toggles and disclosure, **Open Library** ISBN-first provider (metadata only, then cover ids). **Remains gated** | **G1** D1 closed (OL written clarification), D4 contact string, D15; **G2** manifest/privacy review |
 | **4.5C.3** | Response cache, `ONLINE` cover slot writes, automatic VERY_HIGH apply, wrong-match rejection, persisted MEDIUM suggestion | G1; **G3** Room version/shape approved (D16/D17) |
 | **4.5C.4** (optional) | Library of Congress metadata-only provider | **G1** D22 closed after reading LoC terms |
 | **4.5C.5** (optional) | Minimal picker (§4) + USER-slot write | D28; **G4** UX scope approved |

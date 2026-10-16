@@ -1,5 +1,11 @@
 # Documentation Changelog
 
+## Phase 4.5C.0 planning revisions (2026-10-16, planning only)
+
+- D30 corrected (agreement ranks/corroborates, never bypasses 4.5B matching); Books cover
+  precedence restored to plan §17 with D7 kept for Comics/Manga; LoC JSON vs SRU and Gutendex
+  `image/jpeg` clarified; 4.5C.1 made independent of D1 while 4.5C.2 stays gated.
+
 ## Phase 4.5C.0 multi-provider Books planning (2026-10-16, planning only)
 
 - New `features/BOOK_PROVIDERS.md`: provider comparison (Open Library, Library of Congress,
