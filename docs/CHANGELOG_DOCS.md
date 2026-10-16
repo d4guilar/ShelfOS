@@ -1,5 +1,31 @@
 # Documentation Changelog
 
+## Phase 4.5C.0 remaining decisions recorded (2026-10-16, planning only)
+
+- D22 conditional (LoC metadata-only; endpoint, limits, terms unverified), D24/D26/D27
+  rejected as default/rejected, D25 conditional BYOK-only, D28 optional 4.5C.5, D29 approved.
+  D1 and D31 remain open authorization gates; D23/D30 unchanged.
+
+## Phase 4.5C.0 decisions recorded (2026-10-16, planning only)
+
+- D23 approved (ADR-0026 Accepted) and D30 approved as corrected; D1/D31 remain unresolved
+  gates for production Open Library access; 4.5C.1 authorized independently of D1, no live
+  HTTP. D22, D24–D29 not changed in this commit.
+
+## Phase 4.5C.0 planning revisions (2026-10-16, planning only)
+
+- D30 corrected (agreement ranks/corroborates, never bypasses 4.5B matching); Books cover
+  precedence restored to plan §17 with D7 kept for Comics/Manga; LoC JSON vs SRU and Gutendex
+  `image/jpeg` clarified; 4.5C.1 made independent of D1 while 4.5C.2 stays gated.
+
+## Phase 4.5C.0 multi-provider Books planning (2026-10-16, planning only)
+
+- New `features/BOOK_PROVIDERS.md`: provider comparison (Open Library, Library of Congress,
+  Gutendex, Hardcover, OverDrive, Google Books, bookcover-api), registry/caching/dedup/cover
+  rules, unified Find cover design, slice gates. New ADR-0026 (Proposed).
+- Plan §11, 4.5C slice and decisions D22–D31; ROADMAP and METADATA_ENRICHMENT pointers. No
+  earlier rejection or authorization changed; no code, manifest, dependency or Room change.
+
 ## Phase 4.5B targeted QA remediation (2026-10-16, under review)
 
 - Plan §35: H-1 editor snapshot fix, L-1 corrected file-name inference paragraph, L-3 keyset

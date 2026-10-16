@@ -166,7 +166,8 @@ MetadataProvider
 ```
 
 Comic/Manga providers are `MetadataProvider` implementations scoped to those categories, not
-separate abstractions. Open Library is promising but conditional (not production-approved
+separate abstractions. Phase 4.5C.0 planning (multi-provider registry, comparison, Find cover design) lives in
+[`BOOK_PROVIDERS.md`](BOOK_PROVIDERS.md). Open Library is promising but conditional (not production-approved
 until its terms review passes); Google Books is rejected for Phase 4.5 (see §10).
 
 A `MetadataEnrichmentService` coordinates providers and produces candidates.

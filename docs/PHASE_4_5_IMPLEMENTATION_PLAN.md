@@ -537,6 +537,16 @@ interface MetadataProvider {
 | Secondary | Google Books | **REJECTED FOR PHASE 4.5** unless explicit written Google permission resolves its usage restrictions (§14, D2). Supersedes the earlier "Google Books fallback" direction |
 | Optional BYOK | ISBNdb (paid key), Hardcover (personal beta token) | RESEARCH; later, not Phase 4.5 acceptance scope |
 
+**Revised 2026-10-16 (4.5C.0, planning only):** Books are now planned as a modular
+multi-provider system (registry, per-provider enablement, ISBN-first lookup, cross-provider
+clustering, unified Find cover). Open Library is one registry entry, not the architecture.
+Library of Congress is a conditional metadata-only candidate; Gutendex, OverDrive (default),
+bookcover-api/Goodreads and Google Books are rejected; Hardcover is BYOK research. Full
+comparison, architecture, Find cover design and slice gates:
+[`features/BOOK_PROVIDERS.md`](features/BOOK_PROVIDERS.md); decision record
+[ADR-0026](adr/0026-multi-provider-books-metadata.md) (Proposed). All earlier rejections and
+authorization decisions stand. The Open Library flow below is still conditional on D1.
+
 Open Library flow (proposed, only after D1): ISBN → `/isbn/{isbn}.json` (edition) → work for
 description / subjects → cover via the edition's `covers` id
 (`covers.openlibrary.org/b/id/{id}-L.jpg`, not the per-IP rate-limited ISBN cover path;
@@ -1956,18 +1966,23 @@ from `main` after 4.5A.1 merges.
   migration test; import latency unchanged.
 - **Review:** Codex High.
 
-### 4.5C — Books
+### 4.5C — Books (revised 2026-10-16: multi-provider; see `features/BOOK_PROVIDERS.md` §6)
 
-- **Scope:** (requires D1, D4, D14, D15) `core.network` helper; manifest `INTERNET`;
-  Settings online toggle + disclosure; Open Library provider (ISBN-first, search fallback,
-  edition covers by cover id); rate limiting/circuit breaker; automatic VERY_HIGH apply to
-  unresolved fields and §17 cover improvement; persisted MEDIUM suggestions; attribution.
-  **Authorization gate:** Open Library production approval (D1) must be closed first. Google
-  Books is rejected and is not built.
-- **Non-goals:** comic/manga-specific providers; manual picker UI (4.5F); Google Books.
-- **Validation:** fixtures, fake HTTP, offline/429/timeouts, wrong-match corpus; one
-  optional isolated manual live check.
-- **Review:** Codex High (network/privacy/terms).
+- **Sub-slices (each its own branch/review):** 4.5C.1 registry + policy engine + clustering
+  with fakes only (no network); 4.5C.2 `INTERNET`, `core.network`, Settings master and
+  per-provider toggles + disclosure, Open Library ISBN-first provider; 4.5C.3 response cache,
+  `ONLINE` cover slot, automatic VERY_HIGH apply, persisted MEDIUM suggestion (Room version
+  chosen then); 4.5C.4 optional Library of Congress metadata-only provider; 4.5C.5 optional
+  minimal picker (list + source chip + "Use this cover", USER-slot write).
+- **Authorization gates:** G0 plan/ADR-0026 approved (D22–D31); G1 per-provider approval (Open
+  Library = D1, with D4, D14, D15; LoC = D22); G2 manifest/privacy review before 4.5C.2; G3
+  Room shape before 4.5C.3; G4 picker scope before 4.5C.5. Google Books, OverDrive default,
+  Gutendex public instance and bookcover-api/Goodreads are rejected and not built.
+- **Non-goals:** comic/manga-specific providers; the full Find cover grid and device picker
+  (4.5F); any rejected provider; bulk library enrichment.
+- **Validation:** fixtures, fake HTTP, offline/429/CAPTCHA/timeouts, cross-provider
+  disagreement and wrong-match corpus; one optional isolated manual live check per provider.
+- **Review:** Codex High (network/privacy/terms) per sub-slice.
 
 ### 4.5D — Manga
 
@@ -2099,6 +2114,16 @@ Stop and ask before implementing any slice whose decision below is unresolved.
 | D18 | Is 4.5A split into 4.5A.1 (local artwork, v6) and 4.5A.2 (presentation, v7) as two PRs | **Resolved by the administrator (remediation)**; recorded here | 4.5A.1, 4.5A.2 |
 | D19 | **OPEN (undecided).** Metron/CC BY-SA licensing implications, open legal questions (no conclusion drawn): ShareAlike effect on cached data, exports/backups, the open-source repository and the paid theme model; attribution placement; whether any Metron-hosted image may be used | Owner/counsel review before 4.5E; keep provider data and covers out of exports meanwhile | 4.5E |
 | D20 | **APPROVED for the initial 4.5A.1 policy.** Local-cover storage: **no automatic eviction** of persisted local publication artwork; storage bounded **per item** (≈ 512 KiB per cover); a low-storage write guard (≥ 512 MiB free after the write, stricter Android conditions win; on failure skip the write, keep existing artwork and the generated fallback, record a retryable `STORAGE_FULL`, no repeated attempts until a storage-recovery signal); never delete covers to make room; no auto-regeneration of lost artwork on every Library display; **no adaptive total-cache quota in 4.5A.1**; worst-case planning bound 2,000 × 512 KiB ≈ 1 GiB (§18.1). The earlier adaptive-quota recommendation is **SUPERSEDED** | Recorded. Future (not now): Settings storage usage, explicit cleanup controls, adaptive quota only after measurements | 4.5A.1 |
+| D22 | **CONDITIONAL — approved by the administrator (2026-10-16) as a metadata-only candidate; no production integration until the actual ISBN-capable catalog endpoint, usage limits and terms are verified.** Library of Congress as a metadata-only secondary provider: identify the supported ISBN path (loc.gov JSON/YAML API vs the separate catalog SRU service, `BOOK_PROVIDERS.md` §3.11), read its legal/reuse terms (not read in 4.5C.0), confirm ISBN coverage after the 2025-06-30 catalog migration, accept 20 req/min and 1 h block handling | Approve only after the terms are read and an ISBN fixture shows useful coverage; otherwise drop | 4.5C.4 |
+| D23 | **APPROVED by the administrator (2026-10-16), with the corrections already implemented.** ADR-0026 (registry, per-provider enablement, clustering, ranking/corroboration, cache/ONLINE-slot rules). 4.5C.1 needs only this approval, **not** D1 | Recorded; **4.5C.1 is authorized to proceed independently of D1, with no live HTTP integration** | 4.5C.1 |
+| D24 | **REJECTED AS DEFAULT (administrator, 2026-10-16): do not depend on the public hosted service; retain for future specialist research.** Gutendex: public instance has no published terms/limits/cover field and asks for self-hosting; public-domain scope only (an observed `image/jpeg` Gutenberg-generated cover URL does not change this, `BOOK_PROVIDERS.md` §3.12) | Recorded; not a default or client dependency | 4.5C |
+| D25 | **CONDITIONAL / BYOK ONLY (administrator, 2026-10-16): never a default provider; official API terms must be verified before integration.** Hardcover: personal-token BYOK only; official rules/limits not read (403); beta, tokens may reset; "someone else's data" restriction | Research; reconsider after reading official API rules; never default | later |
+| D26 | **REJECTED AS DEFAULT (administrator, 2026-10-16): no integration requiring bundled vendor credentials or shared secrets.** OverDrive: vendor approval + key/secret + Libby branding; library-collection catalog | Reject for default | 4.5C |
+| D27 | **REJECTED (administrator, 2026-10-16): no Goodreads-derived scraping integration without separately approved access and image rights.** bookcover-api and any Goodreads-derived source (wrapper over Goodreads, no stated image rights) | Reject | 4.5C |
+| D28 | **APPROVED AS OPTIONAL 4.5C.5 (administrator, 2026-10-16), after at least one approved provider is operational; the full picker remains in Phase 4.5F.** Minimal cover picker in 4.5C.5 instead of waiting for 4.5F | Recorded: last, droppable 4.5C slice | 4.5C.5 |
+| D29 | **APPROVED (administrator, 2026-10-16): authorized keyless providers may default ON under D15's one-time disclosure and user toggle; unapproved and BYOK providers remain OFF.** Provider enablement defaults: master toggle per D15; each approved provider ON by default? | Recorded | 4.5C.2 |
+| D30 | **APPROVED in its corrected form by the administrator (2026-10-16).** Provider agreement may rank or corroborate candidates but **never bypasses** 4.5B edition, identifier or contradiction matching rules (plan §15); it does not raise a tier the matcher would cap | Recorded | 4.5C.3 |
+| D31 | **UNRESOLVED authorization gate** (with D1) for production Open Library access. Contact Open Library (registration form / openlibrary@archive.org) to ask whether a distributed, donation- and Plus-theme-funded client doing lazy per-user, cached lookups is acceptable | Yes, before 4.5C.2; record the reply under D1 | 4.5C.2 |
 | D21 | **APPROVED.** `publication_cover` slot model: `PRIMARY KEY (libraryItemId, slot)`, slots LOCAL/USER/ONLINE (4.5A.1 writes only LOCAL); LOCAL provenance in `localSource` (EPUB_COVER, COMICINFO_FRONT_COVER, ARCHIVE_FIRST_PAGE, PDF_FIRST_PAGE), `sourceRef` and DECLARED/INFERRED `sourceChoice`; one stored file per publication and slot (a FrontCover resolving to page 0 is one file); no file sharing or reference counting; resolution USER > confident eligible ONLINE > LOCAL > generated; FK cascade plus explicit delete; the provenance-as-key design is **SUPERSEDED** (§23.1) | Recorded | 4.5A.1 |
 
 ## 32. Recommended agent workflow
