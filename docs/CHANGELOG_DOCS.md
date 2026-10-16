@@ -1,5 +1,13 @@
 # Documentation Changelog
 
+## Phase 4.5C.0 multi-provider Books planning (2026-10-16, planning only)
+
+- New `features/BOOK_PROVIDERS.md`: provider comparison (Open Library, Library of Congress,
+  Gutendex, Hardcover, OverDrive, Google Books, bookcover-api), registry/caching/dedup/cover
+  rules, unified Find cover design, slice gates. New ADR-0026 (Proposed).
+- Plan §11, 4.5C slice and decisions D22–D31; ROADMAP and METADATA_ENRICHMENT pointers. No
+  earlier rejection or authorization changed; no code, manifest, dependency or Room change.
+
 ## Phase 4.5B targeted QA remediation (2026-10-16, under review)
 
 - Plan §35: H-1 editor snapshot fix, L-1 corrected file-name inference paragraph, L-3 keyset
