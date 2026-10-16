@@ -1,5 +1,19 @@
 # Documentation Changelog
 
+## Phase 4.5A.2 low-finding polish (2026-10-16, under review)
+
+- Plan §34: L-1…L-4 resolutions, explicit L-5 deferral to 4.5G, ES/PT-BR wording.
+- VALIDATION: new polish section with executed counts and the 89 → 107 correction of the
+  implementation handoff's instrumented total.
+
+## Phase 4.5A.2 cover presentation implementation (2026-10-16, under review)
+
+- Plan: status line (4.5A.1 merged in PR #44; 4.5A.2 implemented / under review), §7 rule 11
+  marked superseded by 4.5A.2, new §34 implementation record and deviations.
+- ROADMAP, ARCHITECTURE, README: 4.5A.1 merged; 4.5A.2 implemented on its branch, not accepted.
+- VALIDATION: new 4.5A.2 section with commands, executed counts per class, mutation checks
+  and NOT RUN items.
+
 ## Phase 4.5A.1 targeted QA remediation (2026-10-15, awaiting review)
 
 - VALIDATION: the first remediation's table (`2f718ee`) is replaced. It reported an

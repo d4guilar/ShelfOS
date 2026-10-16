@@ -19,7 +19,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -137,10 +141,16 @@ fun LibraryScreen(
 @Composable
 fun PublicationTile(item: LibraryItem, selected: Boolean, modifier: Modifier = Modifier, onFocus: () -> Unit, onOpen: () -> Unit) {
     val t = LocalShelfTokens.current
-    Column(modifier.testTag("publication_${item.id}").shelfAction(selected, onFocused = onFocus, onClick = onOpen)
+    var focused by remember { mutableStateOf(false) }
+    // The whole tile stays the focus and hit target; its visible focus and selection rings are drawn on the cover's
+    // visible artwork (D10: in Original that is the artwork, not the empty part of the 2:3 slot). Focus is thicker than
+    // selection, so it is not conveyed by colour alone.
+    Column(modifier.testTag("publication_${item.id}").onFocusChanged { focused = it.isFocused }
+        .shelfAction(selected, onFocused = onFocus, focusIndicator = false, onClick = onOpen)
         .padding(4.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        PublicationCover(item, Modifier.fillMaxWidth().border(
-            t.surfaces.border, if (selected) t.colors.ink else androidx.compose.ui.graphics.Color.Transparent,
+        PublicationCover(item, Modifier.fillMaxWidth(), frame = Modifier.border(
+            if (focused) t.focus.width else t.surfaces.border,
+            if (focused || selected) t.colors.ink else androidx.compose.ui.graphics.Color.Transparent,
         ).padding(3.dp))
         Text(item.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(item.creator, color = t.colors.secondary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)

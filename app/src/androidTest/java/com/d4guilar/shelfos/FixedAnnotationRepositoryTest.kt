@@ -38,9 +38,9 @@ class FixedAnnotationRepositoryTest {
 
     private suspend fun list(item: String) = repo.observeForPublication(item).first().annotations
 
-    /** 4C added no schema change after v4; 4D's snapshot table made it v5 and 4.5A.1's additive `publication_cover` v6. */
-    @Test fun roomIsAtTheCurrentSchemaVersionSix() {
-        assertEquals(6, db.openHelper.readableDatabase.version)
+    /** 4C added no schema change after v4; 4D's snapshot table made it v5 and 4.5A.1's additive `publication_cover` v6; 4.5A.2's `cover_presentation_preference` v7. */
+    @Test fun roomIsAtTheCurrentSchemaVersionSeven() {
+        assertEquals(7, db.openHelper.readableDatabase.version)
     }
 
     @Test fun canonicalLocatorMatchesTheReadersOwnPageLocatorOnDevice() {

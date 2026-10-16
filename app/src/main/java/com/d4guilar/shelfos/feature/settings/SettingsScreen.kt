@@ -23,12 +23,17 @@ import com.d4guilar.shelfos.core.localization.AppLanguage
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import com.d4guilar.shelfos.core.theme.ThemeId
 import com.d4guilar.shelfos.core.theme.ThemeRegistry
+import com.d4guilar.shelfos.domain.library.CoverPresentation
+import com.d4guilar.shelfos.domain.library.CoverPresentations
+import com.d4guilar.shelfos.domain.library.MediaCategory
 import com.d4guilar.shelfos.feature.importing.formatSize
 
 @Composable
 fun SettingsScreen(theme: ThemeId, error: UiMessage?, onTheme: (ThemeId) -> Unit,
     unusedCopies: PrivateCopyUsage? = null, onDeleteUnusedCopies: () -> Unit = {},
-    language: AppLanguage = AppLanguage.SYSTEM_DEFAULT, onLanguage: (AppLanguage) -> Unit = {}) {
+    language: AppLanguage = AppLanguage.SYSTEM_DEFAULT, onLanguage: (AppLanguage) -> Unit = {},
+    covers: CoverPresentations = CoverPresentations(), onCoverGlobal: (CoverPresentation) -> Unit = {},
+    onCoverOverride: (MediaCategory, CoverPresentation?) -> Unit = { _, _ -> }) {
     val t = LocalShelfTokens.current
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     if (confirmDelete && unusedCopies != null) AlertDialog(onDismissRequest = { confirmDelete = false },
@@ -57,6 +62,7 @@ fun SettingsScreen(theme: ThemeId, error: UiMessage?, onTheme: (ThemeId) -> Unit
             HorizontalDivider(color = t.colors.divider)
         }
         if (error != null) Text(error.resolve())
+        LibraryAppearanceSection(covers, onCoverGlobal, onCoverOverride)
         Text(stringResource(R.string.settings_language_title), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(R.string.settings_language_description), color = t.colors.secondary)
         AppLanguage.entries.forEach { option ->

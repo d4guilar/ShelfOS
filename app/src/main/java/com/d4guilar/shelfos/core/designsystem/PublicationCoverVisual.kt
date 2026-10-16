@@ -20,12 +20,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** The shared generated publication cover. It needs only safe display identity, never a source URI or file. */
+/** The shared generated publication cover, drawn natively at the size it is given (the effective shape). It needs only safe display identity, never a source URI or file. */
 @Composable
 fun PublicationCoverVisual(libraryItemId: String, title: String, modifier: Modifier = Modifier) {
     val color = listOf(0xFFAD6758L, 0xFF304856L, 0xFF426455L, 0xFF72516DL)[(libraryItemId.hashCode() and Int.MAX_VALUE) % 4]
     val motif = (libraryItemId.hashCode() and Int.MAX_VALUE) % 3
-    BoxWithConstraints(modifier.aspectRatio(0.68f).clipToBounds().background(Color(color)).clearAndSetSemantics { }) {
+    BoxWithConstraints(modifier.clipToBounds().background(Color(color)).clearAndSetSemantics { }) {
         Canvas(Modifier.fillMaxSize()) {
             val cream = Color(0xFFF5E8CC)
             val w = size.width; val h = size.height

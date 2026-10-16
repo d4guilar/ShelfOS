@@ -131,6 +131,31 @@
 
     <!-- Ajustes -->
     <string name="settings_appearance_description">Elige un fondo discreto para tu biblioteca.</string>
+    <string name="settings_library_appearance_title">Apariencia de la biblioteca</string>
+    <string name="settings_library_appearance_description">Cómo se ven las portadas en la Biblioteca, la Búsqueda y las Notas. Tus archivos de imagen nunca se modifican.</string>
+    <string name="settings_cover_shape">Forma de la portada</string>
+    <string name="settings_cover_fit">Ajuste de la portada</string>
+    <string name="cover_shape_original">Original</string>
+    <string name="cover_shape_ratio">%1$d:%2$d</string>
+    <string name="cover_shape_custom">Personalizada</string>
+    <string name="cover_shape_custom_ratio">Personalizada %1$d:%2$d</string>
+    <string name="cover_fit_crop">Recortar para llenar</string>
+    <string name="cover_fit_fit">Mostrar la imagen completa</string>
+    <string name="settings_cover_width">Ancho</string>
+    <string name="settings_cover_height">Alto</string>
+    <string name="content_desc_decrease">Reducir %1$s</string>
+    <string name="content_desc_increase">Aumentar %1$s</string>
+    <string name="settings_cover_per_category">Por categoría</string>
+    <string name="settings_cover_use_default">Usar predeterminado</string>
+    <string name="settings_cover_category_override">Configuración propia de la categoría</string>
+    <string name="settings_cover_fit_original_note">Original siempre muestra la imagen completa, así que el ajuste de la portada no se aplica.</string>
+    <string name="settings_cover_summary">%1$s · %2$s</string>
+    <string name="settings_cover_default_summary">Usar predeterminado: %1$s</string>
+    <string name="settings_cover_override_summary">Configuración propia: %1$s</string>
+    <string name="state_expanded">Expandido</string>
+    <string name="state_collapsed">Contraído</string>
+    <string name="settings_cover_stepper_value">%1$s: %2$d</string>
+    <string name="settings_cover_stepper_number">%1$d</string>
     <string name="settings_theme_planned">Planeado</string>
     <string name="settings_storage_title">Almacenamiento</string>
     <string name="settings_storage_description">Cuando un proveedor no puede ofrecer acceso duradero, ShelfOS guarda una copia privada sin conexión. Quitar una publicación conserva su copia hasta que la elimines aquí. Los archivos originales nunca se modifican ni se eliminan.</string>

@@ -292,8 +292,9 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                     composable(Destination.SETTINGS.route) {
                         LaunchedEffect(Unit) { settings.refreshStorage() }
                         val language by settings.language.collectAsStateWithLifecycle()
+                        val covers by settings.coverPresentations.collectAsStateWithLifecycle()
                         SettingsScreen(theme ?: ThemeId.CLASSIC, error, settings::select, unusedCopies, settings::deleteUnusedCopies,
-                            language, settings::selectLanguage)
+                            language, settings::selectLanguage, covers, settings::setCoverGlobal, settings::setCoverOverride)
                     }
                 }
                 if (!reading && layout.navigation == NavigationLayout.BOTTOM) {

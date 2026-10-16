@@ -64,7 +64,7 @@ class MainActivity : AppCompatActivity() {
         val container = (application as ShelfApplication).container
         setContent {
           CompositionLocalProvider(LocalCoverArtwork provides container.coverArtwork) {
-            val settings: SettingsViewModel = viewModel(factory = viewModelFactory { initializer { SettingsViewModel(container.themes, container.library, container.languages) } })
+            val settings: SettingsViewModel = viewModel(factory = viewModelFactory { initializer { SettingsViewModel(container.themes, container.library, container.languages, container.coverPresentation) } })
             val library: LibraryViewModel = viewModel(factory = viewModelFactory { initializer {
                 LibraryViewModel(container.library, createSavedStateHandle())
             } })

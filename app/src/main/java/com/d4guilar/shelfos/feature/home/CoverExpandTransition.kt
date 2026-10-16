@@ -12,6 +12,7 @@ import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.IntOffset
+import com.d4guilar.shelfos.core.designsystem.artworkRect
 import com.d4guilar.shelfos.domain.library.LibraryItem
 import com.d4guilar.shelfos.feature.library.PublicationCover
 import kotlin.math.roundToInt
@@ -34,19 +35,28 @@ data class PendingCoverTransition(val item: LibraryItem, val start: Rect, val pr
 fun chromeAlpha(progress: Float): Float = (1f - progress / 0.6f).coerceIn(0f, 1f)
 
 /**
- * Renders [transition]'s cover partway ([progress], 0f..1f) between its starting position and [target], the
- * incoming reader's on-screen area (window coordinates, matching [PendingCoverTransition.start]'s coordinate
+ * Where the expansion ends inside [area]: the start rectangle's own ratio (the details cover already shows the complete
+ * artwork at its real, clamped ratio) fitted and centered, so every frame keeps one aspect ratio and the artwork is
+ * revealed whole at progress 1, never stretched or cropped into the reader's shape (D11).
+ */
+fun coverExpandTarget(start: Rect, area: Rect): Rect =
+    if (start.isEmpty || area.isEmpty) area
+    else artworkRect(area.size, start.width / start.height, crop = false).translate(area.topLeft)
+
+/**
+ * Renders [transition]'s cover partway ([progress], 0f..1f) between its starting position and [coverExpandTarget] in
+ * [target], the incoming reader's on-screen area (window coordinates, matching [PendingCoverTransition.start]'s coordinate
  * space). Purely decorative and transient: excluded from the accessibility tree, since the real destination's
  * own content takes over as soon as the transition completes. The caller drives [progress] and decides when
  * that is (see [chromeAlpha], which shares the same value so chrome and cover never disagree).
  */
 @Composable
 fun CoverExpandOverlay(transition: PendingCoverTransition, target: Rect, progress: Float) {
-    val rect = lerp(transition.start, target, progress)
+    val rect = lerp(transition.start, coverExpandTarget(transition.start, target), progress)
     val density = LocalDensity.current
     Box(Modifier
         .offset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }
         .size(with(density) { rect.width.toDp() }, with(density) { rect.height.toDp() })
         .clearAndSetSemantics { }
-    ) { PublicationCover(transition.item, Modifier.fillMaxSize()) }
+    ) { PublicationCover(transition.item, Modifier.fillMaxSize(), whole = true) }
 }
