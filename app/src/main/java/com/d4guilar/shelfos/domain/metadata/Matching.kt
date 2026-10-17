@@ -102,14 +102,19 @@ object MetadataMatcher {
 
     fun decide(query: MetadataQuery, candidates: List<MetadataCandidate>): MatchDecision {
         val scored = candidates.map { ScoredCandidate(it, score(query, it)) }
+        val final = demoteAmbiguous(scored)
+        val ranked = final.sortedWith(compareBy<ScoredCandidate>({ it.evidence.rejected }, { it.evidence.tier.ordinal }, { -it.evidence.agreements.size }))
+        return MatchDecision(ranked.firstOrNull { it.evidence.tier == MatchConfidence.VERY_HIGH }, ranked)
+    }
+
+    /** Two VERY_HIGH candidates that are not the same edition both drop to MEDIUM, so nothing applies. */
+    fun demoteAmbiguous(scored: List<ScoredCandidate>): List<ScoredCandidate> {
         val top = scored.filter { it.evidence.tier == MatchConfidence.VERY_HIGH }
         val agreeing = top.all { t -> sameEdition(t.candidate, top.first().candidate) }
-        val final = if (top.size > 1 && !agreeing) scored.map { s ->
+        return if (top.size > 1 && !agreeing) scored.map { s ->
             if (s.evidence.tier != MatchConfidence.VERY_HIGH) s
             else s.copy(evidence = s.evidence.copy(tier = MatchConfidence.MEDIUM, contradictions = s.evidence.contradictions + MatchSignal.AMBIGUOUS))
         } else scored
-        val ranked = final.sortedWith(compareBy<ScoredCandidate>({ it.evidence.rejected }, { it.evidence.tier.ordinal }, { -it.evidence.agreements.size }))
-        return MatchDecision(ranked.firstOrNull { it.evidence.tier == MatchConfidence.VERY_HIGH }, ranked)
     }
 
     private fun sameEdition(a: MetadataCandidate, b: MetadataCandidate) =

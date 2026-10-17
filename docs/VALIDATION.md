@@ -1,8 +1,40 @@
 # Validation
 
-## PHASE 4.5B — TARGETED QA REMEDIATION (2026-10-16, implemented / under review)
+## PHASE 4.5C.1 — PROVIDER INFRASTRUCTURE (2026-10-16, implemented / pending independent review)
 
-**Not accepted, not merged.** Fixes the Codex High findings on `46d1c61` (CHANGES REQUIRED: H-1,
+**Not accepted, not merged.** Pure Kotlin infrastructure with fake providers: no network, manifest,
+Room, dependency, UI or cover change, so no emulator or device run was needed and none is claimed.
+Branch `phase-4.5/4.5c1-provider-infrastructure` from `main` `7f15ea0`.
+
+| Command | Tests | Pass | Fail | Result | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `gradlew.bat :app:testDebugUnitTest` (full suite) | 729 | 729 | 0 | PASS | 675 before + 54 new; 0 skipped |
+| `ProviderPolicyEngineTest` | 19 | 19 | 0 | PASS | virtual time: 3/s and 10/min buckets, burst and refill, one bounded pause, per-provider and global concurrency, cancellation frees permits, bounded queue, no head-of-line blocking, timeout, failure categories, `Retry-After`, breaker trip/probe/recover, cancelled probe, bounded backoff, unapproved never called |
+| `ProviderRegistryTest` | 7 | 7 | 0 | PASS | empty registry, each condition, token, conditional/rejected, priority, duplicates |
+| `EditionClusteringTest` | 16 | 16 | 0 | PASS | ISBN-10/13, same ISBN across providers, different ISBNs/editions, no transitive merge, manga vol 1 vs 10, issue vs annual vs collected, omnibus, language contradiction, agreement never raises a tier, disagreeing VERY_HIGH, order independence |
+| `MultiProviderLookupTest` | 12 | 12 | 0 | PASS | zero providers, ISBN-first and ISBN-10 normalization, bounded search, Documents never searched, capability/category filter, early stop, exhaustive corroboration, failure isolation, no-match vs failed, malformed candidates, USER/EMBEDDED kept, removed item not recreated, rate-limited provider quiet |
+| Existing `MetadataMatcherTest`, `MetadataCoordinatorTest`, `MetadataPrecedenceTest` | 26 | 26 | 0 | PASS | the coordinator test builds the service through a helper that wraps its fakes in the registry; assertions unchanged |
+| `assembleDebug`, `lintDebug` | — | — | — | PASS | lint 0 errors, 60 warnings (unchanged) |
+| `git diff --check` | — | — | — | clean | |
+
+### 4.5C.1 remediation (F-1, F-2, F-3, F-5, F-7)
+
+| Command | Tests | Pass | Fail | Result | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `gradlew.bat :app:testDebugUnitTest` (full suite) | 738 | 738 | 0 | PASS | 729 + 9 new, 0 skipped |
+| New regression tests | 9 | 9 | 0 | PASS | `EditionClusteringTest` (3: conflicting edition titles, conflicting volumes, identical records; each with one provider vs two and reversed order); `MultiProviderLookupTest` (4: conflict in both provider orders is not applied, agreeing providers apply, failures isolated beside a success, partial identifier results survive); `ProviderPolicyEngineTest` (2: probe cancelled while waiting for the global permit, cancellation inside timeout handling) |
+| Changed tests | 2 | | | | the early-stop and `exhaustive` assertions now require every ISBN provider to be consulted |
+| Mutation check | | | | | the two new engine tests were run against the previous engine and fail there; the engine was restored |
+
+`assembleDebug` and `lintDebug` pass (0 errors, 60 warnings, unchanged). `git diff --check` clean. Still no instrumented or device validation (nothing Android-facing changed).
+
+Limitations: no instrumented, device or process-death validation (nothing Android-facing
+changed); no real transport, so `Retry-After` header parsing and failure mapping are exercised
+only through fakes.
+
+## PHASE 4.5B — TARGETED QA REMEDIATION (2026-10-16; merged in PR #46)
+
+Fixes the Codex High findings on `46d1c61` (CHANGES REQUIRED: H-1,
 L-1, L-3, L-4, L-5; L-2 deferred to before 4.5E). Isolated API 24 emulator `emulator-5554` only;
 no owner device attached or used; same per-class `am instrument` procedure as below.
 
@@ -30,7 +62,7 @@ B and E (6/9).
 the first live Comics provider (4.5E): trustworthy evidence provenance in queries, no VERY_HIGH
 from weak file-name signals alone, a contradictory Comics corpus.
 
-## PHASE 4.5B — METADATA CORE IMPLEMENTATION (2026-10-16, implemented / under review)
+## PHASE 4.5B — METADATA CORE IMPLEMENTATION (2026-10-16; merged in PR #46)
 
 **Not accepted, not merged.** Branch `phase-4.5/4.5b-metadata-core` from `main` `1d949be`.
 Environment: isolated API 24 x86_64 emulator `shelfos-api24` (`emulator-5554`) only; no owner

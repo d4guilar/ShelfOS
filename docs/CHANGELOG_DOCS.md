@@ -1,5 +1,20 @@
 # Documentation Changelog
 
+## Phase 4.5C.1 remediation (2026-10-16, pending independent re-review)
+
+- Plan §36: F-1/F-2/F-3/F-5/F-7 record, F-3 administrator resolution (all eligible ISBN providers
+  consulted before the final decision), F-4 and F-6 deferred to 4.5C.2. VALIDATION: remediation
+  counts. No decision changed.
+
+## Phase 4.5C.1 provider infrastructure (2026-10-16, pending independent review)
+
+- Plan: status header corrected (4.5B merged in PR #46, 4.5C.0 accepted in PR #47, ADR-0026
+  Accepted) and new §36 implementation record (registry, policy engine, lookup, clustering and
+  ranking, the search-only-without-ISBN change, limitations).
+- BOOK_PROVIDERS, ADR-0026, ROADMAP, METADATA_ENRICHMENT: stale "planning only / proposed /
+  under review" status text corrected. VALIDATION: new 4.5C.1 section; 4.5B headings now say
+  merged. No decision changed; D1 and D31 remain open.
+
 ## Phase 4.5C.0 remaining decisions recorded (2026-10-16, planning only)
 
 - D22 conditional (LoC metadata-only; endpoint, limits, terms unverified), D24/D26/D27

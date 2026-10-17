@@ -7,7 +7,7 @@ phases; none is implemented in the Phase 0 prototype. See ADR-0016.
 **Implementation authority (2026-10-15):** this specification is delivered by
 [Phase 4.5 — Metadata, Covers & Library Presentation](../PHASE_4_5_IMPLEMENTATION_PLAN.md).
 Current state (2026-10-16): 4.5A.1 local cover artwork and 4.5A.2 cover presentation are merged
-(Room v7). **4.5B metadata core (Room v8) is implemented and under review, not accepted:** EPUB
+(Room v7). **4.5B metadata core (Room v8) is merged (PR #46):** EPUB
 identifiers/subtitle/publisher/date/language/description/series and ComicInfo
 series/number/volume/date/publisher/summary/language/GTIN/credits are read locally; file names add
 volume/issue/year candidates; every field records its origin (USER > EMBEDDED > exact identifier

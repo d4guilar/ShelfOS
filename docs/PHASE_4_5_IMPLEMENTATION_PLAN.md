@@ -2,9 +2,11 @@
 
 Status (2026-10-16): **4.5A.1 Local Cover Artwork MERGED (PR #44)** (record §33) and **4.5A.2
 Cover Presentation MERGED (PR #45)** (record §34); their physical UAT is part of 4.5G. **4.5B
-Metadata Core IMPLEMENTED / UNDER REVIEW on branch `phase-4.5/4.5b-metadata-core` (not accepted,
-not merged)**; record, network-boundary design and deviations: §35. No online enrichment is
-shipped; no other slice is implemented.
+Metadata Core MERGED (PR #46)**; record, network-boundary design and deviations: §35. **4.5C.0
+multi-provider planning ACCEPTED and merged (PR #47; ADR-0026 Accepted).** **4.5C.1 provider
+infrastructure IMPLEMENTED on branch `phase-4.5/4.5c1-provider-infrastructure`, pending
+independent review (not merged)**: §36. No online enrichment is shipped; 4.5C.2 and later are not
+implemented, and Open Library D1/D31 remain unresolved.
 Phase 4 (Notes and Knowledge Layer) is COMPLETE (Phase 4F acceptance merged
 in PR #42). Phase 4.5 is the next active milestone. Phase 5 remains Advanced PDF Ingestion;
 numbering after 4.5 is unchanged.
@@ -544,7 +546,7 @@ Library of Congress is a conditional metadata-only candidate; Gutendex, OverDriv
 bookcover-api/Goodreads and Google Books are rejected; Hardcover is BYOK research. Full
 comparison, architecture, Find cover design and slice gates:
 [`features/BOOK_PROVIDERS.md`](features/BOOK_PROVIDERS.md); decision record
-[ADR-0026](adr/0026-multi-provider-books-metadata.md) (Proposed). All earlier rejections and
+[ADR-0026](adr/0026-multi-provider-books-metadata.md) (Accepted). All earlier rejections and
 authorization decisions stand. The Open Library flow below is still conditional on D1.
 
 Open Library flow (proposed, only after D1): ISBN → `/isbn/{isbn}.json` (edition) → work for
@@ -2440,7 +2442,7 @@ review).**
 - **Locales:** ES/PT-BR "Category override" no longer shares "Ajuste" with Cover fit:
   "Configuración propia de la categoría" / "Configuração própria da categoria".
 
-## 35. 4.5B implementation record (2026-10-16, implemented / under review)
+## 35. 4.5B implementation record (2026-10-16, merged in PR #46)
 
 Branch `phase-4.5/4.5b-metadata-core` from `main` `1d949be` (4.5A.1 and 4.5A.2 merged). Not
 accepted or merged; next gate: independent Codex High implementation QA. Evidence:
@@ -2605,3 +2607,88 @@ under review).**
   provider:** carry trustworthy evidence provenance into `MetadataQuery`, never let weak
   file-name signals alone produce VERY_HIGH, keep the issue/volume identity checks, and add a
   contradictory Comics test corpus.
+
+## 36. 4.5C.1 implementation record (2026-10-16, implemented / pending independent review)
+
+Scope: ADR-0026 and `features/BOOK_PROVIDERS.md` §3.1–3.3, §3.5, §3.10; decisions D23 and D30
+(independent of D1). **Infrastructure with fakes only: no Open Library or other real provider, no
+HTTP client, no `INTERNET` permission, no manifest, Room, dependency, Settings UI, cache, cover
+download or cover-slot change.** Production registers no provider, so the registry is empty and
+the app behaves exactly as in 4.5B.
+
+- **Descriptors and registry** (`domain/metadata/ProviderModel.kt`, `data/metadata/ProviderRegistry.kt`):
+  `ProviderDescriptor` (id, display name, categories and `MetadataCapability` reused from 4.5B,
+  credential `NONE`/`USER_TOKEN`, terms `APPROVED`/`CONDITIONAL`/`REJECTED` and review date, rate
+  and retry policy, attribution, privacy disclosure). `ProviderRegistry` evaluates every
+  activation condition in one place, in this order: terms `APPROVED`, not disabled by policy,
+  global online toggle, own toggle, token present, category, capability. Enablement comes from an
+  injected `ProviderSettings` (production default `DisabledProviderSettings`; no persistence or UI
+  yet). Registration order is provider priority.
+- **Policy engine** (`ProviderPolicyEngine.kt`): integer token bucket per provider (burst and
+  refill), per-provider concurrency (default 1) and global concurrency 2, a per-provider bound on
+  callers in flight or waiting (`BUSY` beyond it), a bounded rate wait (longer waits are refused as
+  `RATE_LIMITED` with the wait as retry-after, never slept through), per-attempt timeout, retry with
+  exponential backoff and bounded jitter for timeout, server failure and rate limiting, `Retry-After`
+  (seconds or HTTP-date; a short one is waited, a long one trips the breaker until it passes),
+  and a circuit breaker (closed, open, one half-open probe; `ACCESS_BLOCKED` trips at once;
+  `OFFLINE` neither retries nor counts). Time is an injected monotonic clock and waiting an injected
+  pause, so tests run on virtual time. Waiting never holds a concurrency permit; cancellation always
+  propagates and releases the slot and any half-open probe. Failures are the closed set
+  `ProviderFailureKind`; an unexpected exception from a provider is isolated as `MALFORMED`.
+  No WorkManager, job table or retry that survives process death.
+- **Lookup** (`ProviderLookup.kt`; `MetadataEnrichmentService` now takes it): eligible providers
+  only, one at a time in priority order, each call through the engine; exact ISBN lookup first
+  (ISBN-10 sent as ISBN-13, at most 3 identifiers, other identifiers only when there is no ISBN),
+  **across every eligible ISBN-capable provider before the final decision (see the remediation
+  below)**;
+  bounded title/creator search only for an item **without** an ISBN and never for Documents (the
+  4.5B coordinator also searched after an ISBN miss; the multi-provider contract says search only
+  without an ISBN, so that changed); only the search fallback stops at the first safe match.
+  Candidates claiming another provider, without a reference, or beyond the result cap (10) are
+  dropped, and a reply with nothing usable is `MALFORMED`. `Result.failures` and
+  `Outcome.LOOKUP_FAILED` (nothing answered, something failed) distinguish a failed lookup from
+  `NO_MATCH`. The single 4.5B coordinator was extended, not duplicated.
+- **Clustering and ranking** (`domain/metadata/EditionClustering.kt`): clusters form only from an
+  identical ISBN-13 set (ISBN-10 converted); never transitively, never by title, author, series,
+  cover, volume or publisher; candidates without an ISBN stay singletons. Every contributing
+  provider id, provider reference, original candidate and cover reference is kept. A cluster takes
+  the tier `MetadataMatcher` gives its best single member; **agreement never raises a tier** (D30),
+  members that disagree about the edition (title, volume, issue) are demoted by the same
+  `demoteAmbiguous` rule inside the cluster and do not corroborate, a member rejected against the
+  query caps the cluster at MEDIUM, and distinct disagreeing VERY_HIGH editions demote exactly as in 4.5B (`MetadataMatcher.demoteAmbiguous`, extracted from `decide`
+  with no behavior change). Ordering: not rejected, tier, exact identifier, fewer contradictions,
+  more corroborating providers, more agreeing signals, provider priority, cluster key; it is
+  independent of provider return order. Thresholds are unchanged.
+- **Unchanged and re-verified:** USER and EMBEDDED precedence, covers never applied, Documents
+  never searched, removed items never recreated, local import and reading need no provider.
+- **Known limitations:** corroborating provider ids are not persisted (provenance records the
+  chosen provider and reference only; the schema is untouched until 4.5C.3); `RetryAfter.parse`
+  needs the caller's wall clock and no transport calls it yet; LCCN/OCLC clustering and perceptual
+  cover matching are not implemented (4.5C.4 and 4.5F); the L-2 Comics gate remains mandatory
+  before 4.5E.
+
+**4.5C.1 remediation (independent Codex High review of `9067511`: CHANGES REQUIRED; re-review
+pending, still not merged).**
+- **F-1 (HIGH, fixed).** Same-ISBN members were collapsed to the best member's tier, so two
+  records that disagree about the edition (e.g. "Dune" and "Dune (Deluxe Edition)" against an
+  inferred title, or volume 1 against 10 when the query has no volume) could both score VERY_HIGH
+  and be applied. Clustering now runs `MetadataMatcher.demoteAmbiguous` on each cluster's members
+  first: disagreeing members drop to MEDIUM with `AMBIGUOUS`, do not corroborate, and nothing is
+  applied. Identical records still corroborate and apply.
+- **F-2 (MEDIUM, fixed).** The half-open probe was claimed before the global permit, so a
+  cancellation while waiting for it left the breaker probing forever. The probe is now claimed
+  only after both permits are held and handed back in a `finally` on every exit without a verdict
+  (cancellation, including one raised inside timeout handling).
+- **F-3 (MEDIUM, fixed; administrator resolution).** All eligible ISBN-capable providers are
+  consulted before the final matching/application decision; the early stop and the `exhaustive`
+  flag are removed from ISBN lookup, so one provider's VERY_HIGH can no longer hide another's
+  conflicting edition evidence. Search remains a fallback only for an item without an ISBN.
+- **F-5 (LOW, fixed).** A provider whose first identifier succeeded and a later one failed keeps
+  its candidates and reports the failure separately (it still counts as having answered).
+- **F-7 (LOW, fixed).** Clustering and rate-wait KDoc corrected: a rate wait holds only the
+  provider's slot, never the global permit.
+- **Deferred to 4.5C.2 (transport integration):** F-4, unexpected programming exceptions are
+  classified `MALFORMED`; the transport slice must separate parse errors from programming errors
+  and give diagnostics visibility. F-6, a mix of a provider failure and an empty reply yields
+  `NO_MATCH` with the failures retained; future negative caching must not treat that as
+  authoritative absence.
