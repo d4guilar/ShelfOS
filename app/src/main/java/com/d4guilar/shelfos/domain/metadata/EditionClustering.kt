@@ -24,8 +24,9 @@ data class EditionRanking(val apply: RankedEdition?, val ranked: List<RankedEdit
  * Edition-aware clustering and deterministic ranking (BOOK_PROVIDERS §3.5, D30). Provider results are evidence: clusters
  * form only from an identical ISBN-13 set (ISBN-10 converted), never transitively and never by title, author, series or
  * cover, so another ISBN, volume, issue or omnibus stays a separate candidate. Each cluster takes the tier [MetadataMatcher]
- * gives its best single member; agreement ranks and corroborates but never raises that tier, and a cluster whose members
- * contradict each other is capped at MEDIUM. Distinct disagreeing VERY_HIGH editions demote exactly as in 4.5B.
+ * gives its best single member; agreement ranks and corroborates but never raises that tier. Members that disagree about
+ * the edition (title, volume, issue: [MetadataMatcher.demoteAmbiguous]) drop to MEDIUM and do not corroborate, and a
+ * member rejected against the query also caps the cluster at MEDIUM, so a disagreeing cluster is never applied. Distinct disagreeing VERY_HIGH editions demote exactly as in 4.5B.
  */
 object EditionClustering {
     fun cluster(candidates: List<MetadataCandidate>): List<EditionCluster> =
@@ -41,13 +42,16 @@ object EditionClustering {
     /** [priority] orders providers (lower first) for tie-breaking; it never changes a tier. */
     fun rank(query: MetadataQuery, candidates: List<MetadataCandidate>, priority: (String) -> Int = { 0 }): EditionRanking {
         val pre = cluster(candidates).map { cl ->
-            val scored = cl.members.map { ScoredCandidate(it, MetadataMatcher.score(query, it)) }
+            val raw = cl.members.map { ScoredCandidate(it, MetadataMatcher.score(query, it)) }
+            // Members that are not the same edition (title, volume, issue) cannot corroborate each other: the 4.5B ambiguity rule applies inside the cluster too.
+            val scored = MetadataMatcher.demoteAmbiguous(raw)
             val best = scored.minWith(compareBy<ScoredCandidate>({ it.evidence.rejected }, { it.evidence.tier.ordinal }, { -it.evidence.agreements.size },
                 { priority(it.candidate.providerId) }, { it.candidate.providerId }, { it.candidate.providerRef }))
             val contested = !best.evidence.rejected && scored.any { it.evidence.rejected }
             val evidence = if (contested && best.evidence.tier == MatchConfidence.VERY_HIGH)
                 best.evidence.copy(tier = MatchConfidence.MEDIUM, contradictions = best.evidence.contradictions + MatchSignal.AMBIGUOUS) else best.evidence
-            val corroborating = scored.filter { !it.evidence.rejected && it.evidence.tier != MatchConfidence.LOW }.mapTo(TreeSet()) { it.candidate.providerId }
+            val corroborating = scored.filter { !it.evidence.rejected && it.evidence.tier != MatchConfidence.LOW && MatchSignal.AMBIGUOUS !in it.evidence.contradictions }
+                .mapTo(TreeSet()) { it.candidate.providerId }
             Triple(cl, ScoredCandidate(best.candidate, evidence), corroborating)
         }
         val demoted = MetadataMatcher.demoteAmbiguous(pre.map { it.second })

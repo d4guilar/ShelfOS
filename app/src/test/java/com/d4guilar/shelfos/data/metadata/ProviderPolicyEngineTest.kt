@@ -174,6 +174,37 @@ class ProviderPolicyEngineTest {
         assertEquals(ok, engine.execute(d) { 1 }::class)
     }
 
+    @Test fun aProbeCancelledWhileWaitingForTheGlobalPermitDoesNotLeakTheBreaker() = runTest {
+        val engine = testScheduler.engine(global = 2)
+        val a = once(RetryPolicy(breakerThreshold = 1, breakerCooldownMs = 1_000))
+        engine.execute(a) { throw ProviderException(ProviderFailureKind.SERVER_FAILURE) }      // 1. trip A
+        delay(1_000)                                                                            // 2. past the cool-down
+        val hold = listOf("b", "c").map { id -> launch { engine.execute(testDescriptor(id)) { delay(30_000) } } }
+        runCurrent()                                                                            // 3. both global permits taken
+        var ran = false
+        val probe = launch { engine.execute(a) { ran = true } }                                 // 4. A waits for a global permit
+        runCurrent(); probe.cancelAndJoin()                                                     // 5. cancelled while waiting
+        hold.joinAll()                                                                          // 6. permits free
+        assertFalse(ran)
+        assertEquals("7. A can probe and recover", ok, engine.execute(a) { 1 }::class)
+        assertEquals(ok, engine.execute(a) { 2 }::class)
+    }
+
+    @Test fun aCancellationRaisedInsideTimeoutHandlingStillReleasesTheProbe() = runTest {
+        val engine = testScheduler.engine()
+        val a = once(RetryPolicy(breakerThreshold = 1, breakerCooldownMs = 1_000))
+        engine.execute(a) { throw ProviderException(ProviderFailureKind.SERVER_FAILURE) }
+        delay(1_000)
+        val probe = launch {
+            engine.execute(a) {
+                try { withTimeout(1) { delay(100) } } catch (e: TimeoutCancellationException) { currentCoroutineContext().job.cancel(); throw e }
+            }
+        }
+        probe.join()
+        assertTrue(probe.isCancelled)
+        assertEquals(ok, engine.execute(a) { 1 }::class)
+    }
+
     @Test fun backoffGrowsIsJitteredAndNeverExceedsTheMaximum() {
         val plain = RetryPolicy(baseBackoffMs = 100, maxBackoffMs = 1_000, jitterFraction = 0.0)
         assertEquals(listOf(100L, 200L, 400L, 800L, 1_000L, 1_000L), (1..6).map { backoffMs(plain, it, Random(1)) })

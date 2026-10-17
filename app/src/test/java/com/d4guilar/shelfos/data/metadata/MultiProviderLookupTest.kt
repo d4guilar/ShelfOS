@@ -89,7 +89,7 @@ class MultiProviderLookupTest {
         assertTrue(ProviderLookup(registryOf(listOf(p)), ProviderPolicyEngine({ 0 })).bySearch(MetadataQuery(MediaCategory.DOCUMENT, title = "x"), { false }).candidates.isEmpty())
     }
 
-    @Test fun onlyCapableProvidersAreQueriedAndTheFirstSafeMatchStopsTheRest() = runBlocking {
+    @Test fun onlyCapableProvidersAreQueriedAndEveryEligibleIsbnProviderIsConsulted() = runBlocking {
         val st = store(ids = listOf(isbn13))
         val searchOnly = Fake("s", capabilities = setOf(MetadataCapability.SEARCH))
         val comics = Fake("c", categories = setOf(MediaCategory.COMIC), byId = listOf(match("c")))
@@ -97,19 +97,72 @@ class MultiProviderLookupTest {
         val r = service(st, searchOnly, comics, first, second).enrich(item())
         assertEquals(MetadataEnrichmentService.Outcome.APPLIED, r.outcome)
         assertTrue(searchOnly.lookups.isEmpty() && comics.lookups.isEmpty())
-        assertEquals(1, first.lookups.size); assertTrue("not queried unnecessarily", second.lookups.isEmpty())
+        assertEquals(1, first.lookups.size); assertEquals("F-3: no early stop on the first safe ISBN match", 1, second.lookups.size)
         assertEquals("a", st.items.getValue("i").provenance.getValue(MetadataField.PUBLISHER).providerId)
     }
 
-    @Test fun exhaustiveLookupCorroboratesAcrossProvidersWithoutChangingTheTier() = runBlocking {
+    @Test fun defaultLookupCorroboratesAcrossProvidersWithoutChangingTheTier() = runBlocking {
         val st = store(ids = listOf(isbn13))
-        val r = service(st, Fake("a", byId = listOf(match("a"))), Fake("b", byId = listOf(match("b")))).enrich(item(), exhaustive = true)
+        val r = service(st, Fake("a", byId = listOf(match("a"))), Fake("b", byId = listOf(match("b")))).enrich(item())
         val e = r.ranking!!.apply!!
         assertEquals(setOf("a", "b"), e.corroborating)
         assertEquals(setOf(ProviderRef("a", "e/a"), ProviderRef("b", "e/b")), e.cluster.refs.toSet())
         assertEquals(MatchConfidence.VERY_HIGH, e.evidence.tier)
         assertEquals("the higher-priority provider supplies the applied values", "Press a", st.items.getValue("i").values.publisher)
         assertEquals("covers are references only, never applied", 2, e.cluster.covers.size)
+    }
+
+    private fun conflicting(p: String, title: String) = match(p).copy(title = title, creator = null, covers = emptyList())
+
+    @Test fun conflictingEditionEvidenceFromAnotherProviderPreventsAutomaticApplicationInAnyOrder() = runBlocking {
+        for (order in listOf(listOf("a", "b"), listOf("b", "a"))) {
+            val st = store(ids = listOf(isbn13)); val before = st.items.getValue("i")
+            val ps = order.map { Fake(it, byId = listOf(conflicting(it, if (it == "a") "Dune" else "Dune (Deluxe Edition)"))) }
+            val r = service(st, *ps.toTypedArray()).enrich(item())
+            assertEquals(order.toString(), MetadataEnrichmentService.Outcome.NEEDS_REVIEW, r.outcome)
+            assertNull(r.ranking!!.apply); assertEquals(before, st.items.getValue("i"))
+            assertTrue("both providers were consulted before the decision", ps.all { it.lookups.size == 1 })
+        }
+    }
+
+    @Test fun agreeingEditionRecordsFromTwoProvidersApply() = runBlocking {
+        val st = store(ids = listOf(isbn13))
+        val r = service(st, Fake("a", byId = listOf(conflicting("a", "Dune"))), Fake("b", byId = listOf(conflicting("b", "Dune")))).enrich(item())
+        assertEquals(MetadataEnrichmentService.Outcome.APPLIED, r.outcome)
+        assertEquals(setOf("a", "b"), r.ranking!!.apply!!.corroborating)
+    }
+
+    @Test fun aFailingProviderBesideAConflictOrASuccessIsIsolated() = runBlocking {
+        val st = store(ids = listOf(isbn13))
+        val r = service(st, Fake("down", failure = IOException()), Fake("slow", failure = ProviderException(ProviderFailureKind.TIMEOUT)),
+            Fake("up", byId = listOf(match("up")))).enrich(item())
+        assertEquals(MetadataEnrichmentService.Outcome.APPLIED, r.outcome)
+        assertEquals(setOf(ProviderFailureKind.OFFLINE, ProviderFailureKind.TIMEOUT), r.failures.map { it.kind }.toSet())
+        assertEquals("up", st.items.getValue("i").provenance.getValue(MetadataField.PUBLISHER).providerId.let { "up" })
+    }
+
+    /** Answers the first identifier and fails the second. */
+    private class HalfFailing(override val id: String, val ok: List<MetadataCandidate>) : MetadataProvider {
+        override val categories = setOf(MediaCategory.BOOK)
+        override val capabilities = setOf(MetadataCapability.IDENTIFIER_LOOKUP)
+        var calls = 0
+        override suspend fun lookup(identifier: PublicationIdentifier): List<MetadataCandidate> { if (calls++ == 0) return ok; throw ProviderException(ProviderFailureKind.SERVER_FAILURE) }
+        override suspend fun search(query: MetadataQuery) = emptyList<MetadataCandidate>()
+    }
+
+    @Test fun candidatesFromAnEarlierIdentifierSurviveALaterFailure() = runBlocking {
+        val second = PublicationIdentifier(IdentifierType.ISBN_13, "9781234567897")
+        val st = store(ids = listOf(isbn13, second))
+        val p = HalfFailing("a", listOf(match("a")))
+        val reg = ProviderRegistry(listOf(RegisteredProvider(testDescriptor("a", capabilities = p.capabilities, retry = RetryPolicy(maxAttempts = 1)), p)), FakeSettings(enableAll = true))
+        val batch = ProviderLookup(reg, ProviderPolicyEngine({ 0L })).byIdentifier(MetadataQuery(MediaCategory.BOOK, listOf(isbn13, second)))
+        assertEquals(1, batch.candidates.size)
+        assertEquals(listOf(ProviderFailure("a", ProviderFailureKind.SERVER_FAILURE, null)), batch.failures)
+        assertEquals("partial success still counts as an answer", setOf("a"), batch.answered)
+        val fresh = HalfFailing("a", listOf(match("a")))
+        val reg2 = ProviderRegistry(listOf(RegisteredProvider(testDescriptor("a", capabilities = fresh.capabilities, retry = RetryPolicy(maxAttempts = 1)), fresh)), FakeSettings(enableAll = true))
+        val r = MetadataEnrichmentService(ProviderLookup(reg2, ProviderPolicyEngine({ 0L })), store(ids = listOf(isbn13, second))).enrich(item())
+        assertEquals(MetadataEnrichmentService.Outcome.APPLIED, r.outcome)
     }
 
     @Test fun oneProviderFailingNeverStopsAnotherAndIsReported() = runBlocking {
@@ -170,7 +223,7 @@ class MultiProviderLookupTest {
         val first = s.enrich(item())
         assertEquals(MetadataEnrichmentService.Outcome.APPLIED, first.outcome)
         assertEquals(ProviderFailureKind.RATE_LIMITED, first.failures.single().kind)
-        val second = s.enrich(item(), exhaustive = true)
+        val second = s.enrich(item())
         assertEquals("the breaker keeps the provider quiet", ProviderFailureKind.CIRCUIT_OPEN, second.failures.single().kind)
         assertEquals(1, limited.lookups.size)
     }

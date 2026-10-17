@@ -1,5 +1,11 @@
 # Documentation Changelog
 
+## Phase 4.5C.1 remediation (2026-10-16, pending independent re-review)
+
+- Plan §36: F-1/F-2/F-3/F-5/F-7 record, F-3 administrator resolution (all eligible ISBN providers
+  consulted before the final decision), F-4 and F-6 deferred to 4.5C.2. VALIDATION: remediation
+  counts. No decision changed.
+
 ## Phase 4.5C.1 provider infrastructure (2026-10-16, pending independent review)
 
 - Plan: status header corrected (4.5B merged in PR #46, 4.5C.0 accepted in PR #47, ADR-0026

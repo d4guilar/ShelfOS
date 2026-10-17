@@ -144,6 +144,38 @@ class EditionClusteringTest {
         assertEquals(2, EditionClustering.cluster(listOf(a, a.copy(providerRef = "2"))).single().members.size)
     }
 
+    // ---- F-1: members of one ISBN cluster that disagree with each other, though neither contradicts the query ----
+    private val inferred = MetadataQuery(MediaCategory.BOOK, listOf(dune), "Dune", null, titleIsInferred = true)
+    private fun pair(t1: String, t2: String, sameProvider: Boolean, v1: String? = null, v2: String? = null) = listOf(
+        cand("a", "1", t1, null, dune, values = MetadataValues(volume = v1)), cand(if (sameProvider) "a" else "b", "2", t2, null, dune, values = MetadataValues(volume = v2)))
+
+    @Test fun sameIsbnCandidatesWithConflictingEditionTitlesAreNotApplied() {
+        for (same in listOf(false, true)) {
+            val cs = pair("Dune", "Dune (Deluxe Edition)", same)
+            for (order in listOf(cs, cs.reversed())) {
+                val r = EditionClustering.rank(inferred, order)
+                assertNull("same provider=$same", r.apply)
+                assertEquals(MatchConfidence.MEDIUM, r.ranked.single().evidence.tier)
+                assertTrue(MatchSignal.AMBIGUOUS in r.ranked.single().evidence.contradictions)
+                assertEquals("both original records are kept", 2, r.ranked.single().cluster.members.size)
+            }
+        }
+    }
+
+    @Test fun sameIsbnCandidatesWithConflictingVolumesAreNotAppliedWhenTheQueryHasNoVolume() {
+        for (same in listOf(false, true)) for (order in listOf(pair("Berserk", "Berserk", same, "1", "10"), pair("Berserk", "Berserk", same, "1", "10").reversed()))
+            assertNull(EditionClustering.rank(inferred.copy(category = MediaCategory.BOOK), order).apply)
+    }
+
+    @Test fun genuinelyIdenticalSameIsbnCandidatesStillCorroborateAndApply() {
+        for (same in listOf(false, true)) {
+            val r = EditionClustering.rank(inferred, pair("Dune", "Dune", same))
+            assertNotNull(r.apply)
+            assertEquals(MatchConfidence.VERY_HIGH, r.apply!!.evidence.tier)
+            assertEquals(if (same) setOf("a") else setOf("a", "b"), r.apply!!.corroborating)
+        }
+    }
+
     @Test fun anEmptyResultRanksToNothing() {
         val r = EditionClustering.rank(bookQuery, emptyList())
         assertTrue(r.ranked.isEmpty()); assertNull(r.apply)

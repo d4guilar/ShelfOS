@@ -2638,10 +2638,12 @@ the app behaves exactly as in 4.5B.
   No WorkManager, job table or retry that survives process death.
 - **Lookup** (`ProviderLookup.kt`; `MetadataEnrichmentService` now takes it): eligible providers
   only, one at a time in priority order, each call through the engine; exact ISBN lookup first
-  (ISBN-10 sent as ISBN-13, at most 3 identifiers, other identifiers only when there is no ISBN);
+  (ISBN-10 sent as ISBN-13, at most 3 identifiers, other identifiers only when there is no ISBN),
+  **across every eligible ISBN-capable provider before the final decision (see the remediation
+  below)**;
   bounded title/creator search only for an item **without** an ISBN and never for Documents (the
   4.5B coordinator also searched after an ISBN miss; the multi-provider contract says search only
-  without an ISBN, so that changed); a phase stops at the first safe match unless `exhaustive`.
+  without an ISBN, so that changed); only the search fallback stops at the first safe match.
   Candidates claiming another provider, without a reference, or beyond the result cap (10) are
   dropped, and a reply with nothing usable is `MALFORMED`. `Result.failures` and
   `Outcome.LOOKUP_FAILED` (nothing answered, something failed) distinguish a failed lookup from
@@ -2651,8 +2653,9 @@ the app behaves exactly as in 4.5B.
   cover, volume or publisher; candidates without an ISBN stay singletons. Every contributing
   provider id, provider reference, original candidate and cover reference is kept. A cluster takes
   the tier `MetadataMatcher` gives its best single member; **agreement never raises a tier** (D30),
-  members that contradict each other cap the cluster at MEDIUM, and distinct disagreeing VERY_HIGH
-  editions demote exactly as in 4.5B (`MetadataMatcher.demoteAmbiguous`, extracted from `decide`
+  members that disagree about the edition (title, volume, issue) are demoted by the same
+  `demoteAmbiguous` rule inside the cluster and do not corroborate, a member rejected against the
+  query caps the cluster at MEDIUM, and distinct disagreeing VERY_HIGH editions demote exactly as in 4.5B (`MetadataMatcher.demoteAmbiguous`, extracted from `decide`
   with no behavior change). Ordering: not rejected, tier, exact identifier, fewer contradictions,
   more corroborating providers, more agreeing signals, provider priority, cluster key; it is
   independent of provider return order. Thresholds are unchanged.
@@ -2663,3 +2666,29 @@ the app behaves exactly as in 4.5B.
   needs the caller's wall clock and no transport calls it yet; LCCN/OCLC clustering and perceptual
   cover matching are not implemented (4.5C.4 and 4.5F); the L-2 Comics gate remains mandatory
   before 4.5E.
+
+**4.5C.1 remediation (independent Codex High review of `9067511`: CHANGES REQUIRED; re-review
+pending, still not merged).**
+- **F-1 (HIGH, fixed).** Same-ISBN members were collapsed to the best member's tier, so two
+  records that disagree about the edition (e.g. "Dune" and "Dune (Deluxe Edition)" against an
+  inferred title, or volume 1 against 10 when the query has no volume) could both score VERY_HIGH
+  and be applied. Clustering now runs `MetadataMatcher.demoteAmbiguous` on each cluster's members
+  first: disagreeing members drop to MEDIUM with `AMBIGUOUS`, do not corroborate, and nothing is
+  applied. Identical records still corroborate and apply.
+- **F-2 (MEDIUM, fixed).** The half-open probe was claimed before the global permit, so a
+  cancellation while waiting for it left the breaker probing forever. The probe is now claimed
+  only after both permits are held and handed back in a `finally` on every exit without a verdict
+  (cancellation, including one raised inside timeout handling).
+- **F-3 (MEDIUM, fixed; administrator resolution).** All eligible ISBN-capable providers are
+  consulted before the final matching/application decision; the early stop and the `exhaustive`
+  flag are removed from ISBN lookup, so one provider's VERY_HIGH can no longer hide another's
+  conflicting edition evidence. Search remains a fallback only for an item without an ISBN.
+- **F-5 (LOW, fixed).** A provider whose first identifier succeeded and a later one failed keeps
+  its candidates and reports the failure separately (it still counts as having answered).
+- **F-7 (LOW, fixed).** Clustering and rate-wait KDoc corrected: a rate wait holds only the
+  provider's slot, never the global permit.
+- **Deferred to 4.5C.2 (transport integration):** F-4, unexpected programming exceptions are
+  classified `MALFORMED`; the transport slice must separate parse errors from programming errors
+  and give diagnostics visibility. F-6, a mix of a provider failure and an empty reply yields
+  `NO_MATCH` with the failures retained; future negative caching must not treat that as
+  authoritative absence.

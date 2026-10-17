@@ -75,8 +75,9 @@ fun backoffMs(policy: RetryPolicy, attempt: Int, random: Random): Long {
 /**
  * Transport-independent request policy (§3.3): per-provider token bucket and concurrency, global concurrency, bounded
  * queueing and waiting, retry with backoff for transient failures, and a per-provider circuit breaker. Time comes from
- * [nowMs] (monotonic) and waiting from [pause], so tests never sleep. Waiting happens without holding a concurrency
- * permit, a slow provider holds at most its own slot, and cancellation always propagates and frees what it held.
+ * [nowMs] (monotonic) and waiting from [pause], so tests never sleep. A rate wait holds only the provider's own slot,
+ * never the global permit; the global permit is taken just before the call, and the breaker probe only after that.
+ * Cancellation always propagates and frees what it held.
  */
 class ProviderPolicyEngine(
     private val nowMs: () -> Long,
@@ -158,9 +159,13 @@ class ProviderPolicyEngine(
                     if (nowMs() - start + wait > d.rate.maxWaitMs) return@withPermit Attempt.Refused(ProviderFailureKind.RATE_LIMITED, wait)
                     pause(wait)
                 }
-                val open = s.breaker.permit(nowMs())
-                if (open > 0) return@withPermit Attempt.Refused(ProviderFailureKind.CIRCUIT_OPEN, open)
-                global.withPermit { run() }
+                global.withPermit {
+                    // The probe is claimed only once both permits are held, and handed back on any exit without a verdict (cancellation included).
+                    val open = s.breaker.permit(nowMs())
+                    if (open > 0) return@withPermit Attempt.Refused(ProviderFailureKind.CIRCUIT_OPEN, open)
+                    var verdict = false
+                    try { run().also { verdict = true } } finally { if (!verdict) s.breaker.release() }
+                }
             }
         } finally { s.waiting.decrementAndGet() }
     }
@@ -172,7 +177,7 @@ class ProviderPolicyEngine(
         currentCoroutineContext().ensureActive()   // a provider's own timeout is a failure; ours being cancelled is not
         Attempt.Fail(ProviderFailureKind.TIMEOUT, null)
     } catch (e: CancellationException) {
-        s.breaker.release(); throw e
+        throw e
     } catch (e: ProviderException) {
         Attempt.Fail(e.kind, e.retryAfterMs)
     } catch (_: SocketTimeoutException) {

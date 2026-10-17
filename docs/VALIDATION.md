@@ -17,6 +17,17 @@ Branch `phase-4.5/4.5c1-provider-infrastructure` from `main` `7f15ea0`.
 | `assembleDebug`, `lintDebug` | — | — | — | PASS | lint 0 errors, 60 warnings (unchanged) |
 | `git diff --check` | — | — | — | clean | |
 
+### 4.5C.1 remediation (F-1, F-2, F-3, F-5, F-7)
+
+| Command | Tests | Pass | Fail | Result | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `gradlew.bat :app:testDebugUnitTest` (full suite) | 738 | 738 | 0 | PASS | 729 + 9 new, 0 skipped |
+| New regression tests | 9 | 9 | 0 | PASS | `EditionClusteringTest` (3: conflicting edition titles, conflicting volumes, identical records; each with one provider vs two and reversed order); `MultiProviderLookupTest` (4: conflict in both provider orders is not applied, agreeing providers apply, failures isolated beside a success, partial identifier results survive); `ProviderPolicyEngineTest` (2: probe cancelled while waiting for the global permit, cancellation inside timeout handling) |
+| Changed tests | 2 | | | | the early-stop and `exhaustive` assertions now require every ISBN provider to be consulted |
+| Mutation check | | | | | the two new engine tests were run against the previous engine and fail there; the engine was restored |
+
+`assembleDebug` and `lintDebug` pass (0 errors, 60 warnings, unchanged). `git diff --check` clean. Still no instrumented or device validation (nothing Android-facing changed).
+
 Limitations: no instrumented, device or process-death validation (nothing Android-facing
 changed); no real transport, so `Retry-After` header parsing and failure mapping are exercised
 only through fakes.

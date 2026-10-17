@@ -7,7 +7,7 @@ import com.d4guilar.shelfos.domain.metadata.*
 
 /**
  * The enrichment coordinator (plan §10, §19 step 3; multi-provider since 4.5C.1): query from local metadata → eligible
- * providers through [ProviderLookup] (registry, rate limits, breaker) → exact ISBN lookup first, bounded title/creator
+ * providers through [ProviderLookup] (registry, rate limits, breaker) → exact ISBN lookup across every eligible provider, bounded title/creator
  * search only for an item without an ISBN (never Documents) → [EditionClustering] over [MetadataMatcher] → only an
  * unambiguous VERY_HIGH edition is applied, field by field, through the store's precedence rule (never over `USER`,
  * never over `EMBEDDED`). Cover candidates are never applied: local artwork is untouched.
@@ -23,17 +23,15 @@ class MetadataEnrichmentService(
     enum class Outcome { APPLIED, NEEDS_REVIEW, NO_MATCH, SKIPPED, LOOKUP_FAILED }
     data class Result(val outcome: Outcome, val decision: MatchDecision? = null, val ranking: EditionRanking? = null, val failures: List<ProviderFailure> = emptyList())
 
-    /** [exhaustive] keeps querying every eligible provider (for corroboration or a picker) instead of stopping at the first safe match. */
-    suspend fun enrich(item: LibraryItem, exhaustive: Boolean = false): Result {
+    suspend fun enrich(item: LibraryItem): Result {
         val current = store.resolved(item.id) ?: return Result(Outcome.SKIPPED)
         if (!lookup.hasEligible(item.category)) return Result(Outcome.SKIPPED)
         val query = query(item, current)
         fun rank(c: List<MetadataCandidate>) = EditionClustering.rank(query, c, lookup::priority)
-        val stop: (List<MetadataCandidate>) -> Boolean = if (exhaustive) { _ -> false } else { c -> rank(c).apply != null }
-        var batch = lookup.byIdentifier(query, stop)
+        var batch = lookup.byIdentifier(query)
         var ranking = rank(batch.candidates)
         if (ranking.apply == null && item.category != MediaCategory.DOCUMENT && query.identifiers.none { it.isbn13 != null }) {
-            batch += lookup.bySearch(query, stop)
+            batch += lookup.bySearch(query) { c -> rank(c).apply != null }
             ranking = rank(batch.candidates)
         }
         val decision = ranking.toDecision()

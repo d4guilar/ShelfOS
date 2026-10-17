@@ -17,8 +17,8 @@ data class LookupBatch(val candidates: List<MetadataCandidate>, val failures: Li
 
 /**
  * Provider-neutral lookup (§3.2): only registry-eligible providers, one at a time in priority order, every call through
- * the [ProviderPolicyEngine]. [stop] ends a phase once the candidates gathered so far are enough, so providers are not
- * queried needlessly. Results are untrusted: candidates claiming another provider, lacking a reference, or beyond
+ * the [ProviderPolicyEngine]. ISBN lookup consults every eligible provider; only the search fallback uses [stop] to end
+ * a phase once the candidates gathered so far are safe. Results are untrusted: candidates claiming another provider, lacking a reference, or beyond
  * [maxResults] are dropped, and a reply with nothing usable is a MALFORMED failure, not "no match".
  */
 class ProviderLookup(private val registry: ProviderRegistry, private val engine: ProviderPolicyEngine, private val maxResults: Int = 10) {
@@ -33,40 +33,50 @@ class ProviderLookup(private val registry: ProviderRegistry, private val engine:
         return (isbns.ifEmpty { query.identifiers.distinct() }).take(MAX_IDENTIFIERS)
     }
 
-    suspend fun byIdentifier(query: MetadataQuery, stop: (List<MetadataCandidate>) -> Boolean): LookupBatch {
+    /** Every eligible ISBN-capable provider is consulted (no early stop) so contradictions are seen before anything is applied. */
+    suspend fun byIdentifier(query: MetadataQuery): LookupBatch {
         val ids = lookupIdentifiers(query)
         if (ids.isEmpty()) return LookupBatch.EMPTY
-        return collect(registry.active(query.category, MetadataCapability.IDENTIFIER_LOOKUP), stop) { p ->
+        return collect(registry.active(query.category, MetadataCapability.IDENTIFIER_LOOKUP), { false }) { p ->
             val found = ArrayList<MetadataCandidate>()
-            for (id in ids) when (val o = engine.execute(p.descriptor) { p.provider.lookup(id) }) {
-                is ProviderPolicyEngine.Outcome.Success -> found += o.value
-                is ProviderPolicyEngine.Outcome.Failure -> return@collect o
+            var failure: ProviderPolicyEngine.Outcome.Failure? = null
+            for (id in ids) {
+                when (val o = engine.execute(p.descriptor) { p.provider.lookup(id) }) {
+                    is ProviderPolicyEngine.Outcome.Success -> found += o.value
+                    is ProviderPolicyEngine.Outcome.Failure -> { failure = o; break }
+                }
             }
-            ProviderPolicyEngine.Outcome.Success(found, 1)
+            Reply(found, failure)
         }
     }
 
     /** Documents are never searched, whatever providers claim. */
     suspend fun bySearch(query: MetadataQuery, stop: (List<MetadataCandidate>) -> Boolean): LookupBatch {
         if (query.category == MediaCategory.DOCUMENT) return LookupBatch.EMPTY
-        return collect(registry.active(query.category, MetadataCapability.SEARCH), stop) { p -> engine.execute(p.descriptor) { p.provider.search(query) } }
+        return collect(registry.active(query.category, MetadataCapability.SEARCH), stop) { p ->
+            when (val o = engine.execute(p.descriptor) { p.provider.search(query) }) {
+                is ProviderPolicyEngine.Outcome.Success -> Reply(o.value, null)
+                is ProviderPolicyEngine.Outcome.Failure -> Reply(emptyList(), o)
+            }
+        }
     }
 
-    private suspend fun collect(
-        providers: List<RegisteredProvider>, stop: (List<MetadataCandidate>) -> Boolean,
-        call: suspend (RegisteredProvider) -> ProviderPolicyEngine.Outcome<List<MetadataCandidate>>,
-    ): LookupBatch {
+    /** What one provider gave: candidates from the calls that succeeded, and the failure that ended the rest (kept separately). */
+    private class Reply(val candidates: List<MetadataCandidate>, val failure: ProviderPolicyEngine.Outcome.Failure?)
+
+    private suspend fun collect(providers: List<RegisteredProvider>, stop: (List<MetadataCandidate>) -> Boolean, call: suspend (RegisteredProvider) -> Reply): LookupBatch {
         val candidates = ArrayList<MetadataCandidate>(); val failures = ArrayList<ProviderFailure>(); val answered = LinkedHashSet<String>()
         for (p in providers) {
             val id = p.descriptor.id
-            when (val o = call(p)) {
-                is ProviderPolicyEngine.Outcome.Failure -> failures += ProviderFailure(id, o.kind, o.retryAfterMs)
-                is ProviderPolicyEngine.Outcome.Success -> {
-                    val valid = o.value.filter { it.providerId == id && it.providerRef.isNotBlank() }.take(maxResults)
-                    if (o.value.isNotEmpty() && valid.isEmpty()) failures += ProviderFailure(id, ProviderFailureKind.MALFORMED, null)
-                    else { answered += id; candidates += valid }
-                }
+            val r = call(p)
+            val valid = r.candidates.filter { it.providerId == id && it.providerRef.isNotBlank() }.take(maxResults)
+            candidates += valid
+            when {
+                r.failure != null -> failures += ProviderFailure(id, r.failure.kind, r.failure.retryAfterMs)
+                r.candidates.isNotEmpty() && valid.isEmpty() -> failures += ProviderFailure(id, ProviderFailureKind.MALFORMED, null)
+                else -> answered += id
             }
+            if (r.failure != null && valid.isNotEmpty()) answered += id   // partial success still counts as an answer
             if (stop(candidates)) break
         }
         return LookupBatch(candidates, failures, answered)
