@@ -5,13 +5,14 @@ import com.d4guilar.shelfos.core.database.CoverDao
 import com.d4guilar.shelfos.core.database.CoverCandidate
 import com.d4guilar.shelfos.core.database.PublicationCoverEntity
 import com.d4guilar.shelfos.core.reader.ExtractedCover
+import com.d4guilar.shelfos.core.reader.StoredImage
 import com.d4guilar.shelfos.domain.library.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlin.random.Random
 
 /**
- * The only writer of `publication_cover` (plan §23.1): typed enums in, validated before SQL, LOCAL slot only in 4.5A.1.
+ * The only writer of `publication_cover` (plan §23.1): typed enums in, validated before SQL, LOCAL slot from 4.5A.1, plus the user-chosen USER slot from 4.5F.0.
  * Reads tolerate unknown stored strings (the row is unusable, never a crash). Attempt tokens are the attempt start time.
  */
 class RoomCoverRepository(
@@ -34,6 +35,21 @@ class RoomCoverRepository(
     }.distinctUntilChanged()
 
     suspend fun local(id: String): PublicationCoverEntity? = dao.local(id)
+
+    suspend fun itemExists(id: String) = dao.itemExists(id)
+
+    /** True while a READY user-chosen cover overrides every other slot. */
+    fun hasUser(id: String): Flow<Boolean> = dao.observeHasUser(id).distinctUntilChanged()
+
+    /** Guarded USER commit (4.5F.0); returns the previous USER file name. Throws `CoverRejectedException` if the item is gone. */
+    internal suspend fun commitUser(id: String, fileName: String, image: StoredImage): String? {
+        requireValidUser(fileName, image)
+        return dao.commitUser(id, fileName, image.mimeType, image.representation.name, image.sourceWidth, image.sourceHeight,
+            image.storedWidth, image.storedHeight, image.bytes, clock())
+    }
+
+    /** Removes the USER override; returns the file to delete once this has committed, or null when there was none. */
+    suspend fun clearUser(id: String): String? = dao.clearUser(id)
 
     /** Attempt-begin commit; null when the item no longer exists or an attempt is already open. */
     suspend fun begin(id: String): Long? = clock().takeIf { dao.beginAttempt(id, it, VERSION) }
@@ -133,6 +149,19 @@ fun requireValidReady(slot: CoverSlot, fileName: String, cover: ExtractedCover) 
     }
     require(cover.localSource != CoverLocalSource.PDF_FIRST_PAGE || cover.representation == CoverRepresentation.DERIVED) { "a PDF preview is never ORIGINAL" }
     require(cover.sourceRef.isNotBlank()) { "missing source reference" }
+}
+
+/** Persistence-boundary validation for a USER write: same bounds as LOCAL, different slot and file prefix. */
+internal fun requireValidUser(fileName: String, image: StoredImage) {
+    require(Regex("user-[0-9a-f]{16}\\.[a-z]{3,4}").matches(fileName)) { "invalid user cover file name" }
+    require(image.extension == fileName.substringAfterLast('.')) { "extension does not match" }
+    require(image.mimeType.startsWith("image/")) { "not an image" }
+    require(image.storedWidth > 0 && image.storedHeight > 0 && image.sourceWidth > 0 && image.sourceHeight > 0) { "invalid dimensions" }
+    require(image.bytes in 1..CoverStoragePolicy.MAX_COVER_BYTES) { "stored bytes out of bounds" }
+    require(maxOf(image.storedWidth, image.storedHeight) <= CoverStoragePolicy.MAX_EDGE_PX) { "stored edge out of bounds" }
+    require(image.representation == CoverRepresentation.DERIVED || (image.storedWidth == image.sourceWidth && image.storedHeight == image.sourceHeight)) {
+        "an ORIGINAL copy must keep the source dimensions"
+    }
 }
 
 /** Leading + trailing latest-value throttle: at most one emission per [periodMillis], never starved like a debounce. */

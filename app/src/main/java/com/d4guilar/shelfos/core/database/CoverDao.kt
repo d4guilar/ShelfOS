@@ -66,6 +66,41 @@ abstract class CoverDao {
         ORDER BY COALESCE(rs.lastRead, 0) DESC, li.addedAt DESC, li.id LIMIT :limit""")
     abstract suspend fun candidates(now: Long, allowRetries: Boolean, limit: Int): List<CoverCandidate>
 
+    @Query("SELECT EXISTS(SELECT 1 FROM library_item WHERE id = :id)")
+    abstract suspend fun itemExists(id: String): Boolean
+
+    @Query("SELECT EXISTS(SELECT 1 FROM publication_cover WHERE libraryItemId = :id AND slot = 'USER' AND status = 'READY')")
+    abstract fun observeHasUser(id: String): Flow<Boolean>
+
+    @Query("SELECT fileName FROM publication_cover WHERE libraryItemId = :id AND slot = 'USER'")
+    protected abstract suspend fun userFileName(id: String): String?
+
+    /** Guarded USER write (4.5F.0): inserts nothing when the item is gone; the row is a plain READY row of the existing shape. */
+    @Query("""INSERT OR REPLACE INTO publication_cover (libraryItemId, slot, status, failureReason, fileName, mimeType, representation,
+        sourceWidthPx, sourceHeightPx, storedWidthPx, storedHeightPx, storedBytes, extractorVersion, attempts, interruptions, parked, updatedAt)
+        SELECT :id, 'USER', 'READY', NULL, :fileName, :mimeType, :representation, :sourceWidth, :sourceHeight, :storedWidth, :storedHeight,
+        :storedBytes, 0, 0, 0, 0, :now WHERE EXISTS (SELECT 1 FROM library_item WHERE id = :id)""")
+    protected abstract suspend fun upsertUser(id: String, fileName: String, mimeType: String, representation: String, sourceWidth: Int,
+        sourceHeight: Int, storedWidth: Int, storedHeight: Int, storedBytes: Long, now: Long)
+
+    /**
+     * Success commit of a user-chosen cover: replaces the USER row in one transaction and returns the previous file name
+     * (deleted by the caller only after this commits). Throws [CoverRejectedException] when the item no longer exists.
+     */
+    @Transaction open suspend fun commitUser(id: String, fileName: String, mimeType: String, representation: String, sourceWidth: Int,
+        sourceHeight: Int, storedWidth: Int, storedHeight: Int, storedBytes: Long, now: Long): String? {
+        val previous = userFileName(id)
+        upsertUser(id, fileName, mimeType, representation, sourceWidth, sourceHeight, storedWidth, storedHeight, storedBytes, now)
+        if (userFileName(id) != fileName) throw CoverRejectedException(0)
+        return previous
+    }
+
+    @Query("DELETE FROM publication_cover WHERE libraryItemId = :id AND slot = 'USER'")
+    protected abstract suspend fun deleteUserRow(id: String): Int
+
+    /** Removes the USER override and returns its file name (to delete after the commit); null when there was none. */
+    @Transaction open suspend fun clearUser(id: String): String? = userFileName(id).also { if (it != null) deleteUserRow(id) }
+
     /** Rows waiting for a source, a grant or storage (no timer); reassessed once per cold start. */
     @Query("""SELECT li.id AS id, li.format AS format FROM library_item li
         JOIN publication_cover pc ON pc.libraryItemId = li.id AND pc.slot = 'LOCAL'

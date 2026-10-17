@@ -438,7 +438,7 @@ and import and reading never depend on a provider.
   in the first provider slice (4.5C/4.5D/4.5E) after that provider's own authorization gate
   and a manifest/privacy review.
 - **4.5C Books** — modular multi-provider system ([`features/BOOK_PROVIDERS.md`](features/BOOK_PROVIDERS.md),
-  ADR-0026 accepted; 4.5C.1 registry/policy/clustering implemented with fakes, pending review): registry, ISBN-first, metadata and covers; Open Library conditional
+  ADR-0026 accepted; 4.5C.1 registry/policy/clustering merged, fakes only): registry, ISBN-first, metadata and covers; Open Library conditional
   (D1), Library of Congress conditional metadata-only; Google Books, OverDrive default,
   Gutendex and Goodreads wrappers rejected. Planned sub-slices 4.5C.1–4.5C.5.
 - **4.5D Manga** — volume-aware matching, ISBN/edition, volume-specific covers.

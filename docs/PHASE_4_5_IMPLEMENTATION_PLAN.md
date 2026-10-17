@@ -4,9 +4,10 @@ Status (2026-10-16): **4.5A.1 Local Cover Artwork MERGED (PR #44)** (record §33
 Cover Presentation MERGED (PR #45)** (record §34); their physical UAT is part of 4.5G. **4.5B
 Metadata Core MERGED (PR #46)**; record, network-boundary design and deviations: §35. **4.5C.0
 multi-provider planning ACCEPTED and merged (PR #47; ADR-0026 Accepted).** **4.5C.1 provider
-infrastructure IMPLEMENTED on branch `phase-4.5/4.5c1-provider-infrastructure`, pending
-independent review (not merged)**: §36. No online enrichment is shipped; 4.5C.2 and later are not
-implemented, and Open Library D1/D31 remain unresolved.
+infrastructure MERGED (PR #48)**: §36. **4.5F.0 Offline Cover Selection IMPLEMENTED on branch
+`phase-4.5/4.5f0-offline-cover-selection`, pending independent review (not merged)**: §37. No
+online enrichment is shipped; 4.5C.2 and later are not implemented, and Open Library D1/D31 remain
+unresolved.
 Phase 4 (Notes and Knowledge Layer) is COMPLETE (Phase 4F acceptance merged
 in PR #42). Phase 4.5 is the next active milestone. Phase 5 remains Advanced PDF Ingestion;
 numbering after 4.5 is unchanged.
@@ -2608,7 +2609,7 @@ under review).**
   file-name signals alone produce VERY_HIGH, keep the issue/volume identity checks, and add a
   contradictory Comics test corpus.
 
-## 36. 4.5C.1 implementation record (2026-10-16, implemented / pending independent review)
+## 36. 4.5C.1 implementation record (2026-10-16, merged in PR #48)
 
 Scope: ADR-0026 and `features/BOOK_PROVIDERS.md` §3.1–3.3, §3.5, §3.10; decisions D23 and D30
 (independent of D1). **Infrastructure with fakes only: no Open Library or other real provider, no
@@ -2667,8 +2668,8 @@ the app behaves exactly as in 4.5B.
   cover matching are not implemented (4.5C.4 and 4.5F); the L-2 Comics gate remains mandatory
   before 4.5E.
 
-**4.5C.1 remediation (independent Codex High review of `9067511`: CHANGES REQUIRED; re-review
-pending, still not merged).**
+**4.5C.1 remediation (independent Codex High review of `9067511`: CHANGES REQUIRED; remediated
+before the merge in PR #48).**
 - **F-1 (HIGH, fixed).** Same-ISBN members were collapsed to the best member's tier, so two
   records that disagree about the edition (e.g. "Dune" and "Dune (Deluxe Edition)" against an
   inferred title, or volume 1 against 10 when the query has no volume) could both score VERY_HIGH
@@ -2692,3 +2693,48 @@ pending, still not merged).**
   and give diagnostics visibility. F-6, a mix of a provider failure and an empty reply yields
   `NO_MATCH` with the failures retained; future negative caching must not treat that as
   authoritative absence.
+
+## 37. 4.5F.0 — Offline Cover Selection (2026-10-16, implemented / pending independent review)
+
+Brought forward from 4.5F as an independently mergeable, **entirely offline** slice, ahead of and
+independent of 4.5C.2 (Open Library D1/D31 remain unresolved; nothing in 4.5C.2 started). The
+online candidate grid, the full Find cover experience and the existing 4.5C.5 online-picker gate are
+**unchanged** and remain in their later approved slices. No network, `INTERNET`, provider, download,
+settings, WorkManager, bulk change, per-item display-shape override, dependency or Room change
+(the existing v8 `publication_cover` shape was sufficient).
+
+- **Storage (`data/library/UserCoverStore.kt`, `CoverDao.commitUser/clearUser`):** the user picks
+  an image with `OpenDocument("image/*")`. ShelfOS copies it **once** into a bounded temporary file
+  (32 MiB cap; checked against the storage guard first), so a source that is later moved, deleted
+  or loses its grant cannot affect the cover and the URI is never stored. The copy goes through the
+  same `CoverImageWriter` as local covers (header pixel cap 40 Mpx, one sampled decode, byte-exact
+  ORIGINAL only when ≤ 512 KiB and ≤ 1200 px, else the fixed JPEG ladder, never above 512 KiB / 1200
+  px), is finalized under a **new immutable name `user-<16 hex>.<ext>`**, and only then does a
+  guarded Room transaction make it active: it replaces the `USER` row only `WHERE EXISTS` the
+  library item, otherwise throws and nothing is revived (the temp/finalized files and a recreated
+  directory are removed). The previous USER file is deleted **after** that commit. Every failure
+  leaves the current cover and files intact. Commit and old-file deletion are non-cancellable; a
+  cancelled read/convert leaves no files. All writes hold the scheduler's directory lock, so they
+  never race the startup sweep or an extraction. The sweep keeps USER files (they are referenced);
+  nothing evicts them: **USER artwork is durable user data, not cache.**
+- **Precedence:** `resolveCovers` is unchanged: `USER > ONLINE > LOCAL > generated`; a background
+  LOCAL extraction (or a future ONLINE result) writes only its own slot and cannot replace USER.
+- **Restore:** "Use the file's cover" deletes the USER row and file in one guarded step; the existing
+  LOCAL artwork (else the generated cover) shows again with **no re-extraction** and no change to the
+  publication. The dialog states that this deletes the chosen image from ShelfOS and that the original
+  image on the device is not touched.
+- **UI (`feature/library/UserCoverUi.kt`, `PublicationDetails`):** a **Cover** action beside Edit and
+  Remove opens a dialog with the current cover preview, whether a custom cover is active, Choose from
+  device, Use the file's cover (only while custom), progress, Cancel while saving, Close, and a
+  specific polite/assertive announced message per failure. Focusable controls with gamepad confirm,
+  EN/ES/PT-BR strings, the existing Classic components; the open dialog survives saved-state
+  restoration (an in-flight save is cancelled cleanly by recreation and can be retried). The
+  technical details line says "chosen by you" for a custom cover.
+- **Persistent enrichment rule (accepted product principle):** "Online enrichment is triggered by
+  import commit or an explicit user action, never by merely opening ShelfOS or browsing existing
+  library content. Successfully saved metadata and user-selected artwork load from local storage
+  without requiring repeat API requests, subject to provider-specific retention rights." (Also in
+  `features/METADATA_ENRICHMENT.md`.) This slice adds no networking.
+- **Limitations:** the system picker itself is not driven by tests (the store is); a save in flight
+  when the device rotates is cancelled and must be repeated; no crop/zoom editor; a USER cover is
+  always one stored copy (re-choosing replaces it); cover history is not kept.

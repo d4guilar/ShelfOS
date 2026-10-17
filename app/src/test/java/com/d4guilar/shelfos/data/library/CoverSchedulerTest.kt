@@ -62,6 +62,12 @@ class CoverSchedulerTest {
             parked: Boolean, nextEligibleAt: Long?, version: Int, now: Long): Int = error("no attempt may fail here: $id $reason")
         override suspend fun cancelAttempt(id: String, token: Long, now: Long): Int = 0
         override suspend fun markWaiting(id: String, reason: String, now: Long) {}
+        override suspend fun itemExists(id: String) = true
+        override fun observeHasUser(id: String): Flow<Boolean> = flowOf(false)
+        override suspend fun userFileName(id: String): String? = null
+        override suspend fun upsertUser(id: String, fileName: String, mimeType: String, representation: String, sourceWidth: Int, sourceHeight: Int,
+            storedWidth: Int, storedHeight: Int, storedBytes: Long, now: Long) {}
+        override suspend fun deleteUserRow(id: String): Int = 0
     }
 
     /** Records extraction order; [hold] blocks an item's extraction until its latch is released. */

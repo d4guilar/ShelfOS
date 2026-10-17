@@ -1,5 +1,11 @@
 # Documentation Changelog
 
+## Phase 4.5F.0 offline cover selection (2026-10-16, pending independent review)
+
+- Plan: status header (4.5C.1 merged in PR #48) and new §37 introducing 4.5F.0 as an independent
+  offline slice (4.5C.5 gate and the online Find cover scope unchanged). METADATA_ENRICHMENT: the
+  accepted persistent enrichment rule. VALIDATION: 4.5F.0 evidence; 4.5C.1 heading now merged.
+
 ## Phase 4.5C.1 remediation (2026-10-16, pending independent re-review)
 
 - Plan §36: F-1/F-2/F-3/F-5/F-7 record, F-3 administrator resolution (all eligible ISBN providers
