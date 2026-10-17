@@ -40,6 +40,8 @@ class UserCoverStore(
     /** Opens the picked image; may throw [SecurityException] or [IOException] (revoked or vanished source). */
     private val open: (String) -> InputStream?,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** Test seam: the EXIF orientation of the staged copy (never of the external URI). */
+    private val orientationOf: (File) -> Int = CoverImageWriter::exifOrientation,
 ) {
     fun hasCustom(id: String): Flow<Boolean> = covers.hasUser(id)
 
@@ -57,7 +59,7 @@ class UserCoverStore(
             val tmpOut = files.newTemporary(id).also { output = it }
             val stored = withContext(io) {
                 stream.use { copyBounded(it, tmpIn) }
-                CoverImageWriter.store({ FileInputStream(tmpIn) }, tmpOut)
+                CoverImageWriter.store({ FileInputStream(tmpIn) }, tmpOut, orientationOf(tmpIn))
             }
             val name = withContext(io) { files.finalize(id, tmpOut, CoverSlot.USER.name, stored.extension) }.also { finalName = it }
             // Never cancelled half-way: a commit that landed must not have its referenced file deleted below.

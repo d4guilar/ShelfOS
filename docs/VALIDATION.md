@@ -1,5 +1,25 @@
 # Validation
 
+## PHASE 4.5F.0 — EXIF ORIENTATION REMEDIATION (2026-10-16, pending independent re-review)
+
+Fixes F-1 of the Codex High review of `a82068b`. Isolated API 24 emulator `emulator-5554`; per-class `am instrument`
+after `pm clear`; no schema, manifest, dependency or network change.
+
+| Command / class | Tests | Pass | Fail | Result | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `UserCoverExifTest` (new) | 6 | 6 | 0 | PASS | orientation 6 (3200x2400 landscape pixels) -> 900x1200 portrait DERIVED, quadrant colors at the rotated positions, source dims 2400x3200, survives a database close/reopen; **all eight orientations** on a 1600x1200 four-quadrant fixture, decoded without EXIF and checked at the positions the EXIF definition gives (rotation direction and mirroring); a small (<512 KiB) tagged JPEG is DERIVED with no orientation tag; normal / orientation-1 JPEG and untagged PNG stay ORIGINAL and byte-exact; a failure while handling orientation returns FAILED, keeps the previous USER row/file and leaves no artifacts, source untouched; corrupted EXIF is treated as normal and saves |
+| `UserCoverStoreTest`, `UserCoverUiTest` | 19 | 19 | 0 | PASS | unchanged behavior |
+| `CoverLifecycleTest` 12, `CoverPresentationUiTest` 8, `CoverRendererUiTest` 1, `CoverExtractionCorpusTest` 7 (real LOCAL extraction), `MetadataUiTest` 9, `NavigationSmokeTest` 28, `LibraryPersistenceTest` 10 | 75 | 75 | 0 | PASS | |
+| `gradlew.bat :app:testDebugUnitTest` | 741 | 741 | 0 | PASS | no JVM test changed |
+| `assembleDebug`, `assembleDebugAndroidTest`, `lintDebug` | — | — | — | PASS | lint 0 errors, 60 warnings (the `ExifInterface` lint advice is suppressed with a reason: no new dependency) |
+| `git diff --check` | — | — | — | clean | |
+
+Instrumented: **100/100 across 10 classes.** The first run of the new class failed 2/6: a test-side assumption that an
+untagged JPEG reports orientation 1 (the platform returns 0), and orientations 5 and 7 (transpose / transverse) had
+their rotations swapped in the first implementation; the independent corner assertions caught it and the matrices
+were corrected. The lint suppression (a comment and annotation only) was added after the instrumented run and was
+followed by a rebuild and lint, not another device run.
+
 ## PHASE 4.5F.0 — OFFLINE COVER SELECTION (2026-10-16, implemented / pending independent review)
 
 **Not accepted, not merged.** Isolated API 24 emulator `emulator-5554` only (no owner device); per-class

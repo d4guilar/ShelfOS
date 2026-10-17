@@ -2738,3 +2738,20 @@ settings, WorkManager, bulk change, per-item display-shape override, dependency 
 - **Limitations:** the system picker itself is not driven by tests (the store is); a save in flight
   when the device rotates is cancelled and must be repeated; no crop/zoom editor; a USER cover is
   always one stored copy (re-choosing replaces it); cover history is not kept.
+
+**4.5F.0 remediation (independent Codex High review of `a82068b`; re-review pending, still not merged).**
+- **F-1 (MEDIUM, fixed): EXIF orientation.** `BitmapFactory` ignores a JPEG's EXIF orientation and the
+  renderer does not read EXIF, so a chosen photo tagged "rotated" was stored or shown sideways (large
+  images re-encoded in the wrong orientation; small ones copied byte-exact with the tag). The orientation
+  is now read (platform `android.media.ExifInterface`, no dependency) from the **staged local copy**, never
+  the external URI. A non-normal value (2-8) skips the byte-exact path and goes through the same header /
+  40 Mpx checks and the same bounded sampled decode, the sampled bitmap is turned upright (rotation and
+  mirroring per the EXIF definition: 2 mirror, 3 rotate 180, 4 flip vertical, 5 transpose, 6 rotate 90 cw,
+  7 transverse, 8 rotate 90 ccw), then stored through the existing JPEG ladder as DERIVED with the upright
+  source dimensions. Absent, undefined or unreadable EXIF is normal (1), so normal artwork and LOCAL
+  extraction are unchanged (small normal art is still ORIGINAL). Limits, commit order, locking, cleanup and
+  precedence are untouched.
+- **Accepted non-blocking follow-ups (not fixed here):** **L-1** the shared scheduler lock is held during
+  the potentially blocking external image copy (a stalled provider of the picked file can delay cover
+  extraction until it returns or fails); **L-2** Cancel re-enables the dialog actions before the cancelled
+  background work has necessarily finished.

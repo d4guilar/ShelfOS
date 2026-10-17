@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Rect
 import android.os.ParcelFileDescriptor
@@ -154,14 +155,19 @@ internal data class StoredImage(val mimeType: String, val extension: String, val
 internal object CoverImageWriter {
     private val ORIGINAL_TYPES = mapOf("image/jpeg" to "jpg", "image/png" to "png", "image/webp" to "webp", "image/gif" to "gif", "image/bmp" to "bmp")
 
-    fun store(open: () -> InputStream, output: File): StoredImage {
+    /**
+     * [orientation] is an EXIF orientation (1-8). Anything but normal skips the byte-exact copy (which would keep the
+     * tag, and the renderer does not read EXIF) and stores upright DERIVED pixels from the same bounded sampled decode.
+     * LOCAL extraction never passes it, so its behavior is unchanged.
+     */
+    fun store(open: () -> InputStream, output: File, orientation: Int = 1): StoredImage {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         open().use { BitmapFactory.decodeStream(it, null, bounds) }
         val width = bounds.outWidth; val height = bounds.outHeight
         if (width <= 0 || height <= 0) fail(CoverFailureReason.UNDECODABLE_CONTENT)
         if (width.toLong() * height > CoverStoragePolicy.MAX_INPUT_PIXELS) fail(CoverFailureReason.UNSUPPORTED_REPRESENTATION)
         val extension = ORIGINAL_TYPES[bounds.outMimeType]
-        if (extension != null && maxOf(width, height) <= CoverStoragePolicy.MAX_EDGE_PX) {
+        if (orientation !in 2..8 && extension != null && maxOf(width, height) <= CoverStoragePolicy.MAX_EDGE_PX) {
             val bytes = open().use { readAtMost(it, CoverStoragePolicy.MAX_COVER_BYTES + 1) }
             if (CoverStoragePolicy.storesOriginal(bytes.size.toLong(), width, height)) {
                 write(output, bytes)
@@ -174,7 +180,33 @@ internal object CoverImageWriter {
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
         val decoded = open().use { BitmapFactory.decodeStream(it, null, options) } ?: fail(CoverFailureReason.UNDECODABLE_CONTENT)
-        try { return storeDerived(decoded, width, height, output) } finally { decoded.recycle() }
+        try {
+            if (orientation !in 2..8) return storeDerived(decoded, width, height, output)
+            val upright = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, orientationMatrix(orientation), true)
+            try {
+                val swapped = orientation >= 5   // the transposing orientations exchange width and height
+                return storeDerived(upright, if (swapped) height else width, if (swapped) width else height, output)
+            } finally { if (upright !== decoded) upright.recycle() }
+        } finally { decoded.recycle() }
+    }
+
+    /** The EXIF orientation (1-8) of a staged JPEG; absent, undefined or unreadable metadata is normal (1). */
+    // The platform class is enough for orientation on API 24+ (a staged local file); androidx.exifinterface would be a new dependency.
+    @Suppress("ExifInterface")
+    fun exifOrientation(file: File): Int = try {
+        android.media.ExifInterface(file.path).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1).takeIf { it in 1..8 } ?: 1
+    } catch (_: Exception) { 1 }
+
+    private fun orientationMatrix(orientation: Int) = Matrix().apply {
+        when (orientation) {
+            2 -> postScale(-1f, 1f)
+            3 -> postRotate(180f)
+            4 -> postScale(1f, -1f)
+            5 -> { postRotate(90f); postScale(-1f, 1f) }   // transpose: top-left stays top-left
+            6 -> postRotate(90f)
+            7 -> { postRotate(270f); postScale(-1f, 1f) }  // transverse: top-left goes to bottom-right
+            8 -> postRotate(270f)
+        }
     }
 
     /** Encodes [bitmap] through the fixed ladder; [sourceWidth]x[sourceHeight] are the artwork's native dimensions. */

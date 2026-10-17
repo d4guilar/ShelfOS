@@ -1,5 +1,9 @@
 # Documentation Changelog
 
+## Phase 4.5F.0 EXIF remediation (2026-10-16, pending independent re-review)
+
+- Plan §37: F-1 EXIF orientation fix and the accepted L-1 / L-2 follow-ups. VALIDATION: remediation evidence.
+
 ## Phase 4.5F.0 offline cover selection (2026-10-16, pending independent review)
 
 - Plan: status header (4.5C.1 merged in PR #48) and new §37 introducing 4.5F.0 as an independent
