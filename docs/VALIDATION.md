@@ -8143,6 +8143,20 @@ reading, metadata enrichment, annotations and production releases are future wor
   succeeded; `:app:lintDebug` reported no errors; `git diff --check` clean. Mutation check: with the
   production change reverted, 2 of the 3 new tests fail. Instrumented tests NOT RUN (no Android code changed).
 
+## PHASE 4.5C.P0 POST-QA HARDENING (2026-10-18, research harness only)
+
+No live request was made; no app code, manifest, dependency or schema changed (only the unit-test-only `ProviderLabBridgeTest` gained a
+verification header and sorted output).
+
+| Command | Result |
+| --- | --- |
+| `python -m unittest discover -s tests -t .` (tools/provider-lab) | **42/42 pass** (30 previous + 12 new: fresh verified run, non-zero Gradle exit, Gradle success with skipped bridge, missing / stale / foreign / incomplete / duplicate / unexpected output, digest mismatch, unparseable output, cached offline reproduction, CLI exit, tampered snapshot, edition-selection consistency) |
+| `python benchmark.py validate` | OK (36 fixtures) |
+| `python benchmark.py report --jvm` (real Gradle bridge) | exit 0, 46 groups verified, `cases.csv` byte-identical to the previous report; two consecutive runs gave byte-identical `bridge_out.tsv` |
+| Failure injection against real Gradle | missing input file: `run_jvm` raised "Gradle exited 1"; bridge test skipped (no environment variables): Gradle exit 0 but `verify` raised "bridge output is missing" |
+| Offline `report` from the committed snapshot | mode `committed-snapshot`, 46 groups, input digest recorded in `summary.json` |
+| `gradlew :app:testDebugUnitTest --tests *ProviderLabBridgeTest` | runs through the lab only (inert otherwise) |
+
 ## PHASE 4.5C.P0 provider evaluation lab (2026-10-18, research only)
 
 - Offline: `python -m unittest discover -s tests -t .` in `tools/provider-lab`: 30 tests, 0 failures (corpus schema/checksums, URL

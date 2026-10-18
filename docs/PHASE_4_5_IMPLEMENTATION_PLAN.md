@@ -2837,3 +2837,12 @@ it); Wikidata 4/36 (English books only, no covers). Recommendation: CONDITIONAL 
 secondary candidate pending an administrator decision and its unread terms/image policy; NO-GO for Wikidata as a standalone
 provider and for any cover use. **No provider is approved, registered or integrated; no manifest, dependency, Room or app
 code changed. D1/D31 (Open Library) and D22–D29 stand unchanged. 4.5C.2, full 4.5D, 4.5E and 4.5G are not advanced.**
+
+**4.5C.P0 post-QA hardening (2026-10-18; research harness only).** The bridge now fails closed (digest-tied, complete, fresh
+or refused), the committed 46-group bridge snapshot makes the matcher results independently reproducible offline, Inventaire
+edition selection is consistent, and the report corrects the volume statistics (11/14 single-number volumes correct; the wider
+12/16 is not a correctness rate), the single-source breakdown (6 of 7 no-result, 1 partial), request accounting (92+22+5 and
+36+8+3, probe URLs not retained) and latency meaning (summed request time excluding pacing). Decisions recorded in the research
+report §16: Inventaire provisional metadata-only candidate (no production authorization; terms and cover rights unverified),
+Wikidata not a standalone primary provider, no artwork download/persistence, no deliberate remote seeding, Biblioteca Nacional de
+España next for Spanish Manga, single-source fixtures to be strengthened before 4.5G; D1/D31 unchanged.

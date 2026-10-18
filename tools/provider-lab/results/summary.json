@@ -1,8 +1,14 @@
 {
  "meta": {
-  "generated": "2026-10-18 16:26:38",
+  "generated": "2026-10-18 17:04:47",
   "fixtures_in_corpus": 36,
-  "jvm_bridge": true
+  "jvm_bridge": true,
+  "bridge_verification": {
+   "input_sha256": "43c2f29509d2f59fd3de07739e0476c3d8f6ac4c65751146c07430848a9b8eba",
+   "groups": 46,
+   "contract": "1",
+   "mode": "fresh-jvm-run"
+  }
  },
  "scorecards": {
   "inventaire": {

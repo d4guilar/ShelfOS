@@ -3,4 +3,3 @@ results/raw/
 results/_probe*
 results/records_pilot.json
 results/requests_full_aborted_dns.csv
-results/bridge_*.tsv

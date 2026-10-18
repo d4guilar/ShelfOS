@@ -42,8 +42,10 @@ class ProviderLabBridgeTest {
             val top = ranking.apply ?: ranking.ranked.first()
             val e = top.evidence
             lines += listOf(key.first, key.second, e.tier.name, e.rejected.toString(), (ranking.apply != null).toString(),
-                e.agreements.joinToString(",") { it.name }, e.contradictions.joinToString(",") { it.name }).joinToString("\t") { enc(it) }
+                e.agreements.map { it.name }.sorted().joinToString(","), e.contradictions.map { it.name }.sorted().joinToString(",")).joinToString("\t") { enc(it) }
         }
-        File(output!!).writeText(lines.joinToString("\n") + "\n")
+        // First line ties this output to exactly this input (SHA-256 of the input bytes) and states how many decisions follow.
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(File(input).readBytes()).joinToString("") { "%02x".format(it) }
+        File(output!!).writeText((listOf("#shelfos-lab-bridge\t1\t$digest\t${lines.size}") + lines).joinToString("\n") + "\n")
     }
 }

@@ -3,6 +3,7 @@
 The matcher is Kotlin (MetadataMatcher, EditionClustering). The lab writes a TSV, runs the JVM test
 ProviderLabBridgeTest (unit-test source only, no production code) with SHELFOS_LAB_IN/OUT set, and
 reads one decision per (fixture, probe). No matching logic is reimplemented here."""
+import hashlib
 import os
 import subprocess
 import urllib.parse
@@ -42,13 +43,66 @@ def write_tsv(path, rows):
             f.write("\t".join(_q(c) for c in row) + "\n")
 
 
+class BridgeError(Exception):
+    """The production-matcher bridge did not produce a verifiable result. Never converted into 'insufficient evidence'."""
+
+
+def digest(path):
+    return hashlib.sha256(open(path, "rb").read()).hexdigest()
+
+
+def expected_groups(tsv_in):
+    """The exact (fixture-key, probe) groups the matcher must answer for this input."""
+    groups = []
+    with open(tsv_in, encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                p = line.rstrip("\n").split("\t")
+                g = (_unq(p[0]), _unq(p[1]))
+                if g not in groups:
+                    groups.append(g)
+    return groups
+
+
+def verify(tsv_in, tsv_out):
+    """Decisions for tsv_in, or BridgeError: missing/unparseable output, digest mismatch (stale or foreign output),
+    and missing, duplicate or unexpected groups are all rejected. Returns (decisions, metadata)."""
+    if not os.path.exists(tsv_out):
+        raise BridgeError("bridge output is missing (the JVM test was skipped or did not run)")
+    lines = open(tsv_out, encoding="utf-8").read().splitlines()
+    if not lines or not lines[0].startswith("#shelfos-lab-bridge\t"):
+        raise BridgeError("bridge output has no verification header (stale or foreign file)")
+    head = lines[0].split("\t")
+    if len(head) != 4 or head[1] != "1":
+        raise BridgeError("unsupported bridge output header")
+    want = digest(tsv_in)
+    if head[2] != want:
+        raise BridgeError("bridge output was produced from a different input (digest %s != %s)" % (head[2][:12], want[:12]))
+    seen = []
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        p = line.split("\t")
+        if len(p) < 7:
+            raise BridgeError("unparseable bridge line: %r" % line[:80])
+        seen.append((_unq(p[0]), _unq(p[1])))
+    expected = expected_groups(tsv_in)
+    dup = sorted({g for g in seen if seen.count(g) > 1})
+    missing = [g for g in expected if g not in seen]
+    extra = [g for g in dict.fromkeys(seen) if g not in expected]
+    if dup or missing or extra or len(seen) != int(head[3]):
+        raise BridgeError("bridge coverage mismatch: missing=%d duplicate=%d unexpected=%d declared=%s seen=%d"
+                          % (len(missing), len(dup), len(extra), head[3], len(seen)))
+    return read_decisions(tsv_out), dict(input_sha256=want, groups=len(expected), contract=head[1])
+
+
 def read_decisions(path):
     """-> {(id, probe): dict(tier, rejected, apply, agreements, contradictions)}"""
     out = {}
     with open(path, encoding="utf-8") as f:
         for line in f:
             p = line.rstrip("\n").split("\t")
-            if len(p) < 7:
+            if len(p) < 7 or p[0].startswith("#"):
                 continue
             id_, probe, tier, rejected, apply_, agree, contra = [_unq(x) for x in p[:7]]
             out[(id_, probe)] = dict(tier=tier, rejected=rejected == "true", apply=apply_ == "true",
@@ -57,10 +111,21 @@ def read_decisions(path):
 
 
 def run_jvm(tsv_in, tsv_out, repo_root, timeout=900):
+    """Runs the production-matcher bridge and returns the verified decisions. Any failure raises BridgeError: a previous
+    output is deleted first, a non-zero Gradle exit is an error, and a skipped test leaves no output, which verify() rejects."""
+    for stale in (tsv_out,):
+        if os.path.exists(stale):
+            os.remove(stale)
     env = dict(os.environ, SHELFOS_LAB_IN=os.path.abspath(tsv_in), SHELFOS_LAB_OUT=os.path.abspath(tsv_out))
     gradlew = os.path.join(repo_root, "gradlew.bat" if os.name == "nt" else "gradlew")
     cmd = [gradlew, "--offline", ":app:testDebugUnitTest", "--tests", "*ProviderLabBridgeTest", "--rerun", "--console=plain", "-q"]
-    return subprocess.run(cmd, cwd=repo_root, env=env, capture_output=True, text=True, timeout=timeout)
+    try:
+        cp = subprocess.run(cmd, cwd=repo_root, env=env, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise BridgeError("could not run the JVM bridge: %s" % e)
+    if cp.returncode != 0:
+        raise BridgeError("Gradle exited %d: %s" % (cp.returncode, (cp.stdout + cp.stderr)[-300:].strip()))
+    return verify(tsv_in, tsv_out)
 
 
 def decision_for(d):

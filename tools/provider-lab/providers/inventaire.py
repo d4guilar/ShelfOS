@@ -50,6 +50,16 @@ def parse_entities(body):
     return d["entities"], d.get("redirects") or {}
 
 
+def select_edition(ents):
+    """The one edition both parsing and the related-entity request use: the lowest URI. When several editions share an
+    ISBN the caller still reports them (Normalized.candidates > 1 is classified AMBIGUOUS), never a silent unique pick."""
+    editions = {u: e for u, e in ents.items() if isinstance(e, dict) and e.get("type") == "edition"}
+    if not editions:
+        return None, None, 0
+    uri, e = sorted(editions.items())[0]
+    return uri, e, len(editions)
+
+
 def parse(isbn13, edition_body, related_body=None):
     """Normalize the edition response (and the optional batched work/publisher/author response)."""
     n = Normalized("inventaire", isbn13)
@@ -58,12 +68,11 @@ def parse(isbn13, edition_body, related_body=None):
     except (ValueError, TypeError) as e:
         n.status, n.error = "REQUEST_FAILED", "malformed response: %s" % e
         return n
-    editions = {u: e for u, e in ents.items() if isinstance(e, dict) and e.get("type") == "edition"}
-    if not editions:
+    uri, e, count = select_edition(ents)
+    if e is None:
         n.status = "NO_RESULT"
         return n
-    n.candidates = len(editions)
-    uri, e = sorted(editions.items())[0]
+    n.candidates = count
     n.record_id = e.get("uri") or uri
     n.entity_origin = "inv" if str(n.record_id).startswith("inv:") else ("wd" if str(n.record_id).startswith("wd:") else None)
     n.kind = "edition"
@@ -103,7 +112,7 @@ def parse(isbn13, edition_body, related_body=None):
 def related_uris(edition_body):
     """URIs worth a second batched call: work and publisher (authors/series follow from the work)."""
     ents, _ = parse_entities(edition_body)
-    e = next((x for x in ents.values() if isinstance(x, dict) and x.get("type") == "edition"), None)
+    _, e, _ = select_edition(ents)
     return [u for u in (_first(e, "wdt:P629"), _first(e, "wdt:P123")) if u] if e else []
 
 

@@ -117,31 +117,48 @@ def make_report(args):
     recs = json.load(open(os.path.join(RESULTS, "records.json"), encoding="utf-8"))
     records = {tuple(k.split("|", 1)): v for k, v in recs.items()}
     by_id = {f["id"]: f for f in fixtures}
+    rows = []
+    for (prov, fid), rec in records.items():
+        if rec["status"] != "OK":
+            continue
+        for wv in (False, True):
+            rows += [[prov + ":" + r[0]] + r[1:] for r in bridge.rows_for(by_id[fid], [rec], wrong_volume=wv)]
+    tsv_in, tsv_out = os.path.join(RESULTS, "bridge_in.tsv"), os.path.join(RESULTS, "bridge_out.tsv")
+    try:
+        if args.jvm:
+            # Fresh run: the previous output is deleted, Gradle must succeed, and the output must be tied to this exact input.
+            bridge.write_tsv(tsv_in, rows)
+            decisions_raw, verification = bridge.run_jvm(tsv_in, tsv_out, os.path.abspath(os.path.join(HERE, "..", "..")))
+            verification["mode"] = "fresh-jvm-run"
+        else:
+            # Offline regeneration: reuse the committed snapshot only if it is provably the output for the CURRENT records.
+            expected = os.path.join(RESULTS, "bridge_in.expected.tsv")
+            bridge.write_tsv(expected, rows)
+            try:
+                same = bridge.digest(expected) == bridge.digest(tsv_in)
+            finally:
+                os.remove(expected)
+            if not same:
+                raise bridge.BridgeError("the committed bridge input does not match the current records; rerun with --jvm")
+            decisions_raw, verification = bridge.verify(tsv_in, tsv_out)
+            verification["mode"] = "committed-snapshot"
+    except bridge.BridgeError as e:
+        if args.jvm:
+            sys.exit("report --jvm FAILED, no matcher result is presented: %s" % e)
+        print("WARNING: production-matcher results are NOT verified (%s); matcher columns are omitted" % e)
+        decisions_raw, verification = None, dict(mode="unverified", reason=str(e))
     decisions = {}
-    if args.jvm:
-        rows = []
-        for (prov, fid), rec in records.items():
-            if rec["status"] != "OK":
-                continue
-            fx = by_id[fid]
-            for wv in (False, True):
-                rows += [[prov + ":" + r[0]] + r[1:] for r in bridge.rows_for(fx, [rec], wrong_volume=wv)]
-        bridge.write_tsv(os.path.join(RESULTS, "bridge_in.tsv"), rows)
-        cp = bridge.run_jvm(os.path.join(RESULTS, "bridge_in.tsv"), os.path.join(RESULTS, "bridge_out.tsv"), os.path.abspath(os.path.join(HERE, "..", "..")))
-        print("JVM bridge exit", cp.returncode, (cp.stdout + cp.stderr)[-400:])
-    out = os.path.join(RESULTS, "bridge_out.tsv")
-    if os.path.exists(out):
-        for (key, probe), d in bridge.read_decisions(out).items():
-            prov, fid = key.split(":", 1)
-            decisions[(prov, fid, probe)] = d
-    rows = report.evaluate(fixtures, records, decisions)
-    meta = dict(generated=time.strftime("%Y-%m-%d %H:%M:%S"), fixtures_in_corpus=len(fixtures), jvm_bridge=os.path.exists(out))
+    for (key, probe), d in (decisions_raw or {}).items():
+        prov, fid = key.split(":", 1)
+        decisions[(prov, fid, probe)] = d
+    out_rows = report.evaluate(fixtures, records, decisions)
+    meta = dict(generated=time.strftime("%Y-%m-%d %H:%M:%S"), fixtures_in_corpus=len(fixtures), jvm_bridge=decisions_raw is not None, bridge_verification=verification)
     scs = {}
     for prov in sorted({p for p, _ in records}):
         attempted = [(i, by_id[i]["category"]) for (p, i) in records if p == prov]
-        scs[prov] = report.scorecard(rows, prov, attempted)
+        scs[prov] = report.scorecard(out_rows, prov, attempted)
         print("\n## " + prov + "\n" + report.markdown(prov, scs[prov]) + "\n" + report.completeness_md(scs[prov]))
-    report.write_outputs(RESULTS, rows, scs, meta)
+    report.write_outputs(RESULTS, out_rows, scs, meta)
 
 
 def main():

@@ -316,5 +316,153 @@ class BridgeAndReport(unittest.TestCase):
         self.assertEqual(3.0, sc["ALL"]["lat_median"]); self.assertIsNone(sc["ALL"]["lat_p95"])
 
 
+class BridgeVerification(unittest.TestCase):
+    """M-1: a failed, skipped, stale or incomplete production-matcher bridge can never look like a successful benchmark."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.tin, self.tout = os.path.join(self.d, "in.tsv"), os.path.join(self.d, "out.tsv")
+        bridge.write_tsv(self.tin, [["p:a", "normal", "BOOK", "x", "t"], ["p:a", "wrongvol", "BOOK", "x", "t"], ["p:b", "normal", "BOOK", "y", "t"]])
+
+    def write_out(self, groups=(("p:a", "normal"), ("p:a", "wrongvol"), ("p:b", "normal")), digest=None, declared=None, header=True):
+        lines = ["#shelfos-lab-bridge\t1\t%s\t%s" % (digest or bridge.digest(self.tin), declared if declared is not None else len(groups))] if header else []
+        lines += ["\t".join(urllib.parse.quote(x) for x in [k, pr, "VERY_HIGH", "false", "true", "IDENTIFIER", ""]) for k, pr in groups]
+        open(self.tout, "w", encoding="utf-8").write("\n".join(lines) + "\n")
+
+    def fake_run(self, rc=0, write=True, **kw):
+        def run(cmd, **k):
+            self.env = k["env"]
+            if write:
+                self.write_out(**kw)
+            return type("CP", (), dict(returncode=rc, stdout="", stderr="boom"))()
+        return run
+
+    def jvm(self, **kw):
+        real = bridge.subprocess.run
+        bridge.subprocess.run = self.fake_run(**kw)
+        try:
+            return bridge.run_jvm(self.tin, self.tout, self.d)
+        finally:
+            bridge.subprocess.run = real
+
+    def test_fresh_run_is_verified_and_the_group_count_comes_from_the_input(self):
+        decisions, meta = self.jvm()
+        self.assertEqual(3, meta["groups"]); self.assertEqual(3, len(decisions))
+        self.assertEqual(bridge.digest(self.tin), meta["input_sha256"])
+        self.assertEqual(os.path.abspath(self.tin), self.env["SHELFOS_LAB_IN"])
+
+    def test_non_zero_gradle_exit_is_an_error_even_if_a_file_appeared(self):
+        with self.assertRaisesRegex(bridge.BridgeError, "Gradle exited 1"):
+            self.jvm(rc=1)
+
+    def test_gradle_success_with_a_skipped_bridge_is_an_error(self):
+        with self.assertRaisesRegex(bridge.BridgeError, "missing"):
+            self.jvm(write=False)
+
+    def test_a_stale_output_from_a_previous_run_is_deleted_and_never_reused(self):
+        self.write_out()                                  # looks perfect, but the run below writes nothing
+        with self.assertRaisesRegex(bridge.BridgeError, "missing"):
+            self.jvm(write=False)
+
+    def test_output_for_a_different_input_or_without_a_header_is_rejected(self):
+        self.write_out(digest="0" * 64)
+        with self.assertRaisesRegex(bridge.BridgeError, "different input"):
+            bridge.verify(self.tin, self.tout)
+        self.write_out(header=False)
+        with self.assertRaisesRegex(bridge.BridgeError, "header"):
+            bridge.verify(self.tin, self.tout)
+
+    def test_missing_duplicate_and_unexpected_groups_are_rejected(self):
+        self.write_out(groups=(("p:a", "normal"), ("p:b", "normal")))
+        with self.assertRaisesRegex(bridge.BridgeError, "missing=1"):
+            bridge.verify(self.tin, self.tout)
+        self.write_out(groups=(("p:a", "normal"), ("p:a", "normal"), ("p:a", "wrongvol"), ("p:b", "normal")))
+        with self.assertRaisesRegex(bridge.BridgeError, "duplicate=1"):
+            bridge.verify(self.tin, self.tout)
+        self.write_out(groups=(("p:a", "normal"), ("p:a", "wrongvol"), ("p:b", "normal"), ("p:z", "normal")))
+        with self.assertRaisesRegex(bridge.BridgeError, "unexpected=1"):
+            bridge.verify(self.tin, self.tout)
+        self.write_out(declared=9)
+        with self.assertRaisesRegex(bridge.BridgeError, "declared"):
+            bridge.verify(self.tin, self.tout)
+
+    def test_unparseable_output_is_rejected(self):
+        self.write_out()
+        open(self.tout, "a", encoding="utf-8").write("garbage\n")
+        with self.assertRaisesRegex(bridge.BridgeError, "unparseable"):
+            bridge.verify(self.tin, self.tout)
+
+    def test_valid_cached_output_verifies_offline(self):
+        self.write_out()
+        decisions, meta = bridge.verify(self.tin, self.tout)
+        self.assertEqual("AUTO_ACCEPT", bridge.decision_for(decisions[("p:a", "normal")])); self.assertEqual(3, meta["groups"])
+
+
+class ReportCommand(unittest.TestCase):
+    """The CLI refuses to present a matcher benchmark it could not verify."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        for n in ("records.json", "bridge_in.tsv", "bridge_out.tsv"):
+            open(os.path.join(self.d, n), "wb").write(open(os.path.join(benchmark.RESULTS, n), "rb").read())
+        self.saved = benchmark.RESULTS
+        benchmark.RESULTS = self.d
+        self.args = type("A", (), dict(jvm=False))()
+
+    def tearDown(self):
+        benchmark.RESULTS = self.saved
+
+    def summary(self):
+        return json.load(open(os.path.join(self.d, "summary.json"), encoding="utf-8"))
+
+    def quiet(self, f, *a):
+        import contextlib
+        import io
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            r = f(*a)
+        return r, out.getvalue()
+
+    def test_committed_snapshot_reproduces_the_report_and_records_how(self):
+        self.quiet(benchmark.make_report, self.args)
+        meta = self.summary()["meta"]
+        self.assertTrue(meta["jvm_bridge"]); self.assertEqual("committed-snapshot", meta["bridge_verification"]["mode"])
+        self.assertEqual(46, meta["bridge_verification"]["groups"]); self.assertEqual(64, len(meta["bridge_verification"]["input_sha256"]))
+
+    def test_a_tampered_or_mismatched_snapshot_is_reported_as_unverified_not_as_results(self):
+        text = open(os.path.join(self.d, "bridge_out.tsv"), encoding="utf-8").read()
+        open(os.path.join(self.d, "bridge_out.tsv"), "w", encoding="utf-8").write(text.split("\n", 1)[1])   # header stripped
+        _, out = self.quiet(benchmark.make_report, self.args)
+        self.assertIn("NOT verified", out)
+        meta = self.summary()["meta"]
+        self.assertFalse(meta["jvm_bridge"]); self.assertEqual("unverified", meta["bridge_verification"]["mode"])
+        open(os.path.join(self.d, "bridge_in.tsv"), "a", encoding="utf-8").write("x\n")                     # input no longer matches the records
+        _, out = self.quiet(benchmark.make_report, self.args)
+        self.assertIn("does not match the current records", out)
+
+    def test_report_jvm_exits_non_zero_when_the_bridge_fails_and_writes_nothing(self):
+        self.args.jvm = True
+        real = bridge.run_jvm
+
+        def boom(*a, **k):
+            raise bridge.BridgeError("Gradle exited 1: boom")
+        bridge.run_jvm = boom
+        try:
+            with self.assertRaises(SystemExit) as cm:
+                self.quiet(benchmark.make_report, self.args)
+        finally:
+            bridge.run_jvm = real
+        self.assertIn("FAILED", str(cm.exception.code))
+        self.assertFalse(os.path.exists(os.path.join(self.d, "summary.json")))
+
+
+class EditionSelection(unittest.TestCase):
+    def test_the_edition_that_is_parsed_is_the_edition_whose_related_entities_are_requested(self):
+        ents = {"inv:e2": {"type": "edition", "uri": "inv:e2", "claims": {"wdt:P629": ["wd:W2"], "wdt:P123": ["wd:P2"], "wdt:P1476": ["Second"]}},
+                "inv:e1": {"type": "edition", "uri": "inv:e1", "claims": {"wdt:P629": ["wd:W1"], "wdt:P123": ["wd:P1"], "wdt:P1476": ["First"]}}}   # insertion order is NOT sorted order
+        body = json.dumps({"entities": ents}).encode()
+        n = V.parse(ISBN, body)
+        self.assertEqual(("inv:e1", "First", 2), (n.record_id, n.title, n.candidates))
+        self.assertEqual(["wd:W1", "wd:P1"], V.related_uris(body))
+
 if __name__ == "__main__":
     unittest.main()

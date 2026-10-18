@@ -14,9 +14,14 @@ locally and are not committed; the normalized records, per-case table and summar
   6 comic/collected editions), every ISBN check-digit valid and checked against catalogs or retailers, never
   against the providers. 29 have two or more sources; **7 rest on a single credible source** (flagged in the
   data). 10 further candidates failed or were surplus and are listed as excluded, not measured.
+  **Ground-truth strength matters for the misses:** of the 7 single-source fixtures, **6 were no-result** in
+  Inventaire (2 Japanese: Slam Dunk, Chainsaw Man 2; **all 4 single-source Spanish**) and 1 was partial (Fullmetal
+  Alchemist JA). A miss against a single-source ISBN is weaker evidence than a miss against a corroborated one
+  (see §8 and §16).
 - **Inventaire.** Answered 36/36 requests (no errors, no throttling). Returned a record for **28/36 (78%)**
   ISBNs and a fully matching edition for **19/36 (53%)** under the lab's strict ground-truth rules; 9 more were
-  partial, 8 had no record. **Spanish Manga: 0/6.** The production `MetadataMatcher` auto-accepted 13/36, sent
+  partial, 8 had no record. **Spanish Manga: 0/6** (4 of those 6 fixtures are single-source; the 2 independently corroborated Spanish
+  fixtures also returned nothing, 0/2). The production `MetadataMatcher` auto-accepted 13/36, sent
   15 to review and rejected none; a deliberately wrong volume was **never** auto-accepted (0/14 probes).
 - **Wikidata.** Answered 36/36 requests. Returned a record for **4/36 (11%)**, all English books, all exact and
   all auto-accepted by the matcher; **0/30 for Manga and comics**, and none of the 4 carries a cover reference.
@@ -54,7 +59,7 @@ Legal notice, Privacy and General disclaimer pages exist per the wiki but I did 
 ## 3. Methodology
 
 - Harness is a stdlib Python 3 CLI. Stage A (offline): corpus schema/checksums, parsers, malformed input,
-  HTTP 403/429/`Retry-After`/budget handling, CSV/JSON output — 30 tests, all passing, no network.
+  HTTP 403/429/`Retry-After`/budget handling, CSV/JSON output — 42 tests (30 original + 12 added for bridge verification and edition selection), all passing, no network.
 - Stage B (pilot): 8 fixtures (English book, Japanese, English and Spanish Manga, collected edition) on both providers;
   stopped-if-throttled client, one request in flight, ≥ 1.5 s between requests, descriptive User-Agent with the
   repository URL, 2 MB response cap, retries only for transient failures.
@@ -67,8 +72,12 @@ Legal notice, Privacy and General disclaimer pages exist per the wiki but I did 
   bridge (`ProviderLabBridgeTest`, inert unless two environment variables are set). The query models a library
   item that already knows the expected ISBN, title, creator, series, volume, language and publisher as embedded
   (non-inferred) metadata — a strict test.
-- Requests actually sent (this spike): Inventaire 92 (full) + 22 (pilot) + 5 (probes: 1 HEAD, 4 GET); Wikidata 36
-  (full) + 8 (pilot) + 3 (probe, bounded control, positive control). All returned HTTP 200 except the aborted DNS run (which
+- Requests actually sent (this spike): Inventaire 92 (full) + 22 (pilot) + 5 (probes: 1 HEAD, 4 GET) = 119; Wikidata 36
+  (full) + 8 (pilot) + 3 (probe, bounded control, positive control) = 47. **Verified against the committed artifacts:**
+  `results/requests.csv` holds exactly 92 Inventaire and 36 Wikidata rows (the final full run) and
+  `results/requests_pilot.csv` 22 and 8. The remaining 5 Inventaire and 3 Wikidata requests were probes and controls made
+  before the harness logged them; **their URLs were not retained, so request tracing is not complete for them.** The
+  aborted run (`requests_full_aborted_dns.csv`, 216 rows) never reached a server. All returned HTTP 200 except the aborted DNS run (which
   never reached a server). No 403/429 occurred.
 
 ## 4. Corpus coverage
@@ -102,8 +111,16 @@ corpus file with reasons. Weakest evidence: single-source fixtures (listed in th
 | Comic TPB | 6/6 | 6/6 | 2/6 | 4 | 0 | 0 | 2/6 | 4 | 0 | 0/3 | 6/6 |
 | **All** | 36/36 | 28/36 | 19/36 | 9 | 8 | 0 | 13/36 | 15 | 0 | 0/14 | 26/28 |
 
-"Reached" is HTTP success, not edition correctness. Latency: 3 sequential requests per ISBN, median 1.44 s per ISBN
-(p95 1.61 s, n = 36). Requests per returned record: 92/28 = 3.3.
+"Reached" is HTTP success, not edition correctness. Requests per returned record: 92/28 = 3.3 (a returned edition costs up to three requests for the edition, its
+work/publisher and its authors/series; a miss costs one).
+
+**What the 1.44 s means.** It is the median, per ISBN, of the **summed HTTP request durations** (observed network and
+server time, p95 1.61 s, n = 36). It **excludes** the harness's deliberate pacing (at least 1.5 s between requests
+to the host). It is therefore neither end-user waiting time nor total lookup time. Three quantities are distinct:
+(1) observed request latency (above); (2) rate-limit pacing, a policy choice of at least 1.5 s per request after the
+first; (3) estimated elapsed lookup time, about the summed latency plus pacing, roughly 4 to 6 s for a three-request
+hit at the lab's pacing and about 1.5 s for a one-request miss. The estimate was not measured end to end. Misses
+show lower request counts because no related-entity requests follow.
 
 ### Wikidata
 
@@ -120,7 +137,19 @@ Latency: median 0.36 s, p95 1.69 s (n = 36), one request per ISBN. The four hits
 Habits, A Brief History of Time) are exact; none has a series, volume or cover.
 
 Field completeness over returned records — Inventaire (28): title 28, creators 27, language 28, published 25, publisher
-**10**, series 14 (14/18 where a series was expected), volume 12 (12/16 where a volume was expected), cover 26.
+**10**, series 14 (14/18 where a series was expected), volume present on 12 (the 12/16 below mixes meanings; see
+the volume breakdown), cover 26.
+
+**Volume breakdown (Inventaire, 28 records; 16 fixtures expected a volume).** Single editions: a volume was returned for
+10/11 and **all 10 returned were correct** (Fullmetal Alchemist JA had none). Other single-number expectations (collected
+editions, expected "1"): Saga returned 1 (correct); Sandman and Ms. Marvel returned none. Together the 14 fixtures with a
+single expected number gave 11 returned, 11 correct, 3 missing (**11/14**). The 2 range fixtures are different: Berserk Deluxe
+(omnibus, expected "1–3") returned `1`, which is the Deluxe edition's own numbering, **not** the contained original volumes,
+and Watchmen (expected "1–12") returned none. The wider **12/16** adds Berserk Deluxe's `1` and is **not** a correct-volume
+rate: it counts a field being present, and one present value is the omnibus's own number. Edition numbering, omnibus
+numbering, contained-volume ranges and missing volume evidence are four different things the data does not separate. The
+work/series payload behind the related-entity requests was not retained, so which entity supplied a given volume cannot be
+reconstructed afterwards.
 Wikidata (4): title 4, creators 4, language 4, published 3, publisher 1, series 0, volume 0, cover 0.
 
 Sample sizes are 6 per category; percentages by category are indicative only and none supports a coverage claim
@@ -160,10 +189,29 @@ the ISBN level. Notable weaknesses:
 | Inventaire ES | 0/6 | 0 | 0 | 6 |
 | Wikidata (any language) | 0/18 | 0 | 0 | 18 |
 
-English volume numbers were correct whenever returned (volume returned for 12/16 where expected). Volume matching is
+English volume numbers were correct whenever a single edition volume was returned (10/10; see the volume breakdown under the field-completeness note
+for why "12/16" must not be read as a correct-volume rate). Volume matching is
 only as good as that field: it was absent for Fullmetal Alchemist (JA), Sandman, and Ms. Marvel. **Spanish Manga has no
 coverage in either provider on this corpus**, which keeps the EN/JP/ES acceptance corpus (plan §12) dependent on another
 source.
+
+### Ground-truth strength of the seven single-source fixtures
+
+| Fixture | Category | Inventaire result |
+|---|---|---|
+| ja-fma1 | Manga (ja) | partial edition |
+| ja-slamdunk1 | Manga (ja) | no result |
+| ja-chainsawman2 | Manga (ja) | no result |
+| es-naruto1 | Manga (es) | no result |
+| es-aot1 | Manga (es) | no result |
+| es-chainsawman1 | Manga (es) | no result |
+| es-akira2 | Manga (es) | no result |
+
+6 of the 7 are no-result and 1 is partial (an earlier review summary said "five of seven", which does not match the
+corpus). The observed **0/6 Spanish** result stands, but 4 of those 6 rest on a single source and both Japanese
+no-results are single-source, so those misses are weaker evidence than the 0/2 on corroborated Spanish fixtures. All seven
+must be independently strengthened before they are used as authoritative 4.5G acceptance fixtures. Fixtures were not
+changed to improve any result.
 
 ## 9. Response examples (no unlicensed material)
 
@@ -227,8 +275,36 @@ the matcher query models complete embedded metadata, which many real files lack;
    User-Agent with a project contact (D4), request budget ≤ 3 requests per ISBN.
 6. Open Library D1/D31 remain open and unaffected.
 
-## 15. Recommendation
+## 15. Recommendation (original, superseded in part by §16)
 
 **CONDITIONAL GO — Inventaire as an optional, metadata-only secondary candidate, pending conditions 1–3; NO-GO for Wikidata as
 a standalone provider; NO-GO for any cover use of either.** If condition 2 cannot be satisfied, treat Inventaire as NO-GO and
 continue research (other independent sources, Metron for issues).
+
+## 16. Administrator decisions recorded after independent QA (2026-10-18)
+
+Research approval is not production API authorization; nothing below authorizes a network permission, provider
+registration, dependency or cover storage in the app.
+
+- **Inventaire:** provisional **metadata-only candidate**; **no production authorization**. Its Terms of Use, Legal Notice,
+  commercial-usage conditions and cover rights remain **unverified**.
+- **Wikidata:** **not recommended as a standalone primary ISBN provider** on current evidence (4/36 exact, English books only).
+- **Artwork:** no third-party image downloading or persistence is approved for either provider.
+- **Seeding:** deliberate automatic creation of remote entities remains prohibited. The inspected Inventaire source suggests
+  `autocreate` defaults to false, but the deployed server's behavior is unconfirmed.
+- **Spanish Manga:** the **Biblioteca Nacional de España** is the next research candidate. Missing or contradictory edition
+  matches remain manual / review-only.
+- **Ground truth:** all seven single-source fixtures must be strengthened before authoritative 4.5G acceptance use.
+- **Open Library:** D1/D31 remain unresolved; D22-D29 unchanged.
+
+## 17. Reproducibility of the matcher results (post-QA hardening)
+
+`report --jvm` now deletes any previous bridge output, requires a zero Gradle exit, and accepts only an output file whose first
+line carries the SHA-256 of the exact input and the decision count, with every expected (fixture, probe) group present exactly
+once and none unexpected. A skipped test, a missing, stale, foreign or incomplete output makes the command exit non-zero and
+no matcher result is presented. Offline regeneration reuses the committed normalized snapshot
+(`results/bridge_in.tsv`, `results/bridge_out.tsv`: 46 decision groups, identifiers and neutral field values only, no raw API payloads)
+only if its input digest equals the digest of the input rebuilt from `records.json`; otherwise the matcher columns are marked
+unverified. `results/summary.json` records the mode (`fresh-jvm-run` or `committed-snapshot`), the input digest and the group count.
+The Inventaire edition chosen while parsing and the one whose work/publisher are requested now come from one shared selector
+(lowest URI); several editions for one ISBN are still counted and classified ambiguous. No new request was made for any of this.

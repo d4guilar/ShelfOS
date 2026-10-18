@@ -1,5 +1,10 @@
 # Documentation Changelog
 
+## Phase 4.5C.P0 post-QA hardening (2026-10-18, research only)
+
+- Research report: ground-truth, volume, request and latency corrections; §16 decisions; §17 reproducibility. Plan §39 note;
+  VALIDATION: hardening evidence. No decision granted; D1/D31 unchanged.
+
 ## Phase 4.5C.P0 provider evaluation (2026-10-18, research only)
 
 - New `research/PHASE_4_5_PROVIDER_EVALUATION.md` and `tools/provider-lab/` (read-only harness, 36-ISBN corpus, results). Plan §39, ROADMAP: PR #50 merged; Inventaire/Wikidata measured; no provider approved; D1/D31 and D22-D29 unchanged.
