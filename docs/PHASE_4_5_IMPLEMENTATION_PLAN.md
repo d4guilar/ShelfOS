@@ -2808,3 +2808,15 @@ collection and removed from the matching title; "Deluxe/Complete" in a filename-
 evidence; language is not inferred from file names; Spanish/German volume words beyond those listed and
 `Vol. N de M` are not parsed; the EN/JP/ES **real licensed-volume corpus**, live provider coverage, real
 volume-cover acceptance and 4.5G physical UAT remain pending approved provider integration (4.5C.2+, 4.5D, 4.5E).
+
+**Review remediation (2026-10-18, F-1…F-5).** (F-1) `CoverEligibilityPolicy` now judges a cover by the
+member that supplied it: it must belong to exactly that member, carry that member's provider id, and that
+member's own `MetadataMatcher.score` must meet every AUTOMATIC condition; the representative's evidence is
+never borrowed. A reference exposed by several members (unknown owner) or a contested cluster is at most
+`CANDIDATE_ONLY`; all-rejected owners are `REJECTED`. (F-4) Blank or whitespace-only cover refs are
+`REJECTED`. (F-2) The service now reads file-name collection evidence for Comics/Manga even when the title is
+embedded; it is only a conservative contradiction (`EDITION`), never identity, confidence, or a provenance
+change, and nothing is persisted. (F-3) A bare "box" is no longer a collection word (only "box set"
+/ omnibus / compendium); "collection"/"collected" count only when the record names no single volume.
+Real collections (omnibus, box set, ranges, "N-in-1") are unchanged. (F-5) Regression tests added in
+`MangaEditionMatchingTest`, `MangaEnrichmentIntegrationTest` and `FilenameInferenceTest`.

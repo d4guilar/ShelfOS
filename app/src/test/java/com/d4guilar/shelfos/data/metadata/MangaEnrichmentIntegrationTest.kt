@@ -143,4 +143,46 @@ class MangaEnrichmentIntegrationTest {
         val r = service(st, Fake("a", byId = listOf(candidate(language = "ja", title = "ワンピース")))).enrich(item("One Piece Vol. 3.cbz"))
         assertNotEquals(MetadataEnrichmentService.Outcome.APPLIED, r.outcome); assertEquals(before, st.items.getValue("m"))
     }
+
+    // ---- F-2: filename collection evidence survives an embedded title
+    private fun berserk(volume: String?) = MetadataCandidate("a", "e/1", "Berserk", "Kentaro Miura", MediaCategory.MANGA,
+        MetadataValues(series = "Berserk", volume = volume, identifiers = listOf(isbn13)), listOf(CoverCandidate("a", "cover/1", 800, 1200)))
+    private fun embedded(fileName: String) = store(fileName, MetadataValues(identifiers = listOf(isbn13)), title = "Berserk", titleOrigin = MetadataOrigin.EMBEDDED)
+
+    @Test fun aCollectionFileNameVetoesASingleVolumeMatchEvenWithAnEmbeddedTitle() = runBlocking {
+        val st = embedded("Berserk 3-in-1.cbz"); val before = st.items.getValue("m")
+        val q = enrichment(emptyList(), st).query(item("Berserk 3-in-1.cbz"), before)
+        assertFalse("the embedded title is still trusted", q.titleIsInferred); assertEquals("Berserk", q.title)
+        assertTrue(q.isCollection); assertNull(q.volume)
+        val r = service(st, Fake("a", byId = listOf(berserk("1")))).enrich(item("Berserk 3-in-1.cbz"))
+        assertEquals(MetadataEnrichmentService.Outcome.NEEDS_REVIEW, r.outcome)
+        assertEquals("no volume or other field is written", before, st.items.getValue("m")); assertNull(st.items.getValue("m").values.volume)
+        assertEquals("the title keeps its embedded provenance", MetadataOrigin.EMBEDDED, st.items.getValue("m").origin(MetadataField.TITLE))
+    }
+
+    @Test fun anEmbeddedTitleStillRejectsTheWrongVolumeAndAcceptsTheRightOne() = runBlocking {
+        val st = embedded("Berserk Vol. 2.cbz"); val before = st.items.getValue("m")
+        assertNotEquals(MetadataEnrichmentService.Outcome.APPLIED, service(st, Fake("a", byId = listOf(berserk("1")))).enrich(item("Berserk Vol. 2.cbz")).outcome)
+        assertEquals(before, st.items.getValue("m"))
+        val ok = embedded("Berserk Vol. 2.cbz"); assertFalse(enrichment(emptyList(), ok).query(item("Berserk Vol. 2.cbz"), ok.items.getValue("m")).isCollection)
+        assertEquals(MetadataEnrichmentService.Outcome.APPLIED, service(ok, Fake("a", byId = listOf(berserk("2")))).enrich(item("Berserk Vol. 2.cbz")).outcome)
+    }
+
+    @Test fun aNormalSingleVolumeWithAnEmbeddedTitleStillReachesVeryHigh() = runBlocking {
+        val st = embedded("Berserk.cbz")
+        assertEquals(MetadataEnrichmentService.Outcome.APPLIED, service(st, Fake("a", byId = listOf(berserk("1")))).enrich(item("Berserk.cbz")).outcome)
+    }
+
+    @Test fun aCollectionFileNameAgreesWithACollectionRecord() = runBlocking {
+        val st = store("Berserk 3-in-1.cbz", MetadataValues(identifiers = listOf(isbn13)), title = "Berserk Omnibus", titleOrigin = MetadataOrigin.EMBEDDED)
+        val omnibus = berserk(null).copy(title = "Berserk Omnibus")
+        assertEquals(MetadataEnrichmentService.Outcome.APPLIED, service(st, Fake("a", byId = listOf(omnibus))).enrich(item("Berserk 3-in-1.cbz")).outcome)
+    }
+
+    @Test fun booksAndDocumentsNeverInferCollections() {
+        for ((category, name) in listOf(MediaCategory.BOOK to "Berserk 3-in-1.epub", MediaCategory.DOCUMENT to "Berserk 3-in-1.pdf")) {
+            val st = store("Berserk.cbz"); val libItem = item(name).copy(category = category)
+            assertFalse(name, enrichment(emptyList(), st).query(libItem, runBlocking { st.resolved("m")!! }).isCollection)
+        }
+    }
 }

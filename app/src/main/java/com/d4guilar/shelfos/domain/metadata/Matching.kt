@@ -57,9 +57,11 @@ data class MatchDecision(val apply: ScoredCandidate?, val ranked: List<ScoredCan
  * drop to MEDIUM, so nothing applies.
  */
 object MetadataMatcher {
-    private val collectionWords = setOf("omnibus", "box", "boxset", "collection", "collected", "compendium")
+    // A bare "box" is a title word ("Blue Box"); only "box set" (joined to "boxset" by [words]) names a collection.
+    private val collectionWords = setOf("omnibus", "boxset", "compendium")
+    private val softCollectionWords = setOf("collection", "collected")
     private val RANGE = Regex("""\p{Nd}\s*[-–—~～〜]\s*\p{Nd}""")
-    private val editionWords = setOf("omnibus", "collection", "collected", "complete", "box", "boxset", "deluxe", "compendium", "tpb", "trade")
+    private val editionWords = setOf("omnibus", "collection", "collected", "complete", "boxset", "deluxe", "compendium", "tpb", "trade")
 
     fun score(query: MetadataQuery, c: MetadataCandidate): MatchEvidence {
         val agree = HashSet<MatchSignal>(); val contra = HashSet<MatchSignal>(); var rejected = false
@@ -142,11 +144,20 @@ object MetadataMatcher {
         return x.isNotEmpty() && y.isNotEmpty() && (x.containsAll(y) || y.containsAll(x))
     }
 
-    /** An explicit collection: an omnibus word in the title, or a range volume such as "1-3". "Complete" and "deluxe" are NOT collections. */
-    private fun isCollection(c: MetadataCandidate) =
-        normalizeText(c.title.orEmpty()).split(' ').any { it in collectionWords } || c.values.volume?.let { RANGE.containsMatchIn(it) } == true
+    /**
+     * An explicit collection: an omnibus / box-set word in the title, or a range volume such as "1-3". "Collection" and
+     * "collected" count only when the record names no single volume ("The Junji Ito Collection Vol. 2" is one volume).
+     * "Complete", "deluxe" and a bare "box" ("Blue Box") are NOT collections.
+     */
+    private fun isCollection(c: MetadataCandidate): Boolean {
+        val w = words(c.title)
+        return w.any { it in collectionWords } || c.values.volume?.let { RANGE.containsMatchIn(it) } == true ||
+            (c.values.volume.isNullOrBlank() && w.any { it in softCollectionWords })
+    }
 
-    private fun editionKind(title: String?) = normalizeText(title.orEmpty()).split(' ').any { it in editionWords }
+    private fun editionKind(title: String?) = words(title).any { it in editionWords }
+
+    private fun words(title: String?) = normalizeText(title.orEmpty()).replace("box set", "boxset").split(' ')
 }
 
 private val MediaCategory.sequential get() = this == MediaCategory.COMIC || this == MediaCategory.MANGA

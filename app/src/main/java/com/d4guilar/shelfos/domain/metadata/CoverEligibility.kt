@@ -17,8 +17,20 @@ enum class CoverEligibility { AUTOMATIC, CANDIDATE_ONLY, REJECTED }
  */
 object CoverEligibilityPolicy {
     fun assess(query: MetadataQuery, edition: RankedEdition, cover: CoverCandidate, existing: ExistingCovers): CoverEligibility {
-        if (cover !in edition.cluster.covers) return CoverEligibility.REJECTED
-        val e = edition.evidence
+        if (cover.ref.isBlank()) return CoverEligibility.REJECTED
+        // The cover is judged by the member that supplied it, never by the cluster's representative: confidence is not transferable.
+        val members = edition.cluster.members.filter { cover in it.covers }
+        if (members.isEmpty() || members.any { it.providerId != cover.providerId }) return CoverEligibility.REJECTED
+        if (edition.evidence.rejected) return CoverEligibility.REJECTED
+        val results = members.map { assessOwner(query, it, cover, existing) }
+        if (results.all { it == CoverEligibility.REJECTED }) return CoverEligibility.REJECTED
+        // Several members expose the same reference (ownership unknown) or the cluster is contested: never automatic.
+        if (members.size > 1 || MatchSignal.AMBIGUOUS in edition.evidence.contradictions) return CoverEligibility.CANDIDATE_ONLY
+        return results.single()
+    }
+
+    private fun assessOwner(query: MetadataQuery, owner: MetadataCandidate, cover: CoverCandidate, existing: ExistingCovers): CoverEligibility {
+        val e = MetadataMatcher.score(query, owner)
         if (e.rejected || e.contradictions.isNotEmpty()) return CoverEligibility.REJECTED
         if (existing.user) return CoverEligibility.CANDIDATE_ONLY
         val sequential = query.category == MediaCategory.COMIC || query.category == MediaCategory.MANGA

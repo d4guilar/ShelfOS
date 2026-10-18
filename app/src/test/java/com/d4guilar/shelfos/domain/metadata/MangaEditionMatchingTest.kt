@@ -165,4 +165,98 @@ class MangaEditionMatchingTest {
         val wrongLanguage = edition(query(a, language = "en"), cand("l", a, language = "ja", covers = listOf(generic)))
         assertEquals(CoverEligibility.REJECTED, CoverEligibilityPolicy.assess(query(a, language = "en"), wrongLanguage, generic, ExistingCovers()))
     }
+
+    // ---- G2 (review F-1/F-3/F-4): a cover is judged by the member that supplied it, never by the cluster's representative
+    private fun cover(provider: String, ref: String) = CoverCandidate(provider, ref, 800, 1200, "Volume 3")
+    private fun cluster(q: MetadataQuery, vararg members: MetadataCandidate): List<RankedEdition> {
+        val forward = EditionClustering.rank(q, members.toList()).ranked.also { assertEquals("one ISBN, one cluster", 1, it.size) }
+        assertEquals(forward.single().cluster.members.size, EditionClustering.rank(q, members.reversed()).ranked.single().cluster.members.size)
+        return listOf(forward.single(), EditionClustering.rank(q, members.reversed()).ranked.single())
+    }
+    private fun assessAll(q: MetadataQuery, c: CoverCandidate, vararg members: MetadataCandidate, existing: ExistingCovers = ExistingCovers()) =
+        cluster(q, *members).map { CoverEligibilityPolicy.assess(q, it, c, existing) }.distinct().single()   // result order must not matter
+
+    @Test fun aJapaneseRecordInAnEnglishClusterNeverInheritsTheEnglishEligibility() {
+        val q = query(a, language = "en")
+        val en = cand("en", a, language = "en", provider = "p1", covers = listOf(cover("p1", "en")))
+        val ja = cand("ja", a, language = "ja", provider = "p2", covers = listOf(cover("p2", "ja")))
+        assertEquals(CoverEligibility.AUTOMATIC, assessAll(q, cover("p1", "en"), en, ja))
+        assertEquals(CoverEligibility.REJECTED, assessAll(q, cover("p2", "ja"), en, ja))
+    }
+
+    @Test fun aSeriesLevelRecordInTheClusterNeverInheritsTheVolumeEligibility() {
+        val q = query(a)
+        val volume = cand("v", a, provider = "p1", covers = listOf(cover("p1", "vol")))
+        val series = cand("s", a, volume = null, provider = "p2", covers = listOf(cover("p2", "series")))
+        assertEquals(CoverEligibility.AUTOMATIC, assessAll(q, cover("p1", "vol"), volume, series))
+        assertNotEquals(CoverEligibility.AUTOMATIC, assessAll(q, cover("p2", "series"), volume, series))
+    }
+
+    @Test fun anOmnibusCoverNeverBecomesAutomaticForASingleVolumeInAnyResultOrder() {
+        val q = query(a)
+        val volume = cand("v", a, provider = "p1", covers = listOf(cover("p1", "vol")))
+        val titled = cand("o1", a, title = "One Piece Omnibus", provider = "p2", covers = listOf(cover("p2", "omni")))
+        val ranged = cand("o2", a, volume = "1-3", provider = "p2", covers = listOf(cover("p2", "omni")))
+        for (omnibus in listOf(titled, ranged)) assertEquals(CoverEligibility.REJECTED, assessAll(q, cover("p2", "omni"), volume, omnibus))
+        assertEquals("the genuine volume keeps its own cover", CoverEligibility.AUTOMATIC, assessAll(q, cover("p1", "vol"), volume, titled))
+        // a rejected member contests the cluster (4.5C.1), so the edition is not applied and nothing in it is automatic
+        assertEquals(CoverEligibility.CANDIDATE_ONLY, assessAll(q, cover("p1", "vol"), volume, ranged))
+    }
+
+    @Test fun recordsFromOneProviderAreJudgedIndividually() {
+        val q = query(a, language = "en")
+        val good = cand("r1", a, language = "en", provider = "p", covers = listOf(cover("p", "good")))
+        val other = cand("r2", a, language = "ja", provider = "p", covers = listOf(cover("p", "other")))
+        assertEquals(CoverEligibility.AUTOMATIC, assessAll(q, cover("p", "good"), good, other))
+        assertEquals(CoverEligibility.REJECTED, assessAll(q, cover("p", "other"), good, other))
+    }
+
+    @Test fun aCoverClaimingAnotherProviderThanItsOwnerIsRejected() {
+        val q = query(a)
+        val claimed = CoverCandidate("someone-else", "x", 800, 1200, "Volume 3")
+        assertEquals(CoverEligibility.REJECTED, assessAll(q, claimed, cand("1", a, provider = "p1", covers = listOf(claimed))))
+    }
+
+    @Test fun anIndistinguishableCoverOnSeveralMembersFailsClosed() {
+        val q = query(a, language = "en")
+        val shared = cover("p", "same")
+        val x = cand("x", a, language = "en", provider = "p", covers = listOf(shared))
+        val y = cand("y", a, language = "en", provider = "p", covers = listOf(shared))
+        assertEquals("both valid but the owner is unknown", CoverEligibility.CANDIDATE_ONLY, assessAll(q, shared, x, y))
+        val ja = cand("y", a, language = "ja", provider = "p", covers = listOf(shared))
+        assertEquals("eligibility disagrees", CoverEligibility.CANDIDATE_ONLY, assessAll(q, shared, x, ja))
+        val bad1 = cand("z1", a, language = "ja", provider = "p", covers = listOf(shared)); val bad2 = cand("z2", a, language = "ja", provider = "p", covers = listOf(shared))
+        assertEquals(CoverEligibility.REJECTED, assessAll(q, shared, bad1, bad2))
+    }
+
+    @Test fun eachProviderOwnsItsOwnCoverWhenBothRecordsAreTheSameVeryHighEdition() {
+        val q = query(a)
+        val p1 = cand("1", a, provider = "p1", covers = listOf(cover("p1", "c1"))); val p2 = cand("2", a, provider = "p2", covers = listOf(cover("p2", "c2")))
+        assertEquals(CoverEligibility.AUTOMATIC, assessAll(q, cover("p1", "c1"), p1, p2))
+        assertEquals(CoverEligibility.AUTOMATIC, assessAll(q, cover("p2", "c2"), p1, p2))
+        assertEquals("D7 still protects a Manga file cover", CoverEligibility.CANDIDATE_ONLY, assessAll(q, cover("p1", "c1"), p1, p2, existing = ExistingCovers(local = true)))
+    }
+
+    @Test fun aBlankCoverReferenceIsNeverUsableArtwork() {
+        val q = query(a)
+        for (ref in listOf("", "   ", "\t\n")) {
+            val blank = CoverCandidate("p1", ref, 800, 1200, "Volume 3")
+            assertEquals("'$ref'", CoverEligibility.REJECTED, assessAll(q, blank, cand("1", a, provider = "p1", covers = listOf(blank))))
+        }
+    }
+
+    // ---- F-3: ordinary titles that contain a collection-like word
+    @Test fun titlesContainingBoxOrCollectionAreNotCollections() {
+        val q = query(a, title = "Blue Box", series = "Blue Box", volume = "1", inferred = true)
+        assertEquals(MatchConfidence.VERY_HIGH, tier(q, cand("b", a, title = "Blue Box", series = "Blue Box", volume = "1")))
+        val ito = query(a, title = "Junji Ito Collection", series = "Junji Ito Collection", volume = "2", inferred = true)
+        assertEquals(MatchConfidence.VERY_HIGH, tier(ito, cand("i", a, title = "Junji Ito Collection", series = "Junji Ito Collection", volume = "2")))
+        val structured = query(a, title = "Blue Box", series = "Blue Box", volume = "1")
+        assertEquals(MatchConfidence.VERY_HIGH, tier(structured, cand("s", a, title = "Blue Box", series = "Blue Box", volume = "1")))
+        // real collections are still collections
+        val single = query(a, title = "Naruto", series = "Naruto", volume = "1", inferred = true)
+        for (title in listOf("Naruto Box Set", "Naruto Omnibus", "Naruto Collection"))
+            assertTrue(title, MatchSignal.EDITION in MetadataMatcher.score(single, cand("c", a, title = title, series = "Naruto", volume = null)).contradictions)
+        assertTrue(MatchSignal.EDITION in MetadataMatcher.score(single, cand("c", a, title = "Naruto Box Set", series = "Naruto", volume = "1")).contradictions)
+    }
 }

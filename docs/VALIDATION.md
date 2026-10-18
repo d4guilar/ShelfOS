@@ -8129,3 +8129,10 @@ runtime artifacts and their license declarations.
 
 These limits must remain visible when evaluating the prototype. Importing,
 reading, metadata enrichment, annotations and production releases are future work.
+
+## PHASE 4.5D.0 review remediation (2026-10-18)
+
+- `./gradlew --offline :app:testDebugUnitTest`: 777 tests, 0 failures. Mutation check: with the three
+  production files reverted, 9 of the new regression tests fail (mixed-cluster cover ownership, blank refs,
+  embedded-title collection veto, "Blue Box"/"Collection" titles); restored, all pass.
+- NOT RUN: instrumented/device tests (no production behaviour touched there), live providers.

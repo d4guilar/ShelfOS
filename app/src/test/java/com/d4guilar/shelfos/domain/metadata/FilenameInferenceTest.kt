@@ -99,4 +99,9 @@ class FilenameInferenceTest {
         assertEquals("a Book keeps its title", FilenameEvidence("Berserk Vols. 1-3"), infer("Berserk Vols. 1-3.epub", BOOK).let { FilenameEvidence(it.title) })
         assertEquals("Documents stay conservative", FilenameEvidence("Berserk Vol. 1-3"), infer("Berserk Vol. 1-3.pdf", DOCUMENT))
     }
+
+    @Test fun aTitleContainingBoxIsNotACollection() {
+        assertEquals(FilenameEvidence("Blue Box", series = "Blue Box", volume = "1"), infer("Blue Box Vol. 1.cbz"))
+        assertEquals(FilenameEvidence("Naruto", series = "Naruto", collection = true), infer("Naruto Box Set.cbz"))
+    }
 }
