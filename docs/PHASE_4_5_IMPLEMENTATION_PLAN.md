@@ -2820,3 +2820,9 @@ change, and nothing is persisted. (F-3) A bare "box" is no longer a collection w
 / omnibus / compendium); "collection"/"collected" count only when the record names no single volume.
 Real collections (omnibus, box set, ranges, "N-in-1") are unchanged. (F-5) Regression tests added in
 `MangaEditionMatchingTest`, `MangaEnrichmentIntegrationTest` and `FilenameInferenceTest`.
+
+**R-1 closure (2026-10-18).** Cover ownership is now `(providerId, ref.trim())`, not full `CoverCandidate`
+equality, so the same provider reference with different dimensions, label or surrounding whitespace is one
+shared artwork with an unknown owner (at most `CANDIDATE_ONLY`; all-rejected co-owners `REJECTED`), while
+the same text from different providers stays distinct. Three regression tests added to
+`MangaEditionMatchingTest`. R-2 and F-6 remain accepted non-blocking follow-ups. Pending independent verification.

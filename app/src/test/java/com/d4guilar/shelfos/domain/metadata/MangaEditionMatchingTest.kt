@@ -259,4 +259,44 @@ class MangaEditionMatchingTest {
             assertTrue(title, MatchSignal.EDITION in MetadataMatcher.score(single, cand("c", a, title = title, series = "Naruto", volume = null)).contradictions)
         assertTrue(MatchSignal.EDITION in MetadataMatcher.score(single, cand("c", a, title = "Naruto Box Set", series = "Naruto", volume = "1")).contradictions)
     }
+
+    // ---- R-1: shared artwork is identified by (providerId, trimmed ref), never by display data
+    @Test fun theSameProviderReferenceIsSharedOwnershipDespiteDifferentDimensionsLabelsOrWhitespace() {
+        val q = query(a, language = "en")
+        val good = CoverCandidate("p", "same", 800, 1200, "Volume 3")
+        val variants = listOf(
+            CoverCandidate("p", "same", 100, 150, "Volume 3"),     // different dimensions
+            CoverCandidate("p", "same", 800, 1200, "Volume 3 (JP)"), // different label
+            CoverCandidate("p", "same", 800, 1200, null),
+            CoverCandidate("p", "  same ", 800, 1200, "Volume 3"), // different whitespace
+        )
+        for (v in variants) {
+            val valid = cand("x", a, language = "en", provider = "p", covers = listOf(good))
+            val conflicting = cand("y", a, language = "ja", provider = "p", covers = listOf(v))
+            assertNotEquals("$v", CoverEligibility.AUTOMATIC, assessAll(q, good, valid, conflicting))
+            assertNotEquals("$v (assessed from the other side)", CoverEligibility.AUTOMATIC, assessAll(q, v, valid, conflicting))
+            assertEquals("a co-owner that is fine on its own is still an unknown owner", CoverEligibility.CANDIDATE_ONLY,
+                assessAll(q, good, valid, cand("y", a, language = "en", provider = "p", covers = listOf(v))))
+        }
+    }
+
+    @Test fun theSameReferenceTextFromDifferentProvidersIsDistinctOwnership() {
+        val q = query(a, language = "en")
+        val mine = cover("p1", "same"); val theirs = cover("p2", "same")
+        val valid = cand("x", a, language = "en", provider = "p1", covers = listOf(mine))
+        val conflicting = cand("y", a, language = "ja", provider = "p2", covers = listOf(theirs))
+        assertEquals(CoverEligibility.AUTOMATIC, assessAll(q, mine, valid, conflicting))
+        assertEquals(CoverEligibility.REJECTED, assessAll(q, theirs, valid, conflicting))
+    }
+
+    @Test fun aUniquelyOwnedCoverStaysAutomaticAndTheOtherProtectionsHold() {
+        val q = query(a)
+        val c = CoverCandidate("p", "  only ", 800, 1200, "Volume 3")
+        val owner = cand("x", a, provider = "p", covers = listOf(c))
+        assertEquals(CoverEligibility.AUTOMATIC, assessAll(q, c, owner))
+        assertEquals(CoverEligibility.AUTOMATIC, assessAll(q, c.copy(ref = "only"), owner))   // trimmed reference, same owner
+        assertEquals(CoverEligibility.CANDIDATE_ONLY, assessAll(q, c, owner, existing = ExistingCovers(user = true)))
+        assertEquals(CoverEligibility.CANDIDATE_ONLY, assessAll(q, c, owner, existing = ExistingCovers(local = true)))
+        assertEquals(CoverEligibility.REJECTED, assessAll(q, c.copy(ref = " "), owner))
+    }
 }

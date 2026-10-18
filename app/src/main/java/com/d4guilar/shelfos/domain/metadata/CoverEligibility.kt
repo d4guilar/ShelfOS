@@ -19,7 +19,8 @@ object CoverEligibilityPolicy {
     fun assess(query: MetadataQuery, edition: RankedEdition, cover: CoverCandidate, existing: ExistingCovers): CoverEligibility {
         if (cover.ref.isBlank()) return CoverEligibility.REJECTED
         // The cover is judged by the member that supplied it, never by the cluster's representative: confidence is not transferable.
-        val members = edition.cluster.members.filter { cover in it.covers }
+        // Ownership identity is (providerId, trimmed ref): width, height and label are display data, not identity.
+        val members = edition.cluster.members.filter { m -> m.covers.any { it.providerId == cover.providerId && it.ref.trim() == cover.ref.trim() } }
         if (members.isEmpty() || members.any { it.providerId != cover.providerId }) return CoverEligibility.REJECTED
         if (edition.evidence.rejected) return CoverEligibility.REJECTED
         val results = members.map { assessOwner(query, it, cover, existing) }

@@ -8136,3 +8136,9 @@ reading, metadata enrichment, annotations and production releases are future wor
   production files reverted, 9 of the new regression tests fail (mixed-cluster cover ownership, blank refs,
   embedded-title collection veto, "Blue Box"/"Collection" titles); restored, all pass.
 - NOT RUN: instrumented/device tests (no production behaviour touched there), live providers.
+
+## PHASE 4.5D.0 R-1 shared-reference identity (2026-10-18)
+
+- `:app:testDebugUnitTest --rerun --max-workers=1`: 780 tests, 0 failures (777 + 3 new). `:app:assembleDebug`
+  succeeded; `:app:lintDebug` reported no errors; `git diff --check` clean. Mutation check: with the
+  production change reverted, 2 of the 3 new tests fail. Instrumented tests NOT RUN (no Android code changed).
