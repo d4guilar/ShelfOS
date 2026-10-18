@@ -80,8 +80,10 @@ def completeness_md(sc):
 
 
 def write_outputs(outdir, rows, scorecards, meta, extra=()):
-    """All-or-nothing: cases.csv, summary.json and any extra (temp, final) pairs are written to temporary files first;
-    the finals are replaced only after every temporary file was written, so a failure never leaves a mixed-version report."""
+    """Staged publication: cases.csv, summary.json and any extra (temp, final) pairs are first written to temporary files, and the
+    finals are replaced only after every temporary file was written, so a verification failure or a failed write never replaces anything.
+    Limitation (accepted, LOW): the replacements are sequential, not an atomic multi-file transaction; an operating-system failure
+    (for example a file lock) during publication can leave an updated file next to an older one."""
     pairs = [(outdir + "/cases.csv.tmp", outdir + "/cases.csv"), (outdir + "/summary.json.tmp", outdir + "/summary.json")]
     try:
         _write_files(pairs[0][0], pairs[1][0], rows, scorecards, meta)
@@ -95,7 +97,7 @@ def write_outputs(outdir, rows, scorecards, meta, extra=()):
 
 def _write_files(cases_path, summary_path, rows, scorecards, meta):
     with open(cases_path, "w", encoding="utf-8", newline="") as f:
-        w = csv.writer(f)
+        w = csv.writer(f, lineterminator="\n")   # LF on every platform (file opened with newline=""): byte-identical to the committed snapshot
         w.writerow(["provider", "fixture", "category", "verification", "class", "shelfos_decision", "matcher_tier", "wrongvol_decision", "requests", "seconds",
                     "status", "returned_isbns", "title", "language", "volume", "series", "publisher", "cover_ref", "reasons", "error"])
         for r in rows:
