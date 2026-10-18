@@ -439,6 +439,13 @@ does not automatically extend to ShelfOS). `metron.live` is unrelated to Metron 
 metadata, and the `metron.cloud` service terms stay unresolved. It is not approved until the current service terms are reviewed and the
 ShareAlike questions are answered (plan D5, D19).
 
+## Persistent enrichment rule (accepted 2026-10-16)
+
+Online enrichment is triggered by import commit or an explicit user action, never by merely opening
+ShelfOS or browsing existing library content. Successfully saved metadata and user-selected artwork
+load from local storage without requiring repeat API requests, subject to provider-specific retention
+rights. (4.5F.0 implements offline user cover selection only; no network is added by it.)
+
 ## 11. Local-first caching
 
 After successful enrichment, persist usable metadata locally.

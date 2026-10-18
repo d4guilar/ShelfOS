@@ -45,7 +45,8 @@ class CoverScheduler(
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val recovery = Channel<Unit>(Channel.CONFLATED)
     private val waiting = ArrayDeque<String>()
-    private val lock = Mutex()
+    /** The one writer lock of the cover directories: extraction, startup sweep and user-cover writes all hold it. */
+    val lock = Mutex()
     private val priority = LinkedHashMap<String, Boolean>()  // id -> file reported missing
     private val requested = HashSet<String>()
     private var retriesThisLaunch = 0

@@ -53,6 +53,9 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
     var details by rememberSaveable(item.id) { mutableStateOf(false) }
     var editing by rememberSaveable(item.id) { mutableStateOf(false) }
     var removing by rememberSaveable(item.id) { mutableStateOf(false) }
+    var coverOpen by rememberSaveable(item.id) { mutableStateOf(false) }
+    val userCovers = LocalUserCovers.current
+    if (coverOpen && userCovers != null) CoverDialog(item, userCovers) { coverOpen = false }
     var coverBounds by remember(item.id) { mutableStateOf<Rect?>(null) }
     val readFocus = remember { FocusRequester() }
     val inputMode = LocalInputModeManager.current.inputMode
@@ -119,6 +122,7 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
                 // Editing waits for the stored metadata, so it never opens on (and saves) blank placeholders.
                 TextButton({ editSnapshot = captureEditSnapshot(metadata.stored?.values); editing = true }, Modifier.testTag("edit_action"),
                     enabled = metadata.loaded) { Text(stringResource(R.string.action_edit)) }
+                if (userCovers != null) TextButton({ coverOpen = true }, Modifier.testTag("cover_action")) { Text(stringResource(R.string.action_cover)) }
                 TextButton({ removing = true }, Modifier.testTag("remove_action")) { Text(stringResource(R.string.action_remove)) }
             }
             HorizontalDivider(color = t.colors.divider)
@@ -145,6 +149,9 @@ private fun coverDetail(id: String): String {
     val artwork = LocalCoverArtwork.current
     val flow = remember(artwork, id) { artwork?.provenance?.invoke(id) ?: flowOf(null) }
     val provenance by flow.collectAsState(null)
+    val userCovers = LocalUserCovers.current
+    val custom by remember(userCovers, id) { userCovers?.hasCustom(id) ?: flowOf(false) }.collectAsState(false)
+    if (custom) return stringResource(R.string.detail_cover_user)
     val source = when (provenance?.source) {
         CoverLocalSource.EPUB_COVER -> R.string.detail_cover_epub
         CoverLocalSource.COMICINFO_FRONT_COVER -> R.string.detail_cover_comicinfo

@@ -1,8 +1,48 @@
 # Validation
 
-## PHASE 4.5C.1 — PROVIDER INFRASTRUCTURE (2026-10-16, implemented / pending independent review)
+## PHASE 4.5F.0 — EXIF ORIENTATION REMEDIATION (2026-10-16, pending independent re-review)
 
-**Not accepted, not merged.** Pure Kotlin infrastructure with fake providers: no network, manifest,
+Fixes F-1 of the Codex High review of `a82068b`. Isolated API 24 emulator `emulator-5554`; per-class `am instrument`
+after `pm clear`; no schema, manifest, dependency or network change.
+
+| Command / class | Tests | Pass | Fail | Result | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `UserCoverExifTest` (new) | 6 | 6 | 0 | PASS | orientation 6 (3200x2400 landscape pixels) -> 900x1200 portrait DERIVED, quadrant colors at the rotated positions, source dims 2400x3200, survives a database close/reopen; **all eight orientations** on a 1600x1200 four-quadrant fixture, decoded without EXIF and checked at the positions the EXIF definition gives (rotation direction and mirroring); a small (<512 KiB) tagged JPEG is DERIVED with no orientation tag; normal / orientation-1 JPEG and untagged PNG stay ORIGINAL and byte-exact; a failure while handling orientation returns FAILED, keeps the previous USER row/file and leaves no artifacts, source untouched; corrupted EXIF is treated as normal and saves |
+| `UserCoverStoreTest`, `UserCoverUiTest` | 19 | 19 | 0 | PASS | unchanged behavior |
+| `CoverLifecycleTest` 12, `CoverPresentationUiTest` 8, `CoverRendererUiTest` 1, `CoverExtractionCorpusTest` 7 (real LOCAL extraction), `MetadataUiTest` 9, `NavigationSmokeTest` 28, `LibraryPersistenceTest` 10 | 75 | 75 | 0 | PASS | |
+| `gradlew.bat :app:testDebugUnitTest` | 741 | 741 | 0 | PASS | no JVM test changed |
+| `assembleDebug`, `assembleDebugAndroidTest`, `lintDebug` | — | — | — | PASS | lint 0 errors, 60 warnings (the `ExifInterface` lint advice is suppressed with a reason: no new dependency) |
+| `git diff --check` | — | — | — | clean | |
+
+Instrumented: **100/100 across 10 classes.** The first run of the new class failed 2/6: a test-side assumption that an
+untagged JPEG reports orientation 1 (the platform returns 0), and orientations 5 and 7 (transpose / transverse) had
+their rotations swapped in the first implementation; the independent corner assertions caught it and the matrices
+were corrected. The lint suppression (a comment and annotation only) was added after the instrumented run and was
+followed by a rebuild and lint, not another device run.
+
+## PHASE 4.5F.0 — OFFLINE COVER SELECTION (2026-10-16, implemented / pending independent review)
+
+**Not accepted, not merged.** Isolated API 24 emulator `emulator-5554` only (no owner device); per-class
+`am instrument` after `pm clear`. Branch `phase-4.5/4.5f0-offline-cover-selection` from `main` `7ccb61c`
+(4.5C.1, PR #48, merged). No manifest, permission, dependency, network or Room schema change.
+
+| Command / class | Tests | Pass | Fail | Result | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `gradlew.bat :app:testDebugUnitTest` (full suite) | 741 | 741 | 0 | PASS | 738 + 3 new (`UserCoverValidationTest`: USER write validation, slot precedence); `CoverSchedulerTest` stub DAO updated for the new DAO members |
+| `UserCoverStoreTest` | 14 | 14 | 0 | PASS | real Room + real files + real decoding: stored/bounded/immutable file and source untouched or deleted; large and incompressible images reduced within bounds; invalid, empty, text, > 40 Mpx and > 32 MiB inputs rejected with the current cover and files intact; replacement keeps one file and deletes the old one after the commit; repeated replacements leave no orphans; missing item and item removed mid-read rejected and not revived; low storage; revoked / vanished / null source; cancellation during read leaves nothing; remove restores LOCAL then generated and deletes only the USER file; USER > ONLINE > LOCAL and a later LOCAL extraction cannot replace it; sweep keeps USER and removes strays; concurrent choices serialize; cover survives closing and reopening the database |
+| `UserCoverUiTest` | 5 | 5 | 0 | PASS | Cover action opens the dialog (preview, state, Close); chosen cover reported, restore consequence shown and restore deletes the file; controls focusable; dialog survives `StateRestorationTester`; details line says "chosen by you" |
+| Regression: `CoverLifecycleTest` 12, `CoverPresentationUiTest` 8, `CoverRendererUiTest` 1, `CoverMigrationTest` 2, `MetadataUiTest` 9, `NavigationSmokeTest` 28, `LibraryPersistenceTest` 10, `RemovalDialogKnowledgeTest` 6, `NotesHubUiTest` 20 | 96 | 96 | 0 | PASS | |
+| `assembleDebug`, `assembleDebugAndroidTest`, `lintDebug` | — | — | — | PASS | lint 0 errors, 60 warnings (one new `UseKtx` warning was fixed) |
+| `git diff --check` | — | — | — | clean | |
+
+Instrumented total on the final APKs: **115/115 across 11 classes.** Two first-run failures were test-side
+(a leftover `onOpen` hook asserting the old file during later replacements; a directory name prefixed
+`user-` matched a file filter); fixed, no product change. Not claimed: driving the system picker, a physical
+device, a real process kill, or cancellation inside the (non-cancellable) commit.
+
+## PHASE 4.5C.1 — PROVIDER INFRASTRUCTURE (2026-10-16; merged in PR #48)
+
+Pure Kotlin infrastructure with fake providers: no network, manifest,
 Room, dependency, UI or cover change, so no emulator or device run was needed and none is claimed.
 Branch `phase-4.5/4.5c1-provider-infrastructure` from `main` `7f15ea0`.
 

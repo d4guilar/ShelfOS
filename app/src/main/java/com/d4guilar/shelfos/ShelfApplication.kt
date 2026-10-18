@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos
 
+import androidx.core.net.toUri
 import android.app.Application
 import com.d4guilar.shelfos.core.database.ShelfDatabase
 import com.d4guilar.shelfos.data.library.RoomLibraryRepository
@@ -13,6 +14,7 @@ import com.d4guilar.shelfos.core.files.CoverFiles
 import com.d4guilar.shelfos.core.files.PublicationFiles
 import com.d4guilar.shelfos.core.reader.LocalCoverExtractor
 import com.d4guilar.shelfos.data.library.CoverScheduler
+import com.d4guilar.shelfos.data.library.UserCoverStore
 import com.d4guilar.shelfos.data.library.RoomCoverRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
@@ -75,6 +77,10 @@ class AppContainer(application: Application) {
     val coverScheduler by lazy {
         CoverScheduler(covers, coverFiles, { id -> library.publication(id).first() }, LocalCoverExtractor(files, fixedReaders),
             idleWork = localMetadata::analyzeNext)
+    }
+    /** Durable user-chosen covers (4.5F.0): offline; the picked image is copied into app storage, never kept as a URI. */
+    val userCovers by lazy {
+        UserCoverStore(covers, coverFiles, coverScheduler.lock, { uri -> application.contentResolver.openInputStream(uri.toUri()) })
     }
     /** What the shared cover renderer reads; one instance (one bitmap cache) per process. */
     val coverArtwork by lazy {
