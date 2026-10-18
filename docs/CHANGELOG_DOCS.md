@@ -1,5 +1,10 @@
 # Documentation Changelog
 
+## Phase 4.5D.0 offline Manga edition matching (2026-10-17, pending independent review)
+
+- Plan: status header (4.5F.0 merged in PR #49) and new §38; METADATA_ENRICHMENT: Manga edition section;
+  VALIDATION: 4.5D.0 evidence and merged 4.5F.0 headings; ROADMAP pointer. D1/D31 unchanged.
+
 ## Phase 4.5F.0 EXIF remediation (2026-10-16, pending independent re-review)
 
 - Plan §37: F-1 EXIF orientation fix and the accepted L-1 / L-2 follow-ups. VALIDATION: remediation evidence.

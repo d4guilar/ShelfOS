@@ -18,6 +18,8 @@ data class MetadataQuery(
     val year: Int? = null, val language: String? = null, val publisher: String? = null,
     /** The title came from the file name: weak evidence that may agree but never contradicts a candidate. */
     val titleIsInferred: Boolean = false,
+    /** The item is explicitly an omnibus / box set / multi-volume range (file name evidence); false means "not known to be". */
+    val isCollection: Boolean = false,
 )
 
 /** A provider's cover reference; URL resolution stays inside the provider. Never applied automatically in 4.5B. */
@@ -55,6 +57,8 @@ data class MatchDecision(val apply: ScoredCandidate?, val ranked: List<ScoredCan
  * drop to MEDIUM, so nothing applies.
  */
 object MetadataMatcher {
+    private val collectionWords = setOf("omnibus", "box", "boxset", "collection", "collected", "compendium")
+    private val RANGE = Regex("""\p{Nd}\s*[-–—~～〜]\s*\p{Nd}""")
     private val editionWords = setOf("omnibus", "collection", "collected", "complete", "box", "boxset", "deluxe", "compendium", "tpb", "trade")
 
     fun score(query: MetadataQuery, c: MetadataCandidate): MatchEvidence {
@@ -86,6 +90,11 @@ object MetadataMatcher {
             }
         }
         if (!query.titleIsInferred && editionKind(query.title) != editionKind(c.title) && !query.title.isNullOrBlank() && !c.title.isNullOrBlank()) contra += MatchSignal.EDITION
+        // Single volume vs collection (4.5D.0): decided by explicit evidence, so an inferred title cannot hide it.
+        val sequentialMedia = query.category.sequential
+        if (sequentialMedia && query.titleIsInferred && isCollection(c) != query.isCollection && (query.isCollection || !query.volume.isNullOrBlank() || !query.issue.isNullOrBlank()))
+            contra += MatchSignal.EDITION
+        else if (sequentialMedia && !query.titleIsInferred && query.isCollection && !isCollection(c)) contra += MatchSignal.EDITION
         val tier = when {
             rejected -> MatchConfidence.LOW
             MatchSignal.IDENTIFIER in agree && contra.isEmpty() -> MatchConfidence.VERY_HIGH
@@ -93,6 +102,9 @@ object MetadataMatcher {
             query.category == MediaCategory.COMIC && contra.isEmpty() && MatchSignal.SERIES in agree && MatchSignal.ISSUE in agree &&
                 listOf(MatchSignal.CREATOR, MatchSignal.PUBLISHER, MatchSignal.YEAR).count { it in agree } >= 2 -> MatchConfidence.VERY_HIGH
             MatchSignal.IDENTIFIER in agree -> MatchConfidence.MEDIUM
+            // Manga without an identifier: series + volume + creator is a review candidate (never automatic).
+            query.category == MediaCategory.MANGA && contra.isEmpty() && MatchSignal.SERIES in agree && MatchSignal.VOLUME in agree &&
+                MatchSignal.CREATOR in agree -> MatchConfidence.MEDIUM
             contra.isEmpty() && MatchSignal.TITLE in agree && MatchSignal.CREATOR in agree &&
                 (!query.category.sequential || MatchSignal.VOLUME in agree || MatchSignal.ISSUE in agree) -> MatchConfidence.MEDIUM
             else -> MatchConfidence.LOW
@@ -129,6 +141,10 @@ object MetadataMatcher {
         val y = normalizeText(b).split(' ').filter { it.isNotEmpty() }.toSet()
         return x.isNotEmpty() && y.isNotEmpty() && (x.containsAll(y) || y.containsAll(x))
     }
+
+    /** An explicit collection: an omnibus word in the title, or a range volume such as "1-3". "Complete" and "deluxe" are NOT collections. */
+    private fun isCollection(c: MetadataCandidate) =
+        normalizeText(c.title.orEmpty()).split(' ').any { it in collectionWords } || c.values.volume?.let { RANGE.containsMatchIn(it) } == true
 
     private fun editionKind(title: String?) = normalizeText(title.orEmpty()).split(' ').any { it in editionWords }
 }

@@ -4,8 +4,10 @@ Status (2026-10-16): **4.5A.1 Local Cover Artwork MERGED (PR #44)** (record §33
 Cover Presentation MERGED (PR #45)** (record §34); their physical UAT is part of 4.5G. **4.5B
 Metadata Core MERGED (PR #46)**; record, network-boundary design and deviations: §35. **4.5C.0
 multi-provider planning ACCEPTED and merged (PR #47; ADR-0026 Accepted).** **4.5C.1 provider
-infrastructure MERGED (PR #48)**: §36. **4.5F.0 Offline Cover Selection IMPLEMENTED on branch
-`phase-4.5/4.5f0-offline-cover-selection`, pending independent review (not merged)**: §37. No
+infrastructure MERGED (PR #48)**: §36. **4.5F.0 Offline Cover Selection MERGED (PR #49)**: §37.
+**4.5D.0 Offline Manga Edition Evidence & Volume Matching IMPLEMENTED on branch
+`phase-4.5/4.5d0-offline-manga-edition-matching`, pending independent review (not merged)**: §38; an
+early offline sub-slice of 4.5D, not the 4.5D milestone. No
 online enrichment is shipped; 4.5C.2 and later are not implemented, and Open Library D1/D31 remain
 unresolved.
 Phase 4 (Notes and Knowledge Layer) is COMPLETE (Phase 4F acceptance merged
@@ -2694,7 +2696,7 @@ before the merge in PR #48).**
   `NO_MATCH` with the failures retained; future negative caching must not treat that as
   authoritative absence.
 
-## 37. 4.5F.0 — Offline Cover Selection (2026-10-16, implemented / pending independent review)
+## 37. 4.5F.0 — Offline Cover Selection (2026-10-16, merged in PR #49)
 
 Brought forward from 4.5F as an independently mergeable, **entirely offline** slice, ahead of and
 independent of 4.5C.2 (Open Library D1/D31 remain unresolved; nothing in 4.5C.2 started). The
@@ -2755,3 +2757,54 @@ settings, WorkManager, bulk change, per-item display-shape override, dependency 
   the potentially blocking external image copy (a stalled provider of the picked file can delay cover
   extraction until it returns or fails); **L-2** Cancel re-enables the dialog actions before the cancelled
   background work has necessarily finished.
+
+## 38. 4.5D.0 — Offline Manga Edition Evidence & Volume Matching (2026-10-17, implemented / pending independent review)
+
+An independently mergeable **offline sub-slice of 4.5D**; it does **not** complete 4.5D, 4.5E or 4.5G, and
+does not measure or claim any live provider coverage. No network, `INTERNET`, provider, dependency, Room
+change, UI, cover download or storage; Open Library D1/D31 and the other live-provider gates are unchanged.
+It decides whether a metadata candidate is the right **edition**; it is not publication identity (no
+cross-import dedup, history reattachment, Series grouping, virtual omnibus or fingerprinting).
+
+**Findings from the investigation (already correct, preserved, now covered):** exact ISBN-13 (ISBN-10
+converted) is the only route to VERY_HIGH for Manga; a different ISBN, a different known volume (hard
+rejection), a missing candidate volume (a contradiction), a conflicting language / publisher / creator, and
+two disagreeing VERY_HIGH editions all keep a candidate below an automatic match; Manga without an identifier
+and filename-only evidence never apply; provider agreement only ranks. No change was needed for those.
+
+**Changes**
+- **Filename inference (`FilenameInference`)**, Comics/Manga only for the new parts: Spanish `Volumen`;
+  **multi-volume ranges** (`Vols. 1-3`, `Vol. 1–3`, `Tomos 1 a 3`, `Volumes 1 to 3`, `1~3巻`), a **total**
+  (`全12巻`) and omnibus words (`Omnibus`, `Box Set`, `3-in-1`) set `FilenameEvidence.collection` and **no
+  volume** (before, `Vols. 1-3` was read as volume 1 and `全12巻` as volume 12); **chapter** tokens (`Ch. 099`,
+  `Chapter 12`, `第99話`) are never a volume and block the zero-padded-trailing fallback; a four-digit
+  "volume" (`Vol. 2019`) is a year, not a volume. Books and Documents are untouched. Titles on screen and file
+  names are never rewritten; the matching title simply omits the collection/chapter token.
+- **`MetadataQuery.isCollection`** (default false), set by `MetadataEnrichmentService.query` from the
+  filename evidence only when the title is filename-inferred. Unknown volume stays unknown (never 1).
+- **Matcher:** (1) **single volume vs collection**: for Comics/Manga an inferred title can no longer hide an
+  explicit collection contradiction: a candidate that is an omnibus (title word `omnibus`, `box`, `boxset`,
+  `collection`, `collected`, `compendium`, or a range volume such as `1-3`) contradicts an item with a known
+  single volume/issue, and a collection item contradicts a non-collection candidate (EDITION, caps below
+  VERY_HIGH). "Complete" and "deluxe" are **not** treated as collections (the existing structured-title
+  edition-word rule still separates deluxe/complete editions when the title is reliable). (2) **Manga review
+  candidate:** series + volume + creator agreeing with no contradiction and no identifier is MEDIUM (review),
+  never automatic; Comics and Books tiers are unchanged. `demoteAmbiguous`, ISBN, language and volume rules are
+  untouched.
+- **Cover eligibility (`CoverEligibilityPolicy`, pure, nothing downloads or writes):** a cover is AUTOMATIC
+  only if it belongs to the matched edition's cluster, the edition is VERY_HIGH with an exact identifier and
+  no contradiction, sequential media also have an agreeing volume/issue, no USER cover exists, and (D7) no
+  LOCAL cover exists for a Comic/Manga; a cover labelled for another volume, from another edition, or from an
+  edition with contradictions is REJECTED; series-level or identifier-less art stays CANDIDATE_ONLY.
+  Nothing is wired to a writer.
+
+**Tests and fixture provenance:** all candidates are synthetic; ISBNs are check-digit-valid values generated
+in the test (`isbn13(n)`) or the repository's existing valid fixture; no real ISBN-to-title mapping or
+coverage is asserted. `MangaEditionMatchingTest` (matrices A-H, cover G), `FilenameInferenceTest` (matrix I),
+`MangaEnrichmentIntegrationTest` (matrix J, real service), `MetadataParsingDeviceTest` (ICU parity).
+
+**Accepted limitations / remaining work:** a title-only "Omnibus" in a Manga file name is treated as a
+collection and removed from the matching title; "Deluxe/Complete" in a filename-inferred title is not
+evidence; language is not inferred from file names; Spanish/German volume words beyond those listed and
+`Vol. N de M` are not parsed; the EN/JP/ES **real licensed-volume corpus**, live provider coverage, real
+volume-cover acceptance and 4.5G physical UAT remain pending approved provider integration (4.5C.2+, 4.5D, 4.5E).

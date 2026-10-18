@@ -1,6 +1,24 @@
 # Validation
 
-## PHASE 4.5F.0 — EXIF ORIENTATION REMEDIATION (2026-10-16, pending independent re-review)
+## PHASE 4.5D.0 — OFFLINE MANGA EDITION & VOLUME MATCHING (2026-10-17, implemented / pending independent review)
+
+**Not accepted, not merged; not the 4.5D milestone.** Branch `phase-4.5/4.5d0-offline-manga-edition-matching` from
+`main` `b0417aa` (4.5F.0, PR #49, merged). Offline, synthetic fixtures only; no live-provider coverage is claimed.
+
+| Command / class | Tests | Pass | Fail | Result | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `gradlew.bat :app:testDebugUnitTest` (full suite) | 762 | 762 | 0 | PASS | 741 + 21 new |
+| `MangaEditionMatchingTest` (new) | 10 | 10 | 0 | PASS | A exact edition incl. ISBN-10; B no ISBN; C filename-only; D wrong volume (1 vs 10, padded, full-width, any order); E omnibus / deluxe / range / collection item; F EN/JA/ES editions; H ambiguity and provider-agreement limits; G cover eligibility |
+| `MangaEnrichmentIntegrationTest` (new) | 8 | 8 | 0 | PASS | matrix J on the real service: query construction (no invented volume, embedded title kept, omnibus flag), bounded no-ISBN search never applies, all ISBN providers consulted as ISBN-13 with no search, wrong volume, omnibus, language and publisher conflicts block, valid edition applies with provenance while USER / EMBEDDED data stand |
+| `FilenameInferenceTest` | 7 | 7 | 0 | PASS | +3: Manga words and number forms, ranges / totals / omnibus, years / chapters / non-volume traps; Books and Documents unchanged |
+| `MetadataMatcherTest`, `EditionClusteringTest`, `MultiProviderLookupTest`, `MetadataCoordinatorTest` | — | — | 0 | PASS | within the full suite; unchanged assertions |
+| Device (isolated API 24 `emulator-5554`): `MetadataParsingDeviceTest` 1, `LocalMetadataBackfillTest` 1, `MetadataMigrationTest` 3, `MetadataUiTest` 9 | 14 | 14 | 0 | PASS | ICU regex parity for the new patterns |
+| `assembleDebug`, `assembleDebugAndroidTest`, `lintDebug` | — | — | — | PASS | lint 0 errors, 60 warnings (unchanged) |
+| `git diff --check` | — | — | — | clean | |
+
+Not run: the full instrumented suite (no UI, Room or cover code changed), physical devices.
+
+## PHASE 4.5F.0 — EXIF ORIENTATION REMEDIATION (2026-10-16; merged in PR #49)
 
 Fixes F-1 of the Codex High review of `a82068b`. Isolated API 24 emulator `emulator-5554`; per-class `am instrument`
 after `pm clear`; no schema, manifest, dependency or network change.
@@ -20,7 +38,7 @@ their rotations swapped in the first implementation; the independent corner asse
 were corrected. The lint suppression (a comment and annotation only) was added after the instrumented run and was
 followed by a rebuild and lint, not another device run.
 
-## PHASE 4.5F.0 — OFFLINE COVER SELECTION (2026-10-16, implemented / pending independent review)
+## PHASE 4.5F.0 — OFFLINE COVER SELECTION (2026-10-16; merged in PR #49)
 
 **Not accepted, not merged.** Isolated API 24 emulator `emulator-5554` only (no owner device); per-class
 `am instrument` after `pm clear`. Branch `phase-4.5/4.5f0-offline-cover-selection` from `main` `7ccb61c`
