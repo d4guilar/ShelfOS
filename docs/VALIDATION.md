@@ -8179,3 +8179,13 @@ No live request, no cover download, no app/production code, manifest, dependency
 | Real CLI failure injection (missing output, wrong digest, tier `BOGUS`, header count `abc`) | each exit 1, no stdout, `summary.json` and `cases.csv` unchanged, no temporary files left |
 | `gradlew :app:testDebugUnitTest --tests *ProviderLabBridgeTest --tests *MangaEditionMatchingTest` | passes |
 | `git diff --check 24b1ae2..HEAD` and `725d2c6..HEAD` | exit 0 (after the scoped `.gitattributes` rule) |
+
+## PHASE 4.5C.P0 CSV LINE-ENDING FIX (2026-10-18, research harness only; pending final QA)
+
+- `report.py` writes `cases.csv` with `csv.writer(f, lineterminator="\n")` on a file opened with `newline=""` (LF on every platform), and
+  `tools/provider-lab/.gitattributes` adds `results/*.csv text eol=lf` so a checkout (including Windows `core.autocrlf=true`) is LF too.
+- Fresh clone of the fix commit (autocrlf=true): `python -m unittest discover -s tests -t .` 59/59 pass, `benchmark.py validate` OK, offline
+  `report` exit 0 with 46 verified groups, generated `cases.csv` byte-identical to the committed blob with 0 carriage-return bytes. The temporary clone was removed.
+- Accepted LOW limitations: publication of `cases.csv` and `summary.json` is two sequential `os.replace` calls, not an atomic transaction (an OS
+  failure during publication can leave one updated file beside an older one); a snapshot with invalid UTF-8 fails closed with an uncaught
+  `UnicodeDecodeError` rather than a diagnostic.
