@@ -8142,3 +8142,12 @@ reading, metadata enrichment, annotations and production releases are future wor
 - `:app:testDebugUnitTest --rerun --max-workers=1`: 780 tests, 0 failures (777 + 3 new). `:app:assembleDebug`
   succeeded; `:app:lintDebug` reported no errors; `git diff --check` clean. Mutation check: with the
   production change reverted, 2 of the 3 new tests fail. Instrumented tests NOT RUN (no Android code changed).
+
+## PHASE 4.5C.P0 provider evaluation lab (2026-10-18, research only)
+
+- Offline: `python -m unittest discover -s tests -t .` in `tools/provider-lab`: 30 tests, 0 failures (corpus schema/checksums, URL
+  construction, Inventaire and Wikidata parsing, malformed input, 403/429, Retry-After, retries, request budget, classification,
+  CSV/JSON). Android: `:app:testDebugUnitTest --rerun --max-workers=1`: 781 tests, 0 failures, 1 skipped (the inert lab bridge test).
+- Live (read-only): Inventaire 119 requests, Wikidata 47, all HTTP 200 except one aborted DNS-outage run whose failures were recorded as
+  REQUEST_FAILED and re-run. Results in `tools/provider-lab/results/` and `docs/research/PHASE_4_5_PROVIDER_EVALUATION.md`.
+- NOT RUN: instrumented tests (no app code changed), cover downloads, any write/refresh endpoint.

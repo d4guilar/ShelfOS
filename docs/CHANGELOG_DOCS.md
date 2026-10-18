@@ -1,5 +1,9 @@
 # Documentation Changelog
 
+## Phase 4.5C.P0 provider evaluation (2026-10-18, research only)
+
+- New `research/PHASE_4_5_PROVIDER_EVALUATION.md` and `tools/provider-lab/` (read-only harness, 36-ISBN corpus, results). Plan §39, ROADMAP: PR #50 merged; Inventaire/Wikidata measured; no provider approved; D1/D31 and D22-D29 unchanged.
+
 ## Phase 4.5D.0 offline Manga edition matching (2026-10-17, pending independent review)
 
 - Plan: status header (4.5F.0 merged in PR #49) and new §38; METADATA_ENRICHMENT: Manga edition section;

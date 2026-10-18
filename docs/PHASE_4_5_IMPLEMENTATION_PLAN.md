@@ -2826,3 +2826,14 @@ equality, so the same provider reference with different dimensions, label or sur
 shared artwork with an unknown owner (at most `CANDIDATE_ONLY`; all-rejected co-owners `REJECTED`), while
 the same text from different providers stays distinct. Three regression tests added to
 `MangaEditionMatchingTest`. R-2 and F-6 remain accepted non-blocking follow-ups. Pending independent verification.
+
+## 39. 4.5C.P0 — Provider evaluation spike (2026-10-18, research only)
+
+PR #50 (4.5D.0) is **merged**. 4.5C.P0 is a research-only, read-only evaluation of Inventaire and Wikidata
+against 36 independently verified ISBNs (`tools/provider-lab/`, report
+[`research/PHASE_4_5_PROVIDER_EVALUATION.md`](research/PHASE_4_5_PROVIDER_EVALUATION.md)). Measured: Inventaire returned a
+record for 28/36 ISBNs (19 exact editions; Spanish Manga 0/6; 25/28 records link Open Library ids, so it is not independent of
+it); Wikidata 4/36 (English books only, no covers). Recommendation: CONDITIONAL GO for Inventaire as an optional metadata-only
+secondary candidate pending an administrator decision and its unread terms/image policy; NO-GO for Wikidata as a standalone
+provider and for any cover use. **No provider is approved, registered or integrated; no manifest, dependency, Room or app
+code changed. D1/D31 (Open Library) and D22–D29 stand unchanged. 4.5C.2, full 4.5D, 4.5E and 4.5G are not advanced.**
