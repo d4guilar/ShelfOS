@@ -53,9 +53,11 @@ class MetadataEnrichmentService(
     fun query(item: LibraryItem, m: ResolvedMetadata): MetadataQuery {
         val fromName = m.origin(MetadataField.TITLE) == MetadataOrigin.FILENAME_INFERENCE
         val v = m.values
+        // The file name is always read for collection evidence; it replaces the title only when the title itself came from it.
+        val named = FilenameInference.infer(item.fileName, item.category)
         return MetadataQuery(item.category, v.identifiers,
-            if (fromName) FilenameInference.infer(item.fileName, item.category).title else m.title,
+            if (fromName) named.title else m.title,
             m.creator.ifBlank { null }, v.series, v.volume, v.issue, v.publishedDate?.take(4)?.toIntOrNull(), v.language, v.publisher,
-            titleIsInferred = fromName || m.origin(MetadataField.TITLE) == MetadataOrigin.UNKNOWN)
+            titleIsInferred = fromName || m.origin(MetadataField.TITLE) == MetadataOrigin.UNKNOWN, isCollection = named.collection)
     }
 }

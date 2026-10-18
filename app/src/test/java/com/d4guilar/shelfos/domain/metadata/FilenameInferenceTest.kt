@@ -60,4 +60,48 @@ class FilenameInferenceTest {
         check("Blame! #12.cbz", MANGA, "Blame! #12")
         check("Annual Report No. 3.pdf", DOCUMENT, "Annual Report No. 3")
     }
+
+    // ---- 4.5D.0 Manga hardening (matrix I) ----
+
+    private fun infer(name: String, category: MediaCategory = MANGA) = FilenameInference.infer(name, category)
+
+    @Test fun mangaVolumeWordsAcrossLanguagesAndNumberForms() {
+        check("Dragon Ball Volumen 5.cbz", MANGA, "Dragon Ball", series = "Dragon Ball", volume = "5")
+        check("Dragon Ball Vol.5.cbz", MANGA, "Dragon Ball", series = "Dragon Ball", volume = "5")
+        check("Naruto Tome 07.cbz", MANGA, "Naruto", series = "Naruto", volume = "7")
+        check("Akira Band 02.cbz", MANGA, "Akira", series = "Akira", volume = "2")
+        check("Gantz Vol. 1.5.cbz", MANGA, "Gantz", series = "Gantz", volume = "1.5")
+        check("ワンピース 第３巻.cbz", MANGA, "ワンピース", series = "ワンピース", volume = "3")
+        check("20th Century Boys Vol. 2 (2001).cbz", MANGA, "20th Century Boys", series = "20th Century Boys", volume = "2", year = 2001)
+        check("Dr. Stone Vol. 3 - 2019.cbz", MANGA, "Dr. Stone - 2019", series = "Dr. Stone - 2019", volume = "3")
+    }
+
+    @Test fun rangesTotalsAndOmnibusWordsAreCollectionsNotVolumes() {
+        for (name in listOf("Berserk Vols. 1-3.cbz", "Berserk Vol. 1–3.cbz", "Berserk Tomos 1 a 3.cbz", "Berserk Volumes 1 to 3.cbz"))
+            assertEquals(name, FilenameEvidence("Berserk", series = "Berserk", collection = true), infer(name))
+        assertEquals(FilenameEvidence("ワンピース", series = "ワンピース", collection = true), infer("ワンピース 1~3巻.cbz"))
+        assertEquals("全12巻 is a total, not volume 12", FilenameEvidence("ワンピース", series = "ワンピース", collection = true), infer("ワンピース 全12巻.cbz"))
+        assertEquals(FilenameEvidence("Berserk", series = "Berserk", collection = true), infer("Berserk Omnibus.cbz"))
+        assertEquals(FilenameEvidence("Berserk", series = "Berserk", volume = "2", collection = true), infer("Berserk Omnibus Vol. 2.cbz"))
+        assertEquals(FilenameEvidence("Naruto", series = "Naruto", collection = true), infer("Naruto 3-in-1.cbz"))
+        assertEquals(FilenameEvidence("Naruto", series = "Naruto", collection = true), infer("Naruto Box Set.cbz"))
+    }
+
+    @Test fun yearsChaptersAndNonVolumeLabelsAreNeverVolumes() {
+        assertEquals(FilenameEvidence("Berserk Vol. 2019"), infer("Berserk Vol. 2019.cbz"))
+        assertEquals(FilenameEvidence("Berserk 2019"), infer("Berserk 2019.cbz"))
+        assertEquals("a chapter number is not a volume", FilenameEvidence("Berserk"), infer("Berserk Ch. 099.cbz"))
+        assertEquals(FilenameEvidence("Berserk"), infer("Berserk Chapter 12.cbz"))
+        assertEquals(FilenameEvidence("ベルセルク"), infer("ベルセルク 第99話.cbz"))
+        assertEquals(FilenameEvidence("Berserk", series = "Berserk", volume = "3"), infer("Berserk Chapter 12 Vol. 3.cbz"))
+        for (title in listOf("Steins;Gate 0", "Fahrenheit 451", "Book 2", "Part 3", "Season 2", "Vol. abc", "Vol. 1x", "Vol. 1..5", "100 Girlfriends"))
+            assertEquals(title, FilenameEvidence(title), infer("$title.cbz"))
+        assertEquals("a Book keeps its title", FilenameEvidence("Berserk Vols. 1-3"), infer("Berserk Vols. 1-3.epub", BOOK).let { FilenameEvidence(it.title) })
+        assertEquals("Documents stay conservative", FilenameEvidence("Berserk Vol. 1-3"), infer("Berserk Vol. 1-3.pdf", DOCUMENT))
+    }
+
+    @Test fun aTitleContainingBoxIsNotACollection() {
+        assertEquals(FilenameEvidence("Blue Box", series = "Blue Box", volume = "1"), infer("Blue Box Vol. 1.cbz"))
+        assertEquals(FilenameEvidence("Naruto", series = "Naruto", collection = true), infer("Naruto Box Set.cbz"))
+    }
 }

@@ -439,6 +439,14 @@ does not automatically extend to ShelfOS). `metron.live` is unrelated to Metron 
 metadata, and the `metron.cloud` service terms stay unresolved. It is not approved until the current service terms are reviewed and the
 ShareAlike questions are answered (plan D5, D19).
 
+## Manga edition matching (4.5D.0, offline)
+
+Manga volume and edition safety is implemented without any provider: volume ranges, totals, omnibus words and
+chapter numbers are never read as a single volume; a single volume never matches an omnibus automatically; without
+an ISBN, series + volume + creator is only a review candidate; filename evidence alone never applies; a cover is
+automatic only for the matched, volume-specific edition and never over USER art or an existing Manga file cover.
+See plan §38. Live Manga acceptance still needs an approved provider.
+
 ## Persistent enrichment rule (accepted 2026-10-16)
 
 Online enrichment is triggered by import commit or an explicit user action, never by merely opening

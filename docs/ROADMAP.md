@@ -440,7 +440,7 @@ and import and reading never depend on a provider.
 - **4.5C Books** — modular multi-provider system ([`features/BOOK_PROVIDERS.md`](features/BOOK_PROVIDERS.md),
   ADR-0026 accepted; 4.5C.1 registry/policy/clustering merged, fakes only): registry, ISBN-first, metadata and covers; Open Library conditional
   (D1), Library of Congress conditional metadata-only; Google Books, OverDrive default,
-  Gutendex and Goodreads wrappers rejected. Planned sub-slices 4.5C.1–4.5C.5.
+  Gutendex and Goodreads wrappers rejected. Planned sub-slices 4.5C.1–4.5C.5. 4.5F.0 offline cover selection is merged (PR #49); 4.5D.0 offline Manga edition/volume matching is implemented pending review (an early sub-slice of 4.5D; live Manga acceptance still needs an approved provider).
 - **4.5D Manga** — volume-aware matching, ISBN/edition, volume-specific covers.
 - **4.5E Comics** — Series + issue matching, UPC/ISBN, ComicInfo/MetronInfo evidence, issue
   covers, and an approved issue-level online provider (preferred: Metron with per-user
