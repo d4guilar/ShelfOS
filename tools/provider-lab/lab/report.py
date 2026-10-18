@@ -1,6 +1,7 @@
 """Metrics and Markdown/CSV/JSON output. Every percentage is printed with its numerator/denominator."""
 import csv
 import json
+import os
 import statistics
 
 from lab import bridge, classify
@@ -78,8 +79,22 @@ def completeness_md(sc):
     return "; ".join("%s %s" % (f, frac(s["complete"][f], s["ok"])) for f in COMPLETE_FIELDS)
 
 
-def write_outputs(outdir, rows, scorecards, meta):
-    with open(outdir + "/cases.csv", "w", encoding="utf-8", newline="") as f:
+def write_outputs(outdir, rows, scorecards, meta, extra=()):
+    """All-or-nothing: cases.csv, summary.json and any extra (temp, final) pairs are written to temporary files first;
+    the finals are replaced only after every temporary file was written, so a failure never leaves a mixed-version report."""
+    pairs = [(outdir + "/cases.csv.tmp", outdir + "/cases.csv"), (outdir + "/summary.json.tmp", outdir + "/summary.json")]
+    try:
+        _write_files(pairs[0][0], pairs[1][0], rows, scorecards, meta)
+        for tmp, final in pairs + list(extra):
+            os.replace(tmp, final)
+    finally:
+        for tmp, _ in pairs:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+
+
+def _write_files(cases_path, summary_path, rows, scorecards, meta):
+    with open(cases_path, "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
         w.writerow(["provider", "fixture", "category", "verification", "class", "shelfos_decision", "matcher_tier", "wrongvol_decision", "requests", "seconds",
                     "status", "returned_isbns", "title", "language", "volume", "series", "publisher", "cover_ref", "reasons", "error"])
@@ -89,5 +104,5 @@ def write_outputs(outdir, rows, scorecards, meta):
                         r["status"], "|".join(rec["returned_isbns"]), rec.get("title"), rec.get("language"), rec.get("volume"), rec.get("series"), rec.get("publisher"),
                         rec.get("cover_present"), r["reasons"], r["error"]])
     slim = [{k: v for k, v in r.items() if k != "record"} for r in rows]
-    with open(outdir + "/summary.json", "w", encoding="utf-8") as f:
+    with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(dict(meta=meta, scorecards=scorecards, cases=slim), f, ensure_ascii=False, indent=1)

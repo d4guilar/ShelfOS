@@ -8165,3 +8165,17 @@ verification header and sorted output).
 - Live (read-only): Inventaire 119 requests, Wikidata 47, all HTTP 200 except one aborted DNS-outage run whose failures were recorded as
   REQUEST_FAILED and re-run. Results in `tools/provider-lab/results/` and `docs/research/PHASE_4_5_PROVIDER_EVALUATION.md`.
 - NOT RUN: instrumented tests (no app code changed), cover downloads, any write/refresh endpoint.
+
+## PHASE 4.5C.P0 FINAL REPORT-RELIABILITY REMEDIATION (2026-10-18, research harness only; pending final QA)
+
+No live request, no cover download, no app/production code, manifest, dependency or schema change.
+
+| Command (executed by me in this change) | Result |
+| --- | --- |
+| `python -m unittest discover -s tests -t .` (tools/provider-lab) | **59/59 pass** (42 previous, minus 1 replaced test, plus 18 new in `tests/test_report_contract.py`). With the three changed modules reverted, 15 of the 18 new tests fail |
+| `python benchmark.py validate` | OK (36 fixtures) |
+| `python benchmark.py report` (offline, committed snapshot) | exit 0, mode `committed-snapshot`, 46 groups; `cases.csv` byte-identical |
+| `python benchmark.py report --jvm` (real Gradle, production matcher) | exit 0, mode `fresh-jvm-run`, 46 groups; `bridge_in.tsv`, `bridge_out.tsv` and `cases.csv` byte-identical to the committed ones (only the `generated` timestamp in `summary.json` differs) |
+| Real CLI failure injection (missing output, wrong digest, tier `BOGUS`, header count `abc`) | each exit 1, no stdout, `summary.json` and `cases.csv` unchanged, no temporary files left |
+| `gradlew :app:testDebugUnitTest --tests *ProviderLabBridgeTest --tests *MangaEditionMatchingTest` | passes |
+| `git diff --check 24b1ae2..HEAD` and `725d2c6..HEAD` | exit 0 (after the scoped `.gitattributes` rule) |

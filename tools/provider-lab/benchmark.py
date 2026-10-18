@@ -124,14 +124,20 @@ def make_report(args):
         for wv in (False, True):
             rows += [[prov + ":" + r[0]] + r[1:] for r in bridge.rows_for(by_id[fid], [rec], wrong_volume=wv)]
     tsv_in, tsv_out = os.path.join(RESULTS, "bridge_in.tsv"), os.path.join(RESULTS, "bridge_out.tsv")
+    tmp_in, tmp_out = os.path.join(RESULTS, "bridge_in.tmp.tsv"), os.path.join(RESULTS, "bridge_out.tmp.tsv")
+    extra = []
     try:
         if args.jvm:
-            # Fresh run: the previous output is deleted, Gradle must succeed, and the output must be tied to this exact input.
-            bridge.write_tsv(tsv_in, rows)
-            decisions_raw, verification = bridge.run_jvm(tsv_in, tsv_out, os.path.abspath(os.path.join(HERE, "..", "..")))
+            # Fresh run on temporary files: Gradle must succeed and the output must be tied to this exact input. The committed
+            # snapshot is replaced only together with the report, after everything verified.
+            bridge.write_tsv(tmp_in, rows)
+            decisions_raw, verification = bridge.run_jvm(tmp_in, tmp_out, os.path.abspath(os.path.join(HERE, "..", "..")))
             verification["mode"] = "fresh-jvm-run"
+            extra = [(tmp_in, tsv_in), (tmp_out, tsv_out)]
         else:
-            # Offline regeneration: reuse the committed snapshot only if it is provably the output for the CURRENT records.
+            # Offline regeneration: the committed snapshot must provably be the output for the CURRENT records.
+            if not os.path.exists(tsv_in):
+                raise bridge.BridgeError("the committed bridge input is missing")
             expected = os.path.join(RESULTS, "bridge_in.expected.tsv")
             bridge.write_tsv(expected, rows)
             try:
@@ -142,23 +148,25 @@ def make_report(args):
                 raise bridge.BridgeError("the committed bridge input does not match the current records; rerun with --jvm")
             decisions_raw, verification = bridge.verify(tsv_in, tsv_out)
             verification["mode"] = "committed-snapshot"
+        decisions = {}
+        for (key, probe), d in decisions_raw.items():
+            prov, fid = key.split(":", 1)
+            decisions[(prov, fid, probe)] = d
+        out_rows = report.evaluate(fixtures, records, decisions)
+        meta = dict(generated=time.strftime("%Y-%m-%d %H:%M:%S"), fixtures_in_corpus=len(fixtures), jvm_bridge=True, bridge_verification=verification)
+        scs = {}
+        for prov in sorted({p for p, _ in records}):
+            attempted = [(i, by_id[i]["category"]) for (p, i) in records if p == prov]
+            scs[prov] = report.scorecard(out_rows, prov, attempted)
+        report.write_outputs(RESULTS, out_rows, scs, meta, extra)
     except bridge.BridgeError as e:
-        if args.jvm:
-            sys.exit("report --jvm FAILED, no matcher result is presented: %s" % e)
-        print("WARNING: production-matcher results are NOT verified (%s); matcher columns are omitted" % e)
-        decisions_raw, verification = None, dict(mode="unverified", reason=str(e))
-    decisions = {}
-    for (key, probe), d in (decisions_raw or {}).items():
-        prov, fid = key.split(":", 1)
-        decisions[(prov, fid, probe)] = d
-    out_rows = report.evaluate(fixtures, records, decisions)
-    meta = dict(generated=time.strftime("%Y-%m-%d %H:%M:%S"), fixtures_in_corpus=len(fixtures), jvm_bridge=decisions_raw is not None, bridge_verification=verification)
-    scs = {}
-    for prov in sorted({p for p, _ in records}):
-        attempted = [(i, by_id[i]["category"]) for (p, i) in records if p == prov]
-        scs[prov] = report.scorecard(out_rows, prov, attempted)
+        sys.exit("Provider lab report FAILED: matcher snapshot verification failed. No report outputs were updated. Reason: %s" % e)
+    finally:
+        for t in (tmp_in, tmp_out):
+            if os.path.exists(t):
+                os.remove(t)
+    for prov in sorted(scs):
         print("\n## " + prov + "\n" + report.markdown(prov, scs[prov]) + "\n" + report.completeness_md(scs[prov]))
-    report.write_outputs(RESULTS, out_rows, scs, meta)
 
 
 def main():

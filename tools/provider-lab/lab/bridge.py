@@ -43,6 +43,11 @@ def write_tsv(path, rows):
             f.write("\t".join(_q(c) for c in row) + "\n")
 
 
+# Serialized decision vocabulary. TIERS = MatchConfidence, SIGNALS = MatchSignal (a test compares both with the Kotlin enums).
+TIERS = ("VERY_HIGH", "MEDIUM", "LOW")
+SIGNALS = ("IDENTIFIER", "CATEGORY", "TITLE", "CREATOR", "SERIES", "VOLUME", "ISSUE", "PUBLISHER", "YEAR", "LANGUAGE", "EDITION", "AMBIGUOUS")
+
+
 class BridgeError(Exception):
     """The production-matcher bridge did not produce a verifiable result. Never converted into 'insufficient evidence'."""
 
@@ -75,6 +80,12 @@ def verify(tsv_in, tsv_out):
     head = lines[0].split("\t")
     if len(head) != 4 or head[1] != "1":
         raise BridgeError("unsupported bridge output header")
+    try:
+        declared = int(head[3])
+        if declared < 0 or str(declared) != head[3]:
+            raise ValueError(head[3])
+    except ValueError:
+        raise BridgeError("malformed bridge header count: %r" % head[3])
     want = digest(tsv_in)
     if head[2] != want:
         raise BridgeError("bridge output was produced from a different input (digest %s != %s)" % (head[2][:12], want[:12]))
@@ -83,17 +94,34 @@ def verify(tsv_in, tsv_out):
         if not line.strip():
             continue
         p = line.split("\t")
-        if len(p) < 7:
+        if len(p) != 7:
             raise BridgeError("unparseable bridge line: %r" % line[:80])
+        _check_decision(p)
         seen.append((_unq(p[0]), _unq(p[1])))
     expected = expected_groups(tsv_in)
     dup = sorted({g for g in seen if seen.count(g) > 1})
     missing = [g for g in expected if g not in seen]
     extra = [g for g in dict.fromkeys(seen) if g not in expected]
-    if dup or missing or extra or len(seen) != int(head[3]):
+    if dup or missing or extra or len(seen) != declared:
         raise BridgeError("bridge coverage mismatch: missing=%d duplicate=%d unexpected=%d declared=%s seen=%d"
                           % (len(missing), len(dup), len(extra), head[3], len(seen)))
     return read_decisions(tsv_out), dict(input_sha256=want, groups=len(expected), contract=head[1])
+
+
+def _check_decision(p):
+    """One serialized decision: id, probe, tier, rejected, apply, agreements, contradictions. Exact values only, no coercion."""
+    id_, probe, tier, rejected, apply_, agree, contra = [_unq(x) for x in p]
+    if not id_ or not probe:
+        raise BridgeError("decision without an identity: %r" % id_)
+    if tier not in TIERS:
+        raise BridgeError("invalid matcher tier %r for %s/%s" % (tier, id_, probe))
+    for name, v in (("rejected", rejected), ("apply", apply_)):
+        if v not in ("true", "false"):
+            raise BridgeError("invalid %s value %r for %s/%s (only true or false)" % (name, v, id_, probe))
+    for name, v in (("agreement", agree), ("contradiction", contra)):
+        for sig in (v.split(",") if v else []):
+            if sig not in SIGNALS:
+                raise BridgeError("unknown %s signal %r for %s/%s" % (name, sig, id_, probe))
 
 
 def read_decisions(path):

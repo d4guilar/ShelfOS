@@ -8,13 +8,13 @@ Requirements: Python 3 (stdlib only). The optional production-matcher step needs
 ```
 cd tools/provider-lab
 python benchmark.py validate                # corpus schema + ISBN checksums (offline)
-python -m unittest discover -s tests -t .   # 42 offline tests, no network
+python -m unittest discover -s tests -t .   # 59 offline tests, no network
 python benchmark.py control                 # one bounded Wikidata control query (LIMIT 3)
 python benchmark.py run --stage pilot       # live, 8 fixtures, both providers
 python benchmark.py run --stage full        # live, all 36 fixtures (about 130 requests)
 python benchmark.py run --ids en-gatsby --providers inventaire
 python benchmark.py report --jvm            # fresh Gradle bridge, verified or refused (non-zero exit), write results/
-python benchmark.py report                  # offline: reuse the committed bridge snapshot only if it matches records.json
+python benchmark.py report                  # offline: needs a fully verified committed bridge snapshot, otherwise exits non-zero and writes nothing
 ```
 
 Rules baked in: GET only; one request in flight; at least 1.5 s between requests per host; descriptive

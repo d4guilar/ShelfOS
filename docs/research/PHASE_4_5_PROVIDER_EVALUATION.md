@@ -59,7 +59,7 @@ Legal notice, Privacy and General disclaimer pages exist per the wiki but I did 
 ## 3. Methodology
 
 - Harness is a stdlib Python 3 CLI. Stage A (offline): corpus schema/checksums, parsers, malformed input,
-  HTTP 403/429/`Retry-After`/budget handling, CSV/JSON output — 42 tests (30 original + 12 added for bridge verification and edition selection), all passing, no network.
+  HTTP 403/429/`Retry-After`/budget handling, CSV/JSON output — 59 tests (30 original + 12 for bridge verification and edition selection + 17 net for the final reporting contract), all passing, no network.
 - Stage B (pilot): 8 fixtures (English book, Japanese, English and Spanish Manga, collected edition) on both providers;
   stopped-if-throttled client, one request in flight, ≥ 1.5 s between requests, descriptive User-Agent with the
   repository URL, 2 MB response cap, retries only for transient failures.
@@ -304,7 +304,27 @@ line carries the SHA-256 of the exact input and the decision count, with every e
 once and none unexpected. A skipped test, a missing, stale, foreign or incomplete output makes the command exit non-zero and
 no matcher result is presented. Offline regeneration reuses the committed normalized snapshot
 (`results/bridge_in.tsv`, `results/bridge_out.tsv`: 46 decision groups, identifiers and neutral field values only, no raw API payloads)
-only if its input digest equals the digest of the input rebuilt from `records.json`; otherwise the matcher columns are marked
-unverified. `results/summary.json` records the mode (`fresh-jvm-run` or `committed-snapshot`), the input digest and the group count.
+only if its input digest equals the digest of the input rebuilt from `records.json`; otherwise the command **fails** (see below).
+`results/summary.json` records the mode (`fresh-jvm-run` or `committed-snapshot`), the input digest and the group count.
 The Inventaire edition chosen while parsing and the one whose work/publisher are requested now come from one shared selector
 (lowest URI); several editions for one ISBN are still counted and classified ambiguous. No new request was made for any of this.
+
+### Final reporting contract (second QA remediation)
+
+- **Offline report:** a fully verified committed bridge snapshot is mandatory. If it is missing, malformed, from another input,
+  incomplete, duplicated, unexpected or contains an invalid decision, `python benchmark.py report` exits non-zero with
+  "Provider lab report FAILED: matcher snapshot verification failed. No report outputs were updated." plus the reason, prints no
+  scorecard, and leaves any existing `summary.json` and `cases.csv` untouched. There is no unverified mode and `INSUFFICIENT_EVIDENCE`
+  is never substituted for an unavailable matcher result.
+- **Fresh report (`--jvm`):** requires a successful run of the production matcher on temporary files. The committed snapshot, `cases.csv` and
+  `summary.json` are replaced only after everything verified; report files are written to temporary files first, so a failed write leaves
+  the previous report intact.
+- **Decision validation:** every decision row must have exactly 7 fields; the tier must be one of `VERY_HIGH`, `MEDIUM`, `LOW`;
+  `rejected` and `apply` must be exactly `true` or `false`; every agreement/contradiction signal must be a `MatchSignal` name (empty lists
+  are valid); the header count must be a canonical non-negative integer (a malformed count is a controlled error, not a traceback).
+  A test compares the tier and signal vocabularies with the Kotlin enums.
+- **TSV format:** a trailing tab encodes an empty final field (no contradictions). `tools/provider-lab/.gitattributes` marks
+  `results/bridge_*.tsv` as `-text -whitespace`, so Git keeps the bytes unchanged and does not flag that structure; all other files stay under
+  normal whitespace checks.
+- The measured data, classifications and conclusions are unchanged (36 fixtures; Inventaire 19 exact / 9 partial / 8 none, 13/36 auto-accepted;
+  Wikidata 4/36; 46 verified groups; 14 wrong-volume probes). Status: pending final QA.

@@ -428,16 +428,7 @@ class ReportCommand(unittest.TestCase):
         self.assertTrue(meta["jvm_bridge"]); self.assertEqual("committed-snapshot", meta["bridge_verification"]["mode"])
         self.assertEqual(46, meta["bridge_verification"]["groups"]); self.assertEqual(64, len(meta["bridge_verification"]["input_sha256"]))
 
-    def test_a_tampered_or_mismatched_snapshot_is_reported_as_unverified_not_as_results(self):
-        text = open(os.path.join(self.d, "bridge_out.tsv"), encoding="utf-8").read()
-        open(os.path.join(self.d, "bridge_out.tsv"), "w", encoding="utf-8").write(text.split("\n", 1)[1])   # header stripped
-        _, out = self.quiet(benchmark.make_report, self.args)
-        self.assertIn("NOT verified", out)
-        meta = self.summary()["meta"]
-        self.assertFalse(meta["jvm_bridge"]); self.assertEqual("unverified", meta["bridge_verification"]["mode"])
-        open(os.path.join(self.d, "bridge_in.tsv"), "a", encoding="utf-8").write("x\n")                     # input no longer matches the records
-        _, out = self.quiet(benchmark.make_report, self.args)
-        self.assertIn("does not match the current records", out)
+    # A tampered, missing or mismatched snapshot now fails closed: see tests/test_report_contract.py.
 
     def test_report_jvm_exits_non_zero_when_the_bridge_fails_and_writes_nothing(self):
         self.args.jvm = True

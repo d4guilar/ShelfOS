@@ -1,1 +1,1 @@
-results/bridge_*.tsv -text
+results/bridge_*.tsv -text -whitespace
