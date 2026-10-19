@@ -1,0 +1,2 @@
+results/bridge_*.tsv -text -whitespace
+results/*.csv text eol=lf

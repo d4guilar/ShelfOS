@@ -2826,3 +2826,23 @@ equality, so the same provider reference with different dimensions, label or sur
 shared artwork with an unknown owner (at most `CANDIDATE_ONLY`; all-rejected co-owners `REJECTED`), while
 the same text from different providers stays distinct. Three regression tests added to
 `MangaEditionMatchingTest`. R-2 and F-6 remain accepted non-blocking follow-ups. Pending independent verification.
+
+## 39. 4.5C.P0 — Provider evaluation spike (2026-10-18, research only)
+
+PR #50 (4.5D.0) is **merged**. 4.5C.P0 is a research-only, read-only evaluation of Inventaire and Wikidata
+against 36 independently verified ISBNs (`tools/provider-lab/`, report
+[`research/PHASE_4_5_PROVIDER_EVALUATION.md`](research/PHASE_4_5_PROVIDER_EVALUATION.md)). Measured: Inventaire returned a
+record for 28/36 ISBNs (19 exact editions; Spanish Manga 0/6; 25/28 records link Open Library ids, so it is not independent of
+it); Wikidata 4/36 (English books only, no covers). Recommendation: CONDITIONAL GO for Inventaire as an optional metadata-only
+secondary candidate pending an administrator decision and its unread terms/image policy; NO-GO for Wikidata as a standalone
+provider and for any cover use. **No provider is approved, registered or integrated; no manifest, dependency, Room or app
+code changed. D1/D31 (Open Library) and D22–D29 stand unchanged. 4.5C.2, full 4.5D, 4.5E and 4.5G are not advanced.**
+
+**4.5C.P0 post-QA hardening (2026-10-18; research harness only).** The bridge now fails closed (digest-tied, complete, fresh
+or refused), the committed 46-group bridge snapshot makes the matcher results independently reproducible offline, Inventaire
+edition selection is consistent, and the report corrects the volume statistics (11/14 single-number volumes correct; the wider
+12/16 is not a correctness rate), the single-source breakdown (6 of 7 no-result, 1 partial), request accounting (92+22+5 and
+36+8+3, probe URLs not retained) and latency meaning (summed request time excluding pacing). Decisions recorded in the research
+report §16: Inventaire provisional metadata-only candidate (no production authorization; terms and cover rights unverified),
+Wikidata not a standalone primary provider, no artwork download/persistence, no deliberate remote seeding, Biblioteca Nacional de
+España next for Spanish Manga, single-source fixtures to be strengthened before 4.5G; D1/D31 unchanged.

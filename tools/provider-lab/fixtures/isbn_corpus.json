@@ -1,0 +1,738 @@
+{
+ "schema_version": 1,
+ "verified_on": "2026-10-18",
+ "note": "Expected values come from catalogs and retailers listed in source_urls, never from the providers under evaluation. 'single-source' fixtures have one credible source only.",
+ "fixtures": [
+  {
+   "id": "en-gatsby",
+   "isbn13": "9780743273565",
+   "expected_title": "The Great Gatsby",
+   "expected_creator": "F. Scott Fitzgerald",
+   "expected_language": "en",
+   "expected_publisher": "Scribner",
+   "expected_series": null,
+   "expected_volume": null,
+   "edition_type": "single",
+   "source_urls": [
+    "https://mitpressbookstore.mit.edu/book/9780743273565",
+    "https://discovery.roundrocktexas.gov/Record/51389"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Page count differs by source (180 vs 208); same ISBN.",
+   "category": "books_en"
+  },
+  {
+   "id": "en-mockingbird",
+   "isbn13": "9780061120084",
+   "expected_title": "To Kill a Mockingbird",
+   "expected_creator": "Harper Lee",
+   "expected_language": "en",
+   "expected_publisher": "Harper Perennial Modern Classics",
+   "expected_series": null,
+   "expected_volume": null,
+   "edition_type": "single",
+   "source_urls": [
+    "https://chester.aspendiscovery.org/Record/929878",
+    "https://discover.aclib.us/Record/1158485"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Imprint spelled 'Harper Perennial' or '... Modern Classics' by source.",
+   "category": "books_en"
+  },
+  {
+   "id": "en-1984",
+   "isbn13": "9780451524935",
+   "expected_title": "1984",
+   "expected_creator": "George Orwell",
+   "expected_language": "en",
+   "expected_publisher": "Signet Classics",
+   "expected_series": null,
+   "expected_volume": null,
+   "edition_type": "single",
+   "source_urls": [
+    "https://www.queenslibrary.org/book/1984-:-a-novel/232451",
+    "https://www.kensandersbooks.com/pages/books/58089/george-orwell/1984"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "AMBIGUOUS PRINTING: catalogs date this ISBN 1961, 1977, 2008 and 2023 (reissued under one ISBN); edition-level year not asserted.",
+   "category": "books_en"
+  },
+  {
+   "id": "en-hobbit",
+   "isbn13": "9780547928227",
+   "expected_title": "The Hobbit",
+   "expected_creator": "J. R. R. Tolkien",
+   "expected_language": "en",
+   "expected_publisher": "Houghton Mifflin Harcourt",
+   "expected_series": null,
+   "expected_volume": null,
+   "edition_type": "single",
+   "source_urls": [
+    "https://florhampark.aspendiscovery.org/Record/816745",
+    "https://www.tolkienbooks.us/hob/us/tpb/the-hobbit-2012/"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "2012 trade paperback (75th anniversary); the pocket edition has a different ISBN.",
+   "category": "books_en"
+  },
+  {
+   "id": "en-pride",
+   "isbn13": "9780141439518",
+   "expected_title": "Pride and Prejudice",
+   "expected_creator": "Jane Austen",
+   "expected_language": "en",
+   "expected_publisher": "Penguin Classics",
+   "expected_series": null,
+   "expected_volume": null,
+   "edition_type": "single",
+   "source_urls": [
+    "https://www.slugbooks.com/9780141439518-pride-and.html",
+    "https://chester.aspendiscovery.org/Record/486494"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Date 2002/2003 differs by source.",
+   "category": "books_en"
+  },
+  {
+   "id": "en-alchemist",
+   "isbn13": "9780062315007",
+   "expected_title": "The Alchemist",
+   "expected_creator": "Paulo Coelho",
+   "expected_language": "en",
+   "expected_publisher": "HarperOne",
+   "expected_series": null,
+   "expected_volume": null,
+   "edition_type": "single",
+   "source_urls": [
+    "https://www.harvard.com/book/9780062315007",
+    "https://queenslibrary.org/book/The-alchemist/778573"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "25th-anniversary paperback; translated from Portuguese by Alan R. Clarke.",
+   "category": "books_en"
+  },
+  {
+   "id": "en-atomic",
+   "isbn13": "9780735211292",
+   "expected_title": "Atomic Habits",
+   "expected_creator": "James Clear",
+   "expected_language": "en",
+   "expected_publisher": "Avery",
+   "expected_series": null,
+   "expected_volume": null,
+   "edition_type": "single",
+   "source_urls": [
+    "https://queenslibrary.org/book/Atomic-habits-:-tiny-changes,-remarkable-results-:-an-easy-&-prov/979758",
+    "https://libcat.arlingtonva.us/Record/193006"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Hardcover 2018; the Kindle edition has another ISBN.",
+   "category": "books_en"
+  },
+  {
+   "id": "en-catcher",
+   "isbn13": "9780316769488",
+   "expected_title": "The Catcher in the Rye",
+   "expected_creator": "J. D. Salinger",
+   "expected_language": "en",
+   "expected_publisher": "Little, Brown and Company",
+   "expected_series": null,
+   "expected_volume": null,
+   "edition_type": "single",
+   "source_urls": [
+    "https://catalog.burlesontx.com/Record/186757",
+    "https://www.ellibrero.com/producto/the-catcher-in-the-rye-9780316769488"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "AMBIGUOUS PRINTING: catalogs date this ISBN 1991 (mass market), 2014 and 2022.",
+   "category": "books_en"
+  },
+  {
+   "id": "en-hawking",
+   "isbn13": "9780553380163",
+   "expected_title": "A Brief History of Time",
+   "expected_creator": "Stephen Hawking",
+   "expected_language": "en",
+   "expected_publisher": "Bantam",
+   "expected_series": null,
+   "expected_volume": null,
+   "edition_type": "single",
+   "source_urls": [
+    "https://catalog.sclsnj.org/Record/190663",
+    "https://discovery.roundrocktexas.gov/Record/129273"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Updated and expanded tenth-anniversary edition.",
+   "category": "books_en"
+  },
+  {
+   "id": "en-sapiens",
+   "isbn13": "9780062316110",
+   "expected_title": "Sapiens: A Brief History of Humankind",
+   "expected_creator": "Yuval Noah Harari",
+   "expected_language": "en",
+   "expected_publisher": "Harper Perennial",
+   "expected_series": null,
+   "expected_volume": null,
+   "edition_type": "single",
+   "source_urls": [
+    "https://mitpressbookstore.mit.edu/book/9780062316110",
+    "https://catalog.dmpl.org/Record/236014"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Some catalogs list HarperCollins generally.",
+   "category": "books_en"
+  },
+  {
+   "id": "en-hp1",
+   "isbn13": "9780439708180",
+   "expected_title": "Harry Potter and the Sorcerer's Stone",
+   "expected_creator": "J. K. Rowling",
+   "expected_language": "en",
+   "expected_publisher": "Scholastic",
+   "expected_series": "Harry Potter",
+   "expected_volume": "1",
+   "edition_type": "single",
+   "source_urls": [
+    "https://chester.aspendiscovery.org/Record/1116344",
+    "https://link.markesanlibrary.org/resource/mWfSYMpk7hM"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "First Scholastic trade paperback, 1999.",
+   "category": "books_en"
+  },
+  {
+   "id": "en-davinci",
+   "isbn13": "9780307474278",
+   "expected_title": "The Da Vinci Code",
+   "expected_creator": "Dan Brown",
+   "expected_language": "en",
+   "expected_publisher": "Anchor",
+   "expected_series": "Robert Langdon",
+   "expected_volume": "2",
+   "edition_type": "single",
+   "source_urls": [
+    "https://libcat.arlingtonva.us/Record/34391",
+    "https://chester.aspendiscovery.org/Record/700043"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Second Anchor mass-market edition (2009). Series membership is not asserted by the catalogs and is a convenience label only.",
+   "category": "books_en"
+  },
+  {
+   "id": "ja-aot1",
+   "isbn13": "9784063842760",
+   "expected_title": "進撃の巨人 1",
+   "expected_creator": "諫山創",
+   "expected_language": "ja",
+   "expected_publisher": "講談社",
+   "expected_series": "進撃の巨人",
+   "expected_volume": "1",
+   "edition_type": "single",
+   "source_urls": [
+    "https://comic.k-manga.jp/title/104080/vol/1",
+    "https://learnnatively.com/book/26874d7691/",
+    "https://www.skoob.com.br/book/213477/editions"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Not the Full Color Edition (NDL lists that under 978-4-06-523718-2). Page count 192/194/208 by printing.",
+   "category": "manga_ja"
+  },
+  {
+   "id": "ja-deathnote1",
+   "isbn13": "9784088736211",
+   "expected_title": "DEATH NOTE 1 退屈",
+   "expected_creator": "大場つぐみ",
+   "expected_language": "ja",
+   "expected_publisher": "集英社",
+   "expected_series": "DEATH NOTE",
+   "expected_volume": "1",
+   "edition_type": "single",
+   "source_urls": [
+    "https://www.kinokuniya.co.jp/f/dsg-01-9784088736211",
+    "https://bookrastinating.com/book/58831/editions"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Artist 小畑健 is a co-creator; creator matching is by either name.",
+   "category": "manga_ja"
+  },
+  {
+   "id": "ja-spyfamily1",
+   "isbn13": "9784088820118",
+   "expected_title": "SPY×FAMILY 1",
+   "expected_creator": "遠藤達哉",
+   "expected_language": "ja",
+   "expected_publisher": "集英社",
+   "expected_series": "SPY×FAMILY",
+   "expected_volume": "1",
+   "edition_type": "single",
+   "source_urls": [
+    "https://www.netoff.co.jp/detail/0012951222/",
+    "https://honto.jp/ebook/pd_35615144.html"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Print 2019-07-04. Digital edition shares the number in honto listing.",
+   "category": "manga_ja"
+  },
+  {
+   "id": "ja-fma1",
+   "isbn13": "9784757506206",
+   "expected_title": "鋼の錬金術師 1",
+   "expected_creator": "荒川弘",
+   "expected_language": "ja",
+   "expected_publisher": "スクウェア・エニックス",
+   "expected_series": "鋼の錬金術師",
+   "expected_volume": "1",
+   "edition_type": "single",
+   "source_urls": [
+    "https://books.rakuten.co.jp/rb/1409884/"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "single-source",
+   "notes": "Single retailer source (Rakuten Books, 2002-01-22). Treated as verified but weakest of the set.",
+   "category": "manga_ja"
+  },
+  {
+   "id": "ja-slamdunk1",
+   "isbn13": "9784087925319",
+   "expected_title": "SLAM DUNK 新装再編版 1",
+   "expected_creator": "井上雄彦",
+   "expected_language": "ja",
+   "expected_publisher": "集英社",
+   "expected_series": "SLAM DUNK",
+   "expected_volume": "1",
+   "edition_type": "single",
+   "source_urls": [
+    "https://ndlsearch.ndl.go.jp/books/R100000002-I028988784"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "single-source",
+   "notes": "National Diet Library record (2018.6, 愛蔵版コミックス). Single authoritative source.",
+   "category": "manga_ja"
+  },
+  {
+   "id": "ja-chainsawman2",
+   "isbn13": "9784088818313",
+   "expected_title": "チェンソーマン 2",
+   "expected_creator": "藤本タツキ",
+   "expected_language": "ja",
+   "expected_publisher": "集英社",
+   "expected_series": "チェンソーマン",
+   "expected_volume": "2",
+   "edition_type": "single",
+   "source_urls": [
+    "https://www.goodreads.com/work/editions/70524008-2"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "single-source",
+   "notes": "Volume 2 on purpose (adversarial vs volume 1/3). Single aggregator source (published 2019-05-02).",
+   "category": "manga_ja"
+  },
+  {
+   "id": "en-onepiece1",
+   "isbn13": "9781569319017",
+   "expected_title": "One Piece, Vol. 1: Romance Dawn",
+   "expected_creator": "Eiichiro Oda",
+   "expected_language": "en",
+   "expected_publisher": "VIZ Media",
+   "expected_series": "One Piece",
+   "expected_volume": "1",
+   "edition_type": "single",
+   "source_urls": [
+    "https://ipac.mckinneytexas.org/Record/245177",
+    "https://www.goodreads.com/work/editions/361124",
+    "https://www.buscalibre.us/libro-one-piece-vol-1-romance-dawn/9781569319017/p/1661152"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Page count 207/216; 2003 first print.",
+   "category": "manga_en"
+  },
+  {
+   "id": "en-naruto1",
+   "isbn13": "9781569319000",
+   "expected_title": "Naruto, Vol. 1: The Tests of the Ninja",
+   "expected_creator": "Masashi Kishimoto",
+   "expected_language": "en",
+   "expected_publisher": "VIZ Media",
+   "expected_series": "Naruto",
+   "expected_volume": "1",
+   "edition_type": "single",
+   "source_urls": [
+    "https://catalog.northloganlibrary.org/Record/57822",
+    "https://www.waterstones.com/book/9781569319000"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Dates 2003 or 2007 by printing.",
+   "category": "manga_en"
+  },
+  {
+   "id": "en-deathnote1",
+   "isbn13": "9781421501680",
+   "expected_title": "Death Note, Vol. 1: Boredom",
+   "expected_creator": "Tsugumi Ohba",
+   "expected_language": "en",
+   "expected_publisher": "VIZ Media",
+   "expected_series": "Death Note",
+   "expected_volume": "1",
+   "edition_type": "single",
+   "source_urls": [
+    "https://catalog.sclsnj.org/Record/1080546",
+    "https://catalog.hmcpl.org/Record/439372"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Artist Takeshi Obata is co-creator.",
+   "category": "manga_en"
+  },
+  {
+   "id": "en-fma1",
+   "isbn13": "9781591169208",
+   "expected_title": "Fullmetal Alchemist, Vol. 1",
+   "expected_creator": "Hiromu Arakawa",
+   "expected_language": "en",
+   "expected_publisher": "VIZ Media",
+   "expected_series": "Fullmetal Alchemist",
+   "expected_volume": "1",
+   "edition_type": "single",
+   "source_urls": [
+    "https://egcatalog.larl.org/eg/opac/record/62518?locg=101",
+    "https://www.goodreads.com/work/editions/1959820-1"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "The 2018 'Fullmetal Edition' omnibus has a different ISBN.",
+   "category": "manga_en"
+  },
+  {
+   "id": "en-aot1",
+   "isbn13": "9781612620244",
+   "expected_title": "Attack on Titan 1",
+   "expected_creator": "Hajime Isayama",
+   "expected_language": "en",
+   "expected_publisher": "Kodansha Comics",
+   "expected_series": "Attack on Titan",
+   "expected_volume": "1",
+   "edition_type": "single",
+   "source_urls": [
+    "https://www.penguinrandomhouse.com/books/218360",
+    "https://egcatalog.larl.org/eg/opac/record/388253?locg=101"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "The Colossal Edition (vols 1-5) has ISBN 9781612629711.",
+   "category": "manga_en"
+  },
+  {
+   "id": "en-berserk-deluxe1",
+   "isbn13": "9781506711980",
+   "expected_title": "Berserk Deluxe Edition Volume 1",
+   "expected_creator": "Kentaro Miura",
+   "expected_language": "en",
+   "expected_publisher": "Dark Horse",
+   "expected_series": "Berserk",
+   "expected_volume": "1-3",
+   "edition_type": "omnibus",
+   "source_urls": [
+    "https://www.penguin.com.au/books/berserk-deluxe-volume-1-9781506711980",
+    "https://ycp.catalog.yln.info/Record/401590"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Dark Horse Deluxe volume 1 collects manga volumes 1-3. Expected_volume is the manga range; a plain 'volume 1' answer is a collection/single mismatch.",
+   "category": "manga_en"
+  },
+  {
+   "id": "es-onepiece1",
+   "isbn13": "9788468471525",
+   "expected_title": "One Piece nº 1",
+   "expected_creator": "Eiichiro Oda",
+   "expected_language": "es",
+   "expected_publisher": "Planeta Cómic",
+   "expected_series": "One Piece",
+   "expected_volume": "1",
+   "edition_type": "single",
+   "source_urls": [
+    "https://www.planetadelibros.com/libro-one-piece-n-01/56029",
+    "https://latam.casadellibro.com/libro-one-piece-n-1/9788468471525/1850531"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Do not confuse with the 1999 comic-book run (different ISBN).",
+   "category": "manga_es"
+  },
+  {
+   "id": "es-naruto1",
+   "isbn13": "9788415821816",
+   "expected_title": "Naruto nº 1 (de 72)",
+   "expected_creator": "Masashi Kishimoto",
+   "expected_language": "es",
+   "expected_publisher": "Planeta Cómic",
+   "expected_series": "Naruto",
+   "expected_volume": "1",
+   "edition_type": "single",
+   "source_urls": [
+    "https://latam.casadellibro.com/libro-naruto-n-1-de-72-pda/9788415821816/2207100"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "single-source",
+   "notes": "Casa del Libro and Planeta press note; not checked on planetadelibros.com catalog page.",
+   "category": "manga_es"
+  },
+  {
+   "id": "es-aot1",
+   "isbn13": "9788467960921",
+   "expected_title": "Ataque a los titanes 1",
+   "expected_creator": "Hajime Isayama",
+   "expected_language": "es",
+   "expected_publisher": "Norma Editorial",
+   "expected_series": "Ataque a los titanes",
+   "expected_volume": "1",
+   "edition_type": "single",
+   "source_urls": [
+    "https://latam.casadellibro.com/libro-ataque-a-los-titanes-1/9788467960921/13545497"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "single-source",
+   "notes": "2023 paperback reissue; the 2012 run and the 'Integral' omnibus have other ISBNs.",
+   "category": "manga_es"
+  },
+  {
+   "id": "es-maxberserk1",
+   "isbn13": "9788411015035",
+   "expected_title": "Maximum Berserk 1",
+   "expected_creator": "Kentaro Miura",
+   "expected_language": "es",
+   "expected_publisher": "Panini",
+   "expected_series": "Berserk",
+   "expected_volume": "1",
+   "edition_type": "omnibus",
+   "source_urls": [
+    "https://www.panini.es/shp_esp_es/maximum-berserk-1-sbema001y-es01.html",
+    "https://www.bookish.org/en/libro/maximum-berserk-01/9788411015035/1066041"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Maximum edition, 456 pages: an omnibus of several manga volumes. expected_volume is the edition's own number, not a single manga volume.",
+   "category": "manga_es"
+  },
+  {
+   "id": "es-chainsawman1",
+   "isbn13": "9788467941159",
+   "expected_title": "Chainsaw Man 1",
+   "expected_creator": "Tatsuki Fujimoto",
+   "expected_language": "es",
+   "expected_publisher": "Norma Editorial",
+   "expected_series": "Chainsaw Man",
+   "expected_volume": "1",
+   "edition_type": "single",
+   "source_urls": [
+    "https://www.goodreads.com/work/editions/69021466-1"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "single-source",
+   "notes": "Single aggregator source (published 2020-09-04, 192 pages).",
+   "category": "manga_es"
+  },
+  {
+   "id": "es-akira2",
+   "isbn13": "9788467939903",
+   "expected_title": "Akira 2",
+   "expected_creator": "Katsuhiro Otomo",
+   "expected_language": "es",
+   "expected_publisher": "Norma Editorial",
+   "expected_series": "Akira",
+   "expected_volume": "2",
+   "edition_type": "single",
+   "source_urls": [
+    "https://www.tebeosfera.com/numeros/akira_2019_norma_2.html"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "single-source",
+   "notes": "2019 Norma edition, volume 2 on purpose; ISBN printed as 978-84-679-3990-3 (2020-09-04 per Tebeosfera).",
+   "category": "manga_es"
+  },
+  {
+   "id": "tpb-watchmen",
+   "isbn13": "9781401245252",
+   "expected_title": "Watchmen",
+   "expected_creator": "Alan Moore",
+   "expected_language": "en",
+   "expected_publisher": "DC Comics",
+   "expected_series": "Watchmen",
+   "expected_volume": "1-12",
+   "edition_type": "collected",
+   "source_urls": [
+    "https://egcatalog.larl.org/eg/opac/record/95250?locg=1",
+    "https://www.goodreads.com/work/editions/4358649"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "2014 trade paperback collecting issues 1-12; the deluxe hardcover has ISBN 9781401238964.",
+   "category": "comics_tpb"
+  },
+  {
+   "id": "tpb-saga1",
+   "isbn13": "9781607066019",
+   "expected_title": "Saga, Volume 1",
+   "expected_creator": "Brian K. Vaughan",
+   "expected_language": "en",
+   "expected_publisher": "Image Comics",
+   "expected_series": "Saga",
+   "expected_volume": "1",
+   "edition_type": "collected",
+   "source_urls": [
+    "https://catalog.saclibrary.org/Record/.b22041527",
+    "https://catalog.ilsleypubliclibrary.org/Record/766808"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Collects issues 1-6; one catalog lists #1-18 for another edition.",
+   "category": "comics_tpb"
+  },
+  {
+   "id": "tpb-sandman1",
+   "isbn13": "9781401284770",
+   "expected_title": "The Sandman Vol. 1: Preludes & Nocturnes",
+   "expected_creator": "Neil Gaiman",
+   "expected_language": "en",
+   "expected_publisher": "DC Comics",
+   "expected_series": "The Sandman",
+   "expected_volume": "1",
+   "edition_type": "collected",
+   "source_urls": [
+    "https://www.midtowncomics.com/p/1759382-sandman-30th-anniversary-edition-vol-1-preludes-nocturnes-tp",
+    "https://explore.rclstn.org/GroupedWork/bea8f5ab-e5a5-513a-62ff-f58161d4dd25-eng/Home"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "30th Anniversary Edition (2018, Vertigo/DC); earlier printings have other ISBNs.",
+   "category": "comics_tpb"
+  },
+  {
+   "id": "tpb-vendetta",
+   "isbn13": "9781401207922",
+   "expected_title": "V for Vendetta",
+   "expected_creator": "Alan Moore",
+   "expected_language": "en",
+   "expected_publisher": "Vertigo / DC Comics",
+   "expected_series": "V for Vendetta",
+   "expected_volume": null,
+   "edition_type": "collected",
+   "source_urls": [
+    "https://discover.knoxcountylibrary.org/Record/338308",
+    "https://fps.swanlibraries.net/Record/a668843"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Collects issues 1-10, 2005 Vertigo edition.",
+   "category": "comics_tpb"
+  },
+  {
+   "id": "tpb-batman-yearone",
+   "isbn13": "9781401207526",
+   "expected_title": "Batman: Year One",
+   "expected_creator": "Frank Miller",
+   "expected_language": "en",
+   "expected_publisher": "DC Comics",
+   "expected_series": "Batman",
+   "expected_volume": null,
+   "edition_type": "collected",
+   "source_urls": [
+    "https://www.harvard.com/book/9781401207526",
+    "https://mitpressbookstore.mit.edu/book/9781401207526"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Collects Batman #404-407; page count 96/136/144 by source.",
+   "category": "comics_tpb"
+  },
+  {
+   "id": "tpb-msmarvel1",
+   "isbn13": "9780785190219",
+   "expected_title": "Ms. Marvel Vol. 1: No Normal",
+   "expected_creator": "G. Willow Wilson",
+   "expected_language": "en",
+   "expected_publisher": "Marvel",
+   "expected_series": "Ms. Marvel",
+   "expected_volume": "1",
+   "edition_type": "collected",
+   "source_urls": [
+    "https://catalog.wake.gov/Record/699810",
+    "https://parnassusbooks.net/book/9780785190219"
+   ],
+   "verified_on": "2026-10-18",
+   "verification": "multi-source",
+   "notes": "Collects Ms. Marvel #1-5 and All-New Marvel Now! Point One #1.",
+   "category": "comics_tpb"
+  }
+ ],
+ "unverified_excluded": [
+  {
+   "isbn13": "9784088725093",
+   "label": "ONE PIECE 1 (Shueisha, Japanese)",
+   "reason": "Only a bookseller listing (Abbeys) ties this number to a US-distributed Shueisha printing; domestic Jump Comics edition not confirmed."
+  },
+  {
+   "isbn13": "9784088738543",
+   "label": "NARUTO 1 (Shueisha, Japanese)",
+   "reason": "Search could not tie the ISBN to volume 1."
+  },
+  {
+   "isbn13": "9784088510118",
+   "label": "DRAGON BALL 1 (Shueisha, Japanese)",
+   "reason": "Search could not tie the ISBN to volume 1."
+  },
+  {
+   "isbn13": "9784757502567",
+   "label": "Fullmetal Alchemist 1 (Square Enix)",
+   "reason": "Number supplied from memory did not verify; the verified number is 9784757506206."
+  },
+  {
+   "isbn13": "9788467912906",
+   "label": "Ataque a los Titanes 1 (Norma, 2012)",
+   "reason": "Could not locate the volume 1 ISBN; only inferred."
+  },
+  {
+   "isbn13": "",
+   "label": "Death Note 1 (Norma, Spanish)",
+   "reason": "No volume-1 ISBN found."
+  },
+  {
+   "isbn13": "",
+   "label": "Fullmetal Alchemist 1 (Norma, Spanish)",
+   "reason": "No volume-1 ISBN found."
+  },
+  {
+   "isbn13": "",
+   "label": "Spy x Family 1 (Norma, Spanish)",
+   "reason": "No Spanish ISBN found."
+  },
+  {
+   "isbn13": "9780525559474",
+   "label": "The Midnight Library (Viking)",
+   "reason": "Verified, but surplus: the English-books category is already at its target of 12."
+  },
+  {
+   "isbn13": "9781563899805",
+   "label": "Y: The Last Man Vol. 1 (Vertigo)",
+   "reason": "Verified, but surplus: the TPB category is already at its target of 6."
+  }
+ ]
+}

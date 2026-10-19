@@ -8142,3 +8142,50 @@ reading, metadata enrichment, annotations and production releases are future wor
 - `:app:testDebugUnitTest --rerun --max-workers=1`: 780 tests, 0 failures (777 + 3 new). `:app:assembleDebug`
   succeeded; `:app:lintDebug` reported no errors; `git diff --check` clean. Mutation check: with the
   production change reverted, 2 of the 3 new tests fail. Instrumented tests NOT RUN (no Android code changed).
+
+## PHASE 4.5C.P0 POST-QA HARDENING (2026-10-18, research harness only)
+
+No live request was made; no app code, manifest, dependency or schema changed (only the unit-test-only `ProviderLabBridgeTest` gained a
+verification header and sorted output).
+
+| Command | Result |
+| --- | --- |
+| `python -m unittest discover -s tests -t .` (tools/provider-lab) | **42/42 pass** (30 previous + 12 new: fresh verified run, non-zero Gradle exit, Gradle success with skipped bridge, missing / stale / foreign / incomplete / duplicate / unexpected output, digest mismatch, unparseable output, cached offline reproduction, CLI exit, tampered snapshot, edition-selection consistency) |
+| `python benchmark.py validate` | OK (36 fixtures) |
+| `python benchmark.py report --jvm` (real Gradle bridge) | exit 0, 46 groups verified, `cases.csv` byte-identical to the previous report; two consecutive runs gave byte-identical `bridge_out.tsv` |
+| Failure injection against real Gradle | missing input file: `run_jvm` raised "Gradle exited 1"; bridge test skipped (no environment variables): Gradle exit 0 but `verify` raised "bridge output is missing" |
+| Offline `report` from the committed snapshot | mode `committed-snapshot`, 46 groups, input digest recorded in `summary.json` |
+| `gradlew :app:testDebugUnitTest --tests *ProviderLabBridgeTest` | runs through the lab only (inert otherwise) |
+
+## PHASE 4.5C.P0 provider evaluation lab (2026-10-18, research only)
+
+- Offline: `python -m unittest discover -s tests -t .` in `tools/provider-lab`: 30 tests, 0 failures (corpus schema/checksums, URL
+  construction, Inventaire and Wikidata parsing, malformed input, 403/429, Retry-After, retries, request budget, classification,
+  CSV/JSON). Android: `:app:testDebugUnitTest --rerun --max-workers=1`: 781 tests, 0 failures, 1 skipped (the inert lab bridge test).
+- Live (read-only): Inventaire 119 requests, Wikidata 47, all HTTP 200 except one aborted DNS-outage run whose failures were recorded as
+  REQUEST_FAILED and re-run. Results in `tools/provider-lab/results/` and `docs/research/PHASE_4_5_PROVIDER_EVALUATION.md`.
+- NOT RUN: instrumented tests (no app code changed), cover downloads, any write/refresh endpoint.
+
+## PHASE 4.5C.P0 FINAL REPORT-RELIABILITY REMEDIATION (2026-10-18, research harness only; pending final QA)
+
+No live request, no cover download, no app/production code, manifest, dependency or schema change.
+
+| Command (executed by me in this change) | Result |
+| --- | --- |
+| `python -m unittest discover -s tests -t .` (tools/provider-lab) | **59/59 pass** (42 previous, minus 1 replaced test, plus 18 new in `tests/test_report_contract.py`). With the three changed modules reverted, 15 of the 18 new tests fail |
+| `python benchmark.py validate` | OK (36 fixtures) |
+| `python benchmark.py report` (offline, committed snapshot) | exit 0, mode `committed-snapshot`, 46 groups; `cases.csv` byte-identical |
+| `python benchmark.py report --jvm` (real Gradle, production matcher) | exit 0, mode `fresh-jvm-run`, 46 groups; `bridge_in.tsv`, `bridge_out.tsv` and `cases.csv` byte-identical to the committed ones (only the `generated` timestamp in `summary.json` differs) |
+| Real CLI failure injection (missing output, wrong digest, tier `BOGUS`, header count `abc`) | each exit 1, no stdout, `summary.json` and `cases.csv` unchanged, no temporary files left |
+| `gradlew :app:testDebugUnitTest --tests *ProviderLabBridgeTest --tests *MangaEditionMatchingTest` | passes |
+| `git diff --check 24b1ae2..HEAD` and `725d2c6..HEAD` | exit 0 (after the scoped `.gitattributes` rule) |
+
+## PHASE 4.5C.P0 CSV LINE-ENDING FIX (2026-10-18, research harness only; pending final QA)
+
+- `report.py` writes `cases.csv` with `csv.writer(f, lineterminator="\n")` on a file opened with `newline=""` (LF on every platform), and
+  `tools/provider-lab/.gitattributes` adds `results/*.csv text eol=lf` so a checkout (including Windows `core.autocrlf=true`) is LF too.
+- Fresh clone of the fix commit (autocrlf=true): `python -m unittest discover -s tests -t .` 59/59 pass, `benchmark.py validate` OK, offline
+  `report` exit 0 with 46 verified groups, generated `cases.csv` byte-identical to the committed blob with 0 carriage-return bytes. The temporary clone was removed.
+- Accepted LOW limitations: publication of `cases.csv` and `summary.json` is two sequential `os.replace` calls, not an atomic transaction (an OS
+  failure during publication can leave one updated file beside an older one); a snapshot with invalid UTF-8 fails closed with an uncaught
+  `UnicodeDecodeError` rather than a diagnostic.
