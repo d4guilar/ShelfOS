@@ -8208,3 +8208,10 @@ No live request, no cover download, no app/production code, manifest, dependency
   Hardcover docs, Metron API docs) are labelled and not circumvented. No provider API, no scraping, no cover download, no credential, no message sent.
 - Files changed: the new research report, `BOOK_PROVIDERS.md` (§7), plan §40 status and new §41, ROADMAP, VALIDATION, CHANGELOG_DOCS. No Kotlin, manifest, Gradle, Room or tool-lab file changed.
 - Tests: none run or needed (documentation only); the previous provider-lab suite (84/84) is not re-claimed. `git diff --check` passes.
+
+## PHASE 4.5C.P2 QA REMEDIATION AND OPEN LIBRARY SCOPE DECISION (2026-10-19, documentation only; pending QA)
+
+- Corrected: local-artwork wording (available without an external provider, not rights-free; no "APPROVED by design" row), status vocabulary (APPROVED/CONDITIONAL/REJECTED/UNKNOWN only; local artwork removed from the provider matrix),
+  Spanish ISBN Agency capability claims (UNKNOWN), ISBNdb (paid developer/subscriber service, not personal BYOK).
+- Recorded: D1-M (limited metadata implementation, administrator-authorized, not Open Library approval), D1-C (unresolved), D31 (unresolved); 4.5C.2 split into 4.5C.2A/2B.
+- No code, manifest, permission, credential, network call, cover download or scraping. Tests not run (documentation only). `git diff --check 9d4c294..HEAD` and `e82234c..HEAD` pass (see commit).

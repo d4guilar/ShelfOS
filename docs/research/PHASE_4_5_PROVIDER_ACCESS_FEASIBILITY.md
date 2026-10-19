@@ -1,6 +1,7 @@
 # Phase 4.5C.P2 — Provider access, BYOK and cover-source feasibility
 
-Status: **research and decision documentation only, 2026-10-19; pending independent QA.** No code, manifest, `INTERNET` permission, dependency,
+Status: **research and decision documentation only, 2026-10-19; pending independent QA.** Revised the same day to correct the local-artwork rights language, normalize
+status vocabulary and record the administrator's scoped Open Library metadata decision (§12A). No code, manifest, `INTERNET` permission, dependency,
 Room, credential, network call to a provider API, cover download or scraper was added. Nothing here approves a provider: gates D1/D31 (Open
 Library), D5/D19 (Metron), D25 (Hardcover) and D22 (Library of Congress) stay exactly as recorded. Earlier findings (P0 PR #51, P1 PR #52) are
 not rewritten. Not legal advice.
@@ -16,13 +17,16 @@ Evidence labels: **READ** = read on an official page this pass; **SECONDHAND** =
 2. **BYOK is appropriate only where the provider officially issues individual credentials**: today Metron (per-user account or revocable token,
    officially recommended) and, conditionally, Hardcover (personal account token, beta). BYOK does not by itself grant image or caching rights.
 3. **Cover-source approval is separate from metadata-source approval.** No source examined states a clear right to download, store and
-   display publisher artwork offline. The permanently safe covers are the ones ShelfOS already has: embedded, first-page, generated and
-   user-chosen device files.
+   display publisher artwork offline. ShelfOS's existing covers (embedded, first-page, generated and user-chosen device files) remain available on the
+   device **without any external provider or network access**. That is technical availability, not a rights statement: embedded and first-page images, and
+   user-chosen images, can be publisher-owned or otherwise copyrighted, and a local file gives no permission to redistribute it. Private on-device display of
+   the user's own files needs no new authorization.
 4. **DILVE and the Spanish ISBN Agency are not viable default sources**: DILVE is a trade-chain platform with per-entity registration, annual
    fees and an explicit statement that developer access "usually is temporary"; the Agency's public interface and reuse terms could not be verified.
 5. **No generic scraping fallback is authorized**, and none should be built.
-6. **Next step:** with the administrator's explicit go-ahead, send the Open Library inquiry (§13.1). Until D1/D31 close, the only network-free progress
-   is the local cover work that already exists. Do not start 4.5C.2.
+6. **Administrator decision (§12A):** limited, human-initiated Open Library **metadata** lookups may proceed to implementation (4.5C.2A) under the published public guidance, as a
+   ShelfOS risk decision and not as Open Library approval; covers (D1-C) and aggregate/commercial classification (D31) stay unresolved. The Open Library inquiry (§13.1) remains a
+   clarification channel. P2 itself adds no code; do not start 4.5C.2B.
 
 ## 2. Open Library: API keys, accounts and registration (READ, 2026-10-19)
 
@@ -105,7 +109,7 @@ and **BYOK does not grant image, caching or redistribution rights** (those come 
 | Eligibility | **Candidate BYOK for metadata only**, covers excluded; D5/D19 (current `metron.cloud` service terms, ShareAlike effect on caches/exports/backups, Plus themes) **still open** | **Optional BYOK candidate**, beta; official terms must be read; D25 **stays conditional** |
 
 Other personal-token providers: none was found that is both officially documented and directly useful. Comic Vine stays rejected ("strictly non-commercial");
-ISBNdb is a paid developer key (not a reader credential); Google Books stays rejected (D2). Nothing else was researched this pass; no provider is
+ISBNdb is a paid developer/subscriber credential service (individual-reader credentials are not established, so it is not "personal BYOK"; a shared developer key must never be embedded in the APK); Google Books stays rejected (D2). Nothing else was researched this pass; no provider is
 recommended on a guess.
 
 **Proposed UX (design only; not authorized):** Settings → Online metadata → *Provider* → **Connect**: provider description and media; official key-generation
@@ -120,8 +124,7 @@ rate-limit status; *Disconnect and forget*; provider attribution. No credential 
 | Official site | `agenciaisbn.es` returned an **empty page** to my reader; its content, including the "new integrated platform announced in October 2026", could **not be verified** (a web search found no confirmation). |
 | Legal role (SECONDHAND, Real Decreto 2063/2008) | The Agency maintains the ISBN databases and provides "a system of consultation to enable dissemination and commercialisation of books published in Spain"; records appear in the Ministry's *Base de datos de libros editados en España*. A 2016 BNE–FGEE agreement eases ISBN-data download for library cataloguing. |
 | Management | A partisan petition says management was delegated to the FGEE; undated and unofficial. |
-| Free API credentials for consumers | **None found.** |
-| Developer testing, production, caching, covers, open-data licence | **UNKNOWN**; no public API or open-data licence was found. |
+| Public lookup API, edition/cover/field coverage, consumer credentials, developer testing, production access, caching, covers, open-data licence, rate limits | **All UNKNOWN.** The official site could not be read, so nothing is established either way; no public API or open-data licence was *found*, which is not proof that none exists. |
 
 Public catalogue scraping is not done and not proposed.
 
@@ -149,38 +152,42 @@ file does not give ShelfOS rights the source has not granted.
 
 | Fallback | Works offline? | Source permission needed? | Status |
 |---|---|---|---|
-| Embedded cover (EPUB), CBZ/CBR first page or declared front cover, PDF first page | yes | none (user's own file) | exists (4.5A) |
-| Generated cover | yes | none | exists |
-| *Choose from device* (USER slot) | yes | none (user's own file) | exists (4.5F.0) |
+| Embedded cover (EPUB), CBZ/CBR first page or declared front cover, PDF first page | yes | no external-service authorization; the artwork may still be copyrighted (often publisher-owned) | existing offline capability (4.5A) |
+| Generated cover | yes | no external-service authorization; ShelfOS-generated | existing offline capability |
+| *Choose from device* (USER slot) | yes | no external-service authorization; the chosen image may be copyrighted by someone else | existing offline capability (4.5F.0) |
 | Online candidates from an approved provider | no | yes, per provider, for cover bytes | gated by D1/D31 and a separate **cover-rights** decision |
 | User-pasted HTTPS image URL | no | the host's terms; ShelfOS cannot verify them | **not recommended in 4.5**; if ever added, a user action like a browser download, no discovery or crawling, with legal review |
 | Clearly licensed public-domain/CC artwork (for example generated covers of public-domain books, Commons) | no | licence of each file | RESEARCH only; observed in P0 that Gutendex exposes a Gutenberg-generated `image/jpeg`, rights not verified |
 | BYOK cover service | no | per provider | none identified |
 | Scrapers for bookstores, publishers, social networks, or services that forbid automation | — | prohibited | **not authorized, not to be built** |
 
+Local-artwork note: these rows describe **availability without an external provider**, not copyright status. Local availability, user-controlled selection, offline
+persistence on the device, copyright ownership and redistribution rights are different things; having the file never grants a right to redistribute it (ShelfOS keeps
+covers out of exports and backups for that reason). No new restriction is placed on private, on-device display of a user's own covers.
+
 ## 10. Provider decision matrix
 
-Status vocabulary here includes UNKNOWN (the code's `TermsStatus` has only APPROVED/CONDITIONAL/REJECTED; an UNKNOWN provider is simply not registered).
-"Role" = what it could become *if* its gate closes. Nothing is APPROVED.
+Status vocabulary: APPROVED / CONDITIONAL / REJECTED / UNKNOWN (the code's `TermsStatus` has only the first three; an UNKNOWN provider is simply not registered). Scoped
+recommendations live in the Role column, not in Status. "Role" = what the provider could become if its gate closes. **No external provider is APPROVED.** ShelfOS's own
+local artwork is **not an external provider** and is not listed as a row: it is an existing offline capability, not an external provider authorization (see §9).
 
 | Provider | Media | Edition-level | Metadata | Covers | Credential | Public limits | Android-client eligibility | Caching | Cover-art rights | Cost | Attribution | Status | Role if gate closes | Next step |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **Open Library** | Books (some Manga/TPB) | yes (edition records, ISBN) | yes | yes (id/OLID/ISBN) | none; identified UA | 1–3 req/s; covers by ISBN 100/IP/5 min | stated **unknown**; open-source apps are a stated priority | "cache whenever possible" (API) | **unknown** | free | courtesy link | **CONDITIONAL (D1/D31)** | default keyless metadata (and cover source only after a cover-rights answer) | send the §13.1 inquiry |
-| Inventaire | Books | yes | yes | image refs (rights unknown) | none; contactable UA | enforced, unpublished | unknown (terms unread) | unknown (CC0 data) | **unknown** | free | none (CC0) | CONDITIONAL (provisional, P0) | metadata-only corroboration (not independent of Open Library) | read terms; email hello@inventaire.io |
-| Wikidata | Books | partial (4/36 in P0) | yes | none in P0 | none | published | data CC0; UA required | allowed for CC0 data | n/a | free | none | NOT a standalone provider | identity/authority layer | none now |
-| Library of Congress | Books (metadata) | ISBN path unresolved | yes | none | none | 20 req/min, 1 h block | unknown | unknown | n/a | free | unknown | CONDITIONAL (D22) | metadata-only | verify ISBN path and terms |
-| BNE | Books | 0/6 Spanish Manga (P1) | yes (MARC) | none | none | unpublished | unknown | unknown (CC0 claimed, unverified) | n/a | free | unknown | not recommended for Spanish Manga | general books/authority (untested) | terms question, info.catalogo@bne.es |
-| Hardcover | Books | yes | yes | yes (rights unknown) | personal token | 429; number unknown | per-user token only | unknown | unknown | free | unknown | CONDITIONAL, BYOK only (D25) | optional BYOK | read official API terms |
-| Metron | Comics (issue) | yes | yes | not licensed | per-user token | 20/min, 5,000/day per account | per-user tokens only | encouraged | **none held by Metron** | free | CC BY-SA credit | CONDITIONAL (D5/D19) | optional BYOK, metadata only | close D19 and read service terms |
-| Comic Vine | Comics | yes | yes | yes | per-user key | 200/h/resource | "strictly non-commercial" | no editing/reproduction | no | free | link back | REJECTED for default | — | none |
-| ISBNdb | Books | yes (ISBN) | yes | yes | paid key | plan-based | key cannot ship | unknown | unknown | paid | unknown | UNKNOWN (BYOK, later) | optional paid BYOK | none now |
-| Google Books | Books | yes | yes | thumbnails | key | per key | credentials barred in OSS; no-fee clause | no permanent copies | restricted | free | required branding | REJECTED (D2) | — | reopen only with written permission |
-| OverDrive | library catalogs | yes | yes | yes | vendor key + secret | unread | secret cannot ship | unread | branding required | n/a | Libby/Sora | REJECTED as default (D26) | — | none |
-| Gutendex | public-domain texts | partial | yes | `image/jpeg` observed | none | undocumented | public instance asks self-hosting | unknown | unknown | free | unknown | REJECTED as default (D24) | specialist research | none |
-| bookcover-api (Goodreads) | Books | n/a | no | yes | none | none | n/a | n/a | no stated image rights | free | n/a | REJECTED (D27) | — | none |
-| DILVE | Spanish trade metadata | yes | yes | publisher covers | entity registration | n/a | entity-based, not for readers | unstated | publisher-owned, reuse **unknown** | 100–3,600 €/yr by profile, developers unpublished | unknown | UNKNOWN / not viable as default | research only | §13.2 inquiry |
-| Spanish ISBN Agency | Spanish books | yes | yes | no | none known | unknown | unknown | unknown | n/a | unknown | unknown | UNKNOWN | research only | verify its public interface and terms |
-| Local sources (embedded, first page, generated, device) | all | the user's own file | embedded fields | yes | none | none | n/a | n/a | the user's file | free | none | **exists, APPROVED by design (no provider)** | permanent offline fallback | none |
+| **Open Library** | Books (some Manga/TPB) | yes (edition records, ISBN) | yes | yes (id/OLID/ISBN) | none; identified UA | 1–3 req/s; covers by ISBN 100/IP/5 min | stated **unknown**; open-source apps are a stated priority | "cache whenever possible" (API) | **unknown** | free | courtesy link | CONDITIONAL | default keyless **metadata-only** source: lookup implementation administrator-authorized under D1-M (a ShelfOS risk decision, **not** an Open Library approval); covers unresolved (D1-C); aggregate/commercial use unresolved (D31) | build 4.5C.2A under §12A; keep the §13.1 inquiry as a clarification channel |
+| Inventaire | Books | yes | yes | image refs (rights unknown) | none; contactable UA | enforced, unpublished | unknown (terms unread) | unknown (CC0 data) | **unknown** | free | none (CC0) | CONDITIONAL | provisional metadata-only corroboration candidate (not independent of Open Library) | read terms; email hello@inventaire.io |
+| Wikidata | Books | partial (4/36 in P0) | yes | none in P0 | none | published | data CC0; UA required | allowed for CC0 data | n/a | free | none | REJECTED | rejected as a standalone primary ISBN provider on the tested P0 corpus; possible identity/authority layer later | none now |
+| Library of Congress | Books (metadata) | ISBN path unresolved | yes | none | none | 20 req/min, 1 h block | unknown | unknown | n/a | free | unknown | CONDITIONAL | metadata-only candidate (D22) | verify ISBN path and terms |
+| BNE | Books | 0/6 Spanish Manga (P1) | yes (MARC) | none | none | unpublished | unknown | unknown (CC0 claimed, unverified) | n/a | free | unknown | REJECTED | rejected for the tested Spanish Manga ISBN-enrichment use case only (P1: 0/6); not a universal judgment on BNE | terms question, info.catalogo@bne.es |
+| Hardcover | Books | yes | yes | yes (rights unknown) | personal token | 429; number unknown | per-user token only | unknown | unknown | free | unknown | CONDITIONAL | optional personal-token (BYOK) candidate, beta (D25) | read official API terms |
+| Metron | Comics (issue) | yes | yes | not licensed | per-user token | 20/min, 5,000/day per account | per-user tokens only | encouraged | **none held by Metron** | free | CC BY-SA credit | CONDITIONAL | optional BYOK, metadata only (D5/D19) | close D19 and read service terms |
+| Comic Vine | Comics | yes | yes | yes | per-user key | 200/h/resource | "strictly non-commercial" | no editing/reproduction | no | free | link back | REJECTED | rejected for default; no role | none |
+| ISBNdb | Books | yes (ISBN) | yes | yes | paid developer/subscriber key (individual-reader eligibility unverified) | plan-based | key cannot ship | unknown | unknown | paid | unknown | UNKNOWN | paid developer/subscriber credential service; reader-level BYOK **not established**; a shared developer key must never ship in the APK | none now |
+| Google Books | Books | yes | yes | thumbnails | key | per key | credentials barred in OSS; no-fee clause | no permanent copies | restricted | free | required branding | REJECTED | rejected (D2); reopen only with written Google permission | reopen only with written permission |
+| OverDrive | library catalogs | yes | yes | yes | vendor key + secret | unread | secret cannot ship | unread | branding required | n/a | Libby/Sora | REJECTED | rejected as default (D26) | none |
+| Gutendex | public-domain texts | partial | yes | `image/jpeg` observed | none | undocumented | public instance asks self-hosting | unknown | unknown | free | unknown | REJECTED | rejected as default (D24); specialist research only | none |
+| bookcover-api (Goodreads) | Books | n/a | no | yes | none | none | n/a | n/a | no stated image rights | free | n/a | REJECTED | rejected (D27); no role | none |
+| DILVE | Spanish trade metadata | yes | yes | publisher covers | entity registration | n/a | entity-based, not for readers | unstated | publisher-owned, reuse **unknown** | 100–3,600 €/yr by profile, developers unpublished | unknown | UNKNOWN | eligibility and fees unclarified; not a verified free default; research only | §13.2 inquiry |
+| Spanish ISBN Agency | Spanish books | unknown | unknown | unknown | none known | unknown | unknown | unknown | n/a | unknown | unknown | UNKNOWN | research only; no public API or terms verified (absence of evidence is not evidence of absence) | verify its public interface and terms |
 
 ## 11. Current authorization blockers
 
@@ -193,12 +200,46 @@ Status vocabulary here includes UNKNOWN (the code's `TermsStatus` has only APPRO
 
 ## 12. Concrete next development recommendation
 
-1. Obtain the administrator's go-ahead and send the Open Library inquiry (§13.1). Record the reply under D1/D31, whichever way it goes.
+1. Build 4.5C.2A (metadata-only, §12A) under the administrator's D1-M decision, and keep the Open Library inquiry (§13.1) available; record any reply under D1/D31 whichever way it goes.
 2. Treat the cover-rights decision as its own gate: until it closes, online providers contribute **metadata only** and candidate cover *references* in the picker UI
    are not downloaded.
 3. Design (not build) the BYOK credential store and Connect flow as an ADR once Metron or Hardcover is closer to approval; the descriptor already has `CredentialRequirement`.
-4. Keep investing in the offline fallbacks (all permanent and rights-free).
+4. Keep investing in the existing offline fallbacks, which need no external provider (their artwork may still be copyrighted; see §9).
 5. Do not pursue DILVE or the Agency further without a written answer to §13.2.
+
+## 12A. Administrator decision (2026-10-19): scoped Open Library metadata integration
+
+This is a **ShelfOS engineering and risk-acceptance decision**. It is **not** written approval from Open Library, and the published guidelines are not unlimited authorization.
+An unanswered inquiry must not be described as an endorsement. If Open Library's documentation explicitly conflicts with the proposed behavior, implementation stops at that boundary.
+
+**D1-M: LIMITED METADATA IMPLEMENTATION: ADMINISTRATOR-AUTHORIZED.** Engineering work toward **4.5C.2A** may proceed for: direct HTTPS requests from individual Android installations;
+public keyless Open Library book metadata APIs; exact ISBN-first edition lookup; small user-initiated title/author searches when necessary; explicit manual user actions;
+minimal normalized textual metadata; the existing provider-neutral architecture (ADR-0026); clear Settings controls and privacy disclosure; a conservative request queue;
+metadata-response caching consistent with the published guidance and subject to its own implementation review; conservative edition matching with user review.
+
+**D1-C: COVER ACCESS AND PERSISTENCE: UNRESOLVED.** No Open Library cover-image retrieval or persistence, no automatic cover replacement and no external artwork storage is approved.
+A cover ID or URL seen as a metadata field is not an image fetch, and an Open Library work-level cover identifier is never proof of exact edition identity.
+
+**D31: AGGREGATE / COMMERCIAL DISTRIBUTED USE: UNRESOLVED.** Open Library has not confirmed how it classifies ShelfOS's aggregate installation traffic or its optional paid cosmetic themes.
+
+Proposed ShelfOS safeguards (ShelfOS's own values, recorded separately from Open Library's published limits of 1 req/s anonymous and 3 req/s identified):
+
+| Safeguard | Value |
+|---|---|
+| Proxy / credentials | no shared ShelfOS proxy; no bundled API key; no Open Library user credentials |
+| Triggering | no requests until the user explicitly enables online metadata or initiates a lookup (this **supersedes the default-ON of D15/D29 for Open Library**); no automatic full-library enrichment, no background ISBN sweeps, no batch harvesting, no unattended enrichment |
+| Network | no multi-IP use to evade limits; no HTML scraping; one request in flight per provider; initial pacing **slower than the published maximum** (proposed: at least 2 s between requests; to be fixed in the 4.5C.2A design review); timeouts and bounded response sizes; backoff; **stop or pause on HTTP 403/429 and follow `Retry-After`** |
+| Identification | contactable project `User-Agent` with a genuine project contact (D4) |
+| Resilience | offline operation, importing and reading unaffected by any network failure |
+| Data | USER metadata and LOCAL covers never overwritten; edition-aware matching; provenance kept; provider results are candidates, not truth |
+
+**Not authorized by this decision:** Open Library cover-image downloads; automatic cover replacement; permanent external artwork storage; scraping covers from other sites; unattended background
+enrichment; infrastructure that depends on Open Library as a high-traffic backend; bulk requests or metadata harvesting; distributing cover images through backups or exports; features outside the narrow public-read scope.
+
+**Phase gate revision.** The earlier all-or-nothing 4.5C.2 gate is split without removing its other requirements:
+**4.5C.2A: public metadata-only integration** (D1-M; independent manifest/privacy review, documented request budget, valid project contact, Codex High QA; it does not implement the response-cache schema,
+persistent candidate tables or `ONLINE` cover-slot changes reserved for 4.5C.3, which need their own decisions). **4.5C.2B: external artwork integration**, still blocked by D1-C and a per-provider image-rights decision.
+D31 is not closed by this split.
 
 ## 13. Questions requiring written provider clarification (DRAFTS ONLY, not sent)
 

@@ -257,4 +257,6 @@ Official-page findings that refine, and do not change, the decisions above (deta
 - Cover-ID/OLID lookups are not rate-limited per the Covers page, ISBN-keyed lookups are (100 per IP per 5 minutes); crawling and bulk download are prohibited; cover-image
   copyright and offline-storage permission are **not stated**. Cover-source approval stays separate from metadata-source approval.
 - BYOK is appropriate only for providers issuing individual credentials (Metron tokens; Hardcover conditionally, D25). BYOK grants no image or caching rights by itself.
+- **Scoped decision (2026-10-19):** D1 is subdivided. **D1-M** authorizes limited, human-initiated, keyless **metadata** lookup (4.5C.2A) as a ShelfOS risk decision, not Open Library approval;
+  **D1-C** (cover retrieval/persistence) and **D31** (aggregate/commercial use) are unresolved; see the P2 report §12A.
 - DILVE and the Spanish ISBN Agency are not viable default sources (entity registration and fees; no consumer access path verified). No scraping fallback is authorized.
