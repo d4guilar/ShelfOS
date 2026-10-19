@@ -1,0 +1,97 @@
+{
+ "schema_version": 1,
+ "verified_on": "2026-10-19",
+ "note": "P1 overlay. The P0 corpus (fixtures/isbn_corpus.json) is unchanged; this file records only newly gathered evidence. bne_candidate is what BNE reported (never used as ground truth).",
+ "fixtures": [
+  {
+   "id": "es-onepiece1",
+   "isbn13": "9788468471525",
+   "p0_sources": [
+    "https://www.planetadelibros.com/libro-one-piece-n-01/56029",
+    "https://latam.casadellibro.com/libro-one-piece-n-1/9788468471525/1850531"
+   ],
+   "p0_verification": "multi-source",
+   "new_sources": [],
+   "p1_confidence": "unchanged: two sources (publisher catalog page and a retailer)",
+   "notes": "Already multi-source in P0.",
+   "bne_candidate": null,
+   "bne_outcome": "NO_RESULT (0 records for alma.isbn)",
+   "conflicts": []
+  },
+  {
+   "id": "es-naruto1",
+   "isbn13": "9788415821816",
+   "p0_sources": [
+    "https://latam.casadellibro.com/libro-naruto-n-1-de-72-pda/9788415821816/2207100"
+   ],
+   "p0_verification": "single-source",
+   "new_sources": [
+    "https://www.polifemo.com/libros/naruto-0172/241641/"
+   ],
+   "p1_confidence": "strengthened to two retailer sources (Casa del Libro, Polifemo); no publisher-catalog or national-library confirmation obtained",
+   "notes": "Polifemo lists the same EAN, 12x17 cm, 192 pages as \"Naruto 01/72\". Whakoom (series database, https://www.whakoom.com/ediciones/407483/naruto-rustica) confirms the 72-volume Planeta paperback series but shows no ISBN in the retrieved text. Retailers may share one distributor feed.",
+   "bne_candidate": null,
+   "bne_outcome": "NO_RESULT (0 records for alma.isbn)",
+   "conflicts": []
+  },
+  {
+   "id": "es-aot1",
+   "isbn13": "9788467960921",
+   "p0_sources": [
+    "https://latam.casadellibro.com/libro-ataque-a-los-titanes-1/9788467960921/13545497"
+   ],
+   "p0_verification": "single-source",
+   "new_sources": [],
+   "p1_confidence": "unchanged: still single-source (Casa del Libro)",
+   "notes": "No second ISBN-level source found. Whakoom gives series-level data only. The 2012 run, the 2023 reissue and the Integral omnibus are different ISBNs.",
+   "bne_candidate": null,
+   "bne_outcome": "NO_RESULT (0 records for alma.isbn)",
+   "conflicts": []
+  },
+  {
+   "id": "es-maxberserk1",
+   "isbn13": "9788411015035",
+   "p0_sources": [
+    "https://www.panini.es/shp_esp_es/maximum-berserk-1-sbema001y-es01.html",
+    "https://www.bookish.org/en/libro/maximum-berserk-01/9788411015035/1066041"
+   ],
+   "p0_verification": "multi-source",
+   "new_sources": [],
+   "p1_confidence": "unchanged: two sources (Panini catalog, Bookish)",
+   "notes": "Omnibus: the edition number 1 is not manga volume 1.",
+   "bne_candidate": null,
+   "bne_outcome": "NO_RESULT (0 records for alma.isbn)",
+   "conflicts": []
+  },
+  {
+   "id": "es-chainsawman1",
+   "isbn13": "9788467941159",
+   "p0_sources": [
+    "https://www.goodreads.com/work/editions/69021466-1"
+   ],
+   "p0_verification": "single-source",
+   "new_sources": [
+    "https://www.farmatodo.com.co/producto/500017115-chainsaw-man-no--1-editorial-norma-libro-x-1-0"
+   ],
+   "p1_confidence": "strengthened to two sources (Goodreads edition page, Farmatodo retailer); no publisher-catalog or national-library confirmation obtained",
+   "notes": "Retailer lists author Tatsuki Fujimoto, 192 pages, 2020, Norma Editorial, castellano. Collection trackers title the volume \"Perro y motosierra\". BNE holds a series-level record for this Norma run but no volume ISBN (see the diagnostic).",
+   "bne_candidate": null,
+   "bne_outcome": "NO_RESULT (0 records for alma.isbn)",
+   "conflicts": []
+  },
+  {
+   "id": "es-akira2",
+   "isbn13": "9788467939903",
+   "p0_sources": [
+    "https://www.tebeosfera.com/numeros/akira_2019_norma_2.html"
+   ],
+   "p0_verification": "single-source",
+   "new_sources": [],
+   "p1_confidence": "unchanged: still single-source (Tebeosfera)",
+   "notes": "No second ISBN-level source found.",
+   "bne_candidate": null,
+   "bne_outcome": "NO_RESULT (0 records for alma.isbn)",
+   "conflicts": []
+  }
+ ]
+}
