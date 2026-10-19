@@ -2847,7 +2847,7 @@ report §16: Inventaire provisional metadata-only candidate (no production autho
 Wikidata not a standalone primary provider, no artwork download/persistence, no deliberate remote seeding, Biblioteca Nacional de
 España next for Spanish Manga, single-source fixtures to be strengthened before 4.5G; D1/D31 unchanged.
 
-## 40. 4.5C.P1 — BNE Spanish Manga research (2026-10-19, research only, pending QA)
+## 40. 4.5C.P1 — BNE Spanish Manga research (2026-10-19, research only; merged in PR #52)
 
 PR #51 (4.5C.P0) is merged; P0 is complete as research and its results are unchanged. P1 is a separate experiment
 ([`research/PHASE_4_5_SPANISH_METADATA_EVALUATION.md`](research/PHASE_4_5_SPANISH_METADATA_EVALUATION.md), code in
@@ -2861,3 +2861,16 @@ measured corpus (NO-GO, based on the 0/6 coverage and not on a proven structural
 approved; a provider gate (terms of use: info.catalogo@bne.es) would be required before any use.** 4.5C.2, full 4.5D, 4.5E and 4.5G are not
 advanced; Manga EN/JP/ES provider acceptance is not complete; D1/D31 unresolved; the three weak Japanese fixtures remain pending for 4.5G.
 Next proposed action: assess the Spanish ISBN agency registry and publisher catalogues, with terms review, before any further adapter.
+
+## 41. 4.5C.P2 — Provider access, BYOK and cover-source feasibility (2026-10-19, research only, pending QA)
+
+PR #52 (4.5C.P1) is merged and P1 is complete as research. P2 is a licensing and access feasibility study
+([`research/PHASE_4_5_PROVIDER_ACCESS_FEASIBILITY.md`](research/PHASE_4_5_PROVIDER_ACCESS_FEASIBILITY.md)); it adds no code, permission, credential or network call.
+Findings from the official pages read: Open Library documents **keyless public reads** and **no personal API key** (only a `User-Agent`+contact
+identification tier, 1 vs 3 req/s, and an informational use-case registration form), so SteamGridDB-style BYOK does not apply to it; BYOK is appropriate only where the
+provider issues individual credentials (Metron per-user tokens; Hardcover conditionally). Open Library covers: ISBN-keyed lookups are limited to 100 per IP per 5
+minutes, cover-ID/OLID lookups are not, bulk download/crawling is prohibited, and **cover-image copyright and offline-storage permission are not stated**. Cover-source
+approval is separate from metadata-source approval; no examined source grants publisher-artwork rights. DILVE is a trade-chain platform (entity registration, annual fees,
+developer access "usually temporary", no consumer path) and the Spanish ISBN Agency's current interface could not be verified; neither is a default source. **No generic scraping
+fallback is authorized.** Gates **D1/D31, D5/D19, D25 (and D22) remain open**; no provider is approved; 4.5C.2 is not started. Next: written Open Library clarification
+(draft in the report, to be sent only with explicit authorization).

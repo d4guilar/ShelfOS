@@ -1,5 +1,9 @@
 # Documentation Changelog
 
+## Phase 4.5C.P2 provider access feasibility (2026-10-19, research only)
+
+- New `research/PHASE_4_5_PROVIDER_ACCESS_FEASIBILITY.md` (Open Library keyless/no personal key, direct-device model, cover rights, BYOK, DILVE/ISBN Agency, decision matrix, inquiry drafts). Plan §41, BOOK_PROVIDERS §7, ROADMAP: PR #52 merged; no provider approved; D1/D31, D5/D19, D25 open.
+
 ## Phase 4.5C.P1 BNE Spanish Manga research (2026-10-19, research only)
 
 - New `research/PHASE_4_5_SPANISH_METADATA_EVALUATION.md`, `tools/provider-lab/providers/bne.py`, `experiments/bne_spanish.py`, `results/bne_spanish/`, `fixtures/es_ground_truth_p1.json`. Plan §40 and ROADMAP: PR #51 merged; BNE SRU 0/6 Spanish Manga; no provider approved; P0 data unchanged.

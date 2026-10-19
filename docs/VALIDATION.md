@@ -8201,3 +8201,10 @@ No live request, no cover download, no app/production code, manifest, dependency
 | Production Kotlin matcher | NOT RUN for BNE (no OK records to score); P0 bridge unchanged |
 | Documentation pages on bne.es | unreadable programmatically (403); not circumvented |
 | NOT RUN | datos.bne.es SPARQL, cover downloads, any write; Android suite (no app code changed) |
+
+## PHASE 4.5C.P2 PROVIDER ACCESS FEASIBILITY (2026-10-19, research and documentation only; pending QA)
+
+- Method: official-page reads (Open Library API, Covers, Books, Licensing; Metron statement; DILVE developers, tariffs, FAQ, home) and web searches; unreadable pages (agenciaisbn.es,
+  Hardcover docs, Metron API docs) are labelled and not circumvented. No provider API, no scraping, no cover download, no credential, no message sent.
+- Files changed: the new research report, `BOOK_PROVIDERS.md` (§7), plan §40 status and new §41, ROADMAP, VALIDATION, CHANGELOG_DOCS. No Kotlin, manifest, Gradle, Room or tool-lab file changed.
+- Tests: none run or needed (documentation only); the previous provider-lab suite (84/84) is not re-claimed. `git diff --check` passes.
