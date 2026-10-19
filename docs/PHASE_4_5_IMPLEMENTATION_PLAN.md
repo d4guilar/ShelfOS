@@ -2846,3 +2846,15 @@ edition selection is consistent, and the report corrects the volume statistics (
 report §16: Inventaire provisional metadata-only candidate (no production authorization; terms and cover rights unverified),
 Wikidata not a standalone primary provider, no artwork download/persistence, no deliberate remote seeding, Biblioteca Nacional de
 España next for Spanish Manga, single-source fixtures to be strengthened before 4.5G; D1/D31 unchanged.
+
+## 40. 4.5C.P1 — BNE Spanish Manga research (2026-10-19, research only, pending QA)
+
+PR #51 (4.5C.P0) is merged; P0 is complete as research and its results are unchanged. P1 is a separate experiment
+([`research/PHASE_4_5_SPANISH_METADATA_EVALUATION.md`](research/PHASE_4_5_SPANISH_METADATA_EVALUATION.md), code in
+`tools/provider-lab/experiments/` and `providers/bne.py`): the documented BNE SRU 1.2 server answered 15 read-only requests (all HTTP 200) and
+returned **0 records for the six Spanish Manga ISBNs (0/6)**; controls prove the ISBN query works, and a diagnostic shows BNE catalogues these works
+at series level without volume ISBNs. Two of the four weak Spanish ground-truth fixtures gained a second (retail) source; two did not. The
+production matcher had nothing to score and was not run. Recommendation: NO-GO for BNE as an edition-level Spanish Manga source. **BNE is not
+approved; a provider gate (terms of use: info.catalogo@bne.es) would be required before any use.** 4.5C.2, full 4.5D, 4.5E and 4.5G are not
+advanced; Manga EN/JP/ES provider acceptance is not complete; D1/D31 unresolved; the three weak Japanese fixtures remain pending for 4.5G.
+Next proposed action: assess the Spanish ISBN agency registry and publisher catalogues, with terms review, before any further adapter.

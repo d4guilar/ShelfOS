@@ -8,11 +8,12 @@ Requirements: Python 3 (stdlib only). The optional production-matcher step needs
 ```
 cd tools/provider-lab
 python benchmark.py validate                # corpus schema + ISBN checksums (offline)
-python -m unittest discover -s tests -t .   # 59 offline tests, no network
+python -m unittest discover -s tests -t .   # 84 offline tests, no network
 python benchmark.py control                 # one bounded Wikidata control query (LIMIT 3)
 python benchmark.py run --stage pilot       # live, 8 fixtures, both providers
 python benchmark.py run --stage full        # live, all 36 fixtures (about 130 requests)
 python benchmark.py run --ids en-gatsby --providers inventaire
+python experiments/bne_spanish.py explain|pilot|full|report   # Phase 4.5C.P1 BNE experiment (isolated outputs in results/bne_spanish/)
 python benchmark.py report --jvm            # fresh Gradle bridge, verified or refused (non-zero exit), write results/
 python benchmark.py report                  # offline: needs a fully verified committed bridge snapshot, otherwise exits non-zero and writes nothing
 ```

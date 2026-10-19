@@ -1,2 +1,4 @@
 results/bridge_*.tsv -text -whitespace
 results/*.csv text eol=lf
+results/bne_spanish/*.csv text eol=lf
+results/bne_spanish/bridge_*.tsv -text -whitespace

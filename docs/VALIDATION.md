@@ -8189,3 +8189,15 @@ No live request, no cover download, no app/production code, manifest, dependency
 - Accepted LOW limitations: publication of `cases.csv` and `summary.json` is two sequential `os.replace` calls, not an atomic transaction (an OS
   failure during publication can leave one updated file beside an older one); a snapshot with invalid UTF-8 fails closed with an uncaught
   `UnicodeDecodeError` rather than a diagnostic.
+
+## PHASE 4.5C.P1 BNE SPANISH MANGA RESEARCH (2026-10-19, research only; pending QA)
+
+| Command / action (executed by me) | Result |
+| --- | --- |
+| `python -m unittest discover -s tests -t .` (tools/provider-lab) | **84/84 pass** (59 P0 + 25 new BNE tests: URL/CQL, Explain, hostile XML, MARC parsing, volume rules, omnibus/wrong-volume classification, transport 403/429, P1 report fail-closed) |
+| `python benchmark.py validate`; P0 `python benchmark.py report` | OK; P0 `cases.csv` byte-identical (only the `generated` timestamp of `summary.json` differs and was not committed) |
+| Live, read-only, `catalogo.bne.es` SRU | 15 requests, all HTTP 200: 1 Explain, 6 benchmark searches, 2 controls, 6 diagnostic; no 403/429 |
+| BNE result | 0/6 records for the six Spanish fixtures; controls show the ISBN query path works |
+| Production Kotlin matcher | NOT RUN for BNE (no OK records to score); P0 bridge unchanged |
+| Documentation pages on bne.es | unreadable programmatically (403); not circumvented |
+| NOT RUN | datos.bne.es SPARQL, cover downloads, any write; Android suite (no app code changed) |

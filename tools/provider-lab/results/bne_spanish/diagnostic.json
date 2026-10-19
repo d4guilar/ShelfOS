@@ -1,0 +1,118 @@
+{
+ "Chainsaw Man": {
+  "total_reported": 5,
+  "returned": [
+   {
+    "record_id": "991050952809708606",
+    "title": "Chainsaw man",
+    "isbns": [],
+    "publisher": "Norma",
+    "published": "2020",
+    "language": "es",
+    "series": null,
+    "volume": null
+   },
+   {
+    "record_id": "991050999469708606",
+    "title": "Chainsaw man",
+    "isbns": [],
+    "publisher": "Norma",
+    "published": "2022",
+    "language": "ca",
+    "series": null,
+    "volume": null
+   },
+   {
+    "record_id": "991049064929708606",
+    "title": "Chainsaw man buddy stories",
+    "isbns": [
+     "9788467959758"
+    ],
+    "publisher": "Norma Editorial",
+    "published": "2023",
+    "language": "es",
+    "series": null,
+    "volume": null
+   }
+  ]
+ },
+ "Ataque a los Titanes": {
+  "total_reported": 60,
+  "returned": [
+   {
+    "record_id": "991048497789708606",
+    "title": "Ataque a los Titanes",
+    "isbns": [
+     "9788467916119"
+    ],
+    "publisher": "Norma",
+    "published": "2014",
+    "language": "es",
+    "series": null,
+    "volume": null
+   },
+   {
+    "record_id": "991018550159708606",
+    "title": "Ataque a los titanes",
+    "isbns": [
+     "9788467931426",
+     "9788467966176"
+    ],
+    "publisher": "Norma Editorial",
+    "published": "2018",
+    "language": "es",
+    "series": null,
+    "volume": null
+   },
+   {
+    "record_id": "991028261289708606",
+    "title": "Ataque a los Titanes",
+    "isbns": [
+     "9788467935660"
+    ],
+    "publisher": "Norma Editorial",
+    "published": "2019",
+    "language": "es",
+    "series": null,
+    "volume": null
+   }
+  ]
+ },
+ "Naruto": {
+  "total_reported": 254,
+  "returned": [
+   {
+    "record_id": "991003855929708606",
+    "title": "Batalla ninja en la tierra de la nieve",
+    "isbns": [
+     "9788416816644"
+    ],
+    "publisher": "Planeta Cómics",
+    "published": "2016",
+    "language": "es",
+    "series": "Naruto, the movie",
+    "volume": null
+   },
+   {
+    "record_id": "991014008959708606",
+    "title": "Boruto",
+    "isbns": [],
+    "publisher": "Planeta Cómic",
+    "published": "2018",
+    "language": "es",
+    "series": null,
+    "volume": null
+   },
+   {
+    "record_id": "991053249879708606",
+    "title": "Boruto",
+    "isbns": [],
+    "publisher": "Selecta Visión",
+    "published": "2023",
+    "language": "es",
+    "series": null,
+    "volume": null
+   }
+  ]
+ }
+}

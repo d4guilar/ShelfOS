@@ -3,3 +3,4 @@ results/raw/
 results/_probe*
 results/records_pilot.json
 results/requests_full_aborted_dns.csv
+results/bne_spanish/raw/

@@ -1,0 +1,7 @@
+provider,fixture,category,verification,class,shelfos_decision,matcher_tier,wrongvol_decision,requests,seconds,status,returned_isbns,title,language,volume,series,publisher,cover_ref,reasons,error
+bne,es-onepiece1,manga_es,multi-source,NO_RESULT,INSUFFICIENT_EVIDENCE,,,1,1.41,NO_RESULT,,,,,,,False,,
+bne,es-naruto1,manga_es,single-source,NO_RESULT,INSUFFICIENT_EVIDENCE,,,1,0.76,NO_RESULT,,,,,,,False,,
+bne,es-aot1,manga_es,single-source,NO_RESULT,INSUFFICIENT_EVIDENCE,,,1,0.75,NO_RESULT,,,,,,,False,,
+bne,es-maxberserk1,manga_es,multi-source,NO_RESULT,INSUFFICIENT_EVIDENCE,,,1,0.94,NO_RESULT,,,,,,,False,,
+bne,es-chainsawman1,manga_es,single-source,NO_RESULT,INSUFFICIENT_EVIDENCE,,,1,0.76,NO_RESULT,,,,,,,False,,
+bne,es-akira2,manga_es,single-source,NO_RESULT,INSUFFICIENT_EVIDENCE,,,1,0.75,NO_RESULT,,,,,,,False,,

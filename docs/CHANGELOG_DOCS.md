@@ -1,5 +1,9 @@
 # Documentation Changelog
 
+## Phase 4.5C.P1 BNE Spanish Manga research (2026-10-19, research only)
+
+- New `research/PHASE_4_5_SPANISH_METADATA_EVALUATION.md`, `tools/provider-lab/providers/bne.py`, `experiments/bne_spanish.py`, `results/bne_spanish/`, `fixtures/es_ground_truth_p1.json`. Plan §40 and ROADMAP: PR #51 merged; BNE SRU 0/6 Spanish Manga; no provider approved; P0 data unchanged.
+
 ## Phase 4.5C.P0 post-QA hardening (2026-10-18, research only)
 
 - Research report: ground-truth, volume, request and latency corrections; §16 decisions; §17 reproducibility. Plan §39 note;
