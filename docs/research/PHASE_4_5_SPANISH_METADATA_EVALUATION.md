@@ -11,11 +11,13 @@ Inventaire/Wikidata results are unchanged; Open Library D1/D31 stay unresolved; 
   editions). No request was blocked or failed.
 - Two bounded controls show the ISBN query path itself works (a BNE record found by its own ISBN-13), so these are genuine "no record for
   this ISBN" answers, **not** a query defect, and not evidence that the ISBNs are invalid.
-- A holdings diagnostic shows *why*: BNE does catalogue these works, but at **series/multipart level without volume ISBNs** (for example,
-  Norma's *Chainsaw Man* 2020– is one record with no ISBN), or under other editions' ISBNs. An ISBN lookup therefore cannot identify a
-  Spanish Manga *volume* in BNE.
-- **Recommendation: NO-GO for BNE as a Spanish Manga edition-level metadata source** on this evidence (0/6, with a structural reason). It may still be useful for
-  other, mostly older or non-serial Spanish books, which this experiment did not measure. Next source: see §O.
+- Limited title diagnostics (3 hits inspected per search) show **mixed catalogue representations**: the sampled Norma *Chainsaw Man* records are
+  serial-level without an individual ISBN, while sampled *Ataque a los Titanes* spin-off records carry volume-specific ISBNs, and the sampled *Naruto*
+  hits are inconclusive. **The reason the six exact ISBNs are absent is undetermined**; possible factors (holdings, cataloguing granularity,
+  edition or printing differences, record coverage) are hypotheses, not findings.
+- **Recommendation: NO-GO for BNE as an ISBN-based, edition-level Spanish Manga enrichment provider on this tested corpus**, resting on the
+  measured 0/6 lookup coverage and not on a proven structural cause. It makes no claim about Spanish books generally, Manga in general or other BNE
+  services. Next source: see §O.
 
 ## B. Official interfaces verified
 
@@ -113,16 +115,33 @@ complete groups, strict decision fields). That path was tested offline only (an 
 
 ## L. Freshness and coverage limitations
 
-Six fixtures; mainstream 2013–2023 Spanish Manga; one catalogue. The diagnostic shows BNE holds *Chainsaw Man* (Norma, 2020, `D.L. 2020-`) as
-a series record without volume ISBNs, *Ataque a los Titanes* under other Norma ISBNs (2014, 2018, 2019), and *Naruto* only as film/spin-off
-records in its first hits. This is consistent with legal-deposit cataloguing at set level, but whether a volume was deposited, not yet
-catalogued, or catalogued under another record cannot be told from these queries. A BNE miss says nothing about the validity of a publisher's ISBN
-(the Spanish ISBN agency's registry is a different database). Linked-data freshness was not assessed.
+**Observed results**
+
+- 0/6 exact ISBN lookups returned records (valid SRU responses, `numberOfRecords=0`, no SRU diagnostic); the positive ISBN control succeeded.
+- *Chainsaw Man* (`alma.title`, 5 hits reported, 3 inspected): the two Norma records (Spanish 2020, Catalan 2022) are serial-level, with no `020` ISBN
+  field; the third hit, a spin-off novel (*buddy stories*), has one.
+- *Ataque a los Titanes* (60 hits reported, 3 inspected): the three hits are **spin-offs** (*antes de la caída*, *no regrets*), not alternate editions of the
+  requested main-series volume. They show that BNE can hold related Manga/novel volumes with volume-specific ISBNs (MARC `020$a`, with `020$q` "v. 1", "v. 2").
+- *Naruto* (254 hits reported, 3 inspected): a film comic, and *Boruto* material. This does not show how the original Naruto Manga volumes are catalogued; the
+  diagnostic is **inconclusive**.
+
+**Interpretation**
+
+BNE may describe different publications at different cataloguing levels. The cause of the six exact-ISBN misses **cannot be established from this sample**;
+holdings, cataloguing granularity, edition or printing differences and record coverage are possible factors only.
+
+**Limitations**
+
+- Only 3 of 60 *Ataque a los Titanes* hits and 3 of 254 *Naruto* hits (and 3 of 5 for *Chainsaw Man*) were inspected; title searches are not exhaustive.
+- Exact-ISBN absence does not invalidate an ISBN (the Spanish ISBN agency's registry is a different database).
+- Six fixtures of mainstream 2013–2023 Spanish Manga, one catalogue; broader BNE Manga or general-book coverage was not measured.
+- Linked-data freshness was not assessed.
 
 ## M. Recommendation
 
-**NO-GO for BNE as an edition-level Spanish Manga metadata source** (0/6; structural cause). **Not** a NO-GO on BNE generally: it is an official,
-CC0-labelled, structured catalogue that might serve older books, authority data or work-level (series) identification, none of which was tested.
+**NO-GO for BNE as an ISBN-based, edition-level Spanish Manga enrichment provider, based on the six tested fixtures.** The recommendation rests on the
+measured lookup coverage (0/6), not on a proven structural deficiency. It is **not** extended to all Spanish books, all Manga or other BNE services: BNE is an
+official, CC0-labelled (unverified, see §C), structured catalogue that might serve other books, authority data or work-level identification, none of which was tested.
 
 ## N. Open questions
 
