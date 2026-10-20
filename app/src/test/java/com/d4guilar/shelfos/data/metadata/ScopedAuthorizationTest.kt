@@ -53,21 +53,33 @@ class ScopedAuthorizationTest {
     }
 
     @Test fun aGrantCanNeverCoverArtwork() {
-        assertThrows(IllegalArgumentException::class.java) { ScopedGrant("D1-M", setOf(MediaCategory.BOOK), setOf(MetadataCapability.COVERS)) }
-        assertThrows(IllegalArgumentException::class.java) { ScopedGrant("", setOf(MediaCategory.BOOK), setOf(MetadataCapability.SEARCH)) }
-        assertThrows(IllegalArgumentException::class.java) { ScopedGrant("D1-M", emptySet(), setOf(MetadataCapability.SEARCH)) }
+        assertThrows(IllegalArgumentException::class.java) { ScopedGrant(OpenLibrary.ID, "D1-M", setOf(MediaCategory.BOOK), setOf(MetadataCapability.COVERS)) }
+        assertThrows(IllegalArgumentException::class.java) { ScopedGrant(OpenLibrary.ID, "", setOf(MediaCategory.BOOK), setOf(MetadataCapability.SEARCH)) }
+        assertThrows(IllegalArgumentException::class.java) { ScopedGrant(OpenLibrary.ID, "D1-M", emptySet(), setOf(MetadataCapability.SEARCH)) }
     }
 
     @Test fun otherConditionalAndRejectedProvidersStayInactiveWhateverTheToggles() {
         val settings = FakeSettings(enableAll = true)
         val conditionalNoGrant = ol.copy(grant = null)
         val rejectedWithGrant = ol.copy(termsStatus = TermsStatus.REJECTED)
-        val otherCategoryGrant = ol.copy(grant = ScopedGrant("X", setOf(MediaCategory.MANGA), setOf(MetadataCapability.SEARCH)))
+        val otherCategoryGrant = ol.copy(grant = ScopedGrant(OpenLibrary.ID, "X", setOf(MediaCategory.MANGA), setOf(MetadataCapability.SEARCH)))
         for (d in listOf(conditionalNoGrant, rejectedWithGrant, otherCategoryGrant))
             assertEquals(Eligibility.NOT_APPROVED, registry(settings, d).elig(d, MediaCategory.BOOK, MetadataCapability.IDENTIFIER_LOOKUP))
         // A grant narrower than the descriptor narrows the provider; it does not widen it.
-        val narrow = ol.copy(grant = ScopedGrant("D1-M", setOf(MediaCategory.BOOK), setOf(MetadataCapability.IDENTIFIER_LOOKUP)))
+        val narrow = ol.copy(grant = ScopedGrant(OpenLibrary.ID, "D1-M", setOf(MediaCategory.BOOK), setOf(MetadataCapability.IDENTIFIER_LOOKUP)))
         assertEquals(Eligibility.NOT_APPROVED, registry(settings, narrow).elig(narrow, MediaCategory.BOOK, MetadataCapability.SEARCH))
+    }
+
+    @Test fun theGrantIsBoundToItsProvider() = runTest {
+        assertThrows(IllegalArgumentException::class.java) { ScopedGrant(" ", "D1-M", setOf(MediaCategory.BOOK), setOf(MetadataCapability.SEARCH)) }
+        val copied = testDescriptor("other", terms = TermsStatus.CONDITIONAL).copy(grant = ol.grant)
+        assertFalse(copied.authorizes(MediaCategory.BOOK, MetadataCapability.SEARCH))
+        val foreignGrant = ol.copy(grant = ol.grant!!.copy(providerId = "other"))
+        assertEquals(Eligibility.NOT_APPROVED, registry(FakeSettings(enableAll = true), foreignGrant).elig(foreignGrant, MediaCategory.BOOK, MetadataCapability.SEARCH))
+        val o = testScheduler.engine().execute(copied, MediaCategory.BOOK, MetadataCapability.SEARCH) { 1 }
+        assertTrue(o is ProviderPolicyEngine.Outcome.Failure)
+        val rejected = copied.copy(id = OpenLibrary.ID, termsStatus = TermsStatus.REJECTED)
+        assertFalse(rejected.authorizes(MediaCategory.BOOK, MetadataCapability.SEARCH))
     }
 
     @Test fun authorizesIsTheOneRuleForRegistryAndEngine() {

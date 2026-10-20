@@ -49,7 +49,7 @@ object OpenLibrary {
         retry = RetryPolicy(maxAttempts = 2, attemptTimeoutMs = 45_000, breakerThreshold = 3, breakerCooldownMs = 15 * 60_000L),
         attribution = ProviderAttribution(R.string.provider_openlibrary_attribution, "https://openlibrary.org"),
         privacyDisclosureRes = R.string.provider_openlibrary_disclosure,
-        grant = ScopedGrant("D1-M", setOf(MediaCategory.BOOK), setOf(MetadataCapability.IDENTIFIER_LOOKUP, MetadataCapability.SEARCH)),
+        grant = ScopedGrant(ID, "D1-M", setOf(MediaCategory.BOOK), setOf(MetadataCapability.IDENTIFIER_LOOKUP, MetadataCapability.SEARCH)),
     )
 
     /** A search-result (work-level) reference ends in `W`; an edition reference ends in `M`. */

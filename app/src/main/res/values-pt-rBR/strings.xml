@@ -516,7 +516,7 @@
     <!-- Phase 4.5C.2A: metadados online opcionais (Open Library). Desativados até a pessoa ativar. -->
     <string name="provider_openlibrary_name">Open Library</string>
     <string name="provider_openlibrary_attribution">Informações de livros da Open Library (openlibrary.org).</string>
-    <string name="provider_openlibrary_disclosure">Quando você pede informações online, o ShelfOS envia o ISBN do livro, ou o título e o autor, diretamente deste dispositivo para a Open Library, junto com o endereço de rede do seu dispositivo. Nada mais é enviado: nem arquivos, nem notas, nem destaques, nem progresso de leitura, nem dados de conta.</string>
+    <string name="provider_openlibrary_disclosure">Quando você pede informações online, o ShelfOS envia o ISBN do livro, ou o título e o autor, diretamente deste dispositivo para a Open Library. A Open Library também recebe o endereço de rede público (IP) do seu dispositivo pela conexão e um identificador do ShelfOS que informa o app, a versão e o projeto. Isso não é anônimo: a Open Library consegue ver a solicitação. O ShelfOS não envia o conteúdo dos arquivos do livro, notas, destaques, progresso de leitura nem estantes.</string>
     <string name="settings_online_title">Metadados online</string>
     <string name="settings_online_description">Informações online opcionais para livros. O ShelfOS funciona totalmente sem elas e não envia nada até você ativar.</string>
     <string name="settings_online_master">Ativar metadados online</string>

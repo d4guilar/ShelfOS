@@ -7,6 +7,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -157,6 +161,12 @@ fun OnlineMetadataDialog(vm: OnlineMetadataViewModel) {
     if (state is OnlineMetadataUi.Closed) return
     val t = LocalShelfTokens.current
     val close = { vm.close() }
+    // Keyboard/gamepad users get a visible, safe starting point on Cancel (never on the consent button); touch is unaffected.
+    val cancelFocus = remember { FocusRequester() }
+    val keyboardMode = LocalInputModeManager.current.inputMode == InputMode.Keyboard
+    LaunchedEffect(state is OnlineMetadataUi.Disclosure, keyboardMode) {
+        if (state is OnlineMetadataUi.Disclosure && keyboardMode) runCatching { cancelFocus.requestFocus() }
+    }
     AlertDialog(onDismissRequest = close, title = { Text(stringResource(if (state is OnlineMetadataUi.Disclosure) R.string.online_disclosure_title else R.string.online_dialog_title)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()).testTag("online_dialog"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -198,7 +208,7 @@ fun OnlineMetadataDialog(vm: OnlineMetadataViewModel) {
             }
         },
         dismissButton = {
-            TextButton(close, Modifier.testTag("online_cancel").activateOnGamepadConfirm(onActivate = close)) {
+            TextButton(close, Modifier.focusRequester(cancelFocus).testTag("online_cancel").activateOnGamepadConfirm(onActivate = close)) {
                 Text(stringResource(if (state is OnlineMetadataUi.Disclosure || state is OnlineMetadataUi.Loading) R.string.action_cancel else R.string.action_close))
             }
         })

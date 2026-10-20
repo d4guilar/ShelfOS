@@ -40,7 +40,7 @@ class ProviderRegistry(entries: List<RegisteredProvider> = emptyList(), private 
         return when {
             // APPROVED, or CONDITIONAL inside a scoped grant (D1-M); never COVERS under a grant, never REJECTED.
             d.termsStatus == TermsStatus.REJECTED -> Eligibility.NOT_APPROVED
-            d.termsStatus == TermsStatus.CONDITIONAL && !(d.grant != null && category in d.grant.categories && capability in d.grant.capabilities) -> Eligibility.NOT_APPROVED
+            d.termsStatus == TermsStatus.CONDITIONAL && !d.authorizes(category, capability) -> Eligibility.NOT_APPROVED
             settings.disabledByPolicy(d.id) -> Eligibility.DISABLED_BY_POLICY
             !settings.onlineEnabled -> Eligibility.ONLINE_DISABLED
             !settings.providerEnabled(d.id) -> Eligibility.PROVIDER_DISABLED

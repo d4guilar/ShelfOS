@@ -39,12 +39,12 @@ data class ProviderAttribution(val textRes: Int, val url: String? = null)
 
 /**
  * A narrow, named administrator authorization for a provider that is not (and may never be) globally [TermsStatus.APPROVED]
- * (Phase 4.5C.2A, plan D1-M). It lists exactly the categories and capabilities it covers and the decision it rests on.
+ * (Phase 4.5C.2A, plan D1-M). It is bound to one [providerId] and lists exactly the categories and capabilities it covers and the decision it rests on.
  * [MetadataCapability.COVERS] can never be granted: artwork needs its own decision (D1-C).
  */
-data class ScopedGrant(val basis: String, val categories: Set<MediaCategory>, val capabilities: Set<MetadataCapability>) {
+data class ScopedGrant(val providerId: String, val basis: String, val categories: Set<MediaCategory>, val capabilities: Set<MetadataCapability>) {
     init {
-        require(basis.isNotBlank() && categories.isNotEmpty() && capabilities.isNotEmpty())
+        require(providerId.isNotBlank() && basis.isNotBlank() && categories.isNotEmpty() && capabilities.isNotEmpty())
         require(MetadataCapability.COVERS !in capabilities) { "a scoped grant can never cover artwork" }
     }
 }
@@ -62,7 +62,7 @@ data class ProviderDescriptor(
     fun authorizes(category: MediaCategory, capability: MetadataCapability): Boolean = category in categories && capability in capabilities &&
         when (termsStatus) {
             TermsStatus.APPROVED -> true
-            TermsStatus.CONDITIONAL -> grant != null && category in grant.categories && capability in grant.capabilities
+            TermsStatus.CONDITIONAL -> grant != null && grant.providerId == id && category in grant.categories && capability in grant.capabilities
             TermsStatus.REJECTED -> false
         }
 }
