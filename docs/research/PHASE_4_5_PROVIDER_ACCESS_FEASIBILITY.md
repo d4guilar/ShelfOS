@@ -3,7 +3,7 @@
 Status: **research and decision documentation only, 2026-10-19; pending independent QA.** Revised the same day to correct the local-artwork rights language, normalize
 status vocabulary and record the administrator's scoped Open Library metadata decision (§12A). No code, manifest, `INTERNET` permission, dependency,
 Room, credential, network call to a provider API, cover download or scraper was added. Nothing here approves a provider: gates D1/D31 (Open
-Library), D5/D19 (Metron), D25 (Hardcover) and D22 (Library of Congress) stay exactly as recorded. Earlier findings (P0 PR #51, P1 PR #52) are
+Library: D1 is now divided into narrowly scoped metadata implementation authorization (D1-M) and unresolved external-cover rights (D1-C); D31 remains unresolved), D5/D19 (Metron), D25 (Hardcover) and D22 (Library of Congress) stay exactly as recorded. Earlier findings (P0 PR #51, P1 PR #52) are
 not rewritten. Not legal advice.
 
 Evidence labels: **READ** = read on an official page this pass; **SECONDHAND** = search summary, third party or earlier ShelfOS read; **UNKNOWN**
@@ -173,7 +173,7 @@ local artwork is **not an external provider** and is not listed as a row: it is 
 
 | Provider | Media | Edition-level | Metadata | Covers | Credential | Public limits | Android-client eligibility | Caching | Cover-art rights | Cost | Attribution | Status | Role if gate closes | Next step |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **Open Library** | Books (some Manga/TPB) | yes (edition records, ISBN) | yes | yes (id/OLID/ISBN) | none; identified UA | 1–3 req/s; covers by ISBN 100/IP/5 min | stated **unknown**; open-source apps are a stated priority | "cache whenever possible" (API) | **unknown** | free | courtesy link | CONDITIONAL | default keyless **metadata-only** source: lookup implementation administrator-authorized under D1-M (a ShelfOS risk decision, **not** an Open Library approval); covers unresolved (D1-C); aggregate/commercial use unresolved (D31) | build 4.5C.2A under §12A; keep the §13.1 inquiry as a clarification channel |
+| **Open Library** | Books (some Manga/TPB) | yes (edition records, ISBN) | yes | yes (id/OLID/ISBN) | none; identified UA | 1–3 req/s; covers by ISBN 100/IP/5 min | stated **unknown**; open-source apps are a stated priority | "cache whenever possible" (API) | **unknown** | free | courtesy link | CONDITIONAL | Primary keyless **metadata** candidate; **opt-in, default OFF for 4.5C.2A under D1-M**; lookup implementation administrator-authorized under D1-M (a ShelfOS risk decision, **not** an Open Library approval); covers unresolved (D1-C); aggregate/commercial use unresolved (D31) | build 4.5C.2A under §12A; keep the §13.1 inquiry as a clarification channel |
 | Inventaire | Books | yes | yes | image refs (rights unknown) | none; contactable UA | enforced, unpublished | unknown (terms unread) | unknown (CC0 data) | **unknown** | free | none (CC0) | CONDITIONAL | provisional metadata-only corroboration candidate (not independent of Open Library) | read terms; email hello@inventaire.io |
 | Wikidata | Books | partial (4/36 in P0) | yes | none in P0 | none | published | data CC0; UA required | allowed for CC0 data | n/a | free | none | REJECTED | rejected as a standalone primary ISBN provider on the tested P0 corpus; possible identity/authority layer later | none now |
 | Library of Congress | Books (metadata) | ISBN path unresolved | yes | none | none | 20 req/min, 1 h block | unknown | unknown | n/a | free | unknown | CONDITIONAL | metadata-only candidate (D22) | verify ISBN path and terms |
@@ -215,7 +215,7 @@ An unanswered inquiry must not be described as an endorsement. If Open Library's
 **D1-M: LIMITED METADATA IMPLEMENTATION: ADMINISTRATOR-AUTHORIZED.** Engineering work toward **4.5C.2A** may proceed for: direct HTTPS requests from individual Android installations;
 public keyless Open Library book metadata APIs; exact ISBN-first edition lookup; small user-initiated title/author searches when necessary; explicit manual user actions;
 minimal normalized textual metadata; the existing provider-neutral architecture (ADR-0026); clear Settings controls and privacy disclosure; a conservative request queue;
-metadata-response caching consistent with the published guidance and subject to its own implementation review; conservative edition matching with user review.
+bounded in-memory or session-scoped metadata reuse (see "Caching boundary" below); conservative edition matching with user review.
 
 **D1-C: COVER ACCESS AND PERSISTENCE: UNRESOLVED.** No Open Library cover-image retrieval or persistence, no automatic cover replacement and no external artwork storage is approved.
 A cover ID or URL seen as a metadata field is not an image fetch, and an Open Library work-level cover identifier is never proof of exact edition identity.
@@ -227,11 +227,26 @@ Proposed ShelfOS safeguards (ShelfOS's own values, recorded separately from Open
 | Safeguard | Value |
 |---|---|
 | Proxy / credentials | no shared ShelfOS proxy; no bundled API key; no Open Library user credentials |
-| Triggering | no requests until the user explicitly enables online metadata or initiates a lookup (this **supersedes the default-ON of D15/D29 for Open Library**); no automatic full-library enrichment, no background ISBN sweeps, no batch harvesting, no unattended enrichment |
+| Triggering | **default OFF; affirmative opt-in required before any request** (see "Opt-in contract" below); no automatic full-library enrichment, no background ISBN sweeps, no batch harvesting, no unattended enrichment |
 | Network | no multi-IP use to evade limits; no HTML scraping; one request in flight per provider; initial pacing **slower than the published maximum** (proposed: at least 2 s between requests; to be fixed in the 4.5C.2A design review); timeouts and bounded response sizes; backoff; **stop or pause on HTTP 403/429 and follow `Retry-After`** |
 | Identification | contactable project `User-Agent` with a genuine project contact (D4) |
 | Resilience | offline operation, importing and reading unaffected by any network failure |
 | Data | USER metadata and LOCAL covers never overwritten; edition-aware matching; provenance kept; provider results are candidates, not truth |
+
+**Opt-in contract (Open Library, 4.5C.2A): DEFAULT OFF, AFFIRMATIVE OPT-IN REQUIRED BEFORE ANY REQUEST.**
+1. On a fresh install Open Library is disabled and generates no requests.
+2. Choosing "Find metadata online" while it is disabled opens the disclosure/enablement flow; it does **not** issue a request.
+3. The disclosure names Open Library, states what data is sent (ISBN or title/creator query, the device's IP address, the app `User-Agent`) and that requests go directly from the device.
+4. Only after the user affirmatively enables Open Library may the requested lookup run.
+5. Disabling prevents new requests and cancels pending or queued lookups where technically possible; a request already sent cannot be unsent.
+6. Importing publications, opening the Library or viewing details never triggers an Open Library request in this slice.
+7. Offline functionality works regardless of provider state. Navigating to an online-metadata screen is not consent, and a direct search action cannot bypass enablement.
+
+**D15/D29 compatibility.** The broader D15/D29 policy (authorized keyless providers may default ON under a one-time disclosure) is unchanged and may apply to other future, fully approved keyless providers.
+Open Library is a **specific default-OFF exception while it remains CONDITIONAL**; this is not a global reversal of D29.
+
+**Caching boundary.** 4.5C.2A may reuse metadata within memory or a bounded session to avoid redundant requests; the exact design, retention and response handling are finalized in the 4.5C.2A implementation review.
+No new Room schema, persistent metadata-candidate tables, persistent response-cache tables, automatic background enrichment or `ONLINE` cover-slot persistence is authorized; durable cache and candidate persistence keep their 4.5C.3 scope.
 
 **Not authorized by this decision:** Open Library cover-image downloads; automatic cover replacement; permanent external artwork storage; scraping covers from other sites; unattended background
 enrichment; infrastructure that depends on Open Library as a high-traffic backend; bulk requests or metadata harvesting; distributing cover images through backups or exports; features outside the narrow public-read scope.
