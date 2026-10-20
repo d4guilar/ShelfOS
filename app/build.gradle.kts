@@ -38,7 +38,11 @@ android {
             path = file("src/main/cpp/CMakeLists.txt")
         }
     }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        // BuildConfig.DEBUG: a second, compile-time fail-closed gate for the debug-only Cover Lab pilot.
+        buildConfig = true
+    }
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17

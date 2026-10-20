@@ -65,8 +65,28 @@ object OpenLibraryCovers {
     }
 }
 
-/** Edition-specific metadata endpoints the pilot may read: ISBN → edition, and one work's first few editions. No other path. */
-val OpenLibrary.coverPilotJsonPolicy: UrlPolicy get() = UrlPolicy(setOf(OpenLibrary.HOST), listOf("/isbn/", "/works/"))
+/**
+ * The Cover Lab's JSON routes (D1-C-DEV), each fully constrained: `/isbn/{ISBN-13}.json`, the edition record it legitimately redirects to
+ * (`/books/OL…M.json`), and one work's editions list (`/works/OL…W/editions.json?limit=8`). Nothing else on `openlibrary.org`, no other query.
+ * [check] runs on the first request and on every redirect hop.
+ */
+object OpenLibraryCoverRoutes {
+    val urlPolicy = UrlPolicy(setOf(OpenLibrary.HOST), listOf("/isbn/", "/books/", "/works/"))
+    private val ISBN = Regex("^/isbn/97[89]\\d{10}\\.json$")
+    private val EDITION = Regex("^/books/OL\\d{1,12}M\\.json$")
+    private val EDITIONS = Regex("^/works/OL\\d{1,12}W/editions\\.json$")
+
+    fun check(url: URL) {
+        val path = url.path ?: ""
+        val query = url.query
+        val ok = when {
+            ISBN.matches(path) || EDITION.matches(path) -> query == null
+            EDITIONS.matches(path) -> query == "limit=${OpenLibrary.COVER_EDITIONS_MAX}"
+            else -> false
+        }
+        if (!ok) throw UrlNotAllowedException("route not allowed")
+    }
+}
 
 /** What a candidate's edition has in common with the book, never more than the evidence supports. */
 enum class CoverMatchKind { EXACT_EDITION, OTHER_EDITION }

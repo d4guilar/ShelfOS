@@ -69,7 +69,7 @@ class UserCoverUiTest {
         if (restoration != null) restoration.setContent(content()) else compose.setContent(content())
     }
     private fun pickFile(): String {
-        val f = File(context.cacheDir, "ui-pick-${System.nanoTime()}.jpg")
+        val f = File(root.also { it.mkdirs() }, "ui-pick-${System.nanoTime()}.jpg")
         val b = Bitmap.createBitmap(400, 600, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
         f.outputStream().use { b.compress(Bitmap.CompressFormat.JPEG, 90, it) }
         return f.path

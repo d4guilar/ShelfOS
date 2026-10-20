@@ -279,7 +279,30 @@ Status key: *implemented* = in the tree; *tested with fake data* = JVM and devic
 | Bounded image transport, validation, private storage | implemented, tested with fake data, debug-only |
 | Rendering through the shared cover renderer (all shapes, Crop/Fit) | implemented, tested on API 35 emulator and RP5 |
 | Live Open Library requests | not tested (manual procedure below) |
-| Redirect to a non-`covers.openlibrary.org` host | refused (`REDIRECT_BLOCKED`); live behavior unverified |
+| `/isbn/` -> `/books/` JSON redirect | implemented (R1) and fake-tested through the real `HttpUrlConnectionTransport`; not live-tested |
+| Redirect of the image request to Archive.org | refused (`REDIRECT_BLOCKED`); **F-2 unresolved**; not live-tested |
 | `ONLINE` slot, production picker, release retrieval, Inventaire | production-blocked / not implemented |
 
-**Manual live smoke test (owner-operated, debug build only).** 1) Install the debug build. 2) Open a Book that has an ISBN-13 (Book details -> Cover Lab (dev)). 3) Read the disclosure and choose Enable. 4) Find covers: expect one `/isbn/` and one `/works/.../editions.json?limit=8` request. 5) Preview one candidate, Inspect it, Download. 6) Compare shapes and Crop/Fit; confirm no request is made when changing them. 7) Restart the app with the network off and reopen the Cover Lab: the pick still shows. 8) Note whether the image URL redirects (an "image moved to a host ShelfOS does not allow" message means it did). Do not run this in bulk.
+**Manual live smoke test (owner-operated, debug build only; not yet performed).** 1) Install the debug build. 2) Open a Book that has an ISBN-13 (Book details -> Cover Lab (dev)). 3) Read the disclosure and choose Enable; nothing is sent yet. 4) Find covers. The expected real sequence is: `GET /isbn/{ISBN}.json` -> a legitimate redirect to `/books/OL…M.json` -> edition parsing -> (optional, when the edition has exactly one work) `GET /works/OL…W/editions.json?limit=8`. All three routes are constrained (R1); nothing else on `openlibrary.org` is reachable. 5) Preview one candidate: an image request to `covers.openlibrary.org` (M size). 6) Inspect and Download (L size). **While F-2 is unresolved the L download may end with "image moved to a host ShelfOS does not allow" (`REDIRECT_BLOCKED`)**; real edition discovery and candidate listing can still be verified, and that is a successful first smoke test. 7) Compare shapes and Crop/Fit; confirm no request is made when changing them. 8) Do not run in bulk.
+
+**F-2 redirect diagnostic (owner-operated; no image is downloaded or retained; the app is not involved).** Use any ordinary cover id (for example the id shown in a candidate's "Open Library" line, or a well-known one) from a shell you run yourself, one request per line, with redirects disabled so only headers are seen:
+
+```
+curl -s -o /dev/null -D - --max-redirs 0 --max-time 15 "https://covers.openlibrary.org/b/id/<COVER_ID>-L.jpg?default=false" | grep -iE "^(HTTP|location):"
+curl -s -o /dev/null -D - --max-redirs 0 --max-time 15 "<the Location value from the previous line>"           | grep -iE "^(HTTP|location):"
+```
+
+Report only: the HTTP status of each hop, the host of each `Location`, and the path *structure* with the numeric ids kept (for example `/download/olcovers12/olcovers12-L.zip/123456-L.jpg`). Do not paste cookies, response bodies, file paths or anything else. The result decides which family (below) applies and what the second hop looks like; until then no Archive.org host is trusted.
+
+## 10. Open Library cover-storage redirects (4.5C.2B R1, F-2 specification)
+
+Source-backed (Open Library `coverstore/code.py` and `coverstore/archive.py`, read 2026-10-20; not exercised live):
+
+| Family | Applies when | First-hop URL derived from the original cover id |
+| --- | --- | --- |
+| A, legacy cluster | size L or unsized, and the id is below an operator-configured bound that is not public | `https://archive.org/download/olcovers{id/10000}/olcovers{id/10000}-{SIZE}.zip/{id}-{SIZE}.jpg` (example id 123456 L -> `olcovers12`) |
+| B, batched uploads | ids >= 8,000,000 (uploaded covers) | `https://archive.org/download/{p}covers_{id/1e6, 4 digits}/{p}covers_{…}_{(id mod 1e6)/1e4, 2 digits}.zip/{id, 10 digits}-{SIZE}.jpg` with `p` = `s_`/`m_`/`l_` for a sized request |
+
+Unknown: whether family B's size prefix for `L` is `l_` or empty on the wire; the cluster bound for family A; and the second hop (Archive.org commonly redirects `/download/…` to a data-serving node host such as `ia…us.archive.org`), whose exact host pattern and path are not source-backed and must come from the diagnostic above.
+
+Proposed future policy (**not enabled**): a per-request allowance computed from the original cover id and size, accepting only an exact first-hop URL from `OpenLibraryCoverStorage.firstHops` (implemented and unit-tested, wired to nothing), and a second hop only after its host pattern is verified. No unrestricted `archive.org`, no generic `/download/` path, no `ia*` wildcard, no automatic retrieval. F-2 stays open until a validated chain works. Today's transport refuses even the derived first hop (tested).

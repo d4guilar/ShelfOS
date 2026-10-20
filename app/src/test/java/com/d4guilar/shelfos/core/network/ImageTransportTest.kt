@@ -89,6 +89,13 @@ class ImageTransportTest {
         assertEquals(1, opened.size)
     }
 
+    @Test fun `even the documented archive org first hop is refused while F-2 is open`() = runTest {
+        val derived = com.d4guilar.shelfos.data.metadata.openlibrary.OpenLibraryCoverStorage.firstHops(123456, com.d4guilar.shelfos.data.metadata.openlibrary.CoverSize.LARGE).single()
+        val t = transport { u -> if (u.host == "covers.openlibrary.org") StubConnection(u, 302, mapOf("Location" to derived)) else error("followed") }
+        assertThrows(UrlNotAllowedException::class.java) { kotlinx.coroutines.runBlocking { t.fetch("https://covers.openlibrary.org/b/id/123456-L.jpg?default=false", dest(), 4096) } }
+        assertEquals(1, opened.size)
+    }
+
     @Test fun `redirects off https, with credentials, or to a bad path are refused`() = runTest {
         for (loc in listOf("http://covers.openlibrary.org/b/id/5-L.jpg", "https://u:p@covers.openlibrary.org/b/id/5-L.jpg", "https://covers.openlibrary.org/other.jpg",
             "https://covers.openlibrary.org/b/id/5-L.jpg?default=true", "//evil.example/b/id/5-L.jpg")) {

@@ -425,4 +425,41 @@ class CoverPilotServiceTest {
         File(root(), "${item.id}/selection.properties").writeText("garbage\u0000")
         assertNull(s.selection(item.id))
     }
+
+    // ---- R1 F-3: consent and item are re-verified immediately before the commit ----
+
+    @Test fun `consent revoked during the transfer commits nothing and keeps the previous pick`() = runTest {
+        auth.enable()
+        val s = service()
+        val first = ok(s.download(item, candidate(5)))
+        images.respond = { _, f -> auth.disable(); f.writeBytes(JPEG); ImageFetch(200, "image/jpeg", null, JPEG.size.toLong()) }
+        assertEquals(PilotFailure.NOT_AUTHORIZED, failed(s.download(item, candidate(6))))
+        val kept = store.selection(item.id)!!
+        assertEquals("5", kept.refValue); assertTrue(store.file(kept).exists())
+        assertEquals(listOf("selection.properties", first.file.name).sorted(), root().resolve(item.id).list()!!.sorted())
+        assertTrue(leftovers().isEmpty())
+    }
+
+    @Test fun `consent revoked during a preview commits no preview`() = runTest {
+        auth.enable()
+        images.respond = { _, f -> auth.disable(); f.writeBytes(JPEG); ImageFetch(200, "image/jpeg", null, JPEG.size.toLong()) }
+        val s = service()
+        assertEquals(PilotFailure.NOT_AUTHORIZED, failed(s.preview(item, candidate())))
+        assertNull(s.cachedPreview(item.id, candidate())); assertTrue(leftovers().isEmpty())
+    }
+
+    @Test fun `the book removed during the transfer keeps the previous pick of that book intact`() = runTest {
+        auth.enable()
+        val s = service()
+        ok(s.download(item, candidate(5)))
+        images.respond = { _, f -> exists = false; f.writeBytes(JPEG); ImageFetch(200, "image/jpeg", null, JPEG.size.toLong()) }
+        assertEquals(PilotFailure.ITEM_GONE, failed(s.download(item, candidate(6))))
+        assertEquals("5", store.selection(item.id)!!.refValue); assertTrue(leftovers().isEmpty())
+    }
+
+    @Test fun `a candidate from another provider is never committed`() = runTest {
+        auth.enable()
+        assertEquals(PilotFailure.NOT_AUTHORIZED, failed(service().download(item, candidate().copy(providerId = "inventaire"))))
+        assertNull(store.selection(item.id)); assertTrue(leftovers().isEmpty())
+    }
 }

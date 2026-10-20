@@ -63,7 +63,7 @@ class CoverLabSession(
             val store = CoverPilotStore(filesRoot, File(app.cacheDir, "cover_lab"))
             val exists: suspend (String) -> Boolean = { id -> container.library.publication(id).first() != null }
             val ua = container.userAgent
-            val json = HttpUrlConnectionTransport(OpenLibrary.coverPilotJsonPolicy, ua, maxBytes = OpenLibrary.MAX_RESPONSE_BYTES, pacer = container.openLibraryPacer)
+            val json = HttpUrlConnectionTransport(OpenLibraryCoverRoutes.urlPolicy, ua, maxBytes = OpenLibrary.MAX_RESPONSE_BYTES, pacer = container.openLibraryPacer, check = OpenLibraryCoverRoutes::check)
             val images = HttpUrlConnectionImageTransport(OpenLibraryCovers.urlPolicy, ua, container.openLibraryPacer, OpenLibraryCovers::check)
             val service = CoverPilotService(authorization, store, images, OpenLibraryProvider(json)::coverEditions,
                 queryFor = { item -> container.metadata.resolved(item.id)?.let { metadataQuery(item, it) } },

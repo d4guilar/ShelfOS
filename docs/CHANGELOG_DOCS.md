@@ -1,5 +1,9 @@
 # Documentation Changelog
 
+## Phase 4.5C.2B R1 remediation (2026-10-20)
+
+- Plan §43.1; BOOK_PROVIDERS §9 (corrected smoke-test sequence, status labels, F-2 diagnostic) and new §10 (cover-storage redirect families, proposed policy); VALIDATION (corrected counts: 70 original test methods, 940 total, RP5 results, emulator blocked). F-2 stays open; no Archive.org host is trusted.
+
 ## Phase 4.5C.2B Cover Lab pilot (2026-10-20)
 
 - Plan: decision ledger (D1-C-DEV, D1-C-PROD) and new §43; BOOK_PROVIDERS §9 (status key, manual smoke test); ROADMAP; VALIDATION. D1-C-DEV is a debug-only development-pilot authorization; D1-C-PROD and D31 unresolved; Open Library stays CONDITIONAL; D1-M unchanged. Earlier 4.5C.2A text is preserved.

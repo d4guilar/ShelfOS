@@ -35,13 +35,15 @@ import java.net.SocketTimeoutException
  * OFF by default; persisted in its own preference file; and meaningful only in a debuggable build ([debugBuild]), so a release build can
  * never be authorized even if the preference were set. Only Open Library and only Books.
  */
-class CoverPilotAuthorization(private val store: BooleanStore, private val debugBuild: Boolean) {
-    private val flag = MutableStateFlow(debugBuild && store.get(KEY, false))
+class CoverPilotAuthorization(private val store: BooleanStore, debugBuild: Boolean) {
+    /** Both the runtime debuggable flag and the compile-time debug build type must hold; a release build can never be authorized. */
+    private val allowed = debugBuild && com.d4guilar.shelfos.BuildConfig.DEBUG
+    private val flag = MutableStateFlow(allowed && store.get(KEY, false))
     val enabled: StateFlow<Boolean> = flag.asStateFlow()
 
-    fun permits(providerId: String, category: MediaCategory): Boolean = debugBuild && flag.value && providerId == OpenLibrary.ID && category == MediaCategory.BOOK
+    fun permits(providerId: String, category: MediaCategory): Boolean = allowed && flag.value && providerId == OpenLibrary.ID && category == MediaCategory.BOOK
 
-    fun enable() { if (debugBuild) { store.put(KEY, true); flag.value = true } }
+    fun enable() { if (allowed) { store.put(KEY, true); flag.value = true } }
     fun disable() { store.put(KEY, false); flag.value = false }
 
     companion object { const val KEY = "cover_pilot_enabled" }
@@ -226,9 +228,12 @@ class CoverPilotService(
             } catch (_: OutOfMemoryError) { return PilotResult.Failed(PilotFailure.UNSUPPORTED_IMAGE) }
             if (image.width <= 0 || image.height <= 0) return PilotResult.Failed(PilotFailure.INVALID_IMAGE)
             currentCoroutineContext().ensureActive()
-            if (!itemExists(item.id)) return PilotResult.Failed(PilotFailure.ITEM_GONE)
-            // Past this point the result is published: a cancelled dialog cannot leave a half-committed pick.
+            // Past this point the result is published: a cancelled dialog cannot leave a half-committed pick. Consent and the item are
+            // re-verified immediately before the commit, inside the same non-cancellable block, so a revocation or removal that happened
+            // during the transfer commits nothing (the temporary files are removed below and the previous pick is untouched).
             return withContext(NonCancellable) {
+                if (!authorized(item) || candidate.providerId != OpenLibrary.ID) return@withContext PilotResult.Failed(PilotFailure.NOT_AUTHORIZED)
+                if (!itemExists(item.id)) return@withContext PilotResult.Failed(PilotFailure.ITEM_GONE)
                 if (preview) {
                     val f = store.commitPreview(item.id, tmpOut, candidate.key, image.extension)
                     PilotResult.Ok(PilotArtwork(f, image, false))

@@ -216,7 +216,7 @@ class OnlineCoverPilotUiTest {
     @Test fun downloadStoresThePickPrivatelyShowsTheDecodedSizeAndLeavesTheUserCoverAlone() {
         script(); show()
         runBlocking { RoomLibraryRepository(db.library()).add(book) }
-        val userFile = File(context.cacheDir, "user-cover-${System.nanoTime()}.jpg").also { it.writeBytes(image(300, 450)) }
+        val userFile = File(workRoot.also { it.mkdirs() }, "user-cover-${System.nanoTime()}.jpg").also { it.writeBytes(image(300, 450)) }
         assertEquals(UserCoverOutcome.SAVED, runBlocking { userCovers.set("b1", userFile.path) })
         val before = coverRoot.walkTopDown().filter { it.isFile }.map { it.name to it.length() }.toSet()
         open(); enable(); find()

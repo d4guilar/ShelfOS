@@ -8230,7 +8230,7 @@ No live request, no cover download, no app/production code, manifest, dependency
 
 | Command (executed by me) | Result |
 | --- | --- |
-| `gradlew :app:testDebugUnitTest` | **927 tests, 0 failures, 1 skipped** (69 new: `OpenLibraryCoverUrlTest` 6, `OpenLibraryCoverDiscoveryTest` 11, `CoverPilotServiceTest` 34, `ImageTransportTest` 11, `CoverPilotGeometryTest` 7) |
+| `gradlew :app:testDebugUnitTest` | **927 tests, 0 failures, 1 skipped** (70 new test methods: `OpenLibraryCoverUrlTest` 6, `OpenLibraryCoverDiscoveryTest` 12, `CoverPilotServiceTest` 34, `ImageTransportTest` 11, `CoverPilotGeometryTest` 7) |
 | `OnlineCoverPilotUiTest` via `connectedDebugAndroidTest` on `shelfos-phase0` (API 35 emulator, Android 15) | **16/16** |
 | `OnlineCoverPilotUiTest` on Retroid Pocket 5 (Android 13, API 33, serial d8f7f1b6) via `adb install -r` + `am instrument` (app data kept; only the test package was removed afterwards) | **16/16** |
 | Emulator: CoverRendererUiTest / UserCoverUiTest / OnlineMetadataUiTest / UserCoverStoreTest / CoverLifecycleTest | 1 / 5 / 6 / 14 / 12, all pass |
@@ -8241,3 +8241,18 @@ No live request, no cover download, no app/production code, manifest, dependency
 | NOT RUN | any live Open Library request or image download; Samsung Galaxy Tab A; API 24 device; `lintRelease`; the full instrumentation suite |
 
 Caveats: the first install attempt used a different debug keystore (INSTALL_FAILED_UPDATE_INCOMPATIBLE); runs use the project keystore under `.tools/android-user` (`ANDROID_USER_HOME`), so updates are in place. All image bytes in tests are generated locally.
+
+## PHASE 4.5C.2B R1 REMEDIATION (2026-10-20, pending independent QA)
+
+| Command (executed by me) | Result |
+| --- | --- |
+| `gradlew :app:testDebugUnitTest` | **940 tests, 0 failures, 1 skipped** (927 + 13 new: `OpenLibraryCoverRedirectTest` 5, `OpenLibraryCoverStorageTest` 3, `CoverPilotServiceTest` +4 (now 38), `ImageTransportTest` +1 (now 12)). The earlier "69 new" is corrected to **70 test methods** in the five original classes (the 927 total was real; only the per-class tally was off, and a pre-change base total was not re-run) |
+| `gradlew :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :app:lintDebug` | pass |
+| `OnlineCoverPilotUiTest` on Retroid Pocket 5 (Android 13, API 33, serial d8f7f1b6; `adb install -r` + `am instrument`, app data kept) | **16/16** |
+| `CoverPresentationUiTest` / `OnlineMetadataUiTest` on the RP5 | 8/8 / 6/6 |
+| `UserCoverUiTest` on the RP5 | 4/5: `aChosenCoverIsReportedAndRestoringExplainsItsConsequence` ("cover_restore not displayed") fails identically with the fixture-path change reverted, so it is a pre-existing short-landscape layout failure, not a regression |
+| `git diff --check` (`177bea3..HEAD`, `40dbbd3..HEAD`) | pass |
+| BLOCKED | API 35 `shelfos-phase0` emulator: about 2.3 GB of host RAM was free and the AVD requests 4 GB, so it was not started |
+| NOT RUN | any live Open Library or Archive.org request (none occurred); Galaxy Tab A; API 24 device |
+
+Note: the debug build must be signed with the default `~/.android` debug key to update the RP5's installed app in place (the project keystore under `.tools/android-user` produced INSTALL_FAILED_UPDATE_INCOMPATIBLE on this device). Stale `ui-pick-*`/`user-cover-*` files from earlier runs remain in the RP5 app cache (about 10); they were not deleted, and the new runs add none.
