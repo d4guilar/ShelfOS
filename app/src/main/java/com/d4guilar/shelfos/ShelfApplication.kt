@@ -33,6 +33,18 @@ import com.d4guilar.shelfos.data.metadata.RoomMetadataRepository
 import com.d4guilar.shelfos.data.preferences.RoomCoverPresentationRepository
 import com.d4guilar.shelfos.domain.library.CoverPresentations
 import com.d4guilar.shelfos.data.preferences.AppCompatLanguageRepository
+import android.os.SystemClock
+import com.d4guilar.shelfos.core.network.HttpUrlConnectionTransport
+import com.d4guilar.shelfos.core.network.RequestPacer
+import com.d4guilar.shelfos.data.metadata.ManualMetadataLookup
+import com.d4guilar.shelfos.data.metadata.ProviderLookup
+import com.d4guilar.shelfos.data.metadata.ProviderPolicyEngine
+import com.d4guilar.shelfos.data.metadata.ProviderRegistry
+import com.d4guilar.shelfos.data.metadata.RegisteredProvider
+import com.d4guilar.shelfos.data.metadata.openlibrary.OpenLibrary
+import com.d4guilar.shelfos.data.metadata.openlibrary.OpenLibraryProvider
+import com.d4guilar.shelfos.data.preferences.OnlineMetadataSettings
+import com.d4guilar.shelfos.data.preferences.SharedPreferencesBooleanStore
 
 class ShelfApplication : Application() {
     val container by lazy { AppContainer(this) }
@@ -74,6 +86,18 @@ class AppContainer(application: Application) {
             withContext(Dispatchers.IO) { files.embeddedMetadata(item).let { LocalMetadataEvidence(it.title, it.creator, it.values) } }
         }
     }
+    /** Phase 4.5C.2A: optional, default-OFF online metadata. The registry reads these settings at call time; nothing runs from startup, import or the Library. */
+    val onlineSettings by lazy { OnlineMetadataSettings(SharedPreferencesBooleanStore(application)) }
+    private val versionName: String by lazy {
+        try { application.packageManager.getPackageInfo(application.packageName, 0).versionName ?: "dev" } catch (_: Exception) { "dev" }
+    }
+    private val providerRegistry by lazy {
+        // Identified by the real repository URL; no email is configured, so no claim to Open Library's higher identified-request tier is made.
+        val http = HttpUrlConnectionTransport(OpenLibrary.urlPolicy, "ShelfOS/$versionName (+https://github.com/d4guilar/ShelfOS)",
+            maxBytes = OpenLibrary.MAX_RESPONSE_BYTES, pacer = RequestPacer(OpenLibrary.MIN_INTERVAL_MS, SystemClock::elapsedRealtime))
+        ProviderRegistry(listOf(RegisteredProvider(OpenLibrary.descriptor(), OpenLibraryProvider(http))), onlineSettings)
+    }
+    val manualMetadata by lazy { ManualMetadataLookup(ProviderLookup(providerRegistry, ProviderPolicyEngine(SystemClock::elapsedRealtime)), metadata) }
     val coverScheduler by lazy {
         CoverScheduler(covers, coverFiles, { id -> library.publication(id).first() }, LocalCoverExtractor(files, fixedReaders),
             idleWork = localMetadata::analyzeNext)

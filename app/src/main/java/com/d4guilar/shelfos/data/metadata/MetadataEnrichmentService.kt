@@ -50,14 +50,17 @@ class MetadataEnrichmentService(
     }
 
     /** What the item already knows locally; a file-name title is replaced by its cleaned form for matching only. */
-    fun query(item: LibraryItem, m: ResolvedMetadata): MetadataQuery {
-        val fromName = m.origin(MetadataField.TITLE) == MetadataOrigin.FILENAME_INFERENCE
-        val v = m.values
-        // The file name is always read for collection evidence; it replaces the title only when the title itself came from it.
-        val named = FilenameInference.infer(item.fileName, item.category)
-        return MetadataQuery(item.category, v.identifiers,
-            if (fromName) named.title else m.title,
-            m.creator.ifBlank { null }, v.series, v.volume, v.issue, v.publishedDate?.take(4)?.toIntOrNull(), v.language, v.publisher,
-            titleIsInferred = fromName || m.origin(MetadataField.TITLE) == MetadataOrigin.UNKNOWN, isCollection = named.collection)
-    }
+    fun query(item: LibraryItem, m: ResolvedMetadata): MetadataQuery = metadataQuery(item, m)
+}
+
+/** The matching query for an item (shared by the automatic coordinator and the manual lookup). */
+fun metadataQuery(item: LibraryItem, m: ResolvedMetadata): MetadataQuery {
+    val fromName = m.origin(MetadataField.TITLE) == MetadataOrigin.FILENAME_INFERENCE
+    val v = m.values
+    // The file name is always read for collection evidence; it replaces the title only when the title itself came from it.
+    val named = FilenameInference.infer(item.fileName, item.category)
+    return MetadataQuery(item.category, v.identifiers,
+        if (fromName) named.title else m.title,
+        m.creator.ifBlank { null }, v.series, v.volume, v.issue, v.publishedDate?.take(4)?.toIntOrNull(), v.language, v.publisher,
+        titleIsInferred = fromName || m.origin(MetadataField.TITLE) == MetadataOrigin.UNKNOWN, isCollection = named.collection)
 }

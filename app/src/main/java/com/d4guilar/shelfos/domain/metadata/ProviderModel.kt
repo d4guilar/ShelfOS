@@ -37,11 +37,35 @@ data class RetryPolicy(
 /** Display text lives in string resources; [textRes] and [url] are what a later settings/credits screen shows. */
 data class ProviderAttribution(val textRes: Int, val url: String? = null)
 
+/**
+ * A narrow, named administrator authorization for a provider that is not (and may never be) globally [TermsStatus.APPROVED]
+ * (Phase 4.5C.2A, plan D1-M). It is bound to one [providerId] and lists exactly the categories and capabilities it covers and the decision it rests on.
+ * [MetadataCapability.COVERS] can never be granted: artwork needs its own decision (D1-C).
+ */
+data class ScopedGrant(val providerId: String, val basis: String, val categories: Set<MediaCategory>, val capabilities: Set<MetadataCapability>) {
+    init {
+        require(providerId.isNotBlank() && basis.isNotBlank() && categories.isNotEmpty() && capabilities.isNotEmpty())
+        require(MetadataCapability.COVERS !in capabilities) { "a scoped grant can never cover artwork" }
+    }
+}
+
 data class ProviderDescriptor(
     val id: String, val displayNameRes: Int, val categories: Set<MediaCategory>, val capabilities: Set<MetadataCapability>,
     val credential: CredentialRequirement, val termsStatus: TermsStatus, val termsCheckedOn: String,
     val rate: RatePolicy, val retry: RetryPolicy = RetryPolicy(), val attribution: ProviderAttribution, val privacyDisclosureRes: Int,
-)
+    val grant: ScopedGrant? = null,
+) {
+    /**
+     * The single authorization rule, used by the registry and the policy engine alike. An APPROVED provider is authorized for what its
+     * descriptor declares; a CONDITIONAL one only inside its [grant] (and the descriptor); a REJECTED one never.
+     */
+    fun authorizes(category: MediaCategory, capability: MetadataCapability): Boolean = category in categories && capability in capabilities &&
+        when (termsStatus) {
+            TermsStatus.APPROVED -> true
+            TermsStatus.CONDITIONAL -> grant != null && grant.providerId == id && category in grant.categories && capability in grant.capabilities
+            TermsStatus.REJECTED -> false
+        }
+}
 
 /** Closed failure set (§3.10): a future UI can tell "no results" (an empty success) from every one of these. */
 enum class ProviderFailureKind { OFFLINE, TIMEOUT, RATE_LIMITED, ACCESS_BLOCKED, SERVER_FAILURE, MALFORMED, POLICY_DISABLED, CIRCUIT_OPEN, BUSY }

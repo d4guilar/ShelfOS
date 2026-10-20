@@ -31,6 +31,8 @@ import com.d4guilar.shelfos.core.theme.ShelfTheme
 import com.d4guilar.shelfos.core.theme.ThemeId
 import com.d4guilar.shelfos.feature.home.ShelfApp
 import com.d4guilar.shelfos.feature.library.LocalMetadataAccess
+import com.d4guilar.shelfos.feature.library.LocalOnlineMetadata
+import com.d4guilar.shelfos.feature.library.OnlineMetadataAccess
 import com.d4guilar.shelfos.feature.library.MetadataAccess
 import com.d4guilar.shelfos.feature.library.LibraryViewModel
 import com.d4guilar.shelfos.feature.settings.SettingsViewModel
@@ -67,7 +69,8 @@ class MainActivity : AppCompatActivity() {
         val container = (application as ShelfApplication).container
         setContent {
           CompositionLocalProvider(LocalCoverArtwork provides container.coverArtwork, LocalUserCovers provides container.userCovers,
-              LocalMetadataAccess provides remember { MetadataAccess(container.metadata::observe) }) {
+              LocalMetadataAccess provides remember { MetadataAccess(container.metadata::observe) },
+              LocalOnlineMetadata provides remember { OnlineMetadataAccess(container.onlineSettings, container.manualMetadata) }) {
             val settings: SettingsViewModel = viewModel(factory = viewModelFactory { initializer { SettingsViewModel(container.themes, container.library, container.languages, container.coverPresentation) } })
             val library: LibraryViewModel = viewModel(factory = viewModelFactory { initializer {
                 LibraryViewModel(container.library, createSavedStateHandle(), container.metadata)

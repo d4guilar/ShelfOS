@@ -4,7 +4,9 @@
 
 **Accepted** 2026-10-16 (Phase 4.5C.0, planning only) via plan D23, with D30 approved in its
 corrected form (`docs/PHASE_4_5_IMPLEMENTATION_PLAN.md` §31). 4.5C.1 may proceed without D1;
-D1 and D31 remain open gates for production Open Library access (4.5C.2). The registry,
+D1 and D31 remain open gates for production Open Library access (4.5C.2). **Update 2026-10-19:** D1 is subdivided: **D1-M** (limited
+metadata implementation, administrator-authorized as a ShelfOS risk decision, not Open Library approval) is realized as the scoped-grant
+mechanism of 4.5C.2A (plan §42); **D1-C** (covers) and **D31** (aggregate/commercial use) stay unresolved. The registry,
 policy engine and clustering are implemented with fakes in 4.5C.1; no network, manifest, dependency or
 Room change is authorized by this ADR.
 

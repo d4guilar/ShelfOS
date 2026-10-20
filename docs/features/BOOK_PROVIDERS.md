@@ -2,8 +2,9 @@
 
 Status (2026-10-16): planning accepted in 4.5C.0 (PR #47, ADR-0026 Accepted). **4.5C.1 infrastructure
 (registry, policy engine, clustering and ranking, fakes only) is merged (PR #48)**; see plan §36. 4.5C.2
-and later are not implemented and Open Library D1/D31 remain unresolved. No network call, `INTERNET`
-permission, manifest change, dependency or Room change exists or is approved by this document.
+and later are not implemented and Open Library D1/D31 remain unresolved. **Update 2026-10-19: 4.5C.2A implements the
+Open Library metadata-only lookup under D1-M (plan §42); covers (D1-C) and aggregate use (D31) stay unresolved.** This document
+does not itself approve any provider.
 Decision record: [ADR-0026](../adr/0026-multi-provider-books-metadata.md).
 Supersedes the single-provider "Open Library primary" framing of
 [`PHASE_4_5_IMPLEMENTATION_PLAN.md`](../PHASE_4_5_IMPLEMENTATION_PLAN.md) §11; every earlier
@@ -260,3 +261,8 @@ Official-page findings that refine, and do not change, the decisions above (deta
 - **Scoped decision (2026-10-19):** D1 is subdivided. **D1-M** authorizes limited, human-initiated, keyless **metadata** lookup (4.5C.2A) as a ShelfOS risk decision, not Open Library approval;
   **D1-C** (cover retrieval/persistence) and **D31** (aggregate/commercial use) are unresolved; see the P2 report §12A. Open Library is **default OFF with affirmative opt-in** before any request (a provider-specific exception; D15/D29 otherwise unchanged).
 - DILVE and the Spanish ISBN Agency are not viable default sources (entity registration and fees; no consumer access path verified). No scraping fallback is authorized.
+
+## 8. Implementation record (4.5C.2A, 2026-10-19)
+
+Open Library is the first real provider, registered with `TermsStatus.CONDITIONAL` and a `ScopedGrant("D1-M", {BOOK}, {IDENTIFIER_LOOKUP, SEARCH})`; covers are never granted. It is default OFF and
+needs an affirmative opt-in. Endpoints, request budget, authorization mechanism, privacy review, tests and limitations: plan §42.

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos.data.metadata
 
+import com.d4guilar.shelfos.domain.library.MediaCategory
 import com.d4guilar.shelfos.domain.metadata.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
@@ -107,8 +108,17 @@ class ProviderPolicyEngine(
     private val global = Semaphore(globalConcurrency)
     private val states = ConcurrentHashMap<String, State>()
 
-    suspend fun <T> execute(d: ProviderDescriptor, block: suspend () -> T): Outcome<T> {
-        if (d.termsStatus != TermsStatus.APPROVED) return Outcome.Failure(ProviderFailureKind.POLICY_DISABLED, null, 0)
+    /**
+     * [category] and [capability] state what this call is for. An APPROVED provider needs neither; a CONDITIONAL provider runs only
+     * when both are given and its scoped grant covers them (the same [ProviderDescriptor.authorizes] rule the registry uses).
+     */
+    suspend fun <T> execute(d: ProviderDescriptor, category: MediaCategory? = null, capability: MetadataCapability? = null, block: suspend () -> T): Outcome<T> {
+        val allowed = when (d.termsStatus) {
+            TermsStatus.APPROVED -> true
+            TermsStatus.CONDITIONAL -> category != null && capability != null && d.authorizes(category, capability)
+            TermsStatus.REJECTED -> false
+        }
+        if (!allowed) return Outcome.Failure(ProviderFailureKind.POLICY_DISABLED, null, 0)
         val s = states.computeIfAbsent(d.id) { State(d, nowMs()) }
         var attempt = 0
         while (true) {

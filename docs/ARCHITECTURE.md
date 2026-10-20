@@ -630,10 +630,10 @@ for installed clients. Never embed secret provider credentials in the APK. Optio
 BYOK credentials remain local where practical. Provider data is cached only where its
 current licensing and terms permit; no provider is assumed to grant permanent storage.
 
-Current network state (verified 2026-10-15): the manifest explicitly removes the
-transitively merged `INTERNET` and `ACCESS_NETWORK_STATE` permissions, and no HTTP client is
-a dependency. The first Phase 4.5 provider slice (4.5C, 4.5D or 4.5E; not 4.5A or 4.5B) is the first planned to add network access, after its provider authorization gate, deliberately and
-behind a user-visible toggle; see
+Current network state (updated 2026-10-19, Phase 4.5C.2A): the manifest declares `INTERNET` (and still removes `ACCESS_NETWORK_STATE`),
+cleartext traffic is disabled, and the only network use is the optional, default-OFF, user-triggered Open Library **metadata** lookup
+(`core.network` over the platform `HttpURLConnection`; no HTTP-client dependency, no cover or image request); see plan §42. The earlier
+state (verified 2026-10-15) had no network permission. Network access remains behind a user-visible opt-in; see
 [`PHASE_4_5_IMPLEMENTATION_PLAN.md`](PHASE_4_5_IMPLEMENTATION_PLAN.md) §19 and §21. Keyed
 providers are acceptable only as user-supplied keys (BYOK).
 

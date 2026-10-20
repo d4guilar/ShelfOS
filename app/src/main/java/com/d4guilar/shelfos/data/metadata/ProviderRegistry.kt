@@ -38,7 +38,9 @@ class ProviderRegistry(entries: List<RegisteredProvider> = emptyList(), private 
     fun eligibility(entry: RegisteredProvider, category: MediaCategory, capability: MetadataCapability): Eligibility {
         val d = entry.descriptor
         return when {
-            d.termsStatus != TermsStatus.APPROVED -> Eligibility.NOT_APPROVED
+            // APPROVED, or CONDITIONAL inside a scoped grant (D1-M); never COVERS under a grant, never REJECTED.
+            d.termsStatus == TermsStatus.REJECTED -> Eligibility.NOT_APPROVED
+            d.termsStatus == TermsStatus.CONDITIONAL && !d.authorizes(category, capability) -> Eligibility.NOT_APPROVED
             settings.disabledByPolicy(d.id) -> Eligibility.DISABLED_BY_POLICY
             !settings.onlineEnabled -> Eligibility.ONLINE_DISABLED
             !settings.providerEnabled(d.id) -> Eligibility.PROVIDER_DISABLED
@@ -51,6 +53,10 @@ class ProviderRegistry(entries: List<RegisteredProvider> = emptyList(), private 
 
     fun active(category: MediaCategory, capability: MetadataCapability): List<RegisteredProvider> =
         entries.filter { eligibility(it, category, capability) == Eligibility.ACTIVE }
+
+    /** Re-evaluated at the moment of a call, so a toggle switched off after a lookup began is honoured. */
+    fun isActive(entry: RegisteredProvider, category: MediaCategory, capability: MetadataCapability) =
+        eligibility(entry, category, capability) == Eligibility.ACTIVE
 
     /** Lower is higher priority; unknown ids sort last. */
     fun priority(providerId: String): Int = entries.indexOfFirst { it.descriptor.id == providerId }.let { if (it < 0) Int.MAX_VALUE else it }
