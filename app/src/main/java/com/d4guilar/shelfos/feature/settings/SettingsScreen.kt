@@ -63,6 +63,7 @@ fun SettingsScreen(theme: ThemeId, error: UiMessage?, onTheme: (ThemeId) -> Unit
         }
         if (error != null) Text(error.resolve())
         LibraryAppearanceSection(covers, onCoverGlobal, onCoverOverride)
+        OnlineMetadataSection()
         Text(stringResource(R.string.settings_language_title), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(R.string.settings_language_description), color = t.colors.secondary)
         AppLanguage.entries.forEach { option ->

@@ -1,5 +1,9 @@
 # Documentation Changelog
 
+## Phase 4.5C.2A Open Library metadata integration (2026-10-19)
+
+- Plan §42 (implementation record, G2 review, request policy, D14 JSON deviation), ADR-0026 status note, ARCHITECTURE network state, BOOK_PROVIDERS §8, ROADMAP, VALIDATION. D1-C and D31 unresolved; no cover access.
+
 ## Phase 4.5C.P2 remediation + Open Library scope decision (2026-10-19)
 
 - P2 report: local-artwork rights wording, status vocabulary, Agency and ISBNdb corrections, new §12A (D1-M authorized as a ShelfOS risk decision, D1-C and D31 unresolved, safeguards, 4.5C.2A/2B split). Plan decision ledger and 4.5C section, BOOK_PROVIDERS §7, ROADMAP updated.

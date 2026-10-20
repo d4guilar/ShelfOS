@@ -8215,3 +8215,13 @@ No live request, no cover download, no app/production code, manifest, dependency
   Spanish ISBN Agency capability claims (UNKNOWN), ISBNdb (paid developer/subscriber service, not personal BYOK).
 - Recorded: D1-M (limited metadata implementation, administrator-authorized, not Open Library approval), D1-C (unresolved), D31 (unresolved); 4.5C.2 split into 4.5C.2A/2B.
 - No code, manifest, permission, credential, network call, cover download or scraping. Tests not run (documentation only). `git diff --check 9d4c294..HEAD` and `e82234c..HEAD` pass (see commit).
+
+## PHASE 4.5C.2A OPEN LIBRARY METADATA INTEGRATION (2026-10-19, pending independent QA)
+
+| Command (executed by me) | Result |
+| --- | --- |
+| `gradlew :app:testDebugUnitTest --rerun --max-workers=1` | **856 tests, 0 failures, 1 skipped** (781 before + 75 new) |
+| `gradlew :app:assembleDebug :app:lintDebug` | pass; lint 0 errors (the 20 warnings are the existing plural-quantity ones in the Spanish/Portuguese resources; none is in this slice's files except an informational note that was fixed) |
+| `gradlew :app:compileDebugAndroidTestKotlin` | pass (`OnlineMetadataUiTest` compiles) |
+| Merged debug manifest inspection | `INTERNET` from the app manifest only; `usesCleartextTraffic=false`; no new SDK components |
+| NOT RUN | instrumentation tests (no emulator/device), any live Open Library request, `lintRelease` |

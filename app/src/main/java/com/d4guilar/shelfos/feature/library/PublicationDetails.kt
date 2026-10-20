@@ -56,6 +56,10 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
     var coverOpen by rememberSaveable(item.id) { mutableStateOf(false) }
     val userCovers = LocalUserCovers.current
     if (coverOpen && userCovers != null) CoverDialog(item, userCovers) { coverOpen = false }
+    // Optional online metadata (Phase 4.5C.2A): Books only, only when the feature is wired. Opening it never sends a request by itself.
+    val onlineAccess = LocalOnlineMetadata.current.takeIf { item.category == MediaCategory.BOOK }
+    val online = onlineAccess?.let { rememberOnlineMetadata(it, item.id) }
+    if (online != null) OnlineMetadataDialog(online)
     var coverBounds by remember(item.id) { mutableStateOf<Rect?>(null) }
     val readFocus = remember { FocusRequester() }
     val inputMode = LocalInputModeManager.current.inputMode
@@ -123,6 +127,7 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
                 TextButton({ editSnapshot = captureEditSnapshot(metadata.stored?.values); editing = true }, Modifier.testTag("edit_action"),
                     enabled = metadata.loaded) { Text(stringResource(R.string.action_edit)) }
                 if (userCovers != null) TextButton({ coverOpen = true }, Modifier.testTag("cover_action")) { Text(stringResource(R.string.action_cover)) }
+                if (online != null) TextButton({ online.open(item) }, Modifier.testTag("find_metadata_online_action"), enabled = metadata.loaded) { Text(stringResource(R.string.online_find_action)) }
                 TextButton({ removing = true }, Modifier.testTag("remove_action")) { Text(stringResource(R.string.action_remove)) }
             }
             HorizontalDivider(color = t.colors.divider)

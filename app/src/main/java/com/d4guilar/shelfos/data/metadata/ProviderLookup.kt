@@ -41,7 +41,9 @@ class ProviderLookup(private val registry: ProviderRegistry, private val engine:
             val found = ArrayList<MetadataCandidate>()
             var failure: ProviderPolicyEngine.Outcome.Failure? = null
             for (id in ids) {
-                when (val o = engine.execute(p.descriptor) { p.provider.lookup(id) }) {
+                // Switched off (or otherwise ineligible) since this lookup began: send nothing further.
+                if (!registry.isActive(p, query.category, MetadataCapability.IDENTIFIER_LOOKUP)) { failure = ProviderPolicyEngine.Outcome.Failure(ProviderFailureKind.POLICY_DISABLED, null, 0); break }
+                when (val o = engine.execute(p.descriptor, query.category, MetadataCapability.IDENTIFIER_LOOKUP) { p.provider.lookup(id) }) {
                     is ProviderPolicyEngine.Outcome.Success -> found += o.value
                     is ProviderPolicyEngine.Outcome.Failure -> { failure = o; break }
                 }
@@ -54,7 +56,8 @@ class ProviderLookup(private val registry: ProviderRegistry, private val engine:
     suspend fun bySearch(query: MetadataQuery, stop: (List<MetadataCandidate>) -> Boolean): LookupBatch {
         if (query.category == MediaCategory.DOCUMENT) return LookupBatch.EMPTY
         return collect(registry.active(query.category, MetadataCapability.SEARCH), stop) { p ->
-            when (val o = engine.execute(p.descriptor) { p.provider.search(query) }) {
+            if (!registry.isActive(p, query.category, MetadataCapability.SEARCH)) return@collect Reply(emptyList(), ProviderPolicyEngine.Outcome.Failure(ProviderFailureKind.POLICY_DISABLED, null, 0))
+            when (val o = engine.execute(p.descriptor, query.category, MetadataCapability.SEARCH) { p.provider.search(query) }) {
                 is ProviderPolicyEngine.Outcome.Success -> Reply(o.value, null)
                 is ProviderPolicyEngine.Outcome.Failure -> Reply(emptyList(), o)
             }
