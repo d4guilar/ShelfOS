@@ -32,6 +32,10 @@ Optional means never required, not opt-in: when enrichment is implemented, ordin
 users should receive good default background enrichment without configuring providers,
 keys or accounts.
 
+Current exception: while Open Library remains CONDITIONAL, it is **default OFF and requires an
+affirmative opt-in** before any request (plan decision D1-M, 4.5C.2A); the long-term product goal
+above is unchanged.
+
 Metadata matching is also distinct from publication identity: resemblance alone must
 never prove that two imports are the same publication, even though enrichment and
 future identity evidence may share candidate-resolution concepts. See

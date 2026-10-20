@@ -1979,8 +1979,10 @@ from `main` after 4.5A.1 merges.
   `ONLINE` cover slot, automatic VERY_HIGH apply, persisted MEDIUM suggestion (Room version
   chosen then); 4.5C.4 optional Library of Congress metadata-only provider; 4.5C.5 optional
   minimal picker (list + source chip + "Use this cover", USER-slot write).
+- **Revision 2026-10-19 (D1-M/D1-C):** 4.5C.2 is split. **4.5C.2A** = public Open Library metadata-only integration under D1-M (manifest/privacy review, request budget, project contact, Codex High QA; no
+  response-cache schema, persistent candidate tables or `ONLINE` cover-slot work, which stay in 4.5C.3). **4.5C.2B** = external artwork, blocked by D1-C. D31 stays unresolved. The G1 text below is read with this split.
 - **Authorization gates:** G0 plan/ADR-0026 approved (D22–D31); G1 per-provider approval (Open
-  Library = D1, with D4, D14, D15; LoC = D22); G2 manifest/privacy review before 4.5C.2; G3
+  Library = D1-M for metadata, D1-C for covers, with D4, D14, D15; LoC = D22); G2 manifest/privacy review before 4.5C.2A; G3
   Room shape before 4.5C.3; G4 picker scope before 4.5C.5. Google Books, OverDrive default,
   Gutendex public instance and bookcover-api/Goodreads are rejected and not built.
 - **Non-goals:** comic/manga-specific providers; the full Find cover grid and device picker
@@ -2113,7 +2115,7 @@ Stop and ask before implementing any slice whose decision below is unresolved.
 | D12 | **APPROVED (bounded PDF preview and storage encoding).** Bounded artwork storage per §7 rule 1: ≈ 512 KiB per cover; ORIGINAL (byte-exact) only when small and within the size and pixel limits, else DERIVED, default longest edge ≈ 1200 px (1600 px only if later evidence justifies it), JPEG quality ≈ 90 start with a fixed bounded ladder, explicit decoded-pixel cap. **PDF first-page preview:** derived, never labelled original artwork, white background, bounded render and encode, API 24+ compatible, original PDF untouched. WebP only if a benchmark justifies it (WebP constants differ by API level, §7) | Recorded; JPEG q90 stays the safe default | 4.5A.1 |
 | D13 | WorkManager | Not now; revisit only for closed-app enrichment, with dependency review/ADR | 4.5C |
 | D14 | HTTP stack: platform `HttpURLConnection` + `org.json` | Approve | 4.5C |
-| D15 | Online enrichment default ON (with disclosure) or OFF | ON with one-time non-blocking disclosure + toggle | 4.5C |
+| D15 | Online enrichment default ON (with disclosure) or OFF | ON with one-time non-blocking disclosure + toggle (Open Library is a default-OFF opt-in exception under D1-M while CONDITIONAL) | 4.5C |
 | D16 | Provider columns on `publication_cover` | Not in v6 or v7; the slice that first writes provider artwork (4.5C+) adds them, only if justified. Any post-v7 schema version is chosen when needed; no migration is reserved | 4.5A.1 |
 | D17 | Separate `metadata_candidate` table vs one suggestion per item | One suggestion per item unless 4.5F needs more | 4.5B |
 | D18 | Is 4.5A split into 4.5A.1 (local artwork, v6) and 4.5A.2 (presentation, v7) as two PRs | **Resolved by the administrator (remediation)**; recorded here | 4.5A.1, 4.5A.2 |
@@ -2128,7 +2130,9 @@ Stop and ask before implementing any slice whose decision below is unresolved.
 | D28 | **APPROVED AS OPTIONAL 4.5C.5 (administrator, 2026-10-16), after at least one approved provider is operational; the full picker remains in Phase 4.5F.** Minimal cover picker in 4.5C.5 instead of waiting for 4.5F | Recorded: last, droppable 4.5C slice | 4.5C.5 |
 | D29 | **APPROVED (administrator, 2026-10-16): authorized keyless providers may default ON under D15's one-time disclosure and user toggle; unapproved and BYOK providers remain OFF.** Provider enablement defaults: master toggle per D15; each approved provider ON by default? | Recorded | 4.5C.2 |
 | D30 | **APPROVED in its corrected form by the administrator (2026-10-16).** Provider agreement may rank or corroborate candidates but **never bypasses** 4.5B edition, identifier or contradiction matching rules (plan §15); it does not raise a tier the matcher would cap | Recorded | 4.5C.3 |
-| D31 | **UNRESOLVED authorization gate** (with D1) for production Open Library access. Contact Open Library (registration form / openlibrary@archive.org) to ask whether a distributed, donation- and Plus-theme-funded client doing lazy per-user, cached lookups is acceptable | Yes, before 4.5C.2; record the reply under D1 | 4.5C.2 |
+| D1-M | **LIMITED METADATA IMPLEMENTATION: ADMINISTRATOR-AUTHORIZED (2026-10-19).** A ShelfOS risk-acceptance decision, **not** written Open Library approval: engineering work toward 4.5C.2A for low-volume, human-initiated, keyless public metadata lookup (exact ISBN first, small user-initiated search, minimal normalized text, provider-neutral architecture, Settings control and disclosure, conservative queue, metadata caching under the published guidance), with the safeguards in `research/PHASE_4_5_PROVIDER_ACCESS_FEASIBILITY.md` §12A. Requires an independent manifest/privacy review, a documented request budget, a genuine project contact (D4) and Codex High QA. **Open Library is DEFAULT OFF with affirmative opt-in required before any request** (a provider-specific exception while it is CONDITIONAL; D15/D29 are otherwise unchanged and still apply to other fully approved keyless providers): on a fresh install it makes no requests; choosing "Find metadata online" while disabled opens the disclosure/enablement flow and issues no request; the disclosure names Open Library, what is sent and that requests go directly from the device; only after the user enables it may the lookup run; disabling stops new requests and cancels queued lookups where possible; importing, opening the Library or viewing details never triggers a request; offline use is independent of provider state. Caching in 4.5C.2A is limited to bounded in-memory/session reuse (design finalized in the 4.5C.2A review); **no new Room schema, persistent response-cache or candidate tables, background enrichment or `ONLINE` cover-slot persistence** (these stay in 4.5C.3) | Implement 4.5C.2A only within this scope; stop at any explicit conflict with Open Library's documentation | 4.5C.2A |
+| D1-C | **COVER ACCESS AND PERSISTENCE: UNRESOLVED.** No Open Library cover-image retrieval, automatic replacement or external artwork persistence; a cover ID as a metadata field is not an image fetch; a work-level cover ID is never edition proof | Separate cover-use and image-rights decision required | 4.5C.2B |
+| D31 | **AGGREGATE / COMMERCIAL DISTRIBUTED USE: UNRESOLVED** (D1 is subdivided into D1-M and D1-C; D1 as a whole is not closed). Open Library has not confirmed how it classifies ShelfOS's aggregate installation traffic or optional paid themes; an unanswered inquiry is not an endorsement. Contact Open Library (registration form / openlibrary@archive.org) to ask whether a distributed, donation- and Plus-theme-funded client doing lazy per-user, cached lookups is acceptable. Any reply is recorded under D1/D31 | Yes, before 4.5C.2B external artwork work, unattended/automatic or bulk enrichment, or any expansion into production-scale or commercial usage outside D1-M. D31 does **not** block the narrowly scoped 4.5C.2A metadata implementation authorized under D1-M | 4.5C.2B and beyond-D1-M scope |
 | D21 | **APPROVED.** `publication_cover` slot model: `PRIMARY KEY (libraryItemId, slot)`, slots LOCAL/USER/ONLINE (4.5A.1 writes only LOCAL); LOCAL provenance in `localSource` (EPUB_COVER, COMICINFO_FRONT_COVER, ARCHIVE_FIRST_PAGE, PDF_FIRST_PAGE), `sourceRef` and DECLARED/INFERRED `sourceChoice`; one stored file per publication and slot (a FrontCover resolving to page 0 is one file); no file sharing or reference counting; resolution USER > confident eligible ONLINE > LOCAL > generated; FK cascade plus explicit delete; the provenance-as-key design is **SUPERSEDED** (§23.1) | Recorded | 4.5A.1 |
 
 ## 32. Recommended agent workflow
@@ -2847,7 +2851,7 @@ report §16: Inventaire provisional metadata-only candidate (no production autho
 Wikidata not a standalone primary provider, no artwork download/persistence, no deliberate remote seeding, Biblioteca Nacional de
 España next for Spanish Manga, single-source fixtures to be strengthened before 4.5G; D1/D31 unchanged.
 
-## 40. 4.5C.P1 — BNE Spanish Manga research (2026-10-19, research only, pending QA)
+## 40. 4.5C.P1 — BNE Spanish Manga research (2026-10-19, research only; merged in PR #52)
 
 PR #51 (4.5C.P0) is merged; P0 is complete as research and its results are unchanged. P1 is a separate experiment
 ([`research/PHASE_4_5_SPANISH_METADATA_EVALUATION.md`](research/PHASE_4_5_SPANISH_METADATA_EVALUATION.md), code in
@@ -2861,3 +2865,18 @@ measured corpus (NO-GO, based on the 0/6 coverage and not on a proven structural
 approved; a provider gate (terms of use: info.catalogo@bne.es) would be required before any use.** 4.5C.2, full 4.5D, 4.5E and 4.5G are not
 advanced; Manga EN/JP/ES provider acceptance is not complete; D1/D31 unresolved; the three weak Japanese fixtures remain pending for 4.5G.
 Next proposed action: assess the Spanish ISBN agency registry and publisher catalogues, with terms review, before any further adapter.
+
+## 41. 4.5C.P2 — Provider access, BYOK and cover-source feasibility (2026-10-19, research only, pending QA)
+
+PR #52 (4.5C.P1) is merged and P1 is complete as research. P2 is a licensing and access feasibility study
+([`research/PHASE_4_5_PROVIDER_ACCESS_FEASIBILITY.md`](research/PHASE_4_5_PROVIDER_ACCESS_FEASIBILITY.md)); it adds no code, permission, credential or network call.
+Findings from the official pages read: Open Library documents **keyless public reads** and **no personal API key** (only a `User-Agent`+contact
+identification tier, 1 vs 3 req/s, and an informational use-case registration form), so SteamGridDB-style BYOK does not apply to it; BYOK is appropriate only where the
+provider issues individual credentials (Metron per-user tokens; Hardcover conditionally). Open Library covers: ISBN-keyed lookups are limited to 100 per IP per 5
+minutes, cover-ID/OLID lookups are not, bulk download/crawling is prohibited, and **cover-image copyright and offline-storage permission are not stated**. Cover-source
+approval is separate from metadata-source approval; no examined source grants publisher-artwork rights. DILVE is a trade-chain platform (entity registration, annual fees,
+developer access "usually temporary", no consumer path) and the Spanish ISBN Agency's current interface could not be verified; neither is a default source. **No generic scraping
+fallback is authorized.** Gates **D1/D31, D5/D19, D25 (and D22) remain open**; no provider is approved; 4.5C.2 is not started. Next: written Open Library clarification
+(draft in the report, to be sent only with explicit authorization). **Revised 2026-10-19:** the QA findings (local-artwork wording, status vocabulary, Agency and ISBNdb claims) are
+corrected, and the administrator recorded **D1-M** (limited metadata implementation authorized as a ShelfOS risk decision, not Open Library approval), **D1-C** (covers unresolved) and
+**D31** (aggregate/commercial use unresolved); 4.5C.2 is split into 4.5C.2A (metadata) and 4.5C.2B (artwork). No code is added in P2.
