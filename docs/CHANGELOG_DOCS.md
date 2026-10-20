@@ -1,5 +1,9 @@
 # Documentation Changelog
 
+## Phase 4.5C.2B Cover Lab pilot (2026-10-20)
+
+- Plan: decision ledger (D1-C-DEV, D1-C-PROD) and new §43; BOOK_PROVIDERS §9 (status key, manual smoke test); ROADMAP; VALIDATION. D1-C-DEV is a debug-only development-pilot authorization; D1-C-PROD and D31 unresolved; Open Library stays CONDITIONAL; D1-M unchanged. Earlier 4.5C.2A text is preserved.
+
 ## Phase 4.5C.2A Open Library metadata integration (2026-10-19)
 
 - Plan §42 (implementation record, G2 review, request policy, D14 JSON deviation), ADR-0026 status note, ARCHITECTURE network state, BOOK_PROVIDERS §8, ROADMAP, VALIDATION. D1-C and D31 unresolved; no cover access.

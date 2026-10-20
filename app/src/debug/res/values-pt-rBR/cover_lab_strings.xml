@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- Debug-only Cover Lab strings (Phase 4.5C.2B, D1-C-DEV). -->
+<resources>
+    <string name="cover_lab_action">Laboratório de capas (dev)</string>
+    <string name="cover_lab_title">Laboratório de capas – piloto de desenvolvimento</string>
+    <string name="cover_lab_note">Piloto de desenvolvimento, não o seletor de capas da biblioteca. As imagens baixadas ficam em armazenamento privado e nunca alteram a capa deste livro.</string>
+    <string name="cover_lab_disclosure_title">Permitir solicitações de capas on-line?</string>
+    <string name="cover_lab_disclosure">Para buscar capas, o ShelfOS envia o ISBN deste livro ao Open Library. O Open Library também vê seu endereço IP público e que a solicitação vem do ShelfOS (seu User-Agent). Nada do arquivo do livro, suas notas, destaques, estantes ou progresso de leitura é enviado. Pré-visualizações e downloads são opcionais, ficam no armazenamento privado do dispositivo durante este piloto e não alteram a capa da biblioteca. Isto é independente da configuração de metadados on-line.</string>
+    <string name="cover_lab_enable">Ativar piloto de capas</string>
+    <string name="cover_lab_disable">Desativar piloto de capas</string>
+    <string name="cover_lab_cancel">Cancelar</string>
+    <string name="cover_lab_close">Fechar</string>
+    <string name="cover_lab_find">Buscar capas</string>
+    <string name="cover_lab_finding">Buscando no Open Library…</string>
+    <string name="cover_lab_none">Nenhuma capa encontrada para este ISBN.</string>
+    <string name="cover_lab_preview">Pré-visualizar</string>
+    <string name="cover_lab_previewing">Carregando…</string>
+    <string name="cover_lab_inspect">Inspecionar</string>
+    <string name="cover_lab_back">Voltar à lista</string>
+    <string name="cover_lab_download">Baixar e usar no laboratório</string>
+    <string name="cover_lab_downloading">Baixando…</string>
+    <string name="cover_lab_selected">Seleção do laboratório</string>
+    <string name="cover_lab_selected_info">%1$d × %2$d px · edição %3$s do Open Library · armazenada neste dispositivo</string>
+    <string name="cover_lab_remove">Remover seleção</string>
+    <string name="cover_lab_source_edition">Open Library · edição %1$s</string>
+    <string name="cover_lab_exact">Edição exata (o ISBN coincide)</string>
+    <string name="cover_lab_other">Edição diferente – não confirmada para este livro</string>
+    <string name="cover_lab_warn_isbn">ISBN diferente</string>
+    <string name="cover_lab_warn_language">Idioma diferente</string>
+    <string name="cover_lab_warn_publisher">Editora diferente</string>
+    <string name="cover_lab_warn_low">Baixa confiança de correspondência</string>
+    <string name="cover_lab_warn_nocover">Sem capa registrada para esta edição</string>
+    <string name="cover_lab_dims">Tamanho decodificado: %1$d × %2$d px · proporção %3$s</string>
+    <string name="cover_lab_compare">Pré-visualização da apresentação</string>
+    <string name="cover_lab_shape">Formato</string>
+    <string name="cover_lab_shape_original">Original</string>
+    <string name="cover_lab_shape_custom">Personalizado %1$s</string>
+    <string name="cover_lab_crop">Cortar</string>
+    <string name="cover_lab_fit">Ajustar</string>
+    <string name="cover_lab_err_not_authorized">As solicitações de capas estão desativadas. Ative o piloto primeiro.</string>
+    <string name="cover_lab_err_no_isbn">Este livro não tem ISBN, então não é possível buscar uma edição exata.</string>
+    <string name="cover_lab_err_not_found">O Open Library não tem imagem para esta.</string>
+    <string name="cover_lab_err_offline">Sem conexão de rede. Nada foi alterado.</string>
+    <string name="cover_lab_err_timeout">O Open Library demorou demais para responder.</string>
+    <string name="cover_lab_err_rate_limited">O Open Library pediu que o ShelfOS reduza o ritmo. Tente novamente mais tarde.</string>
+    <string name="cover_lab_err_blocked">O Open Library recusou a solicitação. Tente novamente mais tarde.</string>
+    <string name="cover_lab_err_server">O Open Library teve um problema no servidor.</string>
+    <string name="cover_lab_err_malformed">O Open Library enviou uma resposta que o ShelfOS não pôde usar.</string>
+    <string name="cover_lab_err_redirect">A imagem foi movida para um host que o ShelfOS não permite, então não foi baixada.</string>
+    <string name="cover_lab_err_too_large">A imagem excede o limite seguro de download.</string>
+    <string name="cover_lab_err_not_image">A resposta não era uma imagem.</string>
+    <string name="cover_lab_err_mime">O tipo declarado da imagem não corresponde ao conteúdo, então foi rejeitada.</string>
+    <string name="cover_lab_err_unsupported">Este formato ou tamanho de imagem não é compatível.</string>
+    <string name="cover_lab_err_invalid">A imagem está danificada ou ilegível.</string>
+    <string name="cover_lab_err_storage">Não há armazenamento livre suficiente para baixar esta imagem.</string>
+    <string name="cover_lab_err_budget">O limite de solicitações de capas desta sessão foi atingido. Reinicie o app para continuar.</string>
+    <string name="cover_lab_err_busy">Outra solicitação de capa ainda está em andamento.</string>
+    <string name="cover_lab_err_gone">Este livro não está mais na biblioteca.</string>
+    <string name="cover_lab_err_failed">Algo deu errado. Nada foi alterado.</string>
+</resources>

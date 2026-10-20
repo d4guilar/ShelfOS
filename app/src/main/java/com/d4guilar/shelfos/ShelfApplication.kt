@@ -50,7 +50,7 @@ class ShelfApplication : Application() {
     val container by lazy { AppContainer(this) }
 }
 
-class AppContainer(application: Application) {
+class AppContainer(val application: Application) {
     private val database by lazy { ShelfDatabase.create(application) }
     val themes by lazy { RoomThemeRepository(database.appearance()) }
     val coverPresentation by lazy { RoomCoverPresentationRepository(database.coverPresentation()) }
@@ -91,10 +91,13 @@ class AppContainer(application: Application) {
     private val versionName: String by lazy {
         try { application.packageManager.getPackageInfo(application.packageName, 0).versionName ?: "dev" } catch (_: Exception) { "dev" }
     }
+    /** One floor on request starts to every Open Library service (metadata and, in debug builds, the Cover Lab), so the two can never add up. */
+    val openLibraryPacer by lazy { RequestPacer(OpenLibrary.MIN_INTERVAL_MS, SystemClock::elapsedRealtime) }
+    val userAgent: String get() = "ShelfOS/$versionName (+https://github.com/d4guilar/ShelfOS)"
     private val providerRegistry by lazy {
         // Identified by the real repository URL; no email is configured, so no claim to Open Library's higher identified-request tier is made.
-        val http = HttpUrlConnectionTransport(OpenLibrary.urlPolicy, "ShelfOS/$versionName (+https://github.com/d4guilar/ShelfOS)",
-            maxBytes = OpenLibrary.MAX_RESPONSE_BYTES, pacer = RequestPacer(OpenLibrary.MIN_INTERVAL_MS, SystemClock::elapsedRealtime))
+        val http = HttpUrlConnectionTransport(OpenLibrary.urlPolicy, userAgent,
+            maxBytes = OpenLibrary.MAX_RESPONSE_BYTES, pacer = openLibraryPacer)
         ProviderRegistry(listOf(RegisteredProvider(OpenLibrary.descriptor(), OpenLibraryProvider(http))), onlineSettings)
     }
     val manualMetadata by lazy { ManualMetadataLookup(ProviderLookup(providerRegistry, ProviderPolicyEngine(SystemClock::elapsedRealtime)), metadata) }

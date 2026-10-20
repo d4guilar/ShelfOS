@@ -266,3 +266,20 @@ Official-page findings that refine, and do not change, the decisions above (deta
 
 Open Library is the first real provider, registered with `TermsStatus.CONDITIONAL` and a `ScopedGrant("D1-M", {BOOK}, {IDENTIFIER_LOOKUP, SEARCH})`; covers are never granted. It is default OFF and
 needs an affirmative opt-in. Endpoints, request budget, authorization mechanism, privacy review, tests and limitations: plan §42.
+
+## 9. Cover Lab pilot (4.5C.2B, 2026-10-20, debug-only)
+
+Under **D1-C-DEV** (a ShelfOS development-pilot decision, not a rights grant) a debug build can find Open Library cover candidates for a Book, preview them and download chosen images into private pilot storage, shown through the real cover renderer. It is separate from, and never enabled by, the D1-M metadata opt-in; release builds have no entry. **D1-C-PROD and D31 stay unresolved**; Open Library stays `CONDITIONAL`; the D1-M grant still cannot authorize `COVERS`. Design, bounds and verification: plan §43.
+
+Status key: *implemented* = in the tree; *tested with fake data* = JVM and device tests with a scripted transport; *live* = a real request; *debug-only*; *production-blocked*.
+
+| Item | Status |
+| --- | --- |
+| Edition cover discovery (ISBN edition + one bounded editions page) | implemented, tested with fake data, debug-only |
+| Bounded image transport, validation, private storage | implemented, tested with fake data, debug-only |
+| Rendering through the shared cover renderer (all shapes, Crop/Fit) | implemented, tested on API 35 emulator and RP5 |
+| Live Open Library requests | not tested (manual procedure below) |
+| Redirect to a non-`covers.openlibrary.org` host | refused (`REDIRECT_BLOCKED`); live behavior unverified |
+| `ONLINE` slot, production picker, release retrieval, Inventaire | production-blocked / not implemented |
+
+**Manual live smoke test (owner-operated, debug build only).** 1) Install the debug build. 2) Open a Book that has an ISBN-13 (Book details -> Cover Lab (dev)). 3) Read the disclosure and choose Enable. 4) Find covers: expect one `/isbn/` and one `/works/.../editions.json?limit=8` request. 5) Preview one candidate, Inspect it, Download. 6) Compare shapes and Crop/Fit; confirm no request is made when changing them. 7) Restart the app with the network off and reopen the Cover Lab: the pick still shows. 8) Note whether the image URL redirects (an "image moved to a host ShelfOS does not allow" message means it did). Do not run this in bulk.

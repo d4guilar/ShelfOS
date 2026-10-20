@@ -8225,3 +8225,19 @@ No live request, no cover download, no app/production code, manifest, dependency
 | `gradlew :app:compileDebugAndroidTestKotlin` | pass (`OnlineMetadataUiTest` compiles) |
 | Merged debug manifest inspection | `INTERNET` from the app manifest only; `usesCleartextTraffic=false`; no new SDK components |
 | NOT RUN | instrumentation tests (no emulator/device), any live Open Library request, `lintRelease` |
+
+## PHASE 4.5C.2B COVER LAB PILOT (2026-10-20, debug-only, pending independent QA)
+
+| Command (executed by me) | Result |
+| --- | --- |
+| `gradlew :app:testDebugUnitTest` | **927 tests, 0 failures, 1 skipped** (69 new: `OpenLibraryCoverUrlTest` 6, `OpenLibraryCoverDiscoveryTest` 11, `CoverPilotServiceTest` 34, `ImageTransportTest` 11, `CoverPilotGeometryTest` 7) |
+| `OnlineCoverPilotUiTest` via `connectedDebugAndroidTest` on `shelfos-phase0` (API 35 emulator, Android 15) | **16/16** |
+| `OnlineCoverPilotUiTest` on Retroid Pocket 5 (Android 13, API 33, serial d8f7f1b6) via `adb install -r` + `am instrument` (app data kept; only the test package was removed afterwards) | **16/16** |
+| Emulator: CoverRendererUiTest / UserCoverUiTest / OnlineMetadataUiTest / UserCoverStoreTest / CoverLifecycleTest | 1 / 5 / 6 / 14 / 12, all pass |
+| `CoverPresentationUiTest` | RP5 **8/8**; API 35 emulator **6/8**: the 2 failures (`libraryGridKeepsSelectionScrollAndFocusAcrossPresentationChanges`, `rendererShapesOriginalBoundsFocusAndGeneratedFallback`) reproduce identically at `main` 40dbbd3 without these changes (pre-existing, emulator-specific) |
+| `gradlew :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :app:lintDebug` | pass; lint 0 errors |
+| Release APK inspection (dex and resources) | no `coverlab` classes, no `cover_lab` strings; `coverLabEntry` returns `null`; the inert main classes are present and un-called |
+| `git diff --check` | pass |
+| NOT RUN | any live Open Library request or image download; Samsung Galaxy Tab A; API 24 device; `lintRelease`; the full instrumentation suite |
+
+Caveats: the first install attempt used a different debug keystore (INSTALL_FAILED_UPDATE_INCOMPATIBLE); runs use the project keystore under `.tools/android-user` (`ANDROID_USER_HOME`), so updates are in place. All image bytes in tests are generated locally.

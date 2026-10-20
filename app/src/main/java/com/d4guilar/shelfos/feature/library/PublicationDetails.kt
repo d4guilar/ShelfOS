@@ -127,6 +127,7 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
                 TextButton({ editSnapshot = captureEditSnapshot(metadata.stored?.values); editing = true }, Modifier.testTag("edit_action"),
                     enabled = metadata.loaded) { Text(stringResource(R.string.action_edit)) }
                 if (userCovers != null) TextButton({ coverOpen = true }, Modifier.testTag("cover_action")) { Text(stringResource(R.string.action_cover)) }
+                if (item.category == MediaCategory.BOOK) LocalCoverLab.current?.Action(item)
                 if (online != null) TextButton({ online.open(item) }, Modifier.testTag("find_metadata_online_action"), enabled = metadata.loaded) { Text(stringResource(R.string.online_find_action)) }
                 TextButton({ removing = true }, Modifier.testTag("remove_action")) { Text(stringResource(R.string.action_remove)) }
             }
