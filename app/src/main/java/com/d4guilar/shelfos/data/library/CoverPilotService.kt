@@ -17,6 +17,7 @@ import com.d4guilar.shelfos.domain.metadata.MetadataQuery
 import com.d4guilar.shelfos.domain.metadata.ProviderException
 import com.d4guilar.shelfos.domain.metadata.ProviderFailureKind
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -142,6 +143,9 @@ class CoverPilotService(
     fun file(selection: PilotSelection): File = store.file(selection)
     fun removeSelection(itemId: String) = store.remove(itemId)
 
+    /** Whether [candidate] may be requested at all: the item is an authorized Book and the candidate belongs to Open Library. Checked before any I/O. */
+    private fun owned(item: LibraryItem, candidate: OnlineCoverCandidate) = authorized(item) && candidate.providerId == OpenLibrary.ID
+
     private fun authorized(item: LibraryItem) = item.category == MediaCategory.BOOK && authorization.permits(OpenLibrary.ID, item.category)
 
     private fun pauseFailure(): PilotResult.Failed? = (pausedUntil - nowMs()).takeIf { it > 0 }?.let { PilotResult.Failed(PilotFailure.RATE_LIMITED, it) }
@@ -166,7 +170,7 @@ class CoverPilotService(
 
     /** A small (M) look at one candidate. A preview already on disk is reused without any request. */
     suspend fun preview(item: LibraryItem, candidate: OnlineCoverCandidate): PilotResult<PilotArtwork> {
-        if (!authorized(item)) return PilotResult.Failed(PilotFailure.NOT_AUTHORIZED)
+        if (!owned(item, candidate)) return PilotResult.Failed(PilotFailure.NOT_AUTHORIZED)
         store.previewFile(item.id, candidate.key)?.let { f -> readCached(f)?.let { return PilotResult.Ok(PilotArtwork(f, it, true)) } }
         return transfer(item, candidate, CoverSize.MEDIUM, preview = true)
     }
@@ -176,7 +180,7 @@ class CoverPilotService(
      * again. The previous pick is replaced only after the new image validated and the manifest is written.
      */
     suspend fun download(item: LibraryItem, candidate: OnlineCoverCandidate): PilotResult<PilotArtwork> {
-        if (!authorized(item)) return PilotResult.Failed(PilotFailure.NOT_AUTHORIZED)
+        if (!owned(item, candidate)) return PilotResult.Failed(PilotFailure.NOT_AUTHORIZED)
         store.selection(item.id)?.let { s -> if (s.candidateKey == candidate.key && s.size == CoverSize.LARGE.letter)
             return PilotResult.Ok(PilotArtwork(store.file(s), PilotImage(s.mime, s.fileName.substringAfterLast('.'), s.width, s.height, s.width, s.height, s.bytes), true)) }
         return transfer(item, candidate, CoverSize.LARGE, preview = false)
@@ -185,13 +189,16 @@ class CoverPilotService(
     private fun readCached(f: File): PilotImage? = inspect(f)
 
     private suspend fun transfer(item: LibraryItem, candidate: OnlineCoverCandidate, size: CoverSize, preview: Boolean): PilotResult<PilotArtwork> {
+        if (!owned(item, candidate)) return PilotResult.Failed(PilotFailure.NOT_AUTHORIZED)   // before the URL, the slot, the budget or any request
         val url = OpenLibraryCovers.url(candidate.ref, size) ?: return PilotResult.Failed(PilotFailure.MALFORMED)
+        // The caller's own job, captured while still cancellable: the commit block below runs under NonCancellable, whose job never reflects it.
+        val caller = currentCoroutineContext()[Job]
         pauseFailure()?.let { return it }
         if (!slot.tryLock()) return PilotResult.Failed(PilotFailure.BUSY)   // a second press while a transfer runs starts nothing
         var raw: File? = null
         var out: File? = null
         try {
-            if (!authorized(item)) return PilotResult.Failed(PilotFailure.NOT_AUTHORIZED)
+            if (!owned(item, candidate)) return PilotResult.Failed(PilotFailure.NOT_AUTHORIZED)
             if (!CoverStoragePolicy.admits(freeBytes(), OpenLibraryCovers.MAX_RAW_BYTES.toLong())) return PilotResult.Failed(PilotFailure.STORAGE_FULL)
             if (!budget.takeImage()) return PilotResult.Failed(PilotFailure.BUDGET_EXHAUSTED)
             val tmpRaw = (if (preview) store.newPreviewTemporary(item.id) else store.newTemporary(item.id)).also { raw = it }
@@ -228,12 +235,15 @@ class CoverPilotService(
             } catch (_: OutOfMemoryError) { return PilotResult.Failed(PilotFailure.UNSUPPORTED_IMAGE) }
             if (image.width <= 0 || image.height <= 0) return PilotResult.Failed(PilotFailure.INVALID_IMAGE)
             currentCoroutineContext().ensureActive()
-            // Past this point the result is published: a cancelled dialog cannot leave a half-committed pick. Consent and the item are
-            // re-verified immediately before the commit, inside the same non-cancellable block, so a revocation or removal that happened
-            // during the transfer commits nothing (the temporary files are removed below and the previous pick is untouched).
+            // The commit runs under NonCancellable so a cancelled dialog cannot leave a half-written pick. Immediately before it, with no
+            // suspension point in between, the caller's job, consent, provider and the item are re-verified: a cancellation, revocation or
+            // removal that happened during the transfer commits nothing (the temporaries are removed below and the previous pick is untouched).
+            // Residual: a cancellation arriving after these synchronous checks but before the rename completes cannot be observed; the file
+            // and manifest are still replaced atomically, so the result is a complete pick, never a partial one.
             return withContext(NonCancellable) {
-                if (!authorized(item) || candidate.providerId != OpenLibrary.ID) return@withContext PilotResult.Failed(PilotFailure.NOT_AUTHORIZED)
                 if (!itemExists(item.id)) return@withContext PilotResult.Failed(PilotFailure.ITEM_GONE)
+                caller?.ensureActive()
+                if (!owned(item, candidate)) return@withContext PilotResult.Failed(PilotFailure.NOT_AUTHORIZED)
                 if (preview) {
                     val f = store.commitPreview(item.id, tmpOut, candidate.key, image.extension)
                     PilotResult.Ok(PilotArtwork(f, image, false))

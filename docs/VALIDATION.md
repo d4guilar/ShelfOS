@@ -8252,7 +8252,26 @@ Caveats: the first install attempt used a different debug keystore (INSTALL_FAIL
 | `CoverPresentationUiTest` / `OnlineMetadataUiTest` on the RP5 | 8/8 / 6/6 |
 | `UserCoverUiTest` on the RP5 | 4/5: `aChosenCoverIsReportedAndRestoringExplainsItsConsequence` ("cover_restore not displayed") fails identically with the fixture-path change reverted, so it is a pre-existing short-landscape layout failure, not a regression |
 | `git diff --check` (`177bea3..HEAD`, `40dbbd3..HEAD`) | pass |
-| BLOCKED | API 35 `shelfos-phase0` emulator: about 2.3 GB of host RAM was free and the AVD requests 4 GB, so it was not started |
+| BLOCKED (my R1 run) | API 35 `shelfos-phase0` emulator: I did not start it because only about 2.3 GB of *host* RAM was free. The statement that the AVD requests 4 GB was wrong: its configured guest RAM is `hw.ramSize=2G`. Independent R1 QA later ran `OnlineCoverPilotUiTest` 16/16 on it (see R2) |
 | NOT RUN | any live Open Library or Archive.org request (none occurred); Galaxy Tab A; API 24 device |
 
 Note: the debug build must be signed with the default `~/.android` debug key to update the RP5's installed app in place (the project keystore under `.tools/android-user` produced INSTALL_FAILED_UPDATE_INCOMPATIBLE on this device). Stale `ui-pick-*`/`user-cover-*` files from earlier runs remain in the RP5 app cache (about 10); they were not deleted, and the new runs add none.
+
+## PHASE 4.5C.2B R2 FINAL AUDIT CORRECTIONS (2026-10-20, pending independent delta QA)
+
+| Item | Result |
+| --- | --- |
+| Test-count reconciliation | 940 JVM tests at R1 (939 passed, 1 pre-existing skip), independently confirmed. The five original Cover Lab classes hold **70 test methods** (6 + 12 + 34 + 11 + 7). Independent QA counts **71** added over the original 856-test 4.5C.2A base at 927 (that count includes the scoped-authorization regression); the two figures measure different things and neither is rounded. R1 added 13 methods (940); R2 adds the ones in the next row |
+| Independent R1 QA (recorded, not run by me) | `OnlineCoverPilotUiTest` 16/16 on the RP5 and 16/16 on the API 35 `shelfos-phase0` emulator (guest RAM `hw.ramSize=2G`) |
+| Documentation corrections | emulator RAM statement (N-3); HEAD-first PowerShell diagnostic with the correct `HTTP/` filter and an honest description of GET transfer behavior (N-4); family B size prefix is `l_`/`m_`/`s_`, empty only for unsized originals (N-5); stale `coverEditions` comment (N-6) |
+| Code | N-7 removed the unsourced empty-prefix family B URL from `OpenLibraryCoverStorage` (still unwired; the transport still refuses Archive.org); N-1 a foreign-provider candidate is rejected before the URL, the slot, the budget or any request; N-2 the caller's own `Job` is re-checked inside the commit block after the last suspension point |
+| Residual (documented, not claimed away) | a cancellation arriving after the final synchronous checks but before the rename returns cannot be observed; the file and manifest are still replaced atomically, so the outcome is a complete pick, never a partial one |
+
+| Command (executed by me) | Result |
+| --- | --- |
+| `gradlew :app:testDebugUnitTest` | **941 tests, 0 failures, 1 skipped** (940 passed). R2 added 1 net method: the foreign-provider test was rewritten (zero requests, zero budget use, no file, previous pick intact) and a cancellation-before-commit test was added (`CoverPilotServiceTest` now 39); `OpenLibraryCoverStorageTest` family B assertions were corrected |
+| `gradlew :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :app:lintDebug` | pass; release APK still has no `coverlab` classes or `cover_lab` strings |
+| `OnlineCoverPilotUiTest` on Retroid Pocket 5 (Android 13, API 33, serial d8f7f1b6, identity verified; `adb install -r`, app data kept) | **16/16** |
+| `CoverPresentationUiTest` on the RP5 | 8/8 |
+| `OnlineCoverPilotUiTest` on the `shelfos-phase0` API 35 emulator (guest `hw.ramSize=2G`, about 2.2 GB host RAM free at start) | **16/16** |
+| NOT RUN | any live Open Library or Archive.org request (none occurred); Galaxy Tab A; `UserCoverUiTest` on the RP5 (its known short-landscape failure is unrelated and unchanged) |

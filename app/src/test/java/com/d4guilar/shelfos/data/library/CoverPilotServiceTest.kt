@@ -59,6 +59,7 @@ class CoverPilotServiceTest {
     private var now = 1_000_000L
     private var free = 10L * 1024 * 1024 * 1024
     private var exists = true
+    private var onExists: (() -> Unit)? = null
     private var editionCalls = 0
     private var width = 400
     private var height = 600
@@ -76,7 +77,7 @@ class CoverPilotServiceTest {
         store = CoverPilotStore(root(), previews(), { now })
         val norm = normalizer ?: PilotImageNormalizer { raw, out -> out.writeBytes(raw.readBytes()); PilotImage("image/jpeg", "jpg", width, height, width, height, out.length()) }
         return CoverPilotService(auth, store, images, { editionCalls++; listOf(CoverEdition("OL1M", "Matilda", listOf(5L), listOf(PublicationIdentifier(IdentifierType.ISBN_13, isbn)), "Puffin", "1998", "en", true)) },
-            { query }, { exists }, { free }, norm, { f -> if (f.length() > 0) PilotImage("image/jpeg", f.extension, width, height, width, height, f.length()) else null }, budget, { now })
+            { query }, { onExists?.invoke(); exists }, { free }, norm, { f -> if (f.length() > 0) PilotImage("image/jpeg", f.extension, width, height, width, height, f.length()) else null }, budget, { now })
     }
 
     private fun failed(r: PilotResult<*>) = (r as PilotResult.Failed).reason
@@ -457,9 +458,34 @@ class CoverPilotServiceTest {
         assertEquals("5", store.selection(item.id)!!.refValue); assertTrue(leftovers().isEmpty())
     }
 
-    @Test fun `a candidate from another provider is never committed`() = runTest {
+    @Test fun `a candidate from another provider is rejected before any request, budget use or file`() = runTest {
         auth.enable()
-        assertEquals(PilotFailure.NOT_AUTHORIZED, failed(service().download(item, candidate().copy(providerId = "inventaire"))))
-        assertNull(store.selection(item.id)); assertTrue(leftovers().isEmpty())
+        val s = service(PilotBudget(maxImages = 1))
+        val first = ok(s.download(item, candidate(5)))
+        val foreign = candidate(6).copy(providerId = "inventaire")
+        assertEquals(PilotFailure.NOT_AUTHORIZED, failed(s.download(item, foreign)))
+        assertEquals(PilotFailure.NOT_AUTHORIZED, failed(s.preview(item, foreign)))
+        assertEquals("only the first, legitimate transfer was requested", 1, images.requests.size)
+        assertEquals("5", store.selection(item.id)!!.refValue); assertTrue(first.file.exists()); assertTrue(leftovers().isEmpty())
+        assertNull(s.cachedPreview(item.id, foreign))
+        // The budget was not spent by the rejected attempts: with maxImages = 1 it is exhausted only by the first transfer.
+        assertEquals(PilotFailure.BUDGET_EXHAUSTED, failed(s.download(item, candidate(7))))
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun `cancellation just before the commit publishes nothing and keeps the previous pick intact`() = runTest {
+        auth.enable()
+        val s = service()
+        val first = ok(s.download(item, candidate(5)))
+        val job = launch { s.download(item, candidate(6)) }
+        onExists = { job.cancel() }   // the last suspension point before the commit: the caller is cancelled here
+        advanceUntilIdle(); job.join()
+        assertTrue(job.isCancelled)
+        val kept = store.selection(item.id)!!
+        assertEquals("5", kept.refValue); assertTrue(store.file(kept).readBytes().contentEquals(JPEG))
+        assertEquals(listOf("selection.properties", first.file.name).sorted(), root().resolve(item.id).list()!!.sorted())
+        assertTrue(leftovers().isEmpty())
+        onExists = null
+        ok(s.download(item, candidate(6)))   // the slot was released and the store is healthy
     }
 }

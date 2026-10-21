@@ -116,7 +116,7 @@ class OpenLibraryProvider(private val http: HttpTransport, private val wallClock
         val work = works.singleOrNull() ?: return listOf(exact)
         if (maxEditions == 1) return listOf(exact)
         val alternatives = try {
-            // One extra edition is requested so that the exact edition, if it is listed again, still leaves room for the others.
+            // One bounded editions page (`limit` = maxEditions); the exact edition is dropped from it if listed again, and the combined list is capped at maxEditions.
             val r = get("https://${OpenLibrary.HOST}/works/$work/editions.json?limit=$maxEditions") ?: return listOf(exact)
             parseObject(r).asList("entries").orEmpty().take(maxEditions).mapNotNull { e ->
                 val o = e.asObject() ?: return@mapNotNull null

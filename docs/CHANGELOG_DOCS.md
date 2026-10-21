@@ -1,5 +1,9 @@
 # Documentation Changelog
 
+## Phase 4.5C.2B R2 final audit corrections (2026-10-20)
+
+- Plan §43.2; BOOK_PROVIDERS §9–10 (diagnostic fixed, family B prefix, F-2 closing requirements); VALIDATION (emulator RAM, count reconciliation, R2 results). F-2 stays open; no host trusted; D1-C-PROD and D31 unresolved.
+
 ## Phase 4.5C.2B R1 remediation (2026-10-20)
 
 - Plan §43.1; BOOK_PROVIDERS §9 (corrected smoke-test sequence, status labels, F-2 diagnostic) and new §10 (cover-storage redirect families, proposed policy); VALIDATION (corrected counts: 70 original test methods, 940 total, RP5 results, emulator blocked). F-2 stays open; no Archive.org host is trusted.

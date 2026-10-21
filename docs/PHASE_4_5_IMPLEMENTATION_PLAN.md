@@ -2946,3 +2946,7 @@ Goal: prove one pipeline end to end: provider candidate -> edition verification 
 - **F-7 fixed.** Fixtures moved under test-owned directories (`OnlineCoverPilotUiTest`, and the pre-existing `UserCoverUiTest`); counts reconciled (see VALIDATION).
 - **F-2 open.** Specification, derivation helper and diagnostic in BOOK_PROVIDERS §9–10; no Archive.org host is trusted.
 - **F-5, F-6 deferred** (accepted low behavior).
+
+### 43.2 R2 final audit corrections (2026-10-20)
+
+Documentation: emulator guest RAM is `hw.ramSize=2G` (my earlier "4 GB" was wrong; the R1 blocked run was host-RAM-limited and independent QA later passed 16/16 on it); corrected HEAD-first diagnostic; family B prefix `l_`/`m_`/`s_`; `coverEditions` comment; test counts (70 methods in the five original classes; 71 over the 856 base per independent QA). Code: `OpenLibraryCoverStorage` no longer emits the unsourced empty-prefix variant (unwired); a foreign-provider candidate is rejected before any request or budget use; the caller's `Job` is re-verified at the commit boundary (a tiny check-to-rename window remains and is documented, with atomic replacement preserved). **F-2 remains open and fail-closed; D1-C-DEV is debug-only; D1-C-PROD and D31 are unresolved.** Accepted LOW: F-4, F-5, F-6.

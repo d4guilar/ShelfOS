@@ -9,9 +9,10 @@ package com.d4guilar.shelfos.data.metadata.openlibrary
  *
  * - Family A (legacy cluster, sizes L/unsized only, ids below an operator-configured bound that is not public):
  *   `https://archive.org/download/olcovers{id/10000}/olcovers{id/10000}-{SIZE}.zip/{id}-{SIZE}.jpg`.
- * - Family B (batched uploads, ids >= 8,000,000): `https://archive.org/download/{p}covers_{id/1e6:04}/{p}covers_{id/1e6:04}_{(id%1e6)/1e4:02}.zip/{id:010}[-{SIZE}].jpg`
+ * - Family B (batched uploads, ids >= 8,000,000): `https://archive.org/download/{p}covers_{id/1e6:04}/{p}covers_{id/1e6:04}_{(id%1e6)/1e4:02}.zip/{id:010}-{SIZE}.jpg`
  *   where `p` is `s_`/`m_`/`l_` for a sized request.
- * Unknown: whether Family B's size prefix for `L` is `l_` or empty on the wire, and the second hop (archive.org -> a data-serving host).
+ * The size prefix is the lowercased requested size plus an underscore (`l_`, `m_`, `s_`); the empty prefix belongs to unsized originals, which this
+ * pilot never requests. Unknown: the second hop (archive.org -> a data-serving host).
  */
 object OpenLibraryCoverStorage {
     private const val FAMILY_B_MIN_ID = 8_000_000L
@@ -28,11 +29,8 @@ object OpenLibraryCoverStorage {
             val millions = "%04d".format(coverId / 1_000_000)
             val batch = "%02d".format((coverId % 1_000_000) / 10_000)
             val pcid = "%010d".format(coverId)
-            val prefixes = if (size == CoverSize.LARGE) listOf("l_", "") else listOf("${size.letter.lowercase()}_")
-            for (p in prefixes) {
-                val folder = "${p}covers_$millions"
-                out += "https://archive.org/download/$folder/${folder}_$batch.zip/$pcid-${size.letter}.jpg"
-            }
+            val folder = "${size.letter.lowercase()}_covers_$millions"
+            out += "https://archive.org/download/$folder/${folder}_$batch.zip/$pcid-${size.letter}.jpg"
         }
         return out
     }

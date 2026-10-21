@@ -116,7 +116,8 @@ class OpenLibraryCoverStorageTest {
 
     @Test fun `family B is derived from item and batch`() {
         val hops = OpenLibraryCoverStorage.firstHops(8_000_123, CoverSize.LARGE)
-        assertTrue("https://archive.org/download/l_covers_0008/l_covers_0008_00.zip/0008000123-L.jpg" in hops)
+        assertEquals(listOf("https://archive.org/download/olcovers800/olcovers800-L.zip/8000123-L.jpg", "https://archive.org/download/l_covers_0008/l_covers_0008_00.zip/0008000123-L.jpg"), hops)
+        assertTrue("an empty prefix is not a sized-L form", hops.none { it.contains("/covers_0008/") })
         assertEquals(listOf("https://archive.org/download/s_covers_0008/s_covers_0008_00.zip/0008000123-S.jpg"), OpenLibraryCoverStorage.firstHops(8_000_123, CoverSize.SMALL))
         assertTrue(OpenLibraryCoverStorage.firstHops(987_654_321, CoverSize.MEDIUM).single().contains("m_covers_0987/m_covers_0987_65.zip/0987654321-M.jpg"))
     }
