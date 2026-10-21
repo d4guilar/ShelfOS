@@ -18,6 +18,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -205,12 +207,14 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
         val chromeAlphaValue = pendingTransition?.let { chromeAlpha(transitionProgress) } ?: 1f
         Row(Modifier.fillMaxSize()) {
             if (!reading && layout.navigation == NavigationLayout.RAIL) {
-                Column(Modifier.width(88.dp).fillMaxHeight().graphicsLayer(alpha = chromeAlphaValue)
+                // Wide enough for the longest localized label on one line (never below the 88 dp default), so no word breaks.
+                val navMetrics = rememberNavMetrics()
+                Column(Modifier.width(maxOf(88.dp, (navMetrics.labelWidths.max() + NAV_ITEM_PADDING * 2))).fillMaxHeight().graphicsLayer(alpha = chromeAlphaValue)
                     .verticalScroll(rememberScrollState()).testTag("navigation_rail")) {
                     Spacer(Modifier.height(t.spacing.medium))
                     Destination.entries.forEach { destination ->
                         NavigationItem(destination, route == destination.route || (destination == Destination.LIBRARY && route.startsWith("details")),
-                            Modifier.fillMaxWidth(), onClick = { navigate(destination) })
+                            Modifier.fillMaxWidth(), true, navMetrics.itemHeight, onClick = { navigate(destination) })
                     }
                 }
                 Box(Modifier.width(1.dp).fillMaxHeight().background(t.colors.divider))
@@ -301,12 +305,7 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
                 }
                 if (!reading && layout.navigation == NavigationLayout.BOTTOM) {
                     HorizontalDivider(color = t.colors.divider)
-                    Row(Modifier.fillMaxWidth().graphicsLayer(alpha = chromeAlphaValue).testTag("bottom_navigation")) {
-                        Destination.entries.forEach { destination ->
-                            NavigationItem(destination, route == destination.route || (destination == Destination.LIBRARY && route.startsWith("details")),
-                                Modifier.weight(1f), onClick = { navigate(destination) })
-                        }
-                    }
+                    BottomNavigation(route, Modifier.graphicsLayer(alpha = chromeAlphaValue), onNavigate = ::navigate)
                 }
             }
         }
@@ -319,16 +318,65 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
     }
 }
 
+private val NAV_ITEM_PADDING = 4.dp
+private val NAV_MIN_TARGET = 48.dp
+
+private fun isSelected(destination: Destination, route: String) =
+    route == destination.route || (destination == Destination.LIBRARY && route.startsWith("details"))
+
+/** Single-line label widths and the one item height every presentation shares, measured for the current locale and font scale. */
+private class NavMetrics(val labelWidths: List<androidx.compose.ui.unit.Dp>, val itemHeight: androidx.compose.ui.unit.Dp)
+
 @Composable
-private fun NavigationItem(destination: Destination, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun rememberNavMetrics(): NavMetrics {
     val t = LocalShelfTokens.current
-    Column(modifier.testTag("nav_${destination.route}")
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+    val density = LocalDensity.current
+    // The selected style is the widest, so a label never outgrows its measured width when it becomes selected.
+    val style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
+    val labels = Destination.entries.map { stringResource(it.labelRes) }
+    return remember(labels, style, density, t.icons.size) {
+        val results = labels.map { measurer.measure(it, style, maxLines = 1, softWrap = false) }
+        with(density) {
+            NavMetrics(results.map { it.size.width.toDp() }, 12.dp * 2 + t.icons.size + 6.dp + results.maxOf { it.size.height }.toDp())
+        }
+    }
+}
+
+/**
+ * The bottom bar. Full one-line labels when every one fits its fifth of the width; otherwise only the selected label, given
+ * the room it needs; otherwise icons only. The accessible name is always the full label and the height never changes.
+ */
+@Composable
+internal fun BottomNavigation(route: String, modifier: Modifier, onNavigate: (Destination) -> Unit) {
+    val nav = rememberNavMetrics()
+    BoxWithConstraints(modifier.fillMaxWidth().testTag("bottom_navigation")) {
+        val selectedIndex = Destination.entries.indexOfFirst { isSelected(it, route) }
+        val layout = navLabelLayout(maxWidth, nav.labelWidths, selectedIndex, NAV_ITEM_PADDING, NAV_MIN_TARGET)
+        Row(Modifier.fillMaxWidth()) {
+            Destination.entries.forEachIndexed { index, destination ->
+                NavigationItem(destination, index == selectedIndex, Modifier.width(layout.itemWidths[index]),
+                    layout.mode == NavLabelMode.ALL || (layout.mode == NavLabelMode.SELECTED_ONLY && index == selectedIndex),
+                    nav.itemHeight, onClick = { onNavigate(destination) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun NavigationItem(destination: Destination, selected: Boolean, modifier: Modifier, showLabel: Boolean,
+    itemHeight: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
+    val t = LocalShelfTokens.current
+    val label = stringResource(destination.labelRes)
+    Column(modifier.height(itemHeight).testTag("nav_${destination.route}")
         .background(if (selected) t.colors.muted else t.colors.canvas)
         .shelfAction(selected = selected, role = Role.Tab, onClick = onClick)
-        .padding(horizontal = 2.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        // Icon-only presentations still announce the complete localized destination name.
+        .semantics { if (!showLabel) contentDescription = label }
+        .padding(horizontal = NAV_ITEM_PADDING), horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically)) {
         ShelfIcon(destination.icon)
-        Text(stringResource(destination.labelRes), style = MaterialTheme.typography.labelSmall,
+        if (showLabel) Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
     }
 }

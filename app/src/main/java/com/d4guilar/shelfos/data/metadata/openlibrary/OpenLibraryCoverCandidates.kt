@@ -25,6 +25,7 @@ object OpenLibraryCoverCandidates {
             if (!exact) warnings += CoverWarning.DIFFERENT_ISBN
             if (MatchSignal.LANGUAGE in evidence.contradictions) warnings += CoverWarning.DIFFERENT_LANGUAGE
             if (MatchSignal.PUBLISHER in evidence.contradictions) warnings += CoverWarning.DIFFERENT_PUBLISHER
+            if (MatchSignal.YEAR in evidence.contradictions) warnings += CoverWarning.DIFFERENT_YEAR
             if (evidence.tier != MatchConfidence.VERY_HIGH) warnings += CoverWarning.LOW_CONFIDENCE
             val refs: List<OpenLibraryCoverRef> = when {
                 edition.coverIds.isNotEmpty() -> edition.coverIds.map { OpenLibraryCoverRef.Id(it) }.let { if (exact) it else it.take(1) }

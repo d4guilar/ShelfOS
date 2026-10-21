@@ -549,6 +549,7 @@
     <string name="online_error_disabled">Online metadata is turned off.</string>
     <string name="online_candidate_work">Work-level match: the edition is not identified, so only the title and author are considered.</string>
     <string name="online_confidence_exact">Exact ISBN match</string>
+    <string name="online_confidence_isbn_verify">ISBN matches — verify edition details</string>
     <string name="online_confidence_likely">Possible match. Check the details before applying.</string>
     <string name="online_confidence_none">Does not match this book</string>
     <string name="online_conflicts">Conflicts: %1$s</string>

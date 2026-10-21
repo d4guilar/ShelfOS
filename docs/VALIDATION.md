@@ -8331,3 +8331,39 @@ The RP5 auto-rotates, so the two RP5 reports were taken in different orientation
 - **NAV-1** Bottom-navigation labels split mid-word (EN Settings at 320 dp / font 1.5; ES Biblioteca and Estantes at 320 dp / font 1.5; PT-BR Configuracoes at 320 dp / font 1.0 and 393 dp / font 1.3). Public-release quality issue; keep the five destinations Library / Search / Notes / Shelves / Settings and the hierarchy.
 - **META-1** "Exact edition (ISBN matches)" overstates confidence when publisher or year contradict (live UAT: a 1949 Dodd, Mead record for a 2011 Harper paperback). Future: separate identifier agreement from bibliographic agreement; matching unchanged.
 - **F-2** Archive.org redirect compatibility remains unresolved for some cover ids; one actual L download succeeded without a redirect. No transport or authorization change.
+
+
+## PHASE 4.5C.2C UX STABILIZATION: NAV-1, R4-1, META-1 (2026-10-21, pending independent QA)
+
+Branch `phase-4.5/4.5c2c-ux-stabilization` from `main` `002f7e3` (PR #55). No live provider request, Room change, transport change or provider-permission change; the D1-C-PROD owner authorization is recorded in documentation only (plan §43.5) and no production cover retrieval is enabled.
+
+**Fixes (root cause and design: plan §43.5).** NAV-1: measured adaptive bottom bar (all labels, else selected label only, else icons only; never wrapped; one fixed height; full name as the accessible label; rail widens to its longest label). R4-1: Read / Continue reading / Try to open now follows reading progress and precedes the structured metadata and description. META-1: "ISBN matches" / "ISBN matches — verify edition details" replace "Exact edition (ISBN matches)"; new `DIFFERENT_YEAR` warning from the existing matcher contradiction; matching unchanged.
+
+**JVM:** `:app:testDebugUnitTest` 958 tests, 0 failures, 1 skipped (944 before; +14: `EditionLabelsTest` 10, `NavigationLabelPolicyTest` 4). `assembleDebug`, `assembleRelease`, `assembleDebugAndroidTest`, `lintDebug`, `git diff --check`: pass.
+
+**Instrumented (executed counts; `am instrument`, no uninstall, no data cleared).**
+
+| Class | API 35 emulator (1080 x 2340, portrait) | RP5 (d8f7f1b6) |
+| --- | --- | --- |
+| `BottomNavigationLabelsUiTest` (new; EN/ES/PT-BR x 320/360/393 dp x font 1.0/1.3/1.5/2.0, every destination selected, one bar height, tap) | 3/3 | 3/3 portrait-or-auto and 3/3 forced landscape |
+| `PrimaryReadActionVisibilityUiTest` (new; Read bottom <= viewport bottom at 393 x 700 for all four categories, order, label state, 320/360/393 long-title and font 1.5/2.0 reachable by scroll, landscape) | 5/5 | 5/5 and 5/5 forced landscape |
+| `PublicationDetailsResponsiveUiTest` | 14/14 | 14/14 and 14/14 forced landscape |
+| `NavigationSmokeTest` (touch, keyboard Enter/D-pad center, injected gamepad) | 28/28 | 28/28 and 28/28 forced landscape |
+| `AppLanguageInstrumentedTest` | 3/3 | 3/3 |
+| `OnlineMetadataUiTest` | 6/6 | 6/6 |
+| `OnlineCoverPilotUiTest` | 16/16 | 16/16 |
+| `MetadataUiTest` | 9/9 | 8/9 (baseline) |
+| `UserCoverUiTest` | 5/5 | 5/5 |
+| `CoverPresentationUiTest` | 6/8 (baseline) | 8/8 |
+
+**Baseline versus new.** On a stashed clean `main` build the same two failures reproduce: emulator `CoverPresentationUiTest` (`libraryGridKeepsSelectionScrollAndFocusAcrossPresentationChanges`, `rendererShapesOriginalBoundsFocusAndGeneratedFallback`) and RP5 `MetadataUiTest.editorIsReachableAndConfirmableWithKeyboardAndDpad`. Identical names and counts with and without this change: **no new failure**. (The RP5 count of 1 differs from QA's earlier 3 for that class; orientation, rotation and timing were not controlled between runs, and no causal claim is made.)
+
+**Real screens.** Emulator, `wm size`/`font_scale`/`set-app-locales`, restored afterwards: EN 320/393 dp at 1.0 and 1.5, EN 360 at 2.0, ES 320/393 at 1.0 and 1.5, ES 360 at 1.5, PT-BR 320/393 at 1.0 and 1.5, PT-BR 393 at 1.3 (15 screenshots). No label breaks mid-word; at 320 dp with font 1.5 only the selected label is shown ("Biblioteca" in ES and PT-BR), the others show icons; at 393 dp / font 1.0 every label is shown. Evidence (local, untracked): the scratchpad `shots/` folder. RP5: genuine portrait (360 x ~640 dp) with the owner's real Crooked House showed Continue reading fully visible above the description, and forced landscape (`ROTATION_90`) showed the rail intact. RP5 rotation settings were restored to `accelerometer_rotation=1`, `user_rotation=1`; the owner's book and data were not touched (only the test-fixture ids the existing suite adds and removes).
+
+**Limits, stated plainly.**
+- The R4 fixtures have no stored description, so the viewport tests prove ordering and placement; the long-description case was verified visually on the RP5's real book, not by a fixture.
+- Hardware gamepad/keyboard were not used: gamepad evidence is injected key events only.
+- Font scale 2.0 and the bar at 320 dp were tested on the composable at constrained widths and on the emulator's real screen for EN 360/2.0; the 2.0 case on a physical screen in ES/PT-BR was not exercised.
+- TalkBack was not run; accessibility is asserted through semantics (content description or text equals the full localized label, selected state, 48 dp targets).
+- META-1 strings were verified by key parity and unit tests, not visually on a live Open Library result (no live request was made).
+- F-2 unchanged and unresolved; nothing in this change affects the transport.

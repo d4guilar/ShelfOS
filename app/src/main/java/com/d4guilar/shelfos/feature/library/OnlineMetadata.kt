@@ -226,7 +226,8 @@ private fun CandidateCard(c: ReviewCandidate, index: Int, onApply: () -> Unit) {
             if (isbns.isNotEmpty()) Text(stringResource(R.string.online_isbn_line, isbns.joinToString(", ")), style = MaterialTheme.typography.bodySmall)
             listOfNotNull(v.publisher, v.publishedDate, v.language).takeIf { it.isNotEmpty() }?.let { Text(it.joinToString(" · "), style = MaterialTheme.typography.bodySmall) }
             Text(stringResource(when {
-                c.tier == MatchConfidence.VERY_HIGH && MatchSignal.IDENTIFIER in c.agreements && !c.rejected -> R.string.online_confidence_exact
+                metadataIsbnLabel(c.tier, c.agreements, c.contradictions, c.rejected) == IsbnLabel.ISBN_MATCHES -> R.string.online_confidence_exact
+                metadataIsbnLabel(c.tier, c.agreements, c.contradictions, c.rejected) == IsbnLabel.ISBN_MATCHES_VERIFY -> R.string.online_confidence_isbn_verify
                 c.applicable -> R.string.online_confidence_likely
                 else -> R.string.online_confidence_none
             }), style = MaterialTheme.typography.labelMedium)

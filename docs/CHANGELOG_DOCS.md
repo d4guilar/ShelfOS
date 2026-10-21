@@ -1,5 +1,9 @@
 # Documentation Changelog
 
+## Phase 4.5C.2C UX stabilization and production-cover authorization record (2026-10-21)
+
+- Plan: reconciled header status, decision rows D1-C-PROD (owner-authorized to implement; not Open Library approval, not an image licence) and D31 (clarified operational/compliance consideration), new §43.5 (NAV-1, R4-1, META-1, status vocabulary, F-2 unchanged) and §44 (proposed 4.5C.3A manual USER selection). ADR-0026 update note; BOOK_PROVIDERS header and §9a edition labels; ROADMAP reconciled status; VALIDATION 4.5C.2C evidence. No production cover retrieval is enabled.
+
 ## Phase 4.5C.2B R4.1 corrections (2026-10-21)
 
 - VALIDATION (R4.1): responsive hero test follows the real viewport (portrait hero asserted only on a portrait host, otherwise skipped), orientation of RP5/Codex results stated, landscape-artwork statement corrected; plan §43.4 lists R4-1, NAV-1, META-1 and F-2. No production change.
