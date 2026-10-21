@@ -218,7 +218,9 @@ class CoverPresentationUiTest {
             compose.waitUntil(5_000) { artworkBounds().size == 1 }
             val cover = bounds("details_cover"); val root = bounds("window")
             assertEquals("$id in $window: whole artwork at its real (clamped) ratio", ratio, cover.ratio(), 0.03f)
-            assertTrue("$id in $window: height-first, ≤ 40% of the window", cover.height <= root.height * 0.4f + 1f)
+            // 4.5C.2B R4: a tall portrait pane (taller than wide, narrower than 600 dp, at least 600 dp tall) shows the larger hero (≤ 46%); every other window keeps the 40% rule.
+            val hero = window.second > window.first && window.first < 600.dp && window.second >= 600.dp
+            assertTrue("$id in $window: height-first, ≤ ${if (hero) 46 else 40}% of the window", cover.height <= root.height * (if (hero) 0.46f else 0.4f) + 1f)
             assertTrue("$id in $window: inside the pane", cover.left >= root.left - 1f && cover.right <= root.right + 1f)
             val read = bounds("read_action")
             assertTrue("$id in $window: Read is in view without scrolling", read.bottom <= root.bottom + 1f && read.top >= cover.bottom)

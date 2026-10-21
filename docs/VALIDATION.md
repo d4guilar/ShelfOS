@@ -8275,3 +8275,32 @@ Note: the debug build must be signed with the default `~/.android` debug key to 
 | `CoverPresentationUiTest` on the RP5 | 8/8 |
 | `OnlineCoverPilotUiTest` on the `shelfos-phase0` API 35 emulator (guest `hw.ramSize=2G`, about 2.2 GB host RAM free at start) | **16/16** |
 | NOT RUN | any live Open Library or Archive.org request (none occurred); Galaxy Tab A; `UserCoverUiTest` on the RP5 (its known short-landscape failure is unrelated and unchanged) |
+
+## PHASE 4.5C.2B R4 RESPONSIVE PUBLICATION DETAILS AND PORTRAIT QA (2026-10-20, pending independent QA)
+
+**Defect (user-observed during the live UAT).** The Publication Details actions were one `Row` of `TextButton`s. A Row measures children in order and gives the last ones whatever width is left, so on a phone "Find metadata online" and **Remove** were measured as slivers: reproduced on the RP5 with the new tests against the old code (Spanish: *Find metadata online* **4 dp** wide, *Remove* **40 dp**, 24 dp "Edit" heights) and on a genuine portrait emulator screen (Find wrapped to three lines and Remove fell out of view). **Fix:** `FlowRow` (wraps, never squeezes), the four action buttons also take `activateOnGamepadConfirm` (A opens the Remove *confirmation* only). **Also in this commit (addendum):** the portrait hero cover and the metadata/description separation.
+
+| Change | Before | After |
+| --- | --- | --- |
+| Action group | single `Row`; last actions squeezed | `FlowRow(testTag details_actions)`; wraps to rows; all labels readable at 320/360/393 dp, font 1.3/1.5/2.0, EN/ES/PT-BR |
+| Details cover height ceiling | `min(352 dp, 40% of pane)` everywhere | tall portrait pane (taller than wide, < 600 dp wide, ≥ 600 dp tall): `min(460 dp, 46% of pane)`; every other pane unchanged (`detailsCoverMaxHeight`, constraints only) |
+| Metadata -> description gap | 2 dp (same as a field) | 2 dp between fields; ~12 dp (2 + 10) before the description, and none when nothing precedes it or there is no description |
+| Renderer (`PublicationCover`, `CoverArtwork`, decode/sample/cache) | - | **unchanged**: `whole = true` already decodes for the frame size (`coverSampleSize`), keeps the bounded cache and never stretches; no new sharpening or dependency |
+
+Measured on the genuine portrait emulator (393 x 851 dp, pane about 610 dp): details cover about 245 dp -> about 282 dp tall (+15%); taller panes reach the 352 dp old ceiling and then the 460 dp hero ceiling. Low-resolution art (64 x 96) is displayed softly, as expected, without error.
+
+| Command / environment | Result |
+| --- | --- |
+| `gradlew :app:testDebugUnitTest` | **944 tests, 0 failures, 1 skipped** (941 + 3 `DetailsCoverPolicyTest`) |
+| `PublicationDetailsResponsiveUiTest` (new, 13 methods) on the **genuine-portrait API 35 emulator** `shelfos-phase0` (1080 x 2340 @ 440 dpi = 393 x 851 dp, `port`) | **13/13** (twice; one first-launch controller-test flake right after install, then stable) |
+| same class on Retroid Pocket 5 (Android 13, serial d8f7f1b6, `adb install -r`, app data kept) | **13/13** |
+| Pre-fix control: same class against the pre-R4 APK on the RP5 | **8 of 10 failed** (the class then had 10 methods; slivers, tall narrow blocks, missing focus; Spanish Find = 4 dp), proving the tests detect the defect |
+| RP5: OnlineMetadataUiTest / OnlineCoverPilotUiTest / CoverPresentationUiTest / UserCoverUiTest / MetadataUiTest | 6 / 16 / 8 / 5 / **8 of 9** |
+| `MetadataUiTest.editorIsReachableAndConfirmableWithKeyboardAndDpad` on the RP5 | fails identically against the pre-R4 APK: a pre-existing RP5-only focus issue, not a regression |
+| Emulator: OnlineMetadataUiTest / UserCoverUiTest / OnlineCoverPilotUiTest / MetadataUiTest / CoverPresentationUiTest | 6 / 5 / 16 / 9 / 6 of 8 (the same 2 emulator-layout failures as at base) |
+| `assembleDebug`, `assembleRelease`, `assembleDebugAndroidTest`, `lintDebug` | pass (one lint error found in the new test file, `LocalContextConfigurationRead`, fixed); release APK still has no Cover Lab classes or strings |
+| `git diff --check` | pass |
+
+Matrix actually exercised: 320 x 640, 360 x 800, 393 x 851 (genuine portrait), 320 x 582 at font 1.5 (emulator `wm size`/`font_scale`, both restored), RP5 landscape (one line) and RP5 portrait (the RP5 auto-rotates; its test window and a real screen were 1080 x 1920 = 480 x 853 dp). Screenshots (not committed): `%TEMP%\claude\uat\before_*.png` (baseline), `after_*.png`, `n320_*.png`, `f15_actions.png`, `remove_dialog_portrait.png`, `rp5_after_*.png`, `rp5_landscape_now.png`. Covers tried in portrait: standard 2:3 poster, square, 64 x 96 low-res with a four-line title and no description.
+**Not exercised:** a 600 dp tablet window on a device (constrained-layout tests only), font scale 2.0 and ES/PT on a real screen (covered by the constrained tests), a landscape-art cover in the live screenshots (only generated; the policy never crops).
+**Separate finding, unchanged:** the live UAT showed "Exact edition (ISBN matches)" on a 1949 Dodd, Mead record for a 2011 Harper paperback (different publisher and year, low confidence). Recommend relabelling that case as "ISBN matches, other details differ"; matching and confidence were not touched. F-2 stays open; no live request was made in R4.

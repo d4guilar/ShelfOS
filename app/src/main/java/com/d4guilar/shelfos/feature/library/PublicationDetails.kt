@@ -42,6 +42,7 @@ import com.d4guilar.shelfos.feature.importing.originLabel
  * [onRead] receives this cover's current on-screen position (window coordinates), for the reader-entry cover
  * transition; null when it has not been measured yet (the read action is still usable either way).
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> Unit, modifier: Modifier = Modifier,
     onRead: (Rect?) -> Unit, onEdit: (String, String, MediaCategory) -> Unit, onRemove: (KnowledgePolicy) -> Unit, focusPrimaryAction: Boolean = false,
@@ -97,8 +98,8 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
         dismissButton = { val cancel = { removing = false }; TextButton(cancel, Modifier.testTag("cancel_remove").activateOnGamepadConfirm(onActivate = cancel)) { Text(stringResource(R.string.action_cancel)) } })
     BoxWithConstraints(modifier.fillMaxHeight()) {
         // The complete artwork at its real ratio (D11), sized height-first: it yields height so the primary Read action
-        // stays in view on compact windows, and never overflows the pane's width.
-        val coverHeight = minOf(DETAILS_COVER_MAX_HEIGHT, maxHeight * 0.4f)
+        // stays in view on compact windows, and never overflows the pane's width. A tall portrait pane gets the larger hero size.
+        val coverHeight = detailsCoverMaxHeight(maxWidth, maxHeight)
         val coverMaxWidth = maxWidth - t.spacing.large * 2
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(t.spacing.large),
             verticalArrangement = Arrangement.spacedBy(t.spacing.medium)) {
@@ -122,14 +123,21 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
                     .testTag("favorite_action").shelfAction(selected = favorite, onClick = onFavorite)
                     .padding(16.dp), style = MaterialTheme.typography.labelLarge)
             }
-            Row {
+            // A wrapping group, not one Row: five labelled actions do not fit a phone's width, and a Row gave the last ones whatever
+            // width was left (a Remove button measured a few dp wide, its label wrapping letter by letter).
+            FlowRow(Modifier.fillMaxWidth().testTag("details_actions"), horizontalArrangement = Arrangement.spacedBy(t.spacing.small / 2)) {
                 // Editing waits for the stored metadata, so it never opens on (and saves) blank placeholders.
-                TextButton({ editSnapshot = captureEditSnapshot(metadata.stored?.values); editing = true }, Modifier.testTag("edit_action"),
+                val edit = { editSnapshot = captureEditSnapshot(metadata.stored?.values); editing = true }
+                TextButton(edit, Modifier.testTag("edit_action").activateOnGamepadConfirm(metadata.loaded, edit),
                     enabled = metadata.loaded) { Text(stringResource(R.string.action_edit)) }
-                if (userCovers != null) TextButton({ coverOpen = true }, Modifier.testTag("cover_action")) { Text(stringResource(R.string.action_cover)) }
+                val openCover = { coverOpen = true }
+                if (userCovers != null) TextButton(openCover, Modifier.testTag("cover_action").activateOnGamepadConfirm(onActivate = openCover)) { Text(stringResource(R.string.action_cover)) }
                 if (item.category == MediaCategory.BOOK) LocalCoverLab.current?.Action(item)
-                if (online != null) TextButton({ online.open(item) }, Modifier.testTag("find_metadata_online_action"), enabled = metadata.loaded) { Text(stringResource(R.string.online_find_action)) }
-                TextButton({ removing = true }, Modifier.testTag("remove_action")) { Text(stringResource(R.string.action_remove)) }
+                if (online != null) TextButton({ online.open(item) }, Modifier.testTag("find_metadata_online_action")
+                    .activateOnGamepadConfirm(metadata.loaded) { online.open(item) }, enabled = metadata.loaded) { Text(stringResource(R.string.online_find_action)) }
+                // Opens the confirmation only; deletion is never one press away.
+                val askRemove = { removing = true }
+                TextButton(askRemove, Modifier.testTag("remove_action").activateOnGamepadConfirm(onActivate = askRemove)) { Text(stringResource(R.string.action_remove)) }
             }
             HorizontalDivider(color = t.colors.divider)
             Text(stringResource(if (details) R.string.details_collapse else R.string.details_expand),
@@ -146,8 +154,22 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
     }
 }
 
-/** The previous fixed details cover was at most 240 dp wide at 0.68 (≈ 353 dp tall); kept as the height ceiling. */
+/** The previous fixed details cover was at most 240 dp wide at 0.68 (≈ 353 dp tall); kept as the height ceiling outside a tall portrait pane. */
 private val DETAILS_COVER_MAX_HEIGHT = 352.dp
+
+/** Portrait hero (Phase 4.5C.2B R4): a tall, narrow pane shows the artwork larger, up to this ceiling and ~46% of the pane height. */
+private val DETAILS_HERO_MAX_HEIGHT = 460.dp
+private val HERO_MIN_PANE_HEIGHT = 600.dp
+private val HERO_MAX_PANE_WIDTH = 600.dp
+
+/**
+ * The details cover's height ceiling from the pane's own constraints (never a device model): a tall portrait pane (narrower than
+ * [HERO_MAX_PANE_WIDTH], taller than wide and at least [HERO_MIN_PANE_HEIGHT]) gets the hero size so the cover is the main visual;
+ * everything else (landscape, compact or wide panes) keeps the conservative 40% rule that leaves the Read action in view.
+ */
+internal fun detailsCoverMaxHeight(paneWidth: androidx.compose.ui.unit.Dp, paneHeight: androidx.compose.ui.unit.Dp): androidx.compose.ui.unit.Dp =
+    if (paneHeight > paneWidth && paneWidth < HERO_MAX_PANE_WIDTH && paneHeight >= HERO_MIN_PANE_HEIGHT) minOf(DETAILS_HERO_MAX_HEIGHT, paneHeight * 0.46f)
+    else minOf(DETAILS_COVER_MAX_HEIGHT, paneHeight * 0.4f)
 
 /** The technical cover provenance line: where the local artwork came from and whether it is an exact or reduced copy. */
 @Composable

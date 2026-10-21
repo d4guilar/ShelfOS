@@ -4,6 +4,7 @@ package com.d4guilar.shelfos.feature.library
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -144,8 +145,10 @@ fun MetadataSummary(category: MediaCategory, metadata: StoredMetadata?) {
         for ((f, line) in lines) Text(line, color = t.colors.secondary, style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.testTag("metadata_${f.name.lowercase()}"))
         for (line in credits) Text(line, color = t.colors.secondary, style = MaterialTheme.typography.bodySmall)
+        // The description is prose, not another field: it is set apart (2 dp column gap + this 10 dp) only when something precedes it.
+        val hasFields = lines.isNotEmpty() || credits.isNotEmpty() || (values.subtitle != null && MetadataField.SUBTITLE in metadataFields(category))
         values.description?.let { Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 6, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.testTag("metadata_description")) }
+            modifier = Modifier.padding(top = if (hasFields) 10.dp else 0.dp).testTag("metadata_description")) }
     }
 }
 

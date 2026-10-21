@@ -39,7 +39,8 @@ class DebugCoverLabEntry(private val session: CoverLabSession) : CoverLabEntry {
     @Composable
     override fun Action(item: LibraryItem) {
         var open by rememberSaveable(item.id) { mutableStateOf(false) }
-        TextButton({ open = true }, Modifier.testTag("cover_lab_action")) { Text(stringResource(R.string.cover_lab_action)) }
+        val show = { open = true }
+        TextButton(show, Modifier.testTag("cover_lab_action").activateOnGamepadConfirm(onActivate = show)) { Text(stringResource(R.string.cover_lab_action)) }
         if (open) CoverLabDialog(item, session) { open = false }
     }
 }

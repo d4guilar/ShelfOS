@@ -1,5 +1,9 @@
 # Documentation Changelog
 
+## Phase 4.5C.2B R4 responsive Publication Details (2026-10-20)
+
+- VALIDATION (R4 section) and plan §43.3: action row now wraps (root cause, tests, genuine portrait evidence), portrait hero cover, metadata/description spacing; exact-edition label recommendation recorded. No decision or provider rule changed.
+
 ## Phase 4.5C.2B R3 final cleanup (2026-10-20)
 
 - VALIDATION and plan §43.2: test-count history corrected (84 net added over the 857-test base; 941 total, 940 passed, 1 skipped); BOOK_PROVIDERS §9: diagnostic stop rule; cancellation wording in plan §43 and `CoverLabSession`; L-1 recorded. F-2 stays open; no host trusted.
