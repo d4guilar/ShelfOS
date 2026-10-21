@@ -8293,14 +8293,41 @@ Measured on the genuine portrait emulator (393 x 851 dp, pane about 610 dp): det
 | --- | --- |
 | `gradlew :app:testDebugUnitTest` | **944 tests, 0 failures, 1 skipped** (941 + 3 `DetailsCoverPolicyTest`) |
 | `PublicationDetailsResponsiveUiTest` (new, 13 methods) on the **genuine-portrait API 35 emulator** `shelfos-phase0` (1080 x 2340 @ 440 dpi = 393 x 851 dp, `port`) | **13/13** (twice; one first-launch controller-test flake right after install, then stable) |
-| same class on Retroid Pocket 5 (Android 13, serial d8f7f1b6, `adb install -r`, app data kept) | **13/13** |
+| same class on Retroid Pocket 5 (Android 13, serial d8f7f1b6, `adb install -r`, app data kept), **auto-rotated to PORTRAIT (1080 x 1920) during my run** | **13/13** |
 | Pre-fix control: same class against the pre-R4 APK on the RP5 | **8 of 10 failed** (the class then had 10 methods; slivers, tall narrow blocks, missing focus; Spanish Find = 4 dp), proving the tests detect the defect |
-| RP5: OnlineMetadataUiTest / OnlineCoverPilotUiTest / CoverPresentationUiTest / UserCoverUiTest / MetadataUiTest | 6 / 16 / 8 / 5 / **8 of 9** |
+| RP5 (same auto-rotated PORTRAIT state): OnlineMetadataUiTest / OnlineCoverPilotUiTest / CoverPresentationUiTest / UserCoverUiTest / MetadataUiTest | 6 / 16 / 8 / 5 / **8 of 9** |
 | `MetadataUiTest.editorIsReachableAndConfirmableWithKeyboardAndDpad` on the RP5 | fails identically against the pre-R4 APK: a pre-existing RP5-only focus issue, not a regression |
 | Emulator: OnlineMetadataUiTest / UserCoverUiTest / OnlineCoverPilotUiTest / MetadataUiTest / CoverPresentationUiTest | 6 / 5 / 16 / 9 / 6 of 8 (the same 2 emulator-layout failures as at base) |
 | `assembleDebug`, `assembleRelease`, `assembleDebugAndroidTest`, `lintDebug` | pass (one lint error found in the new test file, `LocalContextConfigurationRead`, fixed); release APK still has no Cover Lab classes or strings |
 | `git diff --check` | pass |
 
 Matrix actually exercised: 320 x 640, 360 x 800, 393 x 851 (genuine portrait), 320 x 582 at font 1.5 (emulator `wm size`/`font_scale`, both restored), RP5 landscape (one line) and RP5 portrait (the RP5 auto-rotates; its test window and a real screen were 1080 x 1920 = 480 x 853 dp). Screenshots (not committed): `%TEMP%\claude\uat\before_*.png` (baseline), `after_*.png`, `n320_*.png`, `f15_actions.png`, `remove_dialog_portrait.png`, `rp5_after_*.png`, `rp5_landscape_now.png`. Covers tried in portrait: standard 2:3 poster, square, 64 x 96 low-res with a four-line title and no description.
-**Not exercised:** a 600 dp tablet window on a device (constrained-layout tests only), font scale 2.0 and ES/PT on a real screen (covered by the constrained tests), a landscape-art cover in the live screenshots (only generated; the policy never crops).
+**Not exercised:** a 600 dp tablet window on a device (constrained-layout tests only), font scale 2.0 and ES/PT on a real screen (covered by the constrained tests), (correction, R4.1) the earlier claim that a landscape-art cover was not seen live was wrong: `after_landscapetest_top.png` is a real **portrait-device** (emulator, 393 x 851 dp) screenshot of a generated **landscape-orientation artwork** fixture (900 x 540); this is artwork orientation, not device orientation, and no screenshot of the details screen on a landscape-oriented device with landscape art was taken.
 **Separate finding, unchanged:** the live UAT showed "Exact edition (ISBN matches)" on a 1949 Dodd, Mead record for a 2011 Harper paperback (different publisher and year, low confidence). Recommend relabelling that case as "ISBN matches, other details differ"; matching and confidence were not touched. F-2 stays open; no live request was made in R4.
+
+## PHASE 4.5C.2B R4.1 TEST-ENVIRONMENT AND EVIDENCE CORRECTIONS (2026-10-21, pending independent QA)
+
+**R4-2.** `portraitHeroCoverIsLargerThanTheOldRuleAndStaysInsideThePane` asked for a 360 x 800 dp pane, but Compose clamps that to the host window, so on a landscape RP5 (about 480 dp tall) the non-hero rule correctly applied while the test still expected the hero. Production was right; the test was wrong. Now: `theCoverFollowsTheSizingRuleOfTheWindowItActuallyGot` derives the real window size and asserts whichever rule applies (hero: larger than 40%, at most 46% and 460 dp; otherwise at most 40% and 352 dp), plus inside the pane, centered, not collapsed and Read reachable; `portraitHeroCoverIsLargerThanTheOldRule` asserts the hero only on a genuinely tall portrait host and is **skipped (JUnit assumption, status -4), never faked** on a short or landscape host. The 13-method class is now 14. No production code changed.
+
+| Environment | Result |
+| --- | --- |
+| Genuine-portrait API 35 emulator (1080 x 2340, 393 x 851 dp, `port`), twice | **14/14**; the hero test executed and passed |
+| RP5 forced landscape (`mDisplayRotation=ROTATION_90`, serial d8f7f1b6, rotation settings restored to 1/1) | **14 run, 0 failures, the hero test skipped by assumption**; the rule test and the landscape test pass |
+| `gradlew :app:testDebugUnitTest` | 944 tests, 0 failures, 1 skipped; `DetailsCoverPolicyTest` 3/3 |
+| `assembleDebug`, `assembleRelease`, `assembleDebugAndroidTest`, `lintDebug`, `git diff --check` | pass |
+
+**R4-4: orientation of the earlier results, stated explicitly.**
+
+| Run | Orientation | Result |
+| --- | --- | --- |
+| Implementer (R4), RP5 | auto-rotated **portrait** | Responsive 13/13, UserCover 5/5, Metadata UI 8/9 (the one failure also fails at the pre-R4 APK) |
+| Independent Codex QA, RP5 | **landscape** | Responsive 12/13 (the single R4-2 viewport dependency, fixed above), Cover Lab 16/16, Online metadata 6/6, Cover presentation 8/8, Cover renderer 1/1, UserCover 4/5 (known baseline failure), Metadata UI 6/9 (known baseline failures) |
+| Independent Codex QA, genuine-portrait API 35 | portrait | `PublicationDetailsResponsiveUiTest` 13/13 |
+
+The RP5 auto-rotates, so the two RP5 reports were taken in different orientations; their counts are recorded as measured, neither report is edited, and no causal claim is made about the differing UserCover and Metadata UI counts.
+
+**Release-quality follow-ups (tracked, NOT changed here):**
+- **R4-1** Primary Read action below the fold on portrait phones for Books with descriptions; the larger hero makes it slightly more noticeable. Future: evaluate moving reading progress and Read nearer the title/author/format group while keeping metadata and description reachable; do not shrink the hero before the interaction hierarchy is evaluated; test long titles, descriptions, large fonts and narrow phones.
+- **NAV-1** Bottom-navigation labels split mid-word (EN Settings at 320 dp / font 1.5; ES Biblioteca and Estantes at 320 dp / font 1.5; PT-BR Configuracoes at 320 dp / font 1.0 and 393 dp / font 1.3). Public-release quality issue; keep the five destinations Library / Search / Notes / Shelves / Settings and the hierarchy.
+- **META-1** "Exact edition (ISBN matches)" overstates confidence when publisher or year contradict (live UAT: a 1949 Dodd, Mead record for a 2011 Harper paperback). Future: separate identifier agreement from bibliographic agreement; matching unchanged.
+- **F-2** Archive.org redirect compatibility remains unresolved for some cover ids; one actual L download succeeded without a redirect. No transport or authorization change.

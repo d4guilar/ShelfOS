@@ -2954,3 +2954,7 @@ Documentation: emulator guest RAM is `hw.ramSize=2G` (my earlier "4 GB" was wron
 ### 43.3 R4 responsive Publication Details (2026-10-20)
 
 Root cause and fix as in VALIDATION (R4): one `Row` of five actions squeezed the last ones; now a `FlowRow`. Plus a portrait hero cover (`detailsCoverMaxHeight`: tall portrait panes only, `min(460 dp, 46%)`, everything else unchanged) and a 12 dp separation of the description from the structured metadata. No renderer, Room, provider, consent, cover-precedence or network change. D1-C-DEV, D1-C-PROD, D31 and F-2 are unaffected.
+
+### 43.4 R4.1 follow-ups
+
+R4-2 (test viewport dependency) and R4-4 (orientation of reported results) are corrected in VALIDATION (R4.1). Open release-quality items, deliberately not implemented: **R4-1** (Read below the fold on portrait phones), **NAV-1** (bottom-navigation labels split in EN/ES/PT-BR at large fonts), **META-1** ("Exact edition" label) and **F-2** (Archive.org redirects). D1-C-DEV, D1-C-PROD and D31 unchanged.

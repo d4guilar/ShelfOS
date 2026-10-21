@@ -1,5 +1,9 @@
 # Documentation Changelog
 
+## Phase 4.5C.2B R4.1 corrections (2026-10-21)
+
+- VALIDATION (R4.1): responsive hero test follows the real viewport (portrait hero asserted only on a portrait host, otherwise skipped), orientation of RP5/Codex results stated, landscape-artwork statement corrected; plan §43.4 lists R4-1, NAV-1, META-1 and F-2. No production change.
+
 ## Phase 4.5C.2B R4 responsive Publication Details (2026-10-20)
 
 - VALIDATION (R4 section) and plan §43.3: action row now wraps (root cause, tests, genuine portrait evidence), portrait hero cover, metadata/description spacing; exact-edition label recommendation recorded. No decision or provider rule changed.

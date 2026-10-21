@@ -242,15 +242,43 @@ class PublicationDetailsResponsiveUiTest {
     // hero cover and metadata
     private fun rootSize() = bounds("window")
 
-    @Test fun portraitHeroCoverIsLargerThanTheOldRuleAndStaysInsideThePane() {
-        show(Setup(360.dp, 800.dp))
+    /**
+     * The fixture asks for 360 x 800 dp, but Compose clamps it to the host window (a landscape RP5 is only ~480 dp tall), so the rule that
+     * applies must come from the window the pane really got. These constants restate the production rule on purpose (a tall portrait pane:
+     * taller than wide, narrower than 600 dp, at least 600 dp tall) instead of calling the function under test.
+     */
+    private fun assertCoverFollowsTheRuleForTheActualWindow(label: String) {
         rule.waitUntil(5_000) { present("details_cover") }
         val w = rootSize(); val c = bounds("details_cover")
-        assertTrue("hero larger than the old 40% rule (${c.height / density} dp)", c.height > w.height * 0.4f + 1f)
+        val wDp = w.width / density; val hDp = w.height / density
+        val hero = hDp > wDp && wDp < 600f && hDp >= 600f
+        if (hero) {
+            assertTrue("$label ($wDp x $hDp dp): hero larger than the old 40% rule (${c.height / density} dp)", c.height > w.height * 0.4f + 1f)
+            assertTrue("$label: at most 46% of the pane and 460 dp", c.height <= minOf(w.height * 0.46f, 460f * density) + 1f)
+        } else {
+            assertTrue("$label ($wDp x $hDp dp): conservative, at most 40% of the pane (${c.height / density} dp)", c.height <= w.height * 0.4f + 1f)
+            assertTrue("$label: never above the old 352 dp ceiling", c.height <= 352f * density + 1f)
+        }
+        assertTrue("$label: inside the pane", c.left >= w.left - 1f && c.right <= w.right + 1f)
+        assertTrue("$label: centered", Math.abs((c.left + c.right) / 2 - (w.left + w.right) / 2) <= 2f)
+        assertTrue("$label: real size (not collapsed)", c.height >= 40f * density && c.width >= 40f * density)
+        rule.onNodeWithTag("read_action").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun theCoverFollowsTheSizingRuleOfTheWindowItActuallyGot() {
+        show(Setup(360.dp, 800.dp)); assertCoverFollowsTheRuleForTheActualWindow("360x800 requested")
+    }
+
+    /** The positive hero assertion needs a genuinely tall portrait host; on a short or landscape host it is reported as SKIPPED, never faked. */
+    @Test fun portraitHeroCoverIsLargerThanTheOldRule() {
+        show(Setup(360.dp, 800.dp))
+        rule.waitUntil(5_000) { present("details_cover") }
+        val w = rootSize(); val wDp = w.width / density; val hDp = w.height / density
+        org.junit.Assume.assumeTrue("host window is $wDp x $hDp dp; a tall portrait pane (taller than wide, under 600 dp wide, at least 600 dp tall) is needed", hDp > wDp && wDp < 600f && hDp >= 600f)
+        val c = bounds("details_cover")
+        assertTrue("hero larger than the old 40% rule (${c.height / density} dp of $hDp)", c.height > w.height * 0.4f + 1f)
         assertTrue("at most 46% of the pane / 460 dp", c.height <= minOf(w.height * 0.46f, 460f * density) + 1f)
         assertTrue("inside the pane", c.left >= w.left - 1f && c.right <= w.right + 1f)
-        assertTrue("centered", Math.abs((c.left + c.right) / 2 - (w.left + w.right) / 2) <= 2f)
-        rule.onNodeWithTag("read_action").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun landscapeKeepsTheConservativeCoverHeightAndReadInView() {
