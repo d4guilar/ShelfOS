@@ -20,7 +20,8 @@ import java.net.URLEncoder
 
 /**
  * Open Library public, keyless book metadata (Phase 4.5C.2A, plan D1-M; BOOK_PROVIDERS §7). Textual metadata only: cover
- * identifiers and URLs in a response are never read into a candidate, so nothing can fetch artwork (D1-C stays unresolved).
+ * identifiers and URLs in a response are never read into a [MetadataCandidate], so the metadata path cannot fetch artwork (D1-C stays unresolved).
+ * [OpenLibraryProvider.coverEditions] is the separate, debug-pilot-only reader of an edition's cover ids (D1-C-DEV).
  * Endpoints (all GET, HTTPS, `openlibrary.org`): `/isbn/{isbn13}.json` (redirects to the edition record), `/authors/{olid}.json`
  * (at most [MAX_AUTHORS] per lookup) and `/search.json` (title/author, minimal `fields`, [SEARCH_LIMIT] results).
  *
@@ -34,6 +35,8 @@ object OpenLibrary {
     const val SEARCH_LIMIT = 10
     const val MAX_RESPONSE_BYTES = 512 * 1024
     const val MAX_DESCRIPTION = 4_000
+    /** The Cover Lab's whole candidate set: the exact edition plus at most seven alternatives. */
+    const val COVER_EDITIONS_MAX = 8
 
     /** Only the documented API paths; a redirect anywhere else is refused. */
     val urlPolicy = UrlPolicy(setOf(HOST), listOf("/isbn/", "/books/", "/authors/", "/search.json"))
@@ -95,6 +98,44 @@ class OpenLibraryProvider(private val http: HttpTransport, private val wallClock
         }
     }
 
+    /**
+     * Cover discovery for the debug-only Cover Lab (Phase 4.5C.2B). The edition must name [isbn13] itself (stricter than [lookup], which
+     * tolerates a record with no ISBNs): that record is the exact edition. If it belongs to exactly one work, that work's first editions
+     * (one bounded request, at most [maxEditions] in total) are offered as alternatives, each only if its own record lists a cover.
+     * A work-level `cover_i` is never read. Does not change [lookup] or [search].
+     */
+    suspend fun coverEditions(isbn13: String, maxEditions: Int = OpenLibrary.COVER_EDITIONS_MAX): List<CoverEdition> {
+        if (!IDENTIFIER.matches(isbn13) || maxEditions < 1) return emptyList()
+        val response = get("https://${OpenLibrary.HOST}/isbn/$isbn13.json") ?: return emptyList()
+        val record = parseObject(response)
+        val ref = record.asText("key")?.substringAfterLast('/')?.takeIf { EDITION_KEY.matches(it) } ?: throw malformed()
+        val ids = isbns(record)
+        if (ids.none { it.isbn13 == isbn13 }) return emptyList()
+        val exact = coverEdition(record, ref, ids, exact = true)
+        val works = record.asList("works")?.mapNotNull { it.asObject()?.asText("key")?.substringAfterLast('/')?.takeIf { k -> WORK_KEY.matches(k) } }?.distinct().orEmpty()
+        val work = works.singleOrNull() ?: return listOf(exact)
+        if (maxEditions == 1) return listOf(exact)
+        val alternatives = try {
+            // One bounded editions page (`limit` = maxEditions); the exact edition is dropped from it if listed again, and the combined list is capped at maxEditions.
+            val r = get("https://${OpenLibrary.HOST}/works/$work/editions.json?limit=$maxEditions") ?: return listOf(exact)
+            parseObject(r).asList("entries").orEmpty().take(maxEditions).mapNotNull { e ->
+                val o = e.asObject() ?: return@mapNotNull null
+                val k = o.asText("key")?.substringAfterLast('/')?.takeIf { EDITION_KEY.matches(it) && it != ref } ?: return@mapNotNull null
+                val eids = isbns(o)
+                coverEdition(o, k, eids, exact = eids.any { it.isbn13 == isbn13 }).takeIf { it.coverIds.isNotEmpty() }
+            }
+        } catch (e: ProviderException) {
+            // Stopping signals must not be swallowed; a bad alternative list just leaves the exact edition alone.
+            if (e.kind == ProviderFailureKind.ACCESS_BLOCKED || e.kind == ProviderFailureKind.RATE_LIMITED || e.kind == ProviderFailureKind.OFFLINE || e.kind == ProviderFailureKind.TIMEOUT) throw e
+            emptyList()
+        }
+        return (listOf(exact) + alternatives).distinctBy { it.ref }.take(maxEditions)
+    }
+
+    private fun coverEdition(o: Map<String, Any?>, ref: String, ids: List<PublicationIdentifier>, exact: Boolean) = CoverEdition(
+        ref, o.asText("title"), o.asList("covers").orEmpty().mapNotNull { (it as? Number)?.toLong()?.takeIf { id -> id > 0 } }.distinct().take(MAX_COVERS_PER_EDITION),
+        ids, o.asList("publishers")?.firstNotNullOfOrNull { it.asText() }, editionDate(o.asText("publish_date")), language(o), exact)
+
     /** A GET mapped to the closed failure set. Null means "no such record" (404): a valid, empty answer, not a failure. */
     private suspend fun get(url: String): HttpResponse? {
         val r = try { http.get(url) } catch (e: ResponseTooLargeException) { throw ProviderException(ProviderFailureKind.MALFORMED, null, e)
@@ -152,6 +193,7 @@ class OpenLibraryProvider(private val http: HttpTransport, private val wallClock
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
     private companion object {
+        const val MAX_COVERS_PER_EDITION = 3
         val IDENTIFIER = Regex("^97[89]\\d{10}$")
         val EDITION_KEY = Regex("^OL\\d{1,12}M$")
         val WORK_KEY = Regex("^OL\\d{1,12}W$")
@@ -176,3 +218,9 @@ class OpenLibraryProvider(private val http: HttpTransport, private val wallClock
         }
     }
 }
+
+/** An edition record as the Cover Lab reads it. [exact] means its own record lists the requested ISBN-13; only then is it the book's edition. */
+data class CoverEdition(
+    val ref: String, val title: String?, val coverIds: List<Long>, val ids: List<PublicationIdentifier>, val publisher: String?,
+    val publishedDate: String?, val language: String?, val exact: Boolean,
+)

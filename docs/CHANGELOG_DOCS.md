@@ -1,5 +1,29 @@
 # Documentation Changelog
 
+## Phase 4.5C.2B R4.1 corrections (2026-10-21)
+
+- VALIDATION (R4.1): responsive hero test follows the real viewport (portrait hero asserted only on a portrait host, otherwise skipped), orientation of RP5/Codex results stated, landscape-artwork statement corrected; plan §43.4 lists R4-1, NAV-1, META-1 and F-2. No production change.
+
+## Phase 4.5C.2B R4 responsive Publication Details (2026-10-20)
+
+- VALIDATION (R4 section) and plan §43.3: action row now wraps (root cause, tests, genuine portrait evidence), portrait hero cover, metadata/description spacing; exact-edition label recommendation recorded. No decision or provider rule changed.
+
+## Phase 4.5C.2B R3 final cleanup (2026-10-20)
+
+- VALIDATION and plan §43.2: test-count history corrected (84 net added over the 857-test base; 941 total, 940 passed, 1 skipped); BOOK_PROVIDERS §9: diagnostic stop rule; cancellation wording in plan §43 and `CoverLabSession`; L-1 recorded. F-2 stays open; no host trusted.
+
+## Phase 4.5C.2B R2 final audit corrections (2026-10-20)
+
+- Plan §43.2; BOOK_PROVIDERS §9–10 (diagnostic fixed, family B prefix, F-2 closing requirements); VALIDATION (emulator RAM, count reconciliation, R2 results). F-2 stays open; no host trusted; D1-C-PROD and D31 unresolved.
+
+## Phase 4.5C.2B R1 remediation (2026-10-20)
+
+- Plan §43.1; BOOK_PROVIDERS §9 (corrected smoke-test sequence, status labels, F-2 diagnostic) and new §10 (cover-storage redirect families, proposed policy); VALIDATION (corrected counts: 70 original test methods, 940 total, RP5 results, emulator blocked). F-2 stays open; no Archive.org host is trusted.
+
+## Phase 4.5C.2B Cover Lab pilot (2026-10-20)
+
+- Plan: decision ledger (D1-C-DEV, D1-C-PROD) and new §43; BOOK_PROVIDERS §9 (status key, manual smoke test); ROADMAP; VALIDATION. D1-C-DEV is a debug-only development-pilot authorization; D1-C-PROD and D31 unresolved; Open Library stays CONDITIONAL; D1-M unchanged. Earlier 4.5C.2A text is preserved.
+
 ## Phase 4.5C.2A Open Library metadata integration (2026-10-19)
 
 - Plan §42 (implementation record, G2 review, request policy, D14 JSON deviation), ADR-0026 status note, ARCHITECTURE network state, BOOK_PROVIDERS §8, ROADMAP, VALIDATION. D1-C and D31 unresolved; no cover access.

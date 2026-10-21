@@ -54,6 +54,8 @@ class HttpUrlConnectionTransport(
     private val connectTimeoutMs: Int = 10_000, private val readTimeoutMs: Int = 10_000,
     private val maxBytes: Int = 512 * 1024, private val maxRedirects: Int = 2,
     private val pacer: RequestPacer? = null,
+    /** A stricter per-URL gate than [policy]'s prefixes, applied to the first request and to every redirect hop. */
+    private val check: (URL) -> Unit = {},
     private val open: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
 ) : HttpTransport {
     init { require(userAgent.isNotBlank() && maxBytes > 0 && maxRedirects >= 0) }
@@ -64,7 +66,7 @@ class HttpUrlConnectionTransport(
     }
 
     override suspend fun get(url: String): HttpResponse = withContext(Dispatchers.IO) {
-        var target = policy.check(url)
+        var target = policy.check(url).also(check)
         var hops = 0
         while (true) {
             currentCoroutineContext().ensureActive()
@@ -73,7 +75,7 @@ class HttpUrlConnectionTransport(
                 is Hop.Final -> return@withContext hop.response
                 is Hop.Redirect -> {
                     if (++hops > maxRedirects) throw UrlNotAllowedException("too many redirects")
-                    target = policy.check(target.toURI().resolve(hop.location).toString())
+                    target = policy.check(target.toURI().resolve(hop.location).toString()).also(check)
                 }
             }
         }

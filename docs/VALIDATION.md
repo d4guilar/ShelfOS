@@ -8225,3 +8225,109 @@ No live request, no cover download, no app/production code, manifest, dependency
 | `gradlew :app:compileDebugAndroidTestKotlin` | pass (`OnlineMetadataUiTest` compiles) |
 | Merged debug manifest inspection | `INTERNET` from the app manifest only; `usesCleartextTraffic=false`; no new SDK components |
 | NOT RUN | instrumentation tests (no emulator/device), any live Open Library request, `lintRelease` |
+
+## PHASE 4.5C.2B COVER LAB PILOT (2026-10-20, debug-only, pending independent QA)
+
+| Command (executed by me) | Result |
+| --- | --- |
+| `gradlew :app:testDebugUnitTest` | **927 tests, 0 failures, 1 skipped** (70 new test methods: `OpenLibraryCoverUrlTest` 6, `OpenLibraryCoverDiscoveryTest` 12, `CoverPilotServiceTest` 34, `ImageTransportTest` 11, `CoverPilotGeometryTest` 7) |
+| `OnlineCoverPilotUiTest` via `connectedDebugAndroidTest` on `shelfos-phase0` (API 35 emulator, Android 15) | **16/16** |
+| `OnlineCoverPilotUiTest` on Retroid Pocket 5 (Android 13, API 33, serial d8f7f1b6) via `adb install -r` + `am instrument` (app data kept; only the test package was removed afterwards) | **16/16** |
+| Emulator: CoverRendererUiTest / UserCoverUiTest / OnlineMetadataUiTest / UserCoverStoreTest / CoverLifecycleTest | 1 / 5 / 6 / 14 / 12, all pass |
+| `CoverPresentationUiTest` | RP5 **8/8**; API 35 emulator **6/8**: the 2 failures (`libraryGridKeepsSelectionScrollAndFocusAcrossPresentationChanges`, `rendererShapesOriginalBoundsFocusAndGeneratedFallback`) reproduce identically at `main` 40dbbd3 without these changes (pre-existing, emulator-specific) |
+| `gradlew :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :app:lintDebug` | pass; lint 0 errors |
+| Release APK inspection (dex and resources) | no `coverlab` classes, no `cover_lab` strings; `coverLabEntry` returns `null`; the inert main classes are present and un-called |
+| `git diff --check` | pass |
+| NOT RUN | any live Open Library request or image download; Samsung Galaxy Tab A; API 24 device; `lintRelease`; the full instrumentation suite |
+
+Caveats: the first install attempt used a different debug keystore (INSTALL_FAILED_UPDATE_INCOMPATIBLE); runs use the project keystore under `.tools/android-user` (`ANDROID_USER_HOME`), so updates are in place. All image bytes in tests are generated locally.
+
+## PHASE 4.5C.2B R1 REMEDIATION (2026-10-20, pending independent QA)
+
+| Command (executed by me) | Result |
+| --- | --- |
+| `gradlew :app:testDebugUnitTest` | **940 tests, 0 failures, 1 skipped** (927 + 13 new: `OpenLibraryCoverRedirectTest` 5, `OpenLibraryCoverStorageTest` 3, `CoverPilotServiceTest` +4 (now 38), `ImageTransportTest` +1 (now 12)). The earlier "69 new" is corrected to **70 test methods** in the five original classes (the 927 total was real; only the per-class tally was off, and a pre-change base total was not re-run) |
+| `gradlew :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :app:lintDebug` | pass |
+| `OnlineCoverPilotUiTest` on Retroid Pocket 5 (Android 13, API 33, serial d8f7f1b6; `adb install -r` + `am instrument`, app data kept) | **16/16** |
+| `CoverPresentationUiTest` / `OnlineMetadataUiTest` on the RP5 | 8/8 / 6/6 |
+| `UserCoverUiTest` on the RP5 | 4/5: `aChosenCoverIsReportedAndRestoringExplainsItsConsequence` ("cover_restore not displayed") fails identically with the fixture-path change reverted, so it is a pre-existing short-landscape layout failure, not a regression |
+| `git diff --check` (`177bea3..HEAD`, `40dbbd3..HEAD`) | pass |
+| BLOCKED (my R1 run) | API 35 `shelfos-phase0` emulator: I did not start it because only about 2.3 GB of *host* RAM was free. The statement that the AVD requests 4 GB was wrong: its configured guest RAM is `hw.ramSize=2G`. Independent R1 QA later ran `OnlineCoverPilotUiTest` 16/16 on it (see R2) |
+| NOT RUN | any live Open Library or Archive.org request (none occurred); Galaxy Tab A; API 24 device |
+
+Note: the debug build must be signed with the default `~/.android` debug key to update the RP5's installed app in place (the project keystore under `.tools/android-user` produced INSTALL_FAILED_UPDATE_INCOMPATIBLE on this device). Stale `ui-pick-*`/`user-cover-*` files from earlier runs remain in the RP5 app cache (about 10); they were not deleted, and the new runs add none.
+
+## PHASE 4.5C.2B R2 FINAL AUDIT CORRECTIONS (2026-10-20, pending independent delta QA)
+
+| Item | Result |
+| --- | --- |
+| Test-count reconciliation | **The feature branch added 84 net JVM tests over the 857-test base, with no removed methods. The current suite has 941 tests, of which 940 pass and one is skipped.** Independently verified history (total / passed / skipped / net added): `40dbbd3` 857 / 856 / 1 / -; `177bea3` 927 / 926 / 1 / +70; `78b3968` 940 / 939 / 1 / +13; `b44088d` 941 / 940 / 1 / +1. The earlier "856" was a passed count, not a total. The five original Cover Lab classes hold 70 test methods (6 + 12 + 34 + 11 + 7). |
+| Independent R1 QA (recorded, not run by me) | `OnlineCoverPilotUiTest` 16/16 on the RP5 and 16/16 on the API 35 `shelfos-phase0` emulator (guest RAM `hw.ramSize=2G`) |
+| Documentation corrections | emulator RAM statement (N-3); HEAD-first PowerShell diagnostic with the correct `HTTP/` filter and an honest description of GET transfer behavior (N-4); family B size prefix is `l_`/`m_`/`s_`, empty only for unsized originals (N-5); stale `coverEditions` comment (N-6) |
+| Code | N-7 removed the unsourced empty-prefix family B URL from `OpenLibraryCoverStorage` (still unwired; the transport still refuses Archive.org); N-1 a foreign-provider candidate is rejected before the URL, the slot, the budget or any request; N-2 the caller's own `Job` is re-checked inside the commit block after the last suspension point |
+| Residual (documented, not claimed away) | a cancellation arriving after the final synchronous checks but before the rename returns cannot be observed; the file and manifest are still replaced atomically, so the outcome is a complete pick, never a partial one |
+
+| Command (executed by me) | Result |
+| --- | --- |
+| `gradlew :app:testDebugUnitTest` | **941 tests, 0 failures, 1 skipped** (940 passed). R2 added 1 net method: the foreign-provider test was rewritten (zero requests, zero budget use, no file, previous pick intact) and a cancellation-before-commit test was added (`CoverPilotServiceTest` now 39); `OpenLibraryCoverStorageTest` family B assertions were corrected |
+| `gradlew :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :app:lintDebug` | pass; release APK still has no `coverlab` classes or `cover_lab` strings |
+| `OnlineCoverPilotUiTest` on Retroid Pocket 5 (Android 13, API 33, serial d8f7f1b6, identity verified; `adb install -r`, app data kept) | **16/16** |
+| `CoverPresentationUiTest` on the RP5 | 8/8 |
+| `OnlineCoverPilotUiTest` on the `shelfos-phase0` API 35 emulator (guest `hw.ramSize=2G`, about 2.2 GB host RAM free at start) | **16/16** |
+| NOT RUN | any live Open Library or Archive.org request (none occurred); Galaxy Tab A; `UserCoverUiTest` on the RP5 (its known short-landscape failure is unrelated and unchanged) |
+
+## PHASE 4.5C.2B R4 RESPONSIVE PUBLICATION DETAILS AND PORTRAIT QA (2026-10-20, pending independent QA)
+
+**Defect (user-observed during the live UAT).** The Publication Details actions were one `Row` of `TextButton`s. A Row measures children in order and gives the last ones whatever width is left, so on a phone "Find metadata online" and **Remove** were measured as slivers: reproduced on the RP5 with the new tests against the old code (Spanish: *Find metadata online* **4 dp** wide, *Remove* **40 dp**, 24 dp "Edit" heights) and on a genuine portrait emulator screen (Find wrapped to three lines and Remove fell out of view). **Fix:** `FlowRow` (wraps, never squeezes), the four action buttons also take `activateOnGamepadConfirm` (A opens the Remove *confirmation* only). **Also in this commit (addendum):** the portrait hero cover and the metadata/description separation.
+
+| Change | Before | After |
+| --- | --- | --- |
+| Action group | single `Row`; last actions squeezed | `FlowRow(testTag details_actions)`; wraps to rows; all labels readable at 320/360/393 dp, font 1.3/1.5/2.0, EN/ES/PT-BR |
+| Details cover height ceiling | `min(352 dp, 40% of pane)` everywhere | tall portrait pane (taller than wide, < 600 dp wide, ≥ 600 dp tall): `min(460 dp, 46% of pane)`; every other pane unchanged (`detailsCoverMaxHeight`, constraints only) |
+| Metadata -> description gap | 2 dp (same as a field) | 2 dp between fields; ~12 dp (2 + 10) before the description, and none when nothing precedes it or there is no description |
+| Renderer (`PublicationCover`, `CoverArtwork`, decode/sample/cache) | - | **unchanged**: `whole = true` already decodes for the frame size (`coverSampleSize`), keeps the bounded cache and never stretches; no new sharpening or dependency |
+
+Measured on the genuine portrait emulator (393 x 851 dp, pane about 610 dp): details cover about 245 dp -> about 282 dp tall (+15%); taller panes reach the 352 dp old ceiling and then the 460 dp hero ceiling. Low-resolution art (64 x 96) is displayed softly, as expected, without error.
+
+| Command / environment | Result |
+| --- | --- |
+| `gradlew :app:testDebugUnitTest` | **944 tests, 0 failures, 1 skipped** (941 + 3 `DetailsCoverPolicyTest`) |
+| `PublicationDetailsResponsiveUiTest` (new, 13 methods) on the **genuine-portrait API 35 emulator** `shelfos-phase0` (1080 x 2340 @ 440 dpi = 393 x 851 dp, `port`) | **13/13** (twice; one first-launch controller-test flake right after install, then stable) |
+| same class on Retroid Pocket 5 (Android 13, serial d8f7f1b6, `adb install -r`, app data kept), **auto-rotated to PORTRAIT (1080 x 1920) during my run** | **13/13** |
+| Pre-fix control: same class against the pre-R4 APK on the RP5 | **8 of 10 failed** (the class then had 10 methods; slivers, tall narrow blocks, missing focus; Spanish Find = 4 dp), proving the tests detect the defect |
+| RP5 (same auto-rotated PORTRAIT state): OnlineMetadataUiTest / OnlineCoverPilotUiTest / CoverPresentationUiTest / UserCoverUiTest / MetadataUiTest | 6 / 16 / 8 / 5 / **8 of 9** |
+| `MetadataUiTest.editorIsReachableAndConfirmableWithKeyboardAndDpad` on the RP5 | fails identically against the pre-R4 APK: a pre-existing RP5-only focus issue, not a regression |
+| Emulator: OnlineMetadataUiTest / UserCoverUiTest / OnlineCoverPilotUiTest / MetadataUiTest / CoverPresentationUiTest | 6 / 5 / 16 / 9 / 6 of 8 (the same 2 emulator-layout failures as at base) |
+| `assembleDebug`, `assembleRelease`, `assembleDebugAndroidTest`, `lintDebug` | pass (one lint error found in the new test file, `LocalContextConfigurationRead`, fixed); release APK still has no Cover Lab classes or strings |
+| `git diff --check` | pass |
+
+Matrix actually exercised: 320 x 640, 360 x 800, 393 x 851 (genuine portrait), 320 x 582 at font 1.5 (emulator `wm size`/`font_scale`, both restored), RP5 landscape (one line) and RP5 portrait (the RP5 auto-rotates; its test window and a real screen were 1080 x 1920 = 480 x 853 dp). Screenshots (not committed): `%TEMP%\claude\uat\before_*.png` (baseline), `after_*.png`, `n320_*.png`, `f15_actions.png`, `remove_dialog_portrait.png`, `rp5_after_*.png`, `rp5_landscape_now.png`. Covers tried in portrait: standard 2:3 poster, square, 64 x 96 low-res with a four-line title and no description.
+**Not exercised:** a 600 dp tablet window on a device (constrained-layout tests only), font scale 2.0 and ES/PT on a real screen (covered by the constrained tests), (correction, R4.1) the earlier claim that a landscape-art cover was not seen live was wrong: `after_landscapetest_top.png` is a real **portrait-device** (emulator, 393 x 851 dp) screenshot of a generated **landscape-orientation artwork** fixture (900 x 540); this is artwork orientation, not device orientation, and no screenshot of the details screen on a landscape-oriented device with landscape art was taken.
+**Separate finding, unchanged:** the live UAT showed "Exact edition (ISBN matches)" on a 1949 Dodd, Mead record for a 2011 Harper paperback (different publisher and year, low confidence). Recommend relabelling that case as "ISBN matches, other details differ"; matching and confidence were not touched. F-2 stays open; no live request was made in R4.
+
+## PHASE 4.5C.2B R4.1 TEST-ENVIRONMENT AND EVIDENCE CORRECTIONS (2026-10-21, pending independent QA)
+
+**R4-2.** `portraitHeroCoverIsLargerThanTheOldRuleAndStaysInsideThePane` asked for a 360 x 800 dp pane, but Compose clamps that to the host window, so on a landscape RP5 (about 480 dp tall) the non-hero rule correctly applied while the test still expected the hero. Production was right; the test was wrong. Now: `theCoverFollowsTheSizingRuleOfTheWindowItActuallyGot` derives the real window size and asserts whichever rule applies (hero: larger than 40%, at most 46% and 460 dp; otherwise at most 40% and 352 dp), plus inside the pane, centered, not collapsed and Read reachable; `portraitHeroCoverIsLargerThanTheOldRule` asserts the hero only on a genuinely tall portrait host and is **skipped (JUnit assumption, status -4), never faked** on a short or landscape host. The 13-method class is now 14. No production code changed.
+
+| Environment | Result |
+| --- | --- |
+| Genuine-portrait API 35 emulator (1080 x 2340, 393 x 851 dp, `port`), twice | **14/14**; the hero test executed and passed |
+| RP5 forced landscape (`mDisplayRotation=ROTATION_90`, serial d8f7f1b6, rotation settings restored to 1/1) | **14 run, 0 failures, the hero test skipped by assumption**; the rule test and the landscape test pass |
+| `gradlew :app:testDebugUnitTest` | 944 tests, 0 failures, 1 skipped; `DetailsCoverPolicyTest` 3/3 |
+| `assembleDebug`, `assembleRelease`, `assembleDebugAndroidTest`, `lintDebug`, `git diff --check` | pass |
+
+**R4-4: orientation of the earlier results, stated explicitly.**
+
+| Run | Orientation | Result |
+| --- | --- | --- |
+| Implementer (R4), RP5 | auto-rotated **portrait** | Responsive 13/13, UserCover 5/5, Metadata UI 8/9 (the one failure also fails at the pre-R4 APK) |
+| Independent Codex QA, RP5 | **landscape** | Responsive 12/13 (the single R4-2 viewport dependency, fixed above), Cover Lab 16/16, Online metadata 6/6, Cover presentation 8/8, Cover renderer 1/1, UserCover 4/5 (known baseline failure), Metadata UI 6/9 (known baseline failures) |
+| Independent Codex QA, genuine-portrait API 35 | portrait | `PublicationDetailsResponsiveUiTest` 13/13 |
+
+The RP5 auto-rotates, so the two RP5 reports were taken in different orientations; their counts are recorded as measured, neither report is edited, and no causal claim is made about the differing UserCover and Metadata UI counts.
+
+**Release-quality follow-ups (tracked, NOT changed here):**
+- **R4-1** Primary Read action below the fold on portrait phones for Books with descriptions; the larger hero makes it slightly more noticeable. Future: evaluate moving reading progress and Read nearer the title/author/format group while keeping metadata and description reachable; do not shrink the hero before the interaction hierarchy is evaluated; test long titles, descriptions, large fonts and narrow phones.
+- **NAV-1** Bottom-navigation labels split mid-word (EN Settings at 320 dp / font 1.5; ES Biblioteca and Estantes at 320 dp / font 1.5; PT-BR Configuracoes at 320 dp / font 1.0 and 393 dp / font 1.3). Public-release quality issue; keep the five destinations Library / Search / Notes / Shelves / Settings and the hierarchy.
+- **META-1** "Exact edition (ISBN matches)" overstates confidence when publisher or year contradict (live UAT: a 1949 Dodd, Mead record for a 2011 Harper paperback). Future: separate identifier agreement from bibliographic agreement; matching unchanged.
+- **F-2** Archive.org redirect compatibility remains unresolved for some cover ids; one actual L download succeeded without a redirect. No transport or authorization change.
