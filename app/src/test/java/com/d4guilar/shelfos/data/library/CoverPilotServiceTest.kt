@@ -460,16 +460,18 @@ class CoverPilotServiceTest {
 
     @Test fun `a candidate from another provider is rejected before any request, budget use or file`() = runTest {
         auth.enable()
-        val s = service(PilotBudget(maxImages = 1))
-        val first = ok(s.download(item, candidate(5)))
+        val s = service(PilotBudget(maxImages = 2))
+        val first = ok(s.download(item, candidate(5)))   // uses one of the two permits
         val foreign = candidate(6).copy(providerId = "inventaire")
         assertEquals(PilotFailure.NOT_AUTHORIZED, failed(s.download(item, foreign)))
         assertEquals(PilotFailure.NOT_AUTHORIZED, failed(s.preview(item, foreign)))
         assertEquals("only the first, legitimate transfer was requested", 1, images.requests.size)
         assertEquals("5", store.selection(item.id)!!.refValue); assertTrue(first.file.exists()); assertTrue(leftovers().isEmpty())
         assertNull(s.cachedPreview(item.id, foreign))
-        // The budget was not spent by the rejected attempts: with maxImages = 1 it is exhausted only by the first transfer.
-        assertEquals(PilotFailure.BUDGET_EXHAUSTED, failed(s.download(item, candidate(7))))
+        // One permit is left. If a rejected attempt had spent it, this valid download would be BUDGET_EXHAUSTED.
+        val second = ok(s.download(item, candidate(7)))
+        assertEquals(2, images.requests.size); assertEquals("7", store.selection(item.id)!!.refValue); assertTrue(second.file.exists())
+        assertEquals(PilotFailure.BUDGET_EXHAUSTED, failed(s.download(item, candidate(8))))   // and the two real transfers did use both
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

@@ -40,7 +40,9 @@ data class LabUi(
  * The debug-only Cover Lab engine (Phase 4.5C.2B, D1-C-DEV): wires the pilot pipeline to the app, owns per-Book UI state and the lab's own
  * [CoverArtwork]. That artwork feeds the SAME shared renderer (`PublicationCover`) through a lab-local map and presentation flow, so the
  * pilot's images never enter the production cover map, cache or `publication_cover`. Requests run on the app scope, so a rotation does not
- * cancel a transfer; closing the dialog does ([cancel]), and a cancelled transfer publishes nothing.
+ * cancel a transfer; closing the dialog cancels it ([cancel]). Cancellation, revoked consent and the item's existence are checked immediately before the final
+ * persistence; a narrow race remains during the last synchronous commit, so an already-started commit can complete, but image and manifest are
+ * replaced atomically and a partial or corrupt selection is never published.
  */
 class CoverLabSession(
     val authorization: CoverPilotAuthorization, private val store: CoverPilotStore, private val service: CoverPilotService,

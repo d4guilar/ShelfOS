@@ -1,5 +1,9 @@
 # Documentation Changelog
 
+## Phase 4.5C.2B R3 final cleanup (2026-10-20)
+
+- VALIDATION and plan §43.2: test-count history corrected (84 net added over the 857-test base; 941 total, 940 passed, 1 skipped); BOOK_PROVIDERS §9: diagnostic stop rule; cancellation wording in plan §43 and `CoverLabSession`; L-1 recorded. F-2 stays open; no host trusted.
+
 ## Phase 4.5C.2B R2 final audit corrections (2026-10-20)
 
 - Plan §43.2; BOOK_PROVIDERS §9–10 (diagnostic fixed, family B prefix, F-2 closing requirements); VALIDATION (emulator RAM, count reconciliation, R2 results). F-2 stays open; no host trusted; D1-C-PROD and D31 unresolved.
