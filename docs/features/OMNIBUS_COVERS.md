@@ -17,7 +17,7 @@ not introduce a reader engine, a merge feature or a new publication type.
 | Case | What it is | Edition identity | Cover |
 | --- | --- | --- | --- |
 | **Official omnibus** | A real published edition (for example a "Volumes 1-3" collected edition) with its own title, ISBN where one exists and authentic cover. | Its own. Identifiers come from the file's embedded metadata, the user, or a match under the existing [BOOK_PROVIDERS §3.8](BOOK_PROVIDERS.md) rules. | Its authentic cover, via the normal LOCAL / USER / (future) ONLINE slots. |
-| **Handmade omnibus** | A user-owned single file that combines several volumes (for example `Berserk 1-3.cbz`). | **None inherited.** It does not take on an official omnibus's ISBN or edition because its contents resemble one. | Embedded cover if usable, else user choice, else (optionally) a user-made Composite Cover. |
+| **Handmade omnibus** | A user-owned single file that combines several volumes (for example `Berserk 1-3.cbz`). | **None inherited.** It does not take on an official omnibus's ISBN or edition because its contents resemble one. | User choice (including a user-made Composite Cover) if set; otherwise the established cover-resolution policy (USER > confident ONLINE > LOCAL > generated); otherwise the generated fallback. No separate omnibus priority. |
 | **Virtual omnibus** | Several separately stored publications coordinated by a [Series](SERIES.md) "Read as Omnibus" experience. | Each member keeps its own. The Series has no ISBN. | A Series cover choice (member cover, custom image, or composite). Nothing is attached to member LibraryItems. |
 
 A Series may *contain* an official omnibus as a member (`itemType = OMNIBUS` in SERIES.md); that member is an
@@ -44,8 +44,8 @@ ordinary LibraryItem and is distinct from virtual omnibus reading.
      embedded ISBN belonging to a constituent volume is review-only evidence, never automatic proof of the
      compilation's own published edition.
    - **Unknown or unclassified publication.** ShelfOS cannot currently tell that an arbitrary Book is a handmade
-     omnibus. Existing collection-detection protection covers Comics and Manga only and does not protect handmade
-     Books. Recognizing handmade Books is unresolved (Section 10) and must exist before automatic Book-compilation
+     omnibus. The existing metadata-query collection flag applies only to the filename-inferred title pathway for
+     Comics and Manga; it does not cover every Comics/Manga metadata path and does not identify handmade Books. Recognizing handmade Books is unresolved (Section 10) and must exist before automatic Book-compilation
      safety is claimed. Possible mechanisms, all proposals and none existing: explicit user declaration, reviewable
      metadata evidence, accepted filename/collection evidence.
 
@@ -99,9 +99,24 @@ provenance identifies an external provider, or whose provenance is missing or un
 Cover Studio input. The USER slot's high display precedence is not authorization to transform or redistribute
 artwork, because future production online cover selection may save provider artwork into that slot. Therefore:
 provenance is checked independently of cover slot; a provider-origin USER cover remains subject to provider rules;
-unknown provenance fails closed; explicit user selection alone does not grant image-transformation rights; and
+unknown provenance fails closed; and selecting externally sourced provider artwork as a cover does not, by itself,
+grant permission to transform or redistribute that artwork (this does not prohibit ordinary images the user chooses
+directly from local device storage); and
 provenance-aware eligibility is a prerequisite before Studio support launches. No grant, licence or provider
 permission is created here.
+
+**Provenance of Studio inputs (future requirements, not implemented checks).**
+1. Existing USER-cover records may lack explicit source provenance; the USER slot alone does not establish
+   eligibility.
+2. An existing USER cover with unknown provenance is ineligible for Studio reuse until trustworthy origin evidence
+   exists. Re-selecting the underlying image directly from device storage through a future Studio input flow can
+   establish that evidence; re-selecting a cached provider cover cannot.
+3. A genuinely user-supplied device image, or an eligible local embedded image, can be a Studio input when its source
+   is recorded and applicable image-use requirements are respected.
+4. ShelfOS-created copies, resized derivatives and re-encodes preserve their original provenance; re-encoding never
+   erases a known provider restriction.
+Provider-origin or unknown-origin artwork is not eligible for Studio reuse unless the relevant provenance and rights
+conditions have been resolved. No licence, provider permission or database field is created here.
 
 **Unusable inputs.** A missing, corrupt, unreadable or unsupported input is marked unavailable with a truthful
 reason, and the user may replace or remove it. Saving requires at least two usable, eligible inputs. A failed
