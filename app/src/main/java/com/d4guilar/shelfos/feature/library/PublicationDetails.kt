@@ -109,7 +109,6 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
             Text(item.title, style = MaterialTheme.typography.headlineMedium)
             if (item.creator.isNotBlank()) Text(item.creator, color = t.colors.secondary)
             Text("${stringResource(item.category.singularRes())} · ${item.format}", style = MaterialTheme.typography.bodySmall, color = t.colors.secondary)
-            MetadataSummary(item.category, metadata.stored)
             ReadingProgress(item.progress)
             if (!item.available) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(stringResource(R.string.original_file_unavailable_title), style = MaterialTheme.typography.titleMedium)
@@ -118,6 +117,8 @@ fun PublicationDetails(item: LibraryItem, favorite: Boolean, onFavorite: () -> U
             Button({ onRead(coverBounds) }, Modifier.fillMaxWidth().focusRequester(readFocus).testTag("read_action")) {
                 Text(stringResource(when { !item.available -> R.string.action_try_open; item.lastRead > 0 -> R.string.action_continue_reading; else -> R.string.action_read }))
             }
+            // Below the primary action so Read is in the first viewport; nothing is truncated, the screen just scrolls.
+            MetadataSummary(item.category, metadata.stored)
             Surface(color = t.colors.muted, shape = t.shapes.small) {
                 Text(stringResource(if (favorite) R.string.favorite_on else R.string.favorite_off), Modifier.fillMaxWidth()
                     .testTag("favorite_action").shelfAction(selected = favorite, onClick = onFavorite)

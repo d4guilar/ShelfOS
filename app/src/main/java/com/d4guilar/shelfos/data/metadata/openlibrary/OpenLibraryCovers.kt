@@ -90,7 +90,7 @@ object OpenLibraryCoverRoutes {
 
 /** What a candidate's edition has in common with the book, never more than the evidence supports. */
 enum class CoverMatchKind { EXACT_EDITION, OTHER_EDITION }
-enum class CoverWarning { DIFFERENT_ISBN, DIFFERENT_LANGUAGE, DIFFERENT_PUBLISHER, LOW_CONFIDENCE, NO_COVER_RECORDED }
+enum class CoverWarning { DIFFERENT_ISBN, DIFFERENT_LANGUAGE, DIFFERENT_PUBLISHER, DIFFERENT_YEAR, LOW_CONFIDENCE, NO_COVER_RECORDED }
 
 /**
  * One piece of artwork and the edition it belongs to. [key] is stable for the pair (edition, artwork) and is safe in a file name.

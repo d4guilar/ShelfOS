@@ -24,7 +24,9 @@
     <string name="cover_lab_selected_info">%1$d × %2$d px · edición %3$s de Open Library · guardada en este dispositivo</string>
     <string name="cover_lab_remove">Quitar selección</string>
     <string name="cover_lab_source_edition">Open Library · edición %1$s</string>
-    <string name="cover_lab_exact">Edición exacta (el ISBN coincide)</string>
+    <string name="cover_lab_exact">El ISBN coincide</string>
+    <string name="cover_lab_exact_verify">El ISBN coincide — verifica los detalles de la edición</string>
+    <string name="cover_lab_warn_year">Año distinto</string>
     <string name="cover_lab_other">Edición distinta – no confirmada para este libro</string>
     <string name="cover_lab_warn_isbn">ISBN distinto</string>
     <string name="cover_lab_warn_language">Idioma distinto</string>

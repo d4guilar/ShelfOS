@@ -546,6 +546,7 @@
     <string name="online_error_disabled">Os metadados online estão desativados.</string>
     <string name="online_candidate_work">Correspondência no nível da obra: a edição não foi identificada, então só o título e o autor são considerados.</string>
     <string name="online_confidence_exact">Correspondência exata de ISBN</string>
+    <string name="online_confidence_isbn_verify">O ISBN coincide — confira os detalhes da edição</string>
     <string name="online_confidence_likely">Possível correspondência. Confira os detalhes antes de aplicar.</string>
     <string name="online_confidence_none">Não corresponde a este livro</string>
     <string name="online_conflicts">Conflitos: %1$s</string>

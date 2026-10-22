@@ -5,6 +5,8 @@ Status (2026-10-16): planning accepted in 4.5C.0 (PR #47, ADR-0026 Accepted). **
 and later are not implemented and Open Library D1/D31 remain unresolved. **Update 2026-10-19: 4.5C.2A implements the
 Open Library metadata-only lookup under D1-M (plan §42); covers (D1-C) and aggregate use (D31) stay unresolved.** This document
 does not itself approve any provider.
+
+**Update 2026-10-21 (4.5C.2C):** the owner authorized implementing limited, user-initiated production Book cover retrieval (**D1-C-PROD**) under Open Library's published usage guidelines; D31 is an operational/compliance consideration, not a pending approval. This is an internal decision, **not** Open Library approval or an image licence. **Nothing is implemented or enabled: no production cover retrieval exists.** Next slice 4.5C.3A (plan §44). Cover candidate labels now separate ISBN agreement from edition confidence (§9a).
 Decision record: [ADR-0026](../adr/0026-multi-provider-books-metadata.md).
 Supersedes the single-provider "Open Library primary" framing of
 [`PHASE_4_5_IMPLEMENTATION_PLAN.md`](../PHASE_4_5_IMPLEMENTATION_PLAN.md) §11; every earlier
@@ -269,7 +271,7 @@ needs an affirmative opt-in. Endpoints, request budget, authorization mechanism,
 
 ## 9. Cover Lab pilot (4.5C.2B, 2026-10-20, debug-only)
 
-Under **D1-C-DEV** (a ShelfOS development-pilot decision, not a rights grant) a debug build can find Open Library cover candidates for a Book, preview them and download chosen images into private pilot storage, shown through the real cover renderer. It is separate from, and never enabled by, the D1-M metadata opt-in; release builds have no entry. **D1-C-PROD and D31 stay unresolved**; Open Library stays `CONDITIONAL`; the D1-M grant still cannot authorize `COVERS`. Design, bounds and verification: plan §43.
+Under **D1-C-DEV** (a ShelfOS development-pilot decision, not a rights grant) a debug build can find Open Library cover candidates for a Book, preview them and download chosen images into private pilot storage, shown through the real cover renderer. It is separate from, and never enabled by, the D1-M metadata opt-in; release builds have no entry. **D1-C-PROD and D31 were unresolved when this was written (see the 2026-10-21 update at the top and plan §43.5)**; Open Library stays `CONDITIONAL`; the D1-M grant still cannot authorize `COVERS`. Design, bounds and verification: plan §43.
 
 Status key: *implemented* = in the tree; *tested with fake data* = JVM and device tests with a scripted transport; *live* = a real request; *debug-only*; *production-blocked*.
 
@@ -298,6 +300,11 @@ The pattern matches `HTTP/…` status lines (an earlier draft used `HTTP:`, whic
 
 Report only: the HTTP status of each hop, the host of each `Location`, and the path *structure* with the numeric ids kept (for example `/download/olcovers12/olcovers12-L.zip/123456-L.jpg`). Do not paste cookies, response bodies, file paths or anything else. No Archive.org host is trusted until the chain has been observed and a narrow policy has been reviewed.
 
+
+### 9a. Edition labels (4.5C.2C, META-1)
+
+An ISBN match is evidence about the identifier, not a guarantee that the provider's record describes the user's printing (live UAT: an ISBN-associated 1949 Dodd, Mead record for a 2011 Harper Paperbacks file). Labels: **ISBN matches** (no contradiction, top confidence), **ISBN matches — verify edition details** (publisher, year, language or confidence differ; the matching warnings stay visible), **Different edition** (different ISBN). Never "exact edition". Presentation only: matching, eligibility and `CoverMatchKind` are unchanged.
+
 ## 10. Open Library cover-storage redirects (4.5C.2B R1, F-2 specification)
 
 Source-backed (Open Library `coverstore/code.py` and `coverstore/archive.py`, read 2026-10-20; not exercised live):
@@ -311,4 +318,4 @@ Unknown: the cluster bound for family A (an operator-configured value); and the 
 
 Proposed future policy (**not enabled**): a per-request allowance computed from the original cover id and size, accepting only an exact first-hop URL from `OpenLibraryCoverStorage.firstHops` (implemented and unit-tested, wired to nothing), and a second hop only after its host pattern is verified. No unrestricted `archive.org`, no generic `/download/` path, no `ia*` wildcard, no automatic retrieval. F-2 stays open until a validated chain works. Today's transport refuses even the derived first hop (tested).
 
-**What F-2 still requires before it can close** (nothing below has happened): a real, user-operated cover request; observation of the actual redirect chain; verification of the path and cover-id relationships against `OpenLibraryCoverStorage`; a narrowly scoped per-request redirect policy; security regression tests; a successful, explicitly authorized live cover download; and independent QA of that remediation. D1-C-DEV stays debug-only; D1-C-PROD and D31 stay unresolved.
+**What F-2 still requires before it can close** (nothing below has happened): a real, user-operated cover request; observation of the actual redirect chain; verification of the path and cover-id relationships against `OpenLibraryCoverStorage`; a narrowly scoped per-request redirect policy; security regression tests; a successful, explicitly authorized live cover download; and independent QA of that remediation. D1-C-DEV stays debug-only; D1-C-PROD is owner-authorized but not implemented or enabled, and D31 is a standing operational constraint (plan §31).

@@ -546,6 +546,7 @@
     <string name="online_error_disabled">Los metadatos en línea están desactivados.</string>
     <string name="online_candidate_work">Coincidencia a nivel de obra: no se identifica la edición, así que solo se tienen en cuenta el título y el autor.</string>
     <string name="online_confidence_exact">Coincidencia exacta de ISBN</string>
+    <string name="online_confidence_isbn_verify">El ISBN coincide — verifica los detalles de la edición</string>
     <string name="online_confidence_likely">Posible coincidencia. Revisa los detalles antes de aplicar.</string>
     <string name="online_confidence_none">No coincide con este libro</string>
     <string name="online_conflicts">Conflictos: %1$s</string>

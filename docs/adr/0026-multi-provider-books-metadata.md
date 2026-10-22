@@ -10,6 +10,8 @@ mechanism of 4.5C.2A (plan §42); **D1-C** (covers) and **D31** (aggregate/comme
 policy engine and clustering are implemented with fakes in 4.5C.1; no network, manifest, dependency or
 Room change is authorized by this ADR.
 
+**Update 2026-10-21 (4.5C.2C):** the owner authorized implementing limited, user-initiated production Book cover retrieval (D1-C-PROD) under Open Library's published usage guidelines, and D31 is clarified as an operational/compliance consideration rather than a wait for individual approval, which Open Library does not give. Neither is a provider approval or an image licence. Plan §43.5 and §44; nothing is enabled yet. The "D1 and D31 remain open gates" wording above is historical.
+
 ## Context
 
 Plan §11 framed 4.5C as one Open Library integration. Research on 2026-10-16

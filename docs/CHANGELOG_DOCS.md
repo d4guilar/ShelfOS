@@ -1,5 +1,15 @@
 # Documentation Changelog
 
+## Phase 4.5C.2C R1 navigation widths and decision-ledger reconciliation (2026-10-21)
+
+- Plan §31 renamed "decision ledger" with a statement that its rows are the active status; D1 notes that no individual Open Library approval is pending; D1-M and D1-C-DEV record their merged PRs (#54, #55); D1-C becomes a subdivided historical umbrella (governed by D1-C-DEV and D1-C-PROD), no longer an active blanket block. Dated §§38-43 statements are left as history.
+- Plan §43.6: NAV-1 R1 root cause (equal-fifth admission; dp rounding at 420 dpi), the pixel-exact content-aware fix, the vacuous-locale test correction and the accepted LOW Try-to-open observation. §43.5 points to it.
+- VALIDATION: 4.5C.2C wording corrected (PT-BR 393 dp / font 1.0 did not show every label; the earlier navigation test rendered English only); new 4.5C.2C R1 evidence. BOOK_PROVIDERS F-2 paragraph no longer calls D1-C-PROD/D31 unresolved.
+
+## Phase 4.5C.2C UX stabilization and production-cover authorization record (2026-10-21)
+
+- Plan: reconciled header status, decision rows D1-C-PROD (owner-authorized to implement; not Open Library approval, not an image licence) and D31 (clarified operational/compliance consideration), new §43.5 (NAV-1, R4-1, META-1, status vocabulary, F-2 unchanged) and §44 (proposed 4.5C.3A manual USER selection). ADR-0026 update note; BOOK_PROVIDERS header and §9a edition labels; ROADMAP reconciled status; VALIDATION 4.5C.2C evidence. No production cover retrieval is enabled.
+
 ## Phase 4.5C.2B R4.1 corrections (2026-10-21)
 
 - VALIDATION (R4.1): responsive hero test follows the real viewport (portrait hero asserted only on a portrait host, otherwise skipped), orientation of RP5/Codex results stated, landscape-artwork statement corrected; plan §43.4 lists R4-1, NAV-1, META-1 and F-2. No production change.

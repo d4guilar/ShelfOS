@@ -30,6 +30,8 @@ import com.d4guilar.shelfos.data.metadata.openlibrary.CoverWarning
 import com.d4guilar.shelfos.data.metadata.openlibrary.OnlineCoverCandidate
 import com.d4guilar.shelfos.domain.library.*
 import com.d4guilar.shelfos.feature.library.CoverLabEntry
+import com.d4guilar.shelfos.feature.library.IsbnLabel
+import com.d4guilar.shelfos.feature.library.coverIsbnLabel
 import com.d4guilar.shelfos.feature.reader.activateOnGamepadConfirm
 import java.util.Locale
 
@@ -184,6 +186,7 @@ private fun warningText(c: OnlineCoverCandidate): List<String> = c.warnings.map 
         CoverWarning.DIFFERENT_ISBN -> R.string.cover_lab_warn_isbn
         CoverWarning.DIFFERENT_LANGUAGE -> R.string.cover_lab_warn_language
         CoverWarning.DIFFERENT_PUBLISHER -> R.string.cover_lab_warn_publisher
+        CoverWarning.DIFFERENT_YEAR -> R.string.cover_lab_warn_year
         CoverWarning.LOW_CONFIDENCE -> R.string.cover_lab_warn_low
         CoverWarning.NO_COVER_RECORDED -> R.string.cover_lab_warn_nocover
     })
@@ -191,7 +194,12 @@ private fun warningText(c: OnlineCoverCandidate): List<String> = c.warnings.map 
 
 @Composable
 private fun CandidateSummary(c: OnlineCoverCandidate) {
-    Text(stringResource(if (c.match == CoverMatchKind.EXACT_EDITION) R.string.cover_lab_exact else R.string.cover_lab_other), style = MaterialTheme.typography.labelLarge)
+    // Identifier agreement, stated separately from how far the rest of the record can be trusted (META-1).
+    Text(stringResource(when (coverIsbnLabel(c.match, c.tier, c.warnings)) {
+        IsbnLabel.ISBN_MATCHES -> R.string.cover_lab_exact
+        IsbnLabel.ISBN_MATCHES_VERIFY -> R.string.cover_lab_exact_verify
+        IsbnLabel.NO_ISBN_MATCH -> R.string.cover_lab_other
+    }), style = MaterialTheme.typography.labelLarge)
     Text(stringResource(R.string.cover_lab_source_edition, c.editionRef), style = MaterialTheme.typography.bodySmall)
     Text(listOfNotNull(c.title, c.publisher, c.year?.toString(), c.language).joinToString(" · "), style = MaterialTheme.typography.bodySmall)
     warningText(c).forEach { Text("⚠ $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
