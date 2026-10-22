@@ -8345,7 +8345,7 @@ Branch `phase-4.5/4.5c2c-ux-stabilization` from `main` `002f7e3` (PR #55). No li
 
 | Class | API 35 emulator (1080 x 2340, portrait) | RP5 (d8f7f1b6) |
 | --- | --- | --- |
-| `BottomNavigationLabelsUiTest` (new; EN/ES/PT-BR x 320/360/393 dp x font 1.0/1.3/1.5/2.0, every destination selected, one bar height, tap) | 3/3 | 3/3 portrait-or-auto and 3/3 forced landscape |
+| `BottomNavigationLabelsUiTest` (new; EN/ES/PT-BR x 320/360/393 dp x font 1.0/1.3/1.5/2.0, every destination selected, one bar height, tap; *R1 correction: its locale override never applied, so these runs rendered English only; see 4.5C.2C R1*) | 3/3 | 3/3 portrait-or-auto and 3/3 forced landscape |
 | `PrimaryReadActionVisibilityUiTest` (new; Read bottom <= viewport bottom at 393 x 700 for all four categories, order, label state, 320/360/393 long-title and font 1.5/2.0 reachable by scroll, landscape) | 5/5 | 5/5 and 5/5 forced landscape |
 | `PublicationDetailsResponsiveUiTest` | 14/14 | 14/14 and 14/14 forced landscape |
 | `NavigationSmokeTest` (touch, keyboard Enter/D-pad center, injected gamepad) | 28/28 | 28/28 and 28/28 forced landscape |
@@ -8358,7 +8358,7 @@ Branch `phase-4.5/4.5c2c-ux-stabilization` from `main` `002f7e3` (PR #55). No li
 
 **Baseline versus new.** On a stashed clean `main` build the same two failures reproduce: emulator `CoverPresentationUiTest` (`libraryGridKeepsSelectionScrollAndFocusAcrossPresentationChanges`, `rendererShapesOriginalBoundsFocusAndGeneratedFallback`) and RP5 `MetadataUiTest.editorIsReachableAndConfirmableWithKeyboardAndDpad`. Identical names and counts with and without this change: **no new failure**. (The RP5 count of 1 differs from QA's earlier 3 for that class; orientation, rotation and timing were not controlled between runs, and no causal claim is made.)
 
-**Real screens.** Emulator, `wm size`/`font_scale`/`set-app-locales`, restored afterwards: EN 320/393 dp at 1.0 and 1.5, EN 360 at 2.0, ES 320/393 at 1.0 and 1.5, ES 360 at 1.5, PT-BR 320/393 at 1.0 and 1.5, PT-BR 393 at 1.3 (15 screenshots). No label breaks mid-word; at 320 dp with font 1.5 only the selected label is shown ("Biblioteca" in ES and PT-BR), the others show icons; at 393 dp / font 1.0 every label is shown. Evidence (local, untracked): the scratchpad `shots/` folder. RP5: genuine portrait (360 x ~640 dp) with the owner's real Crooked House showed Continue reading fully visible above the description, and forced landscape (`ROTATION_90`) showed the rail intact. RP5 rotation settings were restored to `accelerometer_rotation=1`, `user_rotation=1`; the owner's book and data were not touched (only the test-fixture ids the existing suite adds and removes).
+**Real screens.** Emulator, `wm size`/`font_scale`/`set-app-locales`, restored afterwards: EN 320/393 dp at 1.0 and 1.5, EN 360 at 2.0, ES 320/393 at 1.0 and 1.5, ES 360 at 1.5, PT-BR 320/393 at 1.0 and 1.5, PT-BR 393 at 1.3 (15 screenshots). No label breaks mid-word; at 320 dp with font 1.5 only the selected label is shown ("Biblioteca" in ES and PT-BR), the others show icons; at 393 dp / font 1.0 every label is shown. *R1 correction:* that held for EN and ES only; in PT-BR at 393 dp / font 1.0 this build showed only the selected label ("Configurações" was wider than a fifth of the bar), as independent QA found and as the measured widths confirm. Fixed in 4.5C.2C R1. Evidence (local, untracked): the scratchpad `shots/` folder. RP5: genuine portrait (360 x ~640 dp) with the owner's real Crooked House showed Continue reading fully visible above the description, and forced landscape (`ROTATION_90`) showed the rail intact. RP5 rotation settings were restored to `accelerometer_rotation=1`, `user_rotation=1`; the owner's book and data were not touched (only the test-fixture ids the existing suite adds and removes).
 
 **Limits, stated plainly.**
 - The R4 fixtures have no stored description, so the viewport tests prove ordering and placement; the long-description case was verified visually on the RP5's real book, not by a fixture.
@@ -8367,3 +8367,52 @@ Branch `phase-4.5/4.5c2c-ux-stabilization` from `main` `002f7e3` (PR #55). No li
 - TalkBack was not run; accessibility is asserted through semantics (content description or text equals the full localized label, selected state, 48 dp targets).
 - META-1 strings were verified by key parity and unit tests, not visually on a live Open Library result (no live request was made).
 - F-2 unchanged and unresolved; nothing in this change affects the transport.
+
+## PHASE 4.5C.2C R1: ADAPTIVE NAVIGATION WIDTHS AND REGRESSION COVERAGE (2026-10-21, pending independent delta QA)
+
+Remediates the one MEDIUM finding of the independent Codex High QA of `7451484` (NAV-1 hid labels that fit). Root cause, fix and the accepted LOW observation: plan §43.6. No live provider request, Room, transport, consent, matcher, cover or authorization change; `PublicationDetails.kt` is unchanged.
+
+**What changed.** `navLabelLayout` now works in whole pixels and shows all labels whenever `sum(max(48 dp, label + 2 x 4 dp))` fits the bar (labels measured in both weights, paddings rounded as `Modifier.padding` rounds them); spare pixels are shared evenly and the widths ignore the selection. Selected-only and icons-only remain for genuine overflow; the selected item is never narrower than an equal share. The rail width uses the same pixel requirement.
+
+**Measured label widths** (real Compose text on the API 35 emulator, labelSmall, wider weight, px at 2.75 density; the JVM fixtures): EN x1.0 94/94/79/105/111; PT-BR x1.0 135/94/79/116/197 (needs 781 of 1080 px at 393 dp, yet "Configurações" + padding = 219 px exceeded the 216 px fifth, which is why 7451484 hid four labels); EN x2.0 needs exactly 1080 px, so it fits the 1080 px screen with nothing to spare.
+
+**JVM (focused):** `NavigationLabelPolicyTest` 7/7 (PT-BR 393 dp at both densities, PT-BR 320/360 dp, EN 320 x1.5, ES 360/393 x1.5, EN 393 x2.0 exact fit, EN 320 x1.0, PT-BR 393 x1.5; every selection -1..4 with identical geometry in all-label mode; genuine overflow to selected-only and icons-only and the one-pixel-short case; selected item never narrowest; fractional densities 1.0-3.5 including 2.625 (420 dpi) asserting no item below its label + padding and all-label mode exactly when the requirements fit). The full suite was **not** rerun: the previous full-suite result, run independently immediately before R1 on `7451484`, is 958 total, 957 passed, 1 skipped; R1 replaces the 4 earlier `NavigationLabelPolicyTest` methods with 7 and touches no other JVM test.
+
+**Instrumented (executed counts; one class per `am instrument`, no uninstall, no data cleared).**
+
+| Class | API 35 emulator `shelfos-phase0` (1080 x 2340, 440 dpi) | RP5 `d8f7f1b6` (API 33, 1080 x 1920, 360 dpi) |
+| --- | --- | --- |
+| `BottomNavigationLabelsUiTest` (4: EN/ES/PT-BR x 320/360/393 dp x font 1.0/1.3/1.5/2.0 x device density and 2.625; PT-BR 393 dp all labels; every selection, one height, stable geometry in all-label mode; taps) | 4/4 | 4/4 |
+| `PrimaryReadActionVisibilityUiTest` (7: adds a metadata-rich Book with a three-paragraph stored description, publisher, date, language, series and ISBN through `LocalMetadataAccess`, in a 393 x 640 dp window that includes the real bottom bar; plus the unavailable-file Try to open case) | 7/7 | 7/7 |
+| `NavigationSmokeTest` (touch, keyboard, injected gamepad) | 28/28 | 28/28 forced landscape (`user_rotation=1`) |
+| `AppLanguageInstrumentedTest` | 3/3 | not run |
+
+**Test corrections found in R1.**
+- The 7451484 `BottomNavigationLabelsUiTest` never rendered ES or PT-BR: inside `Configuration().apply { setLocale(locale) }`, `locale` resolved to `Configuration`'s own field, so both the bar and the expected label stayed English and the language checks passed vacuously. Renamed; each matrix step now asserts the real Settings label (Settings / Ajustes / Configurações). The 4.5C.2C row above carries a correction note.
+- Text clipping is asserted from the line's right edge against the text's own laid-out width and the item's padded content box; `hasVisualOverflow` is unusable here because Compose lays out `softWrap = false` text unbounded.
+- Mutation check: temporarily moving `MetadataSummary` above Read (reverted, never committed) made the two new Read tests fail ("Read fully visible above the navigation (bottom 677.1 <= 575.3 dp)" and "the description stays below Try to open"); the five older tests still passed.
+
+**Real screens (emulator).** `wm size` / `font_scale` / `cmd locale set-app-locales`, each configuration read back immediately before capture, all restored afterwards (physical size, font 1.0, no app locale). Library route, empty emulator library. Observed, by eye:
+
+| Configuration | Bar |
+| --- | --- |
+| PT-BR 393 dp x1.0 (the QA case) | **all five**, unequal widths, "Configurações" whole |
+| PT-BR 393 dp x1.5 | all five |
+| PT-BR 360 dp x1.0; PT-BR 320 dp x1.0 | all five |
+| PT-BR 360 dp x1.5; PT-BR 320 dp x1.5 | selected label only ("Biblioteca"), four icons (needs 1038 px; bar 990 / 880 px) |
+| PT-BR 393 dp x2.0 | selected label only |
+| EN 320 dp x1.5; ES 360 dp x1.5; ES 393 dp x1.5 | all five (previously excessive fallbacks) |
+| EN 393 dp x2.0 | all five, exact fit, "Settings" not clipped |
+
+Evidence (local, untracked): scratchpad `shots-final/` (11 emulator PNGs + 2 RP5). No label wrapped, broke mid-word or was ellipsized in any frame.
+
+**RP5.** Installed with `install -r` over the existing app (data kept). Forced landscape showed the rail with every label on one line in EN and PT-BR ("Configurações" whole) beside the owner's real Crooked House. Rotation restored to `accelerometer_rotation=1`, `user_rotation=1`; app locale restored to the system default. No owner data was cleared or edited. Gamepad evidence is injected key events only; no physical controller was used.
+
+**Builds:** `:app:assembleDebug`, `:app:assembleRelease`, `:app:assembleDebugAndroidTest`, `:app:lintDebug` (0 errors; no finding in a touched file), `git diff --check`: pass.
+
+**Environment, stated plainly.** The emulator (2 GB guest RAM) was unstable under repeated display-size changes: the system launcher and, several times, ShelfOS raised ANR dialogs; every ShelfOS report was "Input dispatching timed out ... FocusEvent" with the main thread waiting in `RenderProxy::setStopped` on the emulated GPU, not in app code. System_server died once during an early capture attempt (overlapping `uiautomator dump` calls and a concurrent Gradle build); the emulator was rebooted (no data cleared) and frames from unstable runs were discarded. Only frames whose configuration was read back and whose bar was visible are reported.
+
+**Limits.**
+- The all-label geometry is stable across selections by construction and by test; the selected-only mode still moves the wider item with the selection (by design, unchanged).
+- TalkBack was not run; accessibility is asserted through semantics (text or content description equals the full localized label, selected state, 48 dp targets, click actions).
+- Accepted LOW (plan §43.6): Try to open can start about 50 dp below the first 393 x 640 dp viewport with a long title and the unavailable-file warning; reachable by scrolling and covered by a test. Unrelated observations left for triage: faint Read focus highlight on RP5, "Retro Apple UI" vs "Pear Platinum" display name, Continue reading 0% for Crooked House, the Annotation Fixture Book on the RP5.

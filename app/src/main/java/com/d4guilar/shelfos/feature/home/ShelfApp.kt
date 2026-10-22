@@ -209,7 +209,7 @@ fun ShelfApp(library: LibraryViewModel, settings: SettingsViewModel, container: 
             if (!reading && layout.navigation == NavigationLayout.RAIL) {
                 // Wide enough for the longest localized label on one line (never below the 88 dp default), so no word breaks.
                 val navMetrics = rememberNavMetrics()
-                Column(Modifier.width(maxOf(88.dp, (navMetrics.labelWidths.max() + NAV_ITEM_PADDING * 2))).fillMaxHeight().graphicsLayer(alpha = chromeAlphaValue)
+                Column(Modifier.width(maxOf(88.dp, navMetrics.railWidth)).fillMaxHeight().graphicsLayer(alpha = chromeAlphaValue)
                     .verticalScroll(rememberScrollState()).testTag("navigation_rail")) {
                     Spacer(Modifier.height(t.spacing.medium))
                     Destination.entries.forEach { destination ->
@@ -324,38 +324,49 @@ private val NAV_MIN_TARGET = 48.dp
 private fun isSelected(destination: Destination, route: String) =
     route == destination.route || (destination == Destination.LIBRARY && route.startsWith("details"))
 
-/** Single-line label widths and the one item height every presentation shares, measured for the current locale and font scale. */
-private class NavMetrics(val labelWidths: List<androidx.compose.ui.unit.Dp>, val itemHeight: androidx.compose.ui.unit.Dp)
+/**
+ * Single-line label widths in pixels (the wider of the selected and unselected weights), the item padding and touch target
+ * rounded to pixels exactly as layout rounds them, the rail width that fits the longest label, and the one item height every
+ * presentation shares; all measured for the current locale and font scale.
+ */
+private class NavMetrics(val labelWidths: List<Int>, val paddingPx: Int, val minTargetPx: Int,
+    val railWidth: androidx.compose.ui.unit.Dp, val itemHeight: androidx.compose.ui.unit.Dp)
 
 @Composable
 private fun rememberNavMetrics(): NavMetrics {
     val t = LocalShelfTokens.current
     val measurer = androidx.compose.ui.text.rememberTextMeasurer()
     val density = LocalDensity.current
-    // The selected style is the widest, so a label never outgrows its measured width when it becomes selected.
-    val style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
+    // Both weights are measured so a label never outgrows its width when the selection changes.
+    val styles = listOf(FontWeight.SemiBold, FontWeight.Normal).map { MaterialTheme.typography.labelSmall.copy(fontWeight = it) }
     val labels = Destination.entries.map { stringResource(it.labelRes) }
-    return remember(labels, style, density, t.icons.size) {
-        val results = labels.map { measurer.measure(it, style, maxLines = 1, softWrap = false) }
+    return remember(labels, styles, density, t.icons.size) {
+        val results = labels.map { label -> styles.map { measurer.measure(label, it, maxLines = 1, softWrap = false) } }
         with(density) {
-            NavMetrics(results.map { it.size.width.toDp() }, 12.dp * 2 + t.icons.size + 6.dp + results.maxOf { it.size.height }.toDp())
+            val widths = results.map { r -> r.maxOf { it.size.width } }
+            val padding = NAV_ITEM_PADDING.roundToPx()
+            val target = NAV_MIN_TARGET.roundToPx()
+            NavMetrics(widths, padding, target, navItemRequiredPx(widths.max(), padding, target).toDp(),
+                12.dp * 2 + t.icons.size + 6.dp + results.maxOf { r -> r.maxOf { it.size.height } }.toDp())
         }
     }
 }
 
 /**
- * The bottom bar. Full one-line labels when every one fits its fifth of the width; otherwise only the selected label, given
- * the room it needs; otherwise icons only. The accessible name is always the full label and the height never changes.
+ * The bottom bar. Full one-line labels whenever their measured widths together fit the bar, each item as wide as its label
+ * needs plus an even share of the rest; otherwise only the selected label, given the room it needs; otherwise icons only.
+ * The accessible name is always the full label and the height never changes.
  */
 @Composable
 internal fun BottomNavigation(route: String, modifier: Modifier, onNavigate: (Destination) -> Unit) {
     val nav = rememberNavMetrics()
+    val density = LocalDensity.current
     BoxWithConstraints(modifier.fillMaxWidth().testTag("bottom_navigation")) {
         val selectedIndex = Destination.entries.indexOfFirst { isSelected(it, route) }
-        val layout = navLabelLayout(maxWidth, nav.labelWidths, selectedIndex, NAV_ITEM_PADDING, NAV_MIN_TARGET)
+        val layout = navLabelLayout(constraints.maxWidth, nav.labelWidths, selectedIndex, nav.paddingPx, nav.minTargetPx)
         Row(Modifier.fillMaxWidth()) {
             Destination.entries.forEachIndexed { index, destination ->
-                NavigationItem(destination, index == selectedIndex, Modifier.width(layout.itemWidths[index]),
+                NavigationItem(destination, index == selectedIndex, Modifier.width(with(density) { layout.itemWidths[index].toDp() }),
                     layout.mode == NavLabelMode.ALL || (layout.mode == NavLabelMode.SELECTED_ONLY && index == selectedIndex),
                     nav.itemHeight, onClick = { onNavigate(destination) })
             }
