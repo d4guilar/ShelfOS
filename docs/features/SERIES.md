@@ -130,3 +130,13 @@ is explicit. Missing/unreadable next members retain their metadata and show a
 recoverable choice to locate, return or deliberately skip, never a silent jump.
 Normal Back/Home remains available. Cross-volume continuity, failure states and
 focus restoration need tests before calling virtual omnibus reading complete.
+
+## Composite covers for omnibus (proposed)
+
+The generated composite/stack cover choice above is specified in
+[Omnibus Composite Covers](OMNIBUS_COVERS.md) (accepted direction, not implemented). A Series composite is a
+Series-level user cover built from member artwork; it adds no ISBN or edition identity, attaches nothing to member
+LibraryItems and does not change "Read as Omnibus". It depends on the Series foundation and is not built before it.
+Single-file handmade omnibus covers are a separate, Series-independent deliverable.
+
+Series may also appear as a section inside a [Room](ROOMS.md) (provisional name; a presentation view, not a copy).

@@ -1,4 +1,10 @@
 # Documentation Changelog
+## Omnibus covers, Rooms and Quiet Motion planning (2026-10-22)
+
+- New: `features/OMNIBUS_COVERS.md`, `features/ROOMS.md` (provisional name), `design/MOTION.md`. Accepted product
+  directions, none implemented; open decisions listed in each.
+- Cross-references added to SERIES.md, SHELVES.md, DESIGN_SYSTEM.md (new section 12) and THEMES.md; ROADMAP proposed
+  sequencing entry (no renumbering, no new gate). No code, schema, dependency, entitlement or Open Library decision changed.
 
 ## Phase 4.5C.2C R1 navigation widths and decision-ledger reconciliation (2026-10-21)
 

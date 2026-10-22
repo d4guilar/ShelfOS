@@ -725,6 +725,29 @@ full requirement text.
 
 ---
 
+## Proposed feature sequencing: Omnibus covers, Rooms and Quiet Motion (2026-10-22)
+
+**Accepted product direction. Proposed sequencing only: none of these is implemented, scheduled or dated, and no
+phase is renumbered or gate expanded.** Specifications:
+[Omnibus covers](features/OMNIBUS_COVERS.md), [Rooms](features/ROOMS.md) (provisional name),
+[Quiet Motion](design/MOTION.md).
+
+Suggested order and dependencies:
+
+1. **Production Open Library cover selection** (Phase 4.5C.3A, see Phase 4.5 above) remains the next functional
+   milestone. This planning changes neither it nor the Open Library authorization decisions.
+2. **Quiet Motion v1**: may follow as an independent, focused implementation PR after production cover selection.
+   Depends only on existing `ShelfMotion`, `shelfAction` and `ReducedMotion`; needs its benchmark plan first.
+3. **Single-file omnibus composite covers**: can follow the established USER cover pipeline; no Series dependency.
+4. **Virtual omnibus covers**: depend on the Series foundation (not implemented).
+5. **Rooms (MVP)**: depends on Manual Shelves and the Series foundation. Advanced Rooms using saved filters or Smart
+   Shelves wait for those capabilities.
+6. **Room visuals and theme-specific motion**: later customization work, after Rooms MVP and Quiet Motion v1.
+
+No entitlement, billing, schema or ADR is created by this entry; open questions live in each specification.
+
+---
+
 ## Future Platform Track — iOS / iPadOS
 
 Begins only after Android architecture/product stability.
