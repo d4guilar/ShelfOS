@@ -8374,7 +8374,7 @@ Remediates the one MEDIUM finding of the independent Codex High QA of `7451484` 
 
 **What changed.** `navLabelLayout` now works in whole pixels and shows all labels whenever `sum(max(48 dp, label + 2 x 4 dp))` fits the bar (labels measured in both weights, paddings rounded as `Modifier.padding` rounds them); spare pixels are shared evenly and the widths ignore the selection. Selected-only and icons-only remain for genuine overflow; the selected item is never narrower than an equal share. The rail width uses the same pixel requirement.
 
-**Measured label widths** (real Compose text on the API 35 emulator, labelSmall, wider weight, px at 2.75 density; the JVM fixtures): EN x1.0 94/94/79/105/111; PT-BR x1.0 135/94/79/116/197 (needs 781 of 1080 px at 393 dp, yet "Configurações" + padding = 219 px exceeded the 216 px fifth, which is why 7451484 hid four labels); EN x2.0 needs exactly 1080 px, so it fits the 1080 px screen with nothing to spare.
+**Measured label widths** (real Compose text on the API 35 emulator, labelSmall, wider weight, px at 2.75 density; the JVM fixtures): EN x1.0 94/94/79/105/111; PT-BR x1.0 135/94/79/116/197 (needs 778 of 1080 px at 393 dp (corrected in R2 from 781 after independent QA re-summed the item widths; the 781 figure in the R1 hand-off was an arithmetic slip, and the fixtures and policy never used it), yet "Configurações" + padding = 219 px exceeded the 216 px fifth, which is why 7451484 hid four labels); EN x2.0 needs exactly 1080 px, so it fits the 1080 px screen with nothing to spare.
 
 **JVM (focused):** `NavigationLabelPolicyTest` 7/7 (PT-BR 393 dp at both densities, PT-BR 320/360 dp, EN 320 x1.5, ES 360/393 x1.5, EN 393 x2.0 exact fit, EN 320 x1.0, PT-BR 393 x1.5; every selection -1..4 with identical geometry in all-label mode; genuine overflow to selected-only and icons-only and the one-pixel-short case; selected item never narrowest; fractional densities 1.0-3.5 including 2.625 (420 dpi) asserting no item below its label + padding and all-label mode exactly when the requirements fit). The full suite was **not** rerun: the previous full-suite result, run independently immediately before R1 on `7451484`, is 958 total, 957 passed, 1 skipped; R1 replaces the 4 earlier `NavigationLabelPolicyTest` methods with 7 and touches no other JVM test.
 
@@ -8383,7 +8383,7 @@ Remediates the one MEDIUM finding of the independent Codex High QA of `7451484` 
 | Class | API 35 emulator `shelfos-phase0` (1080 x 2340, 440 dpi) | RP5 `d8f7f1b6` (API 33, 1080 x 1920, 360 dpi) |
 | --- | --- | --- |
 | `BottomNavigationLabelsUiTest` (4: EN/ES/PT-BR x 320/360/393 dp x font 1.0/1.3/1.5/2.0 x device density and 2.625; PT-BR 393 dp all labels; every selection, one height, stable geometry in all-label mode; taps) | 4/4 | 4/4 |
-| `PrimaryReadActionVisibilityUiTest` (7: adds a metadata-rich Book with a three-paragraph stored description, publisher, date, language, series and ISBN through `LocalMetadataAccess`, in a 393 x 640 dp window that includes the real bottom bar; plus the unavailable-file Try to open case) | 7/7 | 7/7 |
+| `PrimaryReadActionVisibilityUiTest` (7: adds a metadata-rich Book with a three-paragraph stored description, publisher, date, language, series and ISBN through `LocalMetadataAccess`, in a 393 x 640 dp window that includes the real bottom bar; plus the unavailable-file Try to open case) | 7/7 (portrait) | 7/7, **orientation not recorded** by the implementer (R2 note below) |
 | `NavigationSmokeTest` (touch, keyboard, injected gamepad) | 28/28 | 28/28 forced landscape (`user_rotation=1`) |
 | `AppLanguageInstrumentedTest` | 3/3 | not run |
 
@@ -8416,3 +8416,25 @@ Evidence (local, untracked): scratchpad `shots-final/` (11 emulator PNGs + 2 RP5
 - The all-label geometry is stable across selections by construction and by test; the selected-only mode still moves the wider item with the selection (by design, unchanged).
 - TalkBack was not run; accessibility is asserted through semantics (text or content description equals the full localized label, selected state, 48 dp targets, click actions).
 - Accepted LOW (plan §43.6): Try to open can start about 50 dp below the first 393 x 640 dp viewport with a long title and the unavailable-file warning; reachable by scrolling and covered by a test. Unrelated observations left for triage: faint Read focus highlight on RP5, "Retro Apple UI" vs "Pear Platinum" display name, Continue reading 0% for Crooked House, the Annotation Fixture Book on the RP5.
+
+## PHASE 4.5C.2C R2: PORTRAIT READ TEST GATED ON ACTUAL VIEWPORT (2026-10-22, pending independent delta QA)
+
+Closes QA findings F-1 and F-2 (and F-3). Test and documentation only: no production, schema, dependency or provider change; `PublicationDetails.kt` is unchanged. No live provider request; no app data cleared, no uninstall (APKs installed with `adb install -r`).
+
+**F-1.** `readStaysAboveAStoredDescriptionInA640DpPortraitWindow` requests a 393 x 640 dp window with `Modifier.size`, but Compose clamps that to the parent's constraints. In RP5 forced landscape the host is only about 432 dp tall, so the Read-above-description assertion could never be met. The test now renders the fixture, measures the real `window` node (outside composition, via `fetchSemanticsNode().size` / density) and calls `Assume.assumeTrue` unless it is at least 392.5 x 639.5 dp and taller than wide. An ineligible host reports an assumption skip; the fixture, the Read-above-metadata and Read-above-navigation assertions are unchanged, and no other test is touched.
+
+**F-2 orientation record.** The RP5 7/7 in the R1 table did not record orientation and is not claimed as landscape. Observed in R2: with `accelerometer_rotation=1` and an upright device the RP5 hosts the full 393 x 640 dp window (all 7 run); only with rotation locked to landscape (`accelerometer_rotation=0`, `user_rotation=1`) is the window 432 dp tall.
+
+**Independent QA (before R2):** API 35 emulator portrait 7/7; RP5 forced landscape 6/7, the seventh failing because of viewport clamping.
+
+**R2 results (executed; `am instrument -r`, one class).**
+
+| Device and orientation | `PrimaryReadActionVisibilityUiTest` |
+| --- | --- |
+| API 35 emulator `emulator-5554`, portrait, measured window 392.7 x 640 dp | **7 passed, 0 skipped, 0 failed** (portrait-specific test executed) |
+| RP5 `d8f7f1b6`, API 33, forced landscape (`accelerometer_rotation=0`, `user_rotation=1`), measured window 392.9 x 432 dp | **6 passed, 1 assumption skipped (the portrait-specific test), 0 failed** |
+| RP5, rotation left automatic (upright, portrait-sized), measured window 392.9 x 640 dp | 7 passed, 0 skipped, 0 failed |
+
+The API 35 emulator's system server hung during a rerun and was restarted (`-no-snapshot`, same AVD, no data wipe); the portrait result above is from the restarted emulator on the final test APK. RP5 rotation settings were restored afterwards (`accelerometer_rotation=1`, `user_rotation=1`).
+
+**F-3.** The portrait test now expands the Details section (the production design keeps identifiers there) and asserts the fixture's exact ISBN-13 `9780007527526` is displayed. No production change.

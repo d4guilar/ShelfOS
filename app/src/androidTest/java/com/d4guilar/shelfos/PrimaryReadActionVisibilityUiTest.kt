@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+﻿// SPDX-License-Identifier: MPL-2.0
 package com.d4guilar.shelfos
 
 import androidx.compose.foundation.layout.Box
@@ -28,7 +28,9 @@ import com.d4guilar.shelfos.feature.library.LocalMetadataAccess
 import com.d4guilar.shelfos.feature.library.MetadataAccess
 import com.d4guilar.shelfos.feature.library.PublicationDetails
 import kotlinx.coroutines.flow.flowOf
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -71,7 +73,7 @@ class PrimaryReadActionVisibilityUiTest {
     private val density get() = rule.density.density
     /** A metadata-rich Book as stored after import or a reviewed lookup: every summary field, a series, an ISBN and real prose. */
     private val richMetadata = StoredMetadata(MetadataValues(
-        description = "Charles Hayward returns from the war to find that his fiancée's grandfather, the wealthy Aristide Leonides, " +
+        description = "Charles Hayward returns from the war to find that his fiancÃ©e's grandfather, the wealthy Aristide Leonides, " +
             "has been poisoned in his own home, a sprawling house shared by three generations of a family with every reason to want him gone.\n\n" +
             "As Charles helps his father's friends at Scotland Yard, he is drawn into the household's rivalries: the young widow, the " +
             "disappointed sons, their wives and the watchful children. Each interview narrows the circle, and each answer seems to " +
@@ -136,6 +138,13 @@ class PrimaryReadActionVisibilityUiTest {
 
     @Test fun readStaysAboveAStoredDescriptionInA640DpPortraitWindow() {
         // 393 x 640 dp including the bottom bar: Read must fit in what is left above the navigation.
+        // Modifier.size is clamped by the parent: a landscape host (RP5 forced landscape, ~456 dp tall) cannot provide a 640 dp
+        // portrait window, so the measured window decides eligibility instead of the requested size.
+        showWithNavigation(393.dp, 640.dp, 0L, ok = true)
+        val actual = rule.onNodeWithTag("window").fetchSemanticsNode().size
+        val actualW = actual.width / density
+        val actualH = actual.height / density
+        assumeTrue("host provides only ${actualW} x ${actualH} dp, needs a 393 x 640 dp portrait window", actualW >= 392.5f && actualH >= 639.5f && actualH > actualW)
         for (read in listOf(0L, 5L)) {
             showWithNavigation(393.dp, 640.dp, read, ok = true)
             val navTop = topOf("bottom_navigation")
@@ -155,10 +164,14 @@ class PrimaryReadActionVisibilityUiTest {
             }
             rule.onNodeWithTag("read_action").performScrollTo().assertIsDisplayed()
         }
+        // The fixture's ISBN-13 lives in the expandable Details section, not the summary: expand it and check the exact identifier.
+        val expand = InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.details_expand)
+        rule.onNodeWithText(expand).performScrollTo().performClick()
+        rule.onNodeWithText("9780007527526", substring = true).performScrollTo().assertIsDisplayed()
     }
 
     @Test fun anUnavailableFileKeepsTryToOpenReachableAboveTheDescription() {
-        // Accepted LOW limitation (plan §43.5): with a long title and the unavailable-file warning, Try to open can start just below
+        // Accepted LOW limitation (plan Â§43.5): with a long title and the unavailable-file warning, Try to open can start just below
         // the first viewport at 393 x 640. It must stay reachable by scrolling, above the metadata and clear of the navigation.
         showWithNavigation(393.dp, 640.dp, 5L, ok = false, t = "The Extraordinarily Long and Winding Title of a Remarkably Wordy Publication")
         rule.onNodeWithTag("read_action").performScrollTo().assertIsDisplayed().assertTextContains("Try to open")
