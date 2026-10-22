@@ -37,7 +37,10 @@ feature must not reintroduce one.
 
 ## 3. Naming risk
 
-Folio already uses "Rooms" for collection organization. Keep the name provisional. Do not hard-code the word into
+Two naming concerns: Folio already uses "Rooms" for collection organization, and "Room" collides with Android's Room
+database library, which ShelfOS uses (`core.database`, Room entities, schemas, migrations). Keep the user-facing name
+provisional, and keep Room-feature vocabulary distinguishable from Room-database terminology in code and documentation
+(for example by not reusing bare "Room" for feature types, packages or tables). No final name is chosen here. Do not hard-code the word into
 identifiers that are expensive to rename, and keep the user-facing string in Android string resources
 (localization rules). A separate naming decision will confirm the final name or choose another (for example
 "Spaces" or "Rooms" retained). This document uses "Room" throughout for readability only.
@@ -50,21 +53,24 @@ translated or rewritten. Exact fields are *pending design decision* and not a fr
 **Creation and renaming.** Manual only. A user creates, renames and reorders Rooms. No Room is created from folders
 or by automation; folder structure is evidence, not truth.
 
-**Cover / banner.** Optional, user-selected from the user's own images or a member's cover, through the same
-cover-storage rules and budgets as other user artwork. Absent a choice, a deliberate generated or neutral
+**Cover / banner.** Optional, user-selected from the user's own images or a member's cover. Rooms have **no implemented
+cover/banner storage**: current cover persistence is keyed to LibraryItems, and a Room cover cannot be written through a
+LibraryItem's USER cover slot. Future Room artwork may reuse cover design, rendering, encoding and budget conventions,
+but its ownership, persistence and lifecycle are new work. Absent a choice, a deliberate generated or neutral
 presentation is shown (not a missing-image look). A Room cover is never fetched online.
 
 **Featured publication.** At most one optional featured LibraryItem per Room (see MVP boundary), chosen by the user.
 If the item is removed from the library the Room shows no feature and does not error.
 
 **Sections.** An ordered list of sections. Each section references one of: a Shelf, a Series, a single publication,
-a saved author or tag view, or a Currently Reading selection. Section order and per-section title override are
+a saved author or tag view, or a Currently Reading selection (all proposed; no section type is implemented, and a
+Currently Reading section is proposed only). Section order and per-section title override are
 user-controlled. A section can be hidden or removed without affecting its source Shelf/Series.
 
 **Adding Shelves and Series.** A Shelf or Series can appear in many Rooms and also stay pinned to the Library. A Room
 reference to a Shelf follows that Shelf's current membership; a Room never snapshots it.
 
-**View options.** Each section may use Compact Grid, List or Showcase where appropriate, reusing existing Library
+**View options.** Each section may use Grid, Compact, List or Showcase (the canonical Shelf view names) where appropriate, reusing existing Library
 components and the shared cover renderer. Sorting follows the underlying Shelf/Series unless the user overrides.
 
 **Input.** Touch, keyboard and gamepad share semantic input commands (no screen-specific mappings). Every Room
@@ -85,7 +91,15 @@ and open Room survive rotation, fold/unfold, resize and process recreation.
 - Removing a Shelf or Series that a Room references does not delete the Room; the affected section shows a clear
   "no longer available" state the user can remove, not a crash or silent disappearance.
 - A missing or disconnected Source never removes Room references (consistent with Library Sources rules).
-- Renaming a Room never renames a Shelf, Series, folder or file.
+- Renaming a Room never renames a Shelf, Series, folder or file. Conversely, a Shelf or Series rename is reflected in
+  the Room section by default unless the section has an explicit title override.
+- If an individual LibraryItem disappears, a section referencing it shows the unavailable state; it never triggers
+  destructive cleanup of unrelated entities.
+- Missing or deleted references can be repaired or relinked when identity is recoverable, or removed deliberately by the
+  user when it is not. A missing publication Source is not a deleted LibraryItem and is never treated as one.
+- A publication shown in several sections (or Rooms) is the same underlying LibraryItem with shared progress.
+- Back navigation returns predictably to the screen from which the Room was opened, subject to normal app navigation.
+- None of this fixes a storage schema; reference and override representation remain *pending design decision*.
 
 ## 6. Accessibility
 
@@ -107,7 +121,7 @@ First version is deliberately small:
 - manual creation, rename, delete, reorder
 - sections that reference **existing Manual Shelves, Series and individual publications** only
 - optional featured publication and optional user-chosen cover
-- Grid / List / Showcase from existing components
+- Grid / Compact / List / Showcase from existing components
 - all local
 
 Not required and **not** part of MVP: Smart Shelves, saved filter views, online metadata, synchronization, social
@@ -118,7 +132,7 @@ not yet exist).
 ## 9. Dependencies
 
 Rooms depend on the **Manual Shelves** and **Series** foundations, neither of which is implemented. Saved views and
-Smart Shelf sections depend on Smart Shelves. Room covers reuse the USER cover pipeline.
+Smart Shelf sections depend on Smart Shelves. Room covers may reuse cover design and rendering conventions but need their own storage and lifecycle (Section 4).
 
 ## 10. Risks and testing
 

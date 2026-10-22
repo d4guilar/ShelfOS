@@ -85,5 +85,5 @@ A [Room](ROOMS.md) (provisional name, accepted direction, not implemented) is a 
 sections reference existing Manual Shelves, Series and publications. It is not a new organizational tier: Shelf
 membership stays owned by the Shelf, and a Room section reflects a Shelf's current membership rather than copying it.
 Deleting a Room never deletes a Shelf or its items; deleting a Shelf leaves referencing Rooms with a recoverable
-"no longer available" section. "Collections" is not reintroduced. Rooms depend on Manual Shelves existing first and
+"no longer available" section; a Shelf rename shows through by default unless the Room section overrides its title. "Collections" is not reintroduced. Rooms depend on Manual Shelves existing first and
 use Smart Shelf results only after Smart Shelves exist.

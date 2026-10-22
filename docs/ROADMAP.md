@@ -391,7 +391,7 @@ restore the JSON without publication-identity guessing.
 
 ### Current status
 
-**Reconciled current status (2026-10-21; Git history is authoritative, the older sentences in this section are historical).** Merged to `main`: 4.5A.1 (#44), 4.5A.2 (#45), 4.5B Metadata Core (#46), 4.5C.0 planning (#47), 4.5C.1 provider infrastructure (#48), 4.5F.0 Offline Cover Selection (#49), 4.5D.0 offline Manga matching (#50), provider research (#51-#53), **4.5C.2A opt-in Open Library metadata lookup (#54)** and **4.5C.2B debug-only Cover Lab with responsive Publication Details (#55)**. **4.5C.2C** (UX stabilization: NAV-1, R4-1, META-1, plus the owner's D1-C-PROD authorization record) is the current branch. **No production cover retrieval exists or is enabled**; next proposed slice is **4.5C.3A Production Find Cover Online (manual selection first)** (plan §44).
+**Reconciled current status (2026-10-21; Git history is authoritative, the older sentences in this section are historical).** Merged to `main`: 4.5A.1 (#44), 4.5A.2 (#45), 4.5B Metadata Core (#46), 4.5C.0 planning (#47), 4.5C.1 provider infrastructure (#48), 4.5F.0 Offline Cover Selection (#49), 4.5D.0 offline Manga matching (#50), provider research (#51-#53), **4.5C.2A opt-in Open Library metadata lookup (#54)** and **4.5C.2B debug-only Cover Lab with responsive Publication Details (#55)**, and **4.5C.2C (#56)** (UX stabilization: NAV-1, R4-1, META-1, plus the owner's D1-C-PROD authorization record), which is merged and is the accepted milestone. **No production cover retrieval exists or is enabled**; next proposed slice is **4.5C.3A Production Find Cover Online (manual selection first)** (plan §44).
 
 **Next active milestone (planning, 2026-10-15).** Phase 4 is complete. Phase 4.5 is
 inserted between Phase 4 and Phase 5; Phase 5 remains Advanced PDF Ingestion and the
@@ -738,9 +738,10 @@ Suggested order and dependencies:
    milestone. This planning changes neither it nor the Open Library authorization decisions.
 2. **Quiet Motion v1**: may follow as an independent, focused implementation PR after production cover selection.
    Depends only on existing `ShelfMotion`, `shelfAction` and `ReducedMotion`; needs its benchmark plan first.
-3. **Single-file omnibus composite covers**: can follow the established USER cover pipeline; no Series dependency.
-4. **Virtual omnibus covers**: depend on the Series foundation (not implemented).
-5. **Rooms (MVP)**: depends on Manual Shelves and the Series foundation. Advanced Rooms using saved filters or Smart
+3. **Single-file omnibus composite covers**: reuse existing USER cover storage and lifecycle rules but require a
+   composite-write entry point and a provenance record (not yet designed); no Series dependency.
+4. **Virtual omnibus covers**: depend on the Series foundation (not implemented) and on new Series-cover storage.
+5. **Rooms (MVP)**: depends on Manual Shelves and the Series foundation; Room cover/banner storage is new work. Advanced Rooms using saved filters or Smart
    Shelves wait for those capabilities.
 6. **Room visuals and theme-specific motion**: later customization work, after Rooms MVP and Quiet Motion v1.
 

@@ -17,12 +17,18 @@ Series browsing, and future Room navigation. Active reading surfaces stay calm a
 ## 2. What already exists (reuse, do not duplicate)
 
 - `ShelfMotion` (in `core.theme`, carried by `ShelfTokens`): currently one value, `focusMillis = 120`. The extension
-  point for motion tokens.
+  point for motion tokens. Capability inventory, distinguishing defined, used and implemented:
+  - *Defined tokens:* `focusMillis`; `ShelfFocus` also defines `scale = 1.01f`.
+  - *Actively used:* `focusMillis` drives the existing NavHost enter/exit fade (`ShelfApp`). The `ShelfFocus` scale is
+    defined but is **not** currently an implemented shared focus animation.
+  - *Implemented animations:* that NavHost fade (which also depends on Compose's own animation handling) and the
+    reader-entry cover transition below.
+  - *Proposed only:* dedicated navigation-duration tokens and everything in Section 4.
 - `shelfAction` (`core.designsystem`): the single focus/activation policy for touch, keyboard, D-pad and gamepad.
   Focus today is a static outline; there is no animation yet. It is where press/focus feedback would be added so every
   control inherits it.
 - `reducedMotionEnabled()` (`core.theme/ReducedMotion.kt`): reads the system "Remove animations" /
-  animator-duration setting; never inferred from a device model.
+  animator-duration setting; never inferred from a device model. Currently used by the cover transition.
 - The **reader-entry cover transition** (`CoverExpandTransition.kt`, `COVER_EXPAND_MILLIS = 220`, CLASSIC_UI §12): the
   one signature animation. **Preserved as accepted**; this plan does not alter its timing, geometry or fallback.
 - Existing Compose animation APIs. No new animation library or dependency is proposed (product rule 14).
@@ -32,13 +38,19 @@ A future implementation extends `ShelfMotion` and `shelfAction`; it does not add
 ## 3. Interaction contract
 
 1. **Semantic activation is immediate.** A press, key-up confirm or tap triggers its action at once. Animation is
-   decoration around the action, never in front of it; no action waits for an animation to finish.
+   decoration around the action, never in front of it. For new animations: button feedback never blocks an action,
+   tab changes never wait for decorative transitions, and decorative animations are interruptible.
+   **One existing, accepted exception:** the 220 ms cover-to-reader expansion may complete before the reader opens.
+   It remains skippable under Reduced Motion and when the required cover position is unavailable. This spec does
+   not modify it and authorizes no additional delayed-navigation behavior.
 2. **No gating delays.** No spinner, fade or hold is added before content that is already available.
 3. **Interruptible.** Any in-flight animation can be superseded by new input without a visible jump, queue or stall.
 4. **Rapid input is safe.** Fast D-pad stepping, repeated taps and key repeat never accumulate queued animations.
    Focus feedback follows the latest focus target; intermediate targets may skip feedback entirely.
 5. **Stable geometry.** Motion never moves layout: no animation resizes bottom navigation, reflows labels or shifts
-   hit targets (cf. the navigation-width stabilization in 4.5C.2C). Transform and alpha only, not layout changes.
+   hit targets (cf. the navigation-width stabilization in 4.5C.2C). Transform and alpha only, not layout changes. Press/focus scaling is visual-only: the original touchable and
+   focusable region and minimum touch dimensions stay usable throughout the animation. How to achieve this in Compose
+   must be verified against hit-testing and layout behavior before a modifier is chosen; none is prescribed here.
 6. **Disabled motion keeps every function.** With animations off, every interaction works identically, with a clear
    instant state change and visible focus.
 7. **Focus stays visible** and meets contrast at all times, including mid-transition.

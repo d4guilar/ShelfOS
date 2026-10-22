@@ -16,7 +16,7 @@ not introduce a reader engine, a merge feature or a new publication type.
 
 | Case | What it is | Edition identity | Cover |
 | --- | --- | --- | --- |
-| **Official omnibus** | A real published edition (for example a "Volumes 1-3" collected edition) with its own title, ISBN where one exists and authentic cover. | Its own. Identifiers come only from the file's embedded metadata, the user, or a confirmed, reviewed match. | Its authentic cover, via the normal LOCAL / USER / (future) ONLINE slots. |
+| **Official omnibus** | A real published edition (for example a "Volumes 1-3" collected edition) with its own title, ISBN where one exists and authentic cover. | Its own. Identifiers come from the file's embedded metadata, the user, or a match under the existing [BOOK_PROVIDERS §3.8](BOOK_PROVIDERS.md) rules. | Its authentic cover, via the normal LOCAL / USER / (future) ONLINE slots. |
 | **Handmade omnibus** | A user-owned single file that combines several volumes (for example `Berserk 1-3.cbz`). | **None inherited.** It does not take on an official omnibus's ISBN or edition because its contents resemble one. | Embedded cover if usable, else user choice, else (optionally) a user-made Composite Cover. |
 | **Virtual omnibus** | Several separately stored publications coordinated by a [Series](SERIES.md) "Read as Omnibus" experience. | Each member keeps its own. The Series has no ISBN. | A Series cover choice (member cover, custom image, or composite). Nothing is attached to member LibraryItems. |
 
@@ -30,13 +30,26 @@ ordinary LibraryItem and is distinct from virtual omnibus reading.
 2. **No silent borrowing.** A single constituent volume's cover is never silently used as an official omnibus cover.
    If it is used at all, the user chose it (Section 5).
 3. **User choice wins.** A user-selected or user-composed cover always overrides embedded, fetched or generated art,
-   consistent with cover precedence (Phase 4.5 constraints in the [roadmap](../ROADMAP.md)) (user-selected > confident online > usable embedded >
-   generated). Automatic enrichment never replaces it.
+   consistent with cover precedence (Phase 4.5 constraints in the [roadmap](../ROADMAP.md)): user-selected or
+   user-composed cover first; otherwise confident online or usable embedded artwork per the established cover policy;
+   otherwise a generated fallback. Embedded artwork never outranks a USER choice. Automatic enrichment never replaces it.
 4. **Reviewable ranges.** Constituent volume ranges are explicit, shown to the user and editable; they are
    suggestions until accepted. A folder name or filename pattern such as `1-3` is weak evidence, never truth.
-5. **ISBN safety.** An ISBN found on or near a handmade omnibus is a candidate for review only. A matched official
-   omnibus edition is applied only through the existing confirmed-match flow ([Book providers](BOOK_PROVIDERS.md)); a
-   wrong edition is worse than none.
+5. **ISBN and edition safety.** The three cases are handled separately:
+   - **Official omnibus.** A genuine published omnibus follows the established candidate and edition-matching rules in
+     [BOOK_PROVIDERS §3.8](BOOK_PROVIDERS.md), including their accepted high-confidence and exact-identifier
+     behavior. This specification adds no new confirmation requirement.
+   - **Identified handmade omnibus.** Once an item has been positively classified as a personal compilation,
+     automatic application of a constituent volume's bibliographic edition or online artwork is suppressed, and any
+     embedded ISBN belonging to a constituent volume is review-only evidence, never automatic proof of the
+     compilation's own published edition.
+   - **Unknown or unclassified publication.** ShelfOS cannot currently tell that an arbitrary Book is a handmade
+     omnibus. Existing collection-detection protection covers Comics and Manga only and does not protect handmade
+     Books. Recognizing handmade Books is unresolved (Section 10) and must exist before automatic Book-compilation
+     safety is claimed. Possible mechanisms, all proposals and none existing: explicit user declaration, reviewable
+     metadata evidence, accepted filename/collection evidence.
+
+   The implemented metadata matcher is unchanged by this document.
 6. **Offline.** Composing, saving and removing a composite works with no network.
 7. **No source modification.** The user's publication file is never rewritten, re-packed or "fixed up". A composite
    is separate app-owned artwork.
@@ -48,8 +61,8 @@ ordinary LibraryItem and is distinct from virtual omnibus reading.
 These are **separate deliverables** with different dependencies.
 
 **Single-file (handmade or official omnibus LibraryItem).** The composite is the cover of one LibraryItem and is
-stored through the established USER cover pipeline (4.5F.0 offline selection, bounded per-item storage). It depends
-on nothing in Series. This can follow the existing pipeline directly.
+stored as the USER cover of that item, reusing the 4.5F.0 storage and lifecycle rules (Section 9 lists what is
+reused and what is new). It depends on nothing in Series.
 
 **Series-based virtual omnibus.** The composite is the cover of a Series. It requires the Series foundation, which
 is not implemented. Constituents are Series members (SERIES.md `SeriesMembership`); the Series' `cover choice`
@@ -78,8 +91,21 @@ composite, per SERIES.md.
 A local, offline editor that produces one cover image from two to four source images.
 
 **Inputs.** Two to four images from: covers of the volumes involved (their stored artwork, read-only), images the
-user picks from device storage, or the item's existing cover. Initial editor limit is four; more is *pending design
-decision*.
+user picks from device storage, or the item's existing cover, each subject to the eligibility rule below. Initial
+editor limit is four; more is *pending design decision*.
+
+**Input eligibility (interim rule).** Until provider-specific eligibility has been reviewed and approved, a cover whose
+provenance identifies an external provider, or whose provenance is missing or unknown, is not eligible as Composite
+Cover Studio input. The USER slot's high display precedence is not authorization to transform or redistribute
+artwork, because future production online cover selection may save provider artwork into that slot. Therefore:
+provenance is checked independently of cover slot; a provider-origin USER cover remains subject to provider rules;
+unknown provenance fails closed; explicit user selection alone does not grant image-transformation rights; and
+provenance-aware eligibility is a prerequisite before Studio support launches. No grant, licence or provider
+permission is created here.
+
+**Unusable inputs.** A missing, corrupt, unreadable or unsupported input is marked unavailable with a truthful
+reason, and the user may replace or remove it. Saving requires at least two usable, eligible inputs. A failed
+composition leaves the previously saved cover intact. (This describes proposed behavior, not an implemented UI.)
 
 **Composition modes (initial proposal).**
 
@@ -100,8 +126,8 @@ to phone portrait, tablet and landscape handheld (it never assumes a fixed aspec
 
 ## 7. Output, storage and provenance
 
-- The result is **one raster image stored as a USER-selected cover** for the item (or, later, the Series), through
-  the existing cover storage rules. It does not create a new cover slot kind.
+- The result is **one raster image stored as a USER-selected cover** for the item (or, later, a Series, which needs
+  its own new storage), following the existing cover storage rules. It does not create a new cover slot kind.
 - It must respect the existing per-cover storage budget (about 512 KiB per cover, bounded derivative dimensions) and
   the low-storage write guard. The Studio output is encoded to fit; if it cannot, it reports a truthful error rather
   than exceeding the budget. There is no automatic eviction.
@@ -114,24 +140,32 @@ to phone portrait, tablet and landscape handheld (it never assumes a fixed aspec
   (see portable backups in [Library Sources](LIBRARY_SOURCES.md)).
 - **Rights.** Using stored covers of the user's own files, or images the user supplies, is a user action on the
   user's own library. Artwork obtained from an online provider is subject to that provider's terms and the project's
-  cover-rights decisions (D1-C, D31); this feature does not enable or imply redistribution, and does not make fetched
-  covers eligible as Studio inputs. Whether fetched art may be an input is *pending design decision* and requires
+  cover-rights decisions (D1-C-PROD for the authorized implementation scope; D31 for aggregate-use and operational
+  compliance); this feature does not enable or imply redistribution, and does not make fetched covers eligible as
+  Studio inputs (see the interim eligibility rule in Section 6). Whether fetched art may be an input is *pending design decision* and requires
   owner approval.
 - The composite is a derived image of the user's own choosing. It is never uploaded.
 
 ## 8. Edition matching and removal
 
 - Offering a composite never changes the item's title, creators, identifiers or edition label.
-- Deleting or replacing the composite returns to the next cover in precedence order; it never deletes constituent
-  covers or any publication.
+- Deleting the composite reveals the next eligible source in precedence order; replacing it displays the newly saved
+  USER cover. Neither deletes constituent covers or any publication.
 - If a constituent LibraryItem is later removed, the saved composite remains as ordinary USER artwork; it does not
   silently change.
 
 ## 9. Reusable components, dependencies, risks
 
-- **Reuse:** USER cover pipeline and storage budget, shared cover renderer and Cover Presentation shapes, Choose from
-  device, `shelfAction` focus, existing Library cover grid.
-- **Depends on:** nothing new for single-file; the Series foundation for virtual omnibus.
+- **Reusable existing concepts and infrastructure:** cover rendering and Cover Presentation shapes; existing cover
+  encoding and storage rules; the roughly 512 KiB per-cover budget; the low-storage guard; crash-safe atomic
+  persistence principles; USER-cover precedence; existing user cover management patterns (Choose from device);
+  `shelfAction` focus; the Library cover grid. Cover persistence today is keyed to existing LibraryItems.
+- **New implementation requirements:** a bounded image-composition renderer; a way to save generated image bytes or a
+  generated file through an appropriate USER-cover path; provenance for multiple constituent inputs; eligibility
+  enforcement for Studio source images; safe replacement, deletion and recovery; and separate storage and ownership
+  for virtual Series covers (no Series-cover entity exists). A database migration may be needed for provenance or
+  group-cover ownership; no schema is specified here.
+- **Depends on:** the new items above for single-file; additionally the Series foundation for virtual omnibus.
 - **Privacy:** fully local; no network, no account.
 - **Performance risk:** decoding up to four bitmaps at once on modest hardware. Decode bounded, downsampled sources
   and free them before encoding. To be measured, not assumed.
@@ -144,15 +178,19 @@ to phone portrait, tablet and landscape handheld (it never assumes a fixed aspec
 
 ## 10. Decisions needing owner approval (open)
 
-1. Whether fetched (online) covers may be Studio inputs.
-2. Maximum constituent count beyond four.
-3. Whether composite generation is free or part of a future Plus offering. **No entitlement is assigned here;** per
+1. Whether fetched (online) covers may be Studio inputs under specific provider policies (until decided, the
+   Section 6 interim rule applies).
+2. How handmade Books are recognized as personal compilations (explicit user declaration, reviewable metadata
+   evidence, accepted filename/collection evidence, or another mechanism). Unresolved; no Book-compilation safety is
+   claimed until it exists.
+3. Maximum constituent count beyond four.
+4. Whether composite generation is free or part of a future Plus offering. **No entitlement is assigned here;** per
    the free-reading rules, nothing required for a pleasant core library experience may be paywalled without an
    explicit decision.
-4. Provenance record shape and whether constituent artwork is retained for re-editing (storage cost) or only the
+5. Provenance record shape and whether constituent artwork is retained for re-editing (storage cost) or only the
    final image is kept.
-5. Whether re-editing an existing composite is supported or each edit starts fresh.
-6. Whether an ADR is warranted (see Section 11).
+6. Whether re-editing an existing composite is supported or each edit starts fresh.
+7. Whether an ADR is warranted (see Section 11).
 
 ## 11. Proposed ADR
 

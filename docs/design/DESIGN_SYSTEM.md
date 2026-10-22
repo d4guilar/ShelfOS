@@ -178,5 +178,7 @@ The design system must support at least five free themes and a growing Premium t
 Section 8 and `ShelfMotion` are expanded by the proposed [Quiet Motion](MOTION.md) specification: a small, restrained,
 interruptible motion vocabulary for non-reading UI, extending `ShelfMotion` and `shelfAction` rather than adding a
 second system, authoritative under Reduced Motion, and never delaying activation. Durations there are provisional and
-nothing is implemented beyond the Phase 0 focus-duration token and the accepted reader-entry cover transition. The
+nothing is implemented beyond the Phase 0 focus-duration token (`focusMillis`, actively used by the NavHost enter/exit
+fade), the accepted reader-entry cover transition and its system reduced-motion check. The `ShelfFocus` scale value is
+defined but is not an implemented shared focus animation, and dedicated navigation-duration tokens are only proposed. The
 contrary-looking Phase 0 sentence "Decorative animation is absent" remains true of the code today.

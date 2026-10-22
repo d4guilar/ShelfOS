@@ -1,10 +1,15 @@
 # Documentation Changelog
+
 ## Omnibus covers, Rooms and Quiet Motion planning (2026-10-22)
 
 - New: `features/OMNIBUS_COVERS.md`, `features/ROOMS.md` (provisional name), `design/MOTION.md`. Accepted product
   directions, none implemented; open decisions listed in each.
 - Cross-references added to SERIES.md, SHELVES.md, DESIGN_SYSTEM.md (new section 12) and THEMES.md; ROADMAP proposed
   sequencing entry (no renumbering, no new gate). No code, schema, dependency, entitlement or Open Library decision changed.
+- Remediation (R1): ROADMAP status records 4.5C.2C (#56) as merged; omnibus matching split into official / identified
+  handmade / unclassified; interim provenance-based Studio eligibility rule; reusable-vs-new cover infrastructure made
+  explicit for omnibus, Rooms and roadmap; Quiet Motion keeps the accepted 220 ms reader-entry exception and records
+  the existing motion capability inventory; Rooms naming and membership clarifications.
 
 ## Phase 4.5C.2C R1 navigation widths and decision-ledger reconciliation (2026-10-21)
 
