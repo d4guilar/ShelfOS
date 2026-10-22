@@ -578,3 +578,9 @@ typography/palette presets; this derives a semantic view without changing the PD
 Original mode preserves authored layout. Explicit per-title preferences win, and
 themes never select a mode by changing category, Shelf, Source or Series identity.
 All themes use Library / Search / Notes / Shelves / Settings.
+
+## Motion contract across themes (proposed)
+
+[Quiet Motion](MOTION.md) defines the shared motion vocabulary. Classic and Dark use it identically. Expressive themes
+may vary optional presentation effects only; they may not alter navigation semantics, activation timing or Reduced
+Motion behavior, and none of this makes motion polish a Plus feature. Proposed, not implemented.

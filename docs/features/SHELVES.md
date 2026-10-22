@@ -78,3 +78,12 @@ available local metadata; missing enrichment must not make ordinary organization
 network-dependent. A rule builder, advanced rules and automation are later milestones,
 not prerequisites for Manual Shelves. Existing Premium lists are candidates only;
 this decision does not finalize Smart Shelf entitlement or add billing.
+
+## Rooms (provisional, future)
+
+A [Room](ROOMS.md) (provisional name, accepted direction, not implemented) is a curated presentation space whose
+sections reference existing Manual Shelves, Series and publications. It is not a new organizational tier: Shelf
+membership stays owned by the Shelf, and a Room section reflects a Shelf's current membership rather than copying it.
+Deleting a Room never deletes a Shelf or its items; deleting a Shelf leaves referencing Rooms with a recoverable
+"no longer available" section; a Shelf rename shows through by default unless the Room section overrides its title. "Collections" is not reintroduced. Rooms depend on Manual Shelves existing first and
+use Smart Shelf results only after Smart Shelves exist.
