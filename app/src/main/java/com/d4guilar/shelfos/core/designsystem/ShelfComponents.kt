@@ -4,7 +4,14 @@ package com.d4guilar.shelfos.core.designsystem
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -18,7 +25,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
@@ -28,10 +37,17 @@ import com.d4guilar.shelfos.core.input.InputContext
 import com.d4guilar.shelfos.core.input.ShelfCommand
 import com.d4guilar.shelfos.core.input.shelfCommand
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
+import com.d4guilar.shelfos.core.theme.reducedMotionEnabled
 
 /**
  * One focus/activation policy for touch, keyboard, D-pad and gamepad controls. [focusIndicator] false is only for a
  * caller that draws its own visible focus ring (the Library tile draws it on the cover's visible artwork, D10).
+ *
+ * Quiet Motion v1A: pressed feedback is a graphics-layer scale toward [com.d4guilar.shelfos.core.theme.ShelfMotion.pressedScale]
+ * (shrink only, so it can never overflow a parent or clip the ring). Focus keeps the static ring, never animated away, plus
+ * the existing indication's focus state layer; a focus scale was rejected because growing a full-width item clips its ring
+ * at the screen edge. Layout, hit target and activation are untouched; the system animator policy (Remove animations)
+ * turns the scale off.
  */
 fun Modifier.shelfAction(
     selected: Boolean = false,
@@ -42,20 +58,39 @@ fun Modifier.shelfAction(
     onClick: () -> Unit,
 ): Modifier = composed {
     val tokens = LocalShelfTokens.current
+    val motion = tokens.motion
+    val reduced = LocalContext.current.reducedMotionEnabled()
     var focused by remember { mutableStateOf(false) }
+    // Touch and keys clickable itself handles (Enter, D-pad center) press through this source; keys it does not
+    // handle (controller A) are tracked by the key handler below.
+    val interactions = remember { MutableInteractionSource() }
+    val pointerOrClickKeyPressed by interactions.collectIsPressedAsState()
+    var confirmKeyDown by remember { mutableStateOf(false) }
+    val pressed = enabled && (pointerOrClickKeyPressed || confirmKeyDown)
+    val scale by animateFloatAsState(
+        targetValue = if (pressed && !reduced) motion.pressedScale else 1f,
+        animationSpec = if (reduced) snap() else tween(if (pressed) motion.pressMillis else motion.releaseMillis, easing = FastOutSlowInEasing),
+        label = "shelfActionScale",
+    )
     this
-        .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocused() }
+        .graphicsLayer { scaleX = scale; scaleY = scale }
+        .onFocusChanged {
+            focused = it.isFocused
+            if (!it.isFocused) confirmKeyDown = false
+            if (it.isFocused) onFocused()
+        }
         .border(if (focused && focusIndicator) tokens.focus.width else 0.dp,
             if (focused && focusIndicator) tokens.colors.ink else Color.Transparent, tokens.shapes.extraSmall)
         .semantics { this.selected = selected }
         .onKeyEvent { event ->
             val native = event.nativeKeyEvent
             if (enabled && native.shelfCommand(InputContext.LIBRARY) == ShelfCommand.CONFIRM) {
-                if (native.action == android.view.KeyEvent.ACTION_UP) onClick()
+                if (native.action == android.view.KeyEvent.ACTION_DOWN) confirmKeyDown = true
+                if (native.action == android.view.KeyEvent.ACTION_UP) { confirmKeyDown = false; onClick() }
                 true
             } else false
         }
-        .clickable(enabled = enabled, role = role, onClick = onClick)
+        .clickable(interactionSource = interactions, indication = LocalIndication.current, enabled = enabled, role = role, onClick = onClick)
 }
 
 enum class ShelfIcon { LIBRARY, SEARCH, NOTES, SHELVES, SETTINGS, BACK, STAR }

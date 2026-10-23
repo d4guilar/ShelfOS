@@ -1,6 +1,7 @@
 # Quiet Motion
 
-Status: **accepted product direction** (2026-10-22); **not implemented** beyond what already exists (below). All
+Status: **accepted product direction** (2026-10-22); **implemented so far: v1A shared press feedback only** (§2.1); all else
+proposed. All
 durations and curves here are **provisional prototype values for review**, not implementation constants. Nothing
 here is claimed performant until measured (Section 9). Related: [Design system](DESIGN_SYSTEM.md),
 [Classic UI](CLASSIC_UI.md), [Themes](THEMES.md), [ADR-0007](../adr/0007-theme-system.md).
@@ -34,6 +35,26 @@ Series browsing, and future Room navigation. Active reading surfaces stay calm a
 - Existing Compose animation APIs. No new animation library or dependency is proposed (product rule 14).
 
 A future implementation extends `ShelfMotion` and `shelfAction`; it does not add a parallel motion system.
+
+### 2.1 Implemented: Quiet Motion v1A (prototype, owner review pending)
+
+- `ShelfMotion` gained `pressMillis = 90`, `releaseMillis = 130`, `pressedScale = 0.98f` (`focusMillis = 120` unchanged).
+  **Prototype values, not approved constants**; easing is the stock `FastOutSlowInEasing`, no overshoot.
+- `shelfAction` scales the control with a `graphicsLayer` (draw-only: layout size, padding, hit region origin and
+  neighbours never change) toward `pressedScale` while pressed and back on release. Pressed comes from one
+  `MutableInteractionSource` (touch, and Enter/D-pad centre that `clickable` handles) plus a flag set by the existing
+  confirm key handler (controller A); the flag clears on key-up and on focus loss. Activation is unchanged: key-up
+  confirm, `clickable` onClick, never tied to animation. Any new input retargets the animation; nothing queues.
+- **Reduced Motion:** `reducedMotionEnabled()` is read on each interaction-driven recomposition (no polling); when true
+  the scale is dropped and any change is a `snap()`.
+- **Focus emphasis is deliberately not a scale.** Growing a full-width item (navigation item, row) by 1 % pushes its 2 dp
+  ring past the screen edge, so `ShelfFocus.scale` stays an unused token. Focus remains the static ring (instant, never
+  faded) plus the Material indication's existing focus state layer. `focusIndicator = false` (Library tile) still draws
+  no ring of its own; only the press scale applies there.
+- Not done: selection/rail indicator, dialogs, favorites, haptics, any timing approval, any device measurement.
+- Caveat: on API 26+ `ValueAnimator.areAnimatorsEnabled()` reflects the value the process last received, so a system
+  change made while ShelfOS runs may take effect only after the process is notified; only the pre-26 settings path was
+  exercised (API 24 emulator).
 
 ## 3. Interaction contract
 

@@ -1,5 +1,25 @@
 # Validation
 
+## QUIET MOTION v1A — SHARED PRESS FEEDBACK (2026-10-22, implemented / pending independent review)
+
+**Not accepted, not merged; no performance claim.** Branch `phase-4.5/quiet-motion-v1a-shared-feedback` from `main`
+`362e4ec`. Isolated API 24 x86_64 emulator `emulator-5554` only (every adb command used `-s emulator-5554`; the RP5 and
+SM-T580 were not used). Instrumented classes ran one at a time via `am instrument -w -r -e class`.
+
+| Command / class | Tests | Pass | Fail | Result | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `gradlew.bat :app:testDebugUnitTest` | 999 | 999 | 0 | PASS | no new unit tests |
+| `lintDebug` | — | — | — | PASS | 0 errors, 62 warnings; none in the touched files |
+| `ShelfActionMotionUiTest` (new) | 10 | 10 | 0 | PASS | one activation for touch/semantics OnClick, none when disabled; Enter, D-pad centre, controller A fire once on key-up despite repeats, 5 rapid presses = 5; ring present mid-animation and absent on `focusIndicator=false`; layout sizes and neighbours fixed, pressed box stays inside its resting box; scale applies and fully restores; touch cancel and focus loss clear the pressed look; fast traversal/taps settle; Remove animations (`animator_duration_scale 0`, restored in `finally`) gives no scale but ring and callback |
+| `BottomNavigationLabelsUiTest` | 4 | 4 | 0 | PASS | |
+| `NavigationSmokeTest` | 28 | 28 | 0 | PASS | |
+| `InputModalityClassificationTest` | 10 | 10 | 0 | PASS | |
+| `CoverPresentationUiTest` | 8 | 6 | 2 | FAIL, **pre-existing** | `libraryGridKeepsSelectionScrollAndFocusAcrossPresentationChanges` (Focused) and `rendererShapesOriginalBoundsFocusAndGeneratedFallback` (590 vs 351) fail identically on the unmodified `362e4ec` baseline on this emulator (checked with the change stashed); not caused by v1A, not investigated |
+
+**NOT MEASURED:** frame timing / jank A/B (no gfxinfo/Perfetto run; an API 24 emulator is not a performance authority).
+**Not observed:** physical RP5 controller, SM-T580, TalkBack, large-font manual UAT, live Reduced Motion toggle on API 26+.
+The scale is verified by pixels (parent corner turns white while pressed), not by reading the layer.
+
 ## PHASE 4.5D.0 — OFFLINE MANGA EDITION & VOLUME MATCHING (2026-10-17, implemented / pending independent review)
 
 **Not accepted, not merged; not the 4.5D milestone.** Branch `phase-4.5/4.5d0-offline-manga-edition-matching` from

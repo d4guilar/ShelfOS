@@ -2646,3 +2646,7 @@ Decisions:
 
 - README, ROADMAP (Phase 4.5 current status and sequencing item 1), plan header and §44.1, BOOK_PROVIDERS and ARCHITECTURE now state that 4.5B (#46) and 4.5C.3A (#58, squash `3138e94`) are merged, replacing "under review", "pending QA/merge" and "no production cover retrieval" as current claims. Older dated entries and the VALIDATION record are kept as historical.
 - Stated: 4.5C.3 as a whole, 4.5G and Phase 4.5 acceptance remain open; Quiet Motion v1 is only proposed next; D1-C-PROD/D31/F-2 unchanged; no Open Library approval or image licence. No tests were run in this docs pass.
+
+## Quiet Motion v1A (docs with code)
+
+- MOTION.md header and new §2.1 record exactly what shipped (press/release scale on `shelfAction`, new `ShelfMotion` prototype tokens, Reduced Motion handling) and what stays proposed, including why focus scale was rejected and the API 26+ live-setting caveat. Timings/easing remain owner decisions; the §9 device gate is open.
