@@ -24,7 +24,7 @@ milestone is Phase 4.5 — Metadata, Covers & Library Presentation
 ([plan](PHASE_4_5_IMPLEMENTATION_PLAN.md)); Phase 5 remains Advanced PDF Ingestion.
 Slice 4.5A.1 (local cover artwork, Room v6 `publication_cover`) is merged (PR #44), as is slice
 4.5A.2 (cover presentation, Room v7 `cover_presentation_preference`, PR #45). Slice 4.5B (metadata
-core, Room v8 `publication_metadata`) is implemented and under review (plan §35): field-level
+core, Room v8 `publication_metadata`) is merged (PR #46; plan §35): field-level
 provenance with one precedence rule (`domain/metadata`), identifier detection, extended
 `EmbeddedMetadataReader`, file-name inference, a provider-neutral `MetadataProvider` contract and
 deterministic `MetadataMatcher`, a fake-tested `MetadataEnrichmentService` (no production provider,
@@ -632,7 +632,7 @@ current licensing and terms permit; no provider is assumed to grant permanent st
 
 Current network state (updated 2026-10-19, Phase 4.5C.2A): the manifest declares `INTERNET` (and still removes `ACCESS_NETWORK_STATE`),
 cleartext traffic is disabled, and the only network use is the optional, default-OFF, user-triggered Open Library **metadata** lookup
-(`core.network` over the platform `HttpURLConnection`; no HTTP-client dependency, no cover or image request); see plan §42. The earlier
+(`core.network` over the platform `HttpURLConnection`; no HTTP-client dependency); see plan §42. **Update (PR #58, 4.5C.3A):** user-initiated Open Library Book cover image requests now also exist, behind a separate default-off cover consent (plan §44.1). The earlier
 state (verified 2026-10-15) had no network permission. Network access remains behind a user-visible opt-in; see
 [`PHASE_4_5_IMPLEMENTATION_PLAN.md`](PHASE_4_5_IMPLEMENTATION_PLAN.md) §19 and §21. Keyed
 providers are acceptable only as user-supplied keys (BYOK).

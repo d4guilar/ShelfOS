@@ -15,7 +15,7 @@ unresolved.
 4.5C.0 (#47), 4.5C.1 (#48), 4.5F.0 (#49), 4.5D.0 (#50), the provider research passes (#51-#53), **4.5C.2A Open Library metadata
 lookup (#54)** and **4.5C.2B debug-only Cover Lab and responsive Publication Details (#55, squash `002f7e3`)**. The older
 "pending review / not implemented" sentences above are historical. 4.5C.2C (§43.5) fixes NAV-1, R4-1 and META-1 and records the
-owner's D1-C-PROD authorization. **4.5C.3A (§44.1) is implemented on branch `phase-4.5/4.5c3a-production-cover-picker`, pending independent QA and merge;** until merged, `main` has no production cover retrieval.
+owner's D1-C-PROD authorization. **4.5C.3A (§44.1) is merged (PR #58, squash `3138e94`); manual, consent-gated production Book cover selection is on `main`.** (The "no production cover retrieval" wording here before #58 is historical.)
 Phase 4 (Notes and Knowledge Layer) is COMPLETE (Phase 4F acceptance merged
 in PR #42). Phase 4.5 is the next active milestone. Phase 5 remains Advanced PDF Ingestion;
 numbering after 4.5 is unchanged.
@@ -3015,7 +3015,10 @@ Proposed boundary, written before implementation; the text below has since been 
 
 **Reconciliation:** the §31 ledger rows were reconciled in 4.5C.2C R1 (§43.6): D1-C is a subdivided historical umbrella, D1-C-DEV is implemented and merged, D1-C-PROD is owner-authorized but not implemented, and D31 is an operational constraint. Dated §§38-43 statements that D1/D31 "remain unresolved" are historical (ADR-0026 carries an update note). The plan's earlier "4.5C.3" bundle (ONLINE slot, cache, picker) is split: 4.5C.3A is manual USER selection only.
 
-### 44.1 Implementation record (4.5C.3A; implemented locally, pending independent Codex High QA and merge)
+### 44.1 Implementation record (4.5C.3A; merged in PR #58)
+
+**Merge status (post-#58).** Merged to `main` as PR #58 (squash `3138e94`), after independent Codex High QA and a delta review (PASS WITH NON-BLOCKING FINDINGS). Merged-main CI run 39889566244 passed. Recorded evidence (not re-run since): 999 JVM tests, 998 passed, 1 skipped, 0 failures. **Delivered:** manual Open Library Book cover picker in release builds behind separate default-off consent, explicit discovery and choice, durable USER override, v9 provenance, persisted provider cooldown. **Not delivered (future 4.5C.3B / 4.5G work):** `ONLINE` slot writes, durable candidate cache, background enrichment, title-search fallback, Manga/Comic online covers, F-2 resolution, owner physical-controller/TalkBack/live-provider UAT. The wording below was written while the slice was on its branch and is kept as the dated implementation record; D1-M, D1-C-DEV, D1-C-PROD, D31 and F-2 are unchanged and no Open Library approval or image licence is implied.
+
 
 Only manual Book cover selection is implemented. 4.5C.3 as a whole is **not** complete: the `ONLINE` slot, durable response/candidate cache, MEDIUM suggestions and automatic enrichment remain deferred.
 

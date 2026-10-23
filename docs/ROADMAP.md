@@ -391,9 +391,9 @@ restore the JSON without publication-identity guessing.
 
 ### Current status
 
-**Reconciled current status (2026-10-21; Git history is authoritative, the older sentences in this section are historical).** Merged to `main`: 4.5A.1 (#44), 4.5A.2 (#45), 4.5B Metadata Core (#46), 4.5C.0 planning (#47), 4.5C.1 provider infrastructure (#48), 4.5F.0 Offline Cover Selection (#49), 4.5D.0 offline Manga matching (#50), provider research (#51-#53), **4.5C.2A opt-in Open Library metadata lookup (#54)** and **4.5C.2B debug-only Cover Lab with responsive Publication Details (#55)**, and **4.5C.2C (#56)** (UX stabilization: NAV-1, R4-1, META-1, plus the owner's D1-C-PROD authorization record), which is merged and is the accepted milestone. **On `main` no production cover retrieval exists**; **4.5C.3A Production Find Cover Online (manual selection first)** is implemented on branch `phase-4.5/4.5c3a-production-cover-picker`, pending independent QA and merge (plan §44.1).
+**Reconciled current status (2026-10-21; Git history is authoritative, the older sentences in this section are historical).** Merged to `main`: 4.5A.1 (#44), 4.5A.2 (#45), 4.5B Metadata Core (#46), 4.5C.0 planning (#47), 4.5C.1 provider infrastructure (#48), 4.5F.0 Offline Cover Selection (#49), 4.5D.0 offline Manga matching (#50), provider research (#51-#53), **4.5C.2A opt-in Open Library metadata lookup (#54)** and **4.5C.2B debug-only Cover Lab with responsive Publication Details (#55)**, and **4.5C.2C (#56)** (UX stabilization: NAV-1, R4-1, META-1, plus the owner's D1-C-PROD authorization record), which is merged and is the accepted milestone. *(Superseded by the 2026-10-22 update below: the 2026-10-21 statement that no production cover retrieval exists on `main` is historical.)* **Update (post-PR #58):** **4.5C.3A Production Find Cover Online** is **merged** (PR #58, squash `3138e94`): manual, user-initiated Open Library Book cover selection behind separate default-off consent, saved as a durable USER cover with v9 provenance (plan §44.1). **4.5C.3 as a whole is not done** (no `ONLINE` slot writes, durable candidate cache, background enrichment, title-search fallback or Manga/Comic picker); 4.5G and Phase 4.5 acceptance remain open. Quiet Motion v1 is the proposed next independent slice (proposal only).
 
-**Next active milestone (planning, 2026-10-15).** Phase 4 is complete. Phase 4.5 is
+**Next active milestone (planning, 2026-10-15; historical, superseded by the post-#58 status above: 4.5B is merged as #46 and later slices through #58 are merged).** Phase 4 is complete. Phase 4.5 is
 inserted between Phase 4 and Phase 5; Phase 5 remains Advanced PDF Ingestion and the
 numbering of every later phase is unchanged. **4.5A.1 Local Cover Artwork (Room v6) is merged
 (PR #44)** and **4.5A.2 Cover Presentation (Room v7) is merged (PR #45)**; their physical UAT is
@@ -734,8 +734,7 @@ phase is renumbered or gate expanded.** Specifications:
 
 Suggested order and dependencies:
 
-1. **Production Open Library cover selection** (Phase 4.5C.3A, see Phase 4.5 above) is implemented on its feature branch and
-   pending independent QA and merge (plan §44.1); 4.5C.3 as a whole (ONLINE slot, durable cache, automatic enrichment) is not. This planning changes neither it nor the Open Library authorization decisions.
+1. **Production Open Library cover selection** (Phase 4.5C.3A, see Phase 4.5 above) is **done and merged** (PR #58, plan §44.1); 4.5C.3 as a whole (ONLINE slot, durable cache, automatic enrichment) is not. This planning changes neither it nor the Open Library authorization decisions.
 2. **Quiet Motion v1**: may follow as an independent, focused implementation PR after production cover selection.
    Depends only on existing `ShelfMotion`, `shelfAction` and `ReducedMotion`; needs its benchmark plan first.
 3. **Single-file omnibus composite covers**: reuse existing USER cover storage and lifecycle rules but require a
