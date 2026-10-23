@@ -66,7 +66,9 @@ class CoverSchedulerTest {
         override fun observeHasUser(id: String): Flow<Boolean> = flowOf(false)
         override suspend fun userFileName(id: String): String? = null
         override suspend fun upsertUser(id: String, fileName: String, mimeType: String, representation: String, sourceWidth: Int, sourceHeight: Int,
-            storedWidth: Int, storedHeight: Int, storedBytes: Long, now: Long) {}
+            storedWidth: Int, storedHeight: Int, storedBytes: Long, now: Long, originKind: String?, originProvider: String?, originEdition: String?,
+            originRefKind: String?, originRefValue: String?, originSelectedAt: Long?) {}
+        override suspend fun user(id: String): PublicationCoverEntity? = null
         override suspend fun deleteUserRow(id: String): Int = 0
     }
 

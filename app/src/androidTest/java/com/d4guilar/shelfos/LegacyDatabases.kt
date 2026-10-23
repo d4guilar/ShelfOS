@@ -132,9 +132,23 @@ object LegacyDatabases {
         }
     }
 
+    /** Creates a real v8 database: everything v7 has plus the empty `publication_metadata` table (8.json). `publication_cover` keeps its v6 shape. */
+    fun createV8(context: Context, name: String, items: List<Pair<String, String>>, annotations: List<V4Annotation>) {
+        createV7(context, name, items, annotations)
+        context.openOrCreateDatabase(name, 0, null).use { db ->
+            db.execSQL(com.d4guilar.shelfos.core.database.ShelfDatabase.PUBLICATION_METADATA_CREATE_SQL)
+            db.version = 8
+        }
+    }
+
     /** All rows of [table] as lists of column values, ordered by [orderBy], read through a raw SQLite connection. */
     fun dump(db: SQLiteDatabase, table: String, orderBy: String): List<List<String?>> =
-        db.rawQuery("SELECT * FROM $table ORDER BY $orderBy", null).use(::rows)
+        db.rawQuery("SELECT ${if (table == "publication_cover") PRE_V9_COVER_COLUMNS else "*"} FROM $table ORDER BY $orderBy", null).use(::rows)
+
+    /** `publication_cover` as it was through v8: v9 appended six nullable origin columns, so older fixtures are compared on these only. */
+    const val PRE_V9_COVER_COLUMNS = "libraryItemId, slot, status, failureReason, fileName, mimeType, representation, sourceWidthPx, sourceHeightPx, storedWidthPx, " +
+        "storedHeightPx, storedBytes, localSource, sourceRef, sourceChoice, sourceRevision, extractorVersion, attempts, interruptions, attemptStartedAt, " +
+        "attemptExtractorVersion, nextEligibleAt, parked, updatedAt"
 
     fun rows(c: Cursor): List<List<String?>> {
         val out = ArrayList<List<String?>>()

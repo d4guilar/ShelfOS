@@ -55,7 +55,7 @@ class MetadataMigrationTest {
         try {
             val sql = migrated.openHelper.writableDatabase
             SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READONLY).use { raw ->
-                assertEquals(8, raw.version)
+                assertEquals(9, raw.version)
                 for ((table, order) in tables) assertEquals("$table must be unchanged by v7 -> v8", before.getValue(table), LegacyDatabases.dump(raw, table, order))
             }
             sql.query("SELECT COUNT(*) FROM publication_metadata").use { it.moveToFirst(); assertEquals("never opens publications during migration", 0, it.getInt(0)) }
@@ -78,7 +78,7 @@ class MetadataMigrationTest {
             val db = LegacyDatabases.open(context, name)
             try {
                 val sql = db.openHelper.writableDatabase
-                sql.query("PRAGMA user_version").use { it.moveToFirst(); assertEquals("v$version", 8, it.getInt(0)) }
+                sql.query("PRAGMA user_version").use { it.moveToFirst(); assertEquals("v$version", 9, it.getInt(0)) }
                 assertTrue(sql.query("SELECT COUNT(*) FROM sqlite_master WHERE name = 'publication_metadata'").use { it.moveToFirst(); it.getInt(0) == 1 })
             } finally { db.close(); context.deleteDatabase(name) }
         }

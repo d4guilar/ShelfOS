@@ -92,8 +92,9 @@ class UserCoverUiTest {
         assertEquals(UserCoverOutcome.SAVED, runBlocking { store.set("a", pickFile()) })
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("cover_restore").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("cover_status").assertTextContains(context.getString(R.string.cover_custom_active))
-        compose.onNodeWithText(context.getString(R.string.cover_restore_explain)).assertIsDisplayed()
-        compose.onNodeWithTag("cover_restore").assertIsDisplayed().performClick()
+        // The dialog content scrolls (short landscape windows): bring the explanation and the button into view first.
+        compose.onNodeWithText(context.getString(R.string.cover_restore_explain)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("cover_restore").performScrollTo().assertIsDisplayed().performClick()
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("cover_restore").fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithTag("cover_status").assertTextContains(context.getString(R.string.cover_file_active))
         assertTrue("the chosen file was deleted by the restore", root.walkTopDown().none { it.isFile && it.name.startsWith("user-") })

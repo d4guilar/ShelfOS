@@ -26,6 +26,7 @@ import com.d4guilar.shelfos.core.reader.FoldRect
 import com.d4guilar.shelfos.core.reader.ReaderFoldDescriptor
 import com.d4guilar.shelfos.core.designsystem.LocalCoverArtwork
 import com.d4guilar.shelfos.feature.library.LocalCoverLab
+import com.d4guilar.shelfos.feature.library.LocalOnlineCovers
 import com.d4guilar.shelfos.feature.library.LocalUserCovers
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import com.d4guilar.shelfos.core.theme.ShelfTheme
@@ -69,7 +70,7 @@ class MainActivity : AppCompatActivity() {
         enableEdgeToEdge()
         val container = (application as ShelfApplication).container
         setContent {
-          CompositionLocalProvider(LocalCoverArtwork provides container.coverArtwork, LocalUserCovers provides container.userCovers,
+          CompositionLocalProvider(LocalCoverArtwork provides container.coverArtwork, LocalUserCovers provides container.userCovers, LocalOnlineCovers provides container.onlineCovers,
               LocalCoverLab provides remember { com.d4guilar.shelfos.debug.coverLabEntry(container) },
               LocalMetadataAccess provides remember { MetadataAccess(container.metadata::observe) },
               LocalOnlineMetadata provides remember { OnlineMetadataAccess(container.onlineSettings, container.manualMetadata) }) {

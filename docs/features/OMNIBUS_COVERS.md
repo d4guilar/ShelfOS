@@ -107,7 +107,9 @@ permission is created here.
 
 **Provenance of Studio inputs (future requirements, not implemented checks).**
 1. Existing USER-cover records may lack explicit source provenance; the USER slot alone does not establish
-   eligibility.
+   eligibility. (Since 4.5C.3A, schema v9, a USER row records `originKind` = `USER_SUPPLIED` or `PROVIDER_SELECTED`
+   plus provider, edition and artwork references; rows written before v9 keep NULL = unknown and stay ineligible.
+   The record is evidence for this rule, not an eligibility decision.)
 2. An existing USER cover with unknown provenance is ineligible for Studio reuse until trustworthy origin evidence
    exists. Re-selecting the underlying image directly from device storage through a future Studio input flow can
    establish that evidence; re-selecting a cached provider cover cannot.

@@ -7,9 +7,9 @@ import com.d4guilar.shelfos.domain.metadata.MatchConfidence
 import java.net.URL
 
 /**
- * Open Library cover artwork for the debug-only Cover Lab pilot (Phase 4.5C.2B, plan D1-C-DEV). Nothing here is reachable from
- * production code: the D1-M grant still cannot authorize [com.d4guilar.shelfos.domain.metadata.MetadataCapability.COVERS], and no
- * caller exists outside the debug source set. URL shape (documented): `https://covers.openlibrary.org/b/{key}/{value}-{S|M|L}.jpg`;
+ * Open Library cover artwork addressing and URL policy, shared by the debug Cover Lab (Phase 4.5C.2B, D1-C-DEV) and the production manual picker
+ * (Phase 4.5C.3A, D1-C-PROD). The D1-M grant still cannot authorize [com.d4guilar.shelfos.domain.metadata.MetadataCapability.COVERS]; the only
+ * production caller is `OnlineCoverService`, which is gated by `OnlineCoverAuthorization`. URL shape (documented): `https://covers.openlibrary.org/b/{key}/{value}-{S|M|L}.jpg`;
  * `?default=false` makes a missing cover a 404 instead of a placeholder image.
  */
 enum class CoverSize(val letter: String) { SMALL("S"), MEDIUM("M"), LARGE("L") }

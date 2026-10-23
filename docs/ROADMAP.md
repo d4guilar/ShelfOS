@@ -391,7 +391,7 @@ restore the JSON without publication-identity guessing.
 
 ### Current status
 
-**Reconciled current status (2026-10-21; Git history is authoritative, the older sentences in this section are historical).** Merged to `main`: 4.5A.1 (#44), 4.5A.2 (#45), 4.5B Metadata Core (#46), 4.5C.0 planning (#47), 4.5C.1 provider infrastructure (#48), 4.5F.0 Offline Cover Selection (#49), 4.5D.0 offline Manga matching (#50), provider research (#51-#53), **4.5C.2A opt-in Open Library metadata lookup (#54)** and **4.5C.2B debug-only Cover Lab with responsive Publication Details (#55)**, and **4.5C.2C (#56)** (UX stabilization: NAV-1, R4-1, META-1, plus the owner's D1-C-PROD authorization record), which is merged and is the accepted milestone. **No production cover retrieval exists or is enabled**; next proposed slice is **4.5C.3A Production Find Cover Online (manual selection first)** (plan §44).
+**Reconciled current status (2026-10-21; Git history is authoritative, the older sentences in this section are historical).** Merged to `main`: 4.5A.1 (#44), 4.5A.2 (#45), 4.5B Metadata Core (#46), 4.5C.0 planning (#47), 4.5C.1 provider infrastructure (#48), 4.5F.0 Offline Cover Selection (#49), 4.5D.0 offline Manga matching (#50), provider research (#51-#53), **4.5C.2A opt-in Open Library metadata lookup (#54)** and **4.5C.2B debug-only Cover Lab with responsive Publication Details (#55)**, and **4.5C.2C (#56)** (UX stabilization: NAV-1, R4-1, META-1, plus the owner's D1-C-PROD authorization record), which is merged and is the accepted milestone. **On `main` no production cover retrieval exists**; **4.5C.3A Production Find Cover Online (manual selection first)** is implemented on branch `phase-4.5/4.5c3a-production-cover-picker`, pending independent QA and merge (plan §44.1).
 
 **Next active milestone (planning, 2026-10-15).** Phase 4 is complete. Phase 4.5 is
 inserted between Phase 4 and Phase 5; Phase 5 remains Advanced PDF Ingestion and the
@@ -734,8 +734,8 @@ phase is renumbered or gate expanded.** Specifications:
 
 Suggested order and dependencies:
 
-1. **Production Open Library cover selection** (Phase 4.5C.3A, see Phase 4.5 above) remains the next functional
-   milestone. This planning changes neither it nor the Open Library authorization decisions.
+1. **Production Open Library cover selection** (Phase 4.5C.3A, see Phase 4.5 above) is implemented on its feature branch and
+   pending independent QA and merge (plan §44.1); 4.5C.3 as a whole (ONLINE slot, durable cache, automatic enrichment) is not. This planning changes neither it nor the Open Library authorization decisions.
 2. **Quiet Motion v1**: may follow as an independent, focused implementation PR after production cover selection.
    Depends only on existing `ShelfMotion`, `shelfAction` and `ReducedMotion`; needs its benchmark plan first.
 3. **Single-file omnibus composite covers**: reuse existing USER cover storage and lifecycle rules but require a
