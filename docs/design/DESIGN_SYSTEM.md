@@ -173,14 +173,18 @@ Premium themes monetize optional visual delight and deeper personalization rathe
 
 The design system must support at least five free themes and a growing Premium theme registry without branching unrelated feature logic around individual themes.
 
-## 12. Quiet Motion (proposed direction)
+## 12. Quiet Motion (accepted direction; v1A prototype implemented)
 
-Section 8 and `ShelfMotion` are expanded by the proposed [Quiet Motion](MOTION.md) specification: a small, restrained,
+Section 8 and `ShelfMotion` are expanded by the [Quiet Motion](MOTION.md) specification: a small, restrained,
 interruptible motion vocabulary for non-reading UI, extending `ShelfMotion` and `shelfAction` rather than adding a
 second system, authoritative under Reduced Motion, and never delaying activation (except for the accepted reader-entry cover
 transition of about 220 ms, which is bypassed under Reduced Motion or when cover geometry is unavailable; see
-[MOTION §3](MOTION.md)). Durations there are provisional and
-nothing is implemented beyond the Phase 0 focus-duration token (`focusMillis`, actively used by the NavHost enter/exit
-fade), the accepted reader-entry cover transition and its system reduced-motion check. The `ShelfFocus` scale value is
-defined but is not an implemented shared focus animation, and dedicated navigation-duration tokens are only proposed. The
-contrary-looking Phase 0 sentence "Decorative animation is absent" remains true of the code today.
+[MOTION §3](MOTION.md)).
+
+Implemented so far: the Phase 0 focus-duration token (`focusMillis`, used by the NavHost enter/exit fade), the accepted
+reader-entry cover transition with its system reduced-motion check, and the **Quiet Motion v1A press/release feedback**
+on `shelfAction` (a draw-only content scale; [MOTION §2.1](MOTION.md)). The v1A durations (90/130 ms) and scale (0.98) are
+**provisional prototype values pending owner sign-off**, not approved constants. Everything else in MOTION §4 (selection and
+rail indicators, dialogs, favorites, Shelf/Series/Room motion, haptics) remains **proposed**. The `ShelfFocus` scale value
+is defined but is not an implemented shared focus animation; focus stays the static ring. The Phase 0 sentence
+"Decorative animation is absent" is superseded only by that v1A press feedback.

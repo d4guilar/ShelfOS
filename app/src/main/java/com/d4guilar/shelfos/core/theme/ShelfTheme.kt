@@ -24,7 +24,16 @@ data class ShelfColors(
 )
 data class ShelfSpacing(val small: Dp = 8.dp, val medium: Dp = 16.dp, val large: Dp = 24.dp)
 data class ShelfFocus(val width: Dp = 2.dp, val scale: Float = 1.01f)
-data class ShelfMotion(val focusMillis: Int = 120)
+/**
+ * Quiet Motion v1A prototype values (docs/design/MOTION.md §4): provisional, not approved constants. [focusMillis] keeps its
+ * meaning (also the NavHost fade); press/release/focus feedback on `shelfAction` is draw-only and never delays activation.
+ */
+data class ShelfMotion(
+    val focusMillis: Int = 120,
+    val pressMillis: Int = 90,
+    val releaseMillis: Int = 130,
+    val pressedScale: Float = 0.98f,
+)
 data class ShelfSurfaces(val elevation: Dp = 0.dp, val border: Dp = 1.dp)
 data class ShelfIcons(val size: Dp = 22.dp, val stroke: Float = 1.7f)
 data class ShelfTokens(

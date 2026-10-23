@@ -1,5 +1,9 @@
 # Documentation Changelog
 
+## Quiet Motion v1A final documentation microfix (2026-10-23)
+
+- VALIDATION cleanup record: draw-only H-1 is detected by the API 26+ Visual test, not API 24; intermittent `NavigationSmokeTest` flake recorded separately from the pre-existing `CoverPresentationUiTest` failures. `ShelfActionMotionUiTest` KDoc aligned. No behavior change.
+
 ## Phase 4.5C.3A: Production Find Cover Online, manual selection (2026-10-22, pending independent QA)
 
 - Plan header and new section 44.1 (authorization via D1-C-PROD separate from `ScopedGrant`, separate default-OFF cover consent, discovery, per-process request budget of 8 discoveries / 30 images per rolling hour (counters reset on process restart; provider-imposed rate-limit cooldowns are persisted independently and survive restarts), USER-slot persistence bridge, schema v9 provenance, release separation, limitations). BOOK_PROVIDERS and ROADMAP status; VALIDATION 4.5C.3A evidence.
@@ -2646,3 +2650,15 @@ Decisions:
 
 - README, ROADMAP (Phase 4.5 current status and sequencing item 1), plan header and §44.1, BOOK_PROVIDERS and ARCHITECTURE now state that 4.5B (#46) and 4.5C.3A (#58, squash `3138e94`) are merged, replacing "under review", "pending QA/merge" and "no production cover retrieval" as current claims. Older dated entries and the VALIDATION record are kept as historical.
 - Stated: 4.5C.3 as a whole, 4.5G and Phase 4.5 acceptance remain open; Quiet Motion v1 is only proposed next; D1-C-PROD/D31/F-2 unchanged; no Open Library approval or image licence. No tests were run in this docs pass.
+
+## Quiet Motion v1A (docs with code)
+
+- MOTION.md header and new §2.1 record exactly what shipped (press/release scale on `shelfAction`, new `ShelfMotion` prototype tokens, Reduced Motion handling) and what stays proposed, including why focus scale was rejected and the API 26+ live-setting caveat. Timings/easing remain owner decisions; the §9 device gate is open.
+
+## Quiet Motion v1A targeted QA remediation (2026-10-23)
+
+- MOTION.md §2/§2.1 now distinguish implemented v1A press/release (draw-only, inside `clickable`; first-DOWN-only manual key flag) from the still-proposed roles, state the 90/130 ms and 0.98 values are provisional pending owner sign-off, and record the bounded API 35 emulator Reduced Motion observation. DESIGN_SYSTEM §12 no longer claims decorative motion is unimplemented. VALIDATION corrects the unit-test count to 999 total / 998 passed / 1 skipped and adds the remediation record. Historic QA records are intact; hardware, performance and owner acceptance stay OPEN.
+
+## Quiet Motion v1A test-coverage cleanup (2026-10-23)
+
+- VALIDATION corrects the remediation record (API 24 was 1 executed / 11 skipped, not a pass; lint is 0 errors, 62 warnings, 1 hint) and adds the after-cleanup run: `ShelfActionMotionUiTest` split into Functional and Visual methods, API 24 now executes 9 and skips only the 11 pixel-based Visual methods. Docs only; feature acceptance, hardware, performance and owner sign-off stay OPEN.

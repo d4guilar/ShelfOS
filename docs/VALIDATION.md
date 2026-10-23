@@ -1,5 +1,98 @@
 # Validation
 
+## QUIET MOTION v1A — TEST-COVERAGE & DOCS CLEANUP (2026-10-23, implemented / pending independent delta review)
+
+Test and docs only on top of `be6fbc4`; no production change. An independent audit closed H-1 and H-2 with non-blocking
+findings (API 24 skipped wholesale; guard too broad; this file's counts). **Feature acceptance stays OPEN:** dense-grid
+performance, RP5, SM-T580, TalkBack, localized large-font UAT and owner sign-off are not done; 90/130 ms and 0.98 remain
+provisional. Disposable emulators only (`shelfos-phase0` API 35 `emulator-5570`, `shelfos-api24` `emulator-5572`, explicit
+serial every run); the attached RP5 was not used.
+
+`ShelfActionMotionUiTest` is now 20 methods in two layers. `*Functional` methods need no image (activation counts, real
+`KeyEvent` repeat sequences, six raw near-edge touches with 1 px movement, cancel and focus loss, disabled, semantic
+`OnClick`, pre-26 reduced-motion policy) and use `boundsInRoot` as a pixel-free signal. `*Visual` methods add pixel checks
+and call `requireVisual()`, so only they skip below API 26.
+
+| Run | Executed | Pass | Skipped | Notes |
+| --- | --- | --- | --- | --- |
+| API 35, final file | 20 | 20 | 0 | all Functional and Visual methods |
+| API 24, final file | 9 | 9 | 11 | the 9 Functional methods pass: `touchAndAccessibilityActivateOnceAndKeepSemanticsFunctional`, `confirmKeysHeldWithRepeatActivateOnceFunctional`, `controllerAHeldAndReleasedSeparatelyFromClickableKeysFunctional`, `pointerEdgeGesturesOnFullWidthControlStillActivateOnceEachFunctional`, `cancelledAndFocusLostPressNeverActivatesFunctional`, `fastFocusTraversalAndRapidTapsSettleWithoutDelayedActivationFunctional`, `focusMovesAndSelectionIsUnchangedFunctional`, `layoutBoxAndNeighboursNeverMoveWhilePressedOrFocused`, `removeAnimationsKeepsActivationFocusAndLayoutFunctional`. The 11 `*Visual` methods are skipped (PixelCopy needs API 26; XML again shows `AssumptionViolatedException`) |
+| API 24, final test file with the **original `29f2f82` `ShelfComponents.kt`** (out-of-tree disposable worktree; main checkout untouched) | 9 | 6 | 11 | **3 Functional methods fail as intended without any screenshot**: `confirmKeysHeldWithRepeatActivateOnceFunctional` (Enter bounds stay shrunk, 44.6 vs 42.0, after a repeated hold), `pointerEdgeGesturesOnFullWidthControlStillActivateOnceEachFunctional` (bounds change while pressed) and `layoutBoxAndNeighboursNeverMoveWhilePressedOrFocused` |
+| `BottomNavigationLabelsUiTest`, API 24 | 4 | 4 | 0 | |
+| `InputModalityClassificationTest`, API 24 | 10 | 10 | 0 | |
+| `:app:testDebugUnitTest` | 999 | 998 | 1 | 0 failed; skip is `ProviderLabBridgeTest.scoreLabRecordsWithTheProductionMatcher` |
+| `assembleDebug`, `assembleDebugAndroidTest`, `lintDebug` | — | pass | — | lint 0 errors, 62 warnings, 1 hint |
+
+`NavigationSmokeTest` and `CoverPresentationUiTest` were not rerun in this pass (production code unchanged since
+`be6fbc4`, where `NavigationSmokeTest` was 28/28 and `CoverPresentationUiTest` was 6/8). The two `CoverPresentationUiTest`
+failures, `rendererShapesOriginalBoundsFocusAndGeneratedFallback` and `libraryGridKeepsSelectionScrollAndFocusAcrossPresentationChanges`,
+remain **pre-existing** (independent QA reproduced them on base) and unfixed; there is no 8/8 claim.
+
+Setting-mutation guard: the animator-scale tests run only when `Build.HARDWARE` is `ranchu` or `goldfish` and, if readable,
+`ro.kernel.qemu` is `1`; otherwise only those tests skip. Prior value is read, logged, restored exactly (or the key is
+deleted when it was unset) in `finally`, and re-read and checked equal. Both AVDs held an explicit `1` before and after, so
+the delete-when-unset branch is code-reviewed but was not exercised. Abrupt process death can still leave the setting
+altered. What API 24 establishes for Reduced Motion: `reducedMotionEnabled()` (the `Settings.Global` path) returns true at
+scale 0 and activation, focus and layout still work. It does **not** show the scale was dropped; that is observed by pixels
+on API 35 only. Not claimed: RP5, SM-T580, TalkBack, font-scale, populated-library or GPU performance.
+
+**Final-cleanup clarifications.** The API 24 run against the original `29f2f82` implementation caught H-1 only partially: its
+outer `graphicsLayer` changed the bounds that `boundsInRoot` reads. The independent final delta reviewer then removed only the
+`repeatCount == 0` fix from the new draw-only implementation, and the Functional H-1 test still passed, because a draw-only
+latched scale moves no bounds. Such a latch would be detected by the API 26+ `*Visual` test, not by API 24; no API 24
+coverage of draw-only H-1 is claimed.
+
+**Intermittent flake, not a regression:** `NavigationSmokeTest.epubBackRevealsHiddenControlsBeforeLeavingTheReader` failed once
+on API 35 with `No compose hierarchies found`, then passed on reruns with no change. It is separate from the two
+`CoverPresentationUiTest` failures above, which are consistent and were reproduced identically on base.
+
+## QUIET MOTION v1A — TARGETED QA REMEDIATION (2026-10-23, implemented / pending fresh independent delta QA)
+
+**Not accepted; no push/PR/merge; hardware, performance and owner visual acceptance remain OPEN.** Follow-up local commit on
+`phase-4.5/quiet-motion-v1a-shared-feedback` after independent QA found two HIGH regressions (stuck pressed look after key
+repeat; scale shrinking the pointer hit region at edges) and test defects. Disposable emulators only (`shelfos-phase0`
+API 35 `emulator-5570`, `shelfos-api24` `emulator-5572`, every command `-s`/`ANDROID_SERIAL`); the attached RP5 was not used.
+Instrumented classes ran one at a time.
+
+| Command / class | Tests | Result |
+| --- | --- | --- |
+| `ShelfActionMotionUiTest`, API 35 | 12 | 12 pass, 0 fail, 0 skipped |
+| `ShelfActionMotionUiTest`, API 24, **before the 2026-10-23 cleanup** | 12 | **1 executed / 11 skipped** (`layoutBoxAndNeighboursNeverMoveWhilePressedOrFocused` ran; the other 11 were skipped wholesale by an assumption inside the shared screenshot helper, which the XML records as failure elements of `AssumptionViolatedException`, Gradle and instrumentation reporting success). **Activation counts, key-repeat, edge gestures and the pre-26 reduced-motion path inside those 11 tests were NOT exercised on API 24**; the earlier "pass" there was a skip. Superseded by the cleanup record below. |
+| `ShelfActionMotionUiTest` against the original `29f2f82` implementation (API 35, file temporarily swapped, then restored) | 12 | 10 pass, **2 fail as intended**: `confirmKeysHeldWithRepeatActivateOnceAndReturnToFullSize` (Enter stays pressed after repeat) and `pointerEdgeGesturesOnPressedFullWidthControlStillActivateOnceEach` (pressed bounds/hit region changed) |
+| `NavigationSmokeTest` API 35 | 28 | 28 pass |
+| `BottomNavigationLabelsUiTest` API 35 / API 24 | 4 / 4 | pass / pass |
+| `InputModalityClassificationTest` API 35 / API 24 | 10 / 10 | pass / pass |
+| `CoverPresentationUiTest` API 35 | 8 | 6 pass, 2 fail — the **pre-existing** `rendererShapesOriginalBoundsFocusAndGeneratedFallback` (590 vs 351) and `libraryGridKeepsSelectionScrollAndFocusAcrossPresentationChanges` (item-26 focus); identical on base per independent QA; not caused or fixed here |
+| `:app:testDebugUnitTest` | 999 | 998 pass, 1 skipped (`ProviderLabBridgeTest.scoreLabRecordsWithTheProductionMatcher`), 0 fail |
+| `:app:assembleDebug`, `:app:assembleDebugAndroidTest`, `:app:lintDebug` | — | pass; lint 0 errors, 62 warnings, 1 hint (the earlier "0 issues" was wrong) |
+
+Test hygiene: real `android.view.KeyEvent` (DOWN, repeatCount>0 DOWN, UP) is built and asserted to be the intended key
+(the previous `and 0xFFFFFFFFL` produced `KEYCODE_UNKNOWN`); the class enters keyboard mode with a real TAB before
+requesting focus; the animator-scale tests restore the exact prior value (or `settings delete` when it was unset), run only
+on emulator fingerprints, and still could leave the setting altered if the test process dies abruptly — never automate them
+on a physical device. **NOT MEASURED / OPEN:** dense-grid GPU performance (§9), RP5 physical A/D-pad, SM-T580, TalkBack,
+owner visual approval of 90/130 ms and 0.98.
+
+## QUIET MOTION v1A — SHARED PRESS FEEDBACK (2026-10-22, implemented / pending independent review)
+
+**Not accepted, not merged; no performance claim.** Branch `phase-4.5/quiet-motion-v1a-shared-feedback` from `main`
+`362e4ec`. Isolated API 24 x86_64 emulator `emulator-5554` only (every adb command used `-s emulator-5554`; the RP5 and
+SM-T580 were not used). Instrumented classes ran one at a time via `am instrument -w -r -e class`.
+
+| Command / class | Tests | Pass | Fail | Result | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `gradlew.bat :app:testDebugUnitTest` | 999 | 998 | 0 | PASS | no new unit tests; 1 skipped (corrected 2026-10-23: the earlier "999/999 pass" omitted the skip) |
+| `lintDebug` | — | — | — | PASS | 0 errors, 62 warnings; none in the touched files |
+| `ShelfActionMotionUiTest` (new) | 10 | 10 | 0 | PASS | one activation for touch/semantics OnClick, none when disabled; Enter, D-pad centre, controller A fire once on key-up despite repeats, 5 rapid presses = 5; ring present mid-animation and absent on `focusIndicator=false`; layout sizes and neighbours fixed, pressed box stays inside its resting box; scale applies and fully restores; touch cancel and focus loss clear the pressed look; fast traversal/taps settle; Remove animations (`animator_duration_scale 0`, restored in `finally`) gives no scale but ring and callback |
+| `BottomNavigationLabelsUiTest` | 4 | 4 | 0 | PASS | |
+| `NavigationSmokeTest` | 28 | 28 | 0 | PASS | |
+| `InputModalityClassificationTest` | 10 | 10 | 0 | PASS | |
+| `CoverPresentationUiTest` | 8 | 6 | 2 | FAIL, **pre-existing** | `libraryGridKeepsSelectionScrollAndFocusAcrossPresentationChanges` (Focused) and `rendererShapesOriginalBoundsFocusAndGeneratedFallback` (590 vs 351) fail identically on the unmodified `362e4ec` baseline on this emulator (checked with the change stashed); not caused by v1A, not investigated |
+
+**NOT MEASURED:** frame timing / jank A/B (no gfxinfo/Perfetto run; an API 24 emulator is not a performance authority).
+**Not observed:** physical RP5 controller, SM-T580, TalkBack, large-font manual UAT, live Reduced Motion toggle on API 26+.
+The scale is verified by pixels (parent corner turns white while pressed), not by reading the layer.
+
 ## PHASE 4.5D.0 — OFFLINE MANGA EDITION & VOLUME MATCHING (2026-10-17, implemented / pending independent review)
 
 **Not accepted, not merged; not the 4.5D milestone.** Branch `phase-4.5/4.5d0-offline-manga-edition-matching` from
