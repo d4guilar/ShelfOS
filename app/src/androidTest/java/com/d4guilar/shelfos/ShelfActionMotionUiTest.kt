@@ -41,10 +41,11 @@ import org.junit.Test
  * focus ring stable while it animates, and drops the scale (never the ring or the callback) under Remove animations.
  *
  * Two layers, so API 24-25 is not skipped wholesale:
- *  - `*Functional` tests need no image: activation counts, key repeat, raw near-edge touches, cancel/focus loss, and the
- *    semantics bounds. The semantics bounds (`boundsInRoot`) are a pixel-free signal for both fixed defects: the original
- *    graphics-layer implementation shrank them while pressed and left them shrunk after a key-repeat latch, whereas the
- *    draw-only scale never moves them. What they cannot establish is that a scale is (or is not) actually drawn.
+ *  - `*Functional` tests need no image: activation counts, key repeat, raw near-edge touches, cancel/focus loss, layout,
+ *    and the semantics bounds (`boundsInRoot`). Bounds detect graphics-layer geometry changes, which is how the original
+ *    `29f2f82` implementation was partly caught on API 24. They cannot detect a latched draw-only pressed scale (the H-1
+ *    stuck look), because no bounds move. That regression is guarded only by the `*Visual` pixel test on API 26+; no H-1
+ *    visual detection is claimed on API 24-25.
  *  - `*Visual` tests additionally read pixels (the 100 dp control is filled edge to edge, so a pressed control shows the
  *    white parent at its corner). `captureToImage` uses PixelCopy, so they run on API 26+ only.
  */

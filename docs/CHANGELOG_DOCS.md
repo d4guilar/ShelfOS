@@ -1,5 +1,9 @@
 # Documentation Changelog
 
+## Quiet Motion v1A final documentation microfix (2026-10-23)
+
+- VALIDATION cleanup record: draw-only H-1 is detected by the API 26+ Visual test, not API 24; intermittent `NavigationSmokeTest` flake recorded separately from the pre-existing `CoverPresentationUiTest` failures. `ShelfActionMotionUiTest` KDoc aligned. No behavior change.
+
 ## Phase 4.5C.3A: Production Find Cover Online, manual selection (2026-10-22, pending independent QA)
 
 - Plan header and new section 44.1 (authorization via D1-C-PROD separate from `ScopedGrant`, separate default-OFF cover consent, discovery, per-process request budget of 8 discoveries / 30 images per rolling hour (counters reset on process restart; provider-imposed rate-limit cooldowns are persisted independently and survive restarts), USER-slot persistence bridge, schema v9 provenance, release separation, limitations). BOOK_PROVIDERS and ROADMAP status; VALIDATION 4.5C.3A evidence.

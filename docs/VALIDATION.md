@@ -36,6 +36,16 @@ altered. What API 24 establishes for Reduced Motion: `reducedMotionEnabled()` (t
 scale 0 and activation, focus and layout still work. It does **not** show the scale was dropped; that is observed by pixels
 on API 35 only. Not claimed: RP5, SM-T580, TalkBack, font-scale, populated-library or GPU performance.
 
+**Final-cleanup clarifications.** The API 24 run against the original `29f2f82` implementation caught H-1 only partially: its
+outer `graphicsLayer` changed the bounds that `boundsInRoot` reads. The independent final delta reviewer then removed only the
+`repeatCount == 0` fix from the new draw-only implementation, and the Functional H-1 test still passed, because a draw-only
+latched scale moves no bounds. Such a latch would be detected by the API 26+ `*Visual` test, not by API 24; no API 24
+coverage of draw-only H-1 is claimed.
+
+**Intermittent flake, not a regression:** `NavigationSmokeTest.epubBackRevealsHiddenControlsBeforeLeavingTheReader` failed once
+on API 35 with `No compose hierarchies found`, then passed on reruns with no change. It is separate from the two
+`CoverPresentationUiTest` failures above, which are consistent and were reproduced identically on base.
+
 ## QUIET MOTION v1A — TARGETED QA REMEDIATION (2026-10-23, implemented / pending fresh independent delta QA)
 
 **Not accepted; no push/PR/merge; hardware, performance and owner visual acceptance remain OPEN.** Follow-up local commit on
