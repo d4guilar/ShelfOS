@@ -10,6 +10,7 @@ import android.graphics.Shader
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -120,11 +121,11 @@ class OnlineCoverPickerUiTest {
         for (id in listOf(101L, 202L)) for (size in listOf("M", "L")) images.script[url(id, size)] = { Triple(200, "image/jpeg", image(400, 600)) }
     }
 
-    private fun show(item: LibraryItem = book, restoration: StateRestorationTester? = null) {
+    private fun show(item: LibraryItem = book, restoration: StateRestorationTester? = null, focusPrimary: Boolean = false) {
         val content: @androidx.compose.runtime.Composable () -> Unit = {
             ShelfTheme(ThemeId.CLASSIC) {
                 CompositionLocalProvider(LocalUserCovers provides userCovers, LocalOnlineCovers provides controller) {
-                    PublicationDetails(item, false, {}, Modifier.fillMaxSize(), onRead = {}, onEdit = { _, _, _ -> }, onRemove = {}, knowledgeCounts = AnnotationCounts.None)
+                    PublicationDetails(item, false, {}, Modifier.fillMaxSize(), onRead = {}, onEdit = { _, _, _ -> }, onRemove = {}, focusPrimaryAction = focusPrimary, knowledgeCounts = AnnotationCounts.None)
                 }
             }
         }
@@ -178,7 +179,7 @@ class OnlineCoverPickerUiTest {
         metadata.enableProvider("openlibrary")
         show(); openPicker()
         rule.onNodeWithTag("cover_online_allow_metadata").assertDoesNotExist()
-        rule.onNodeWithTag("cover_online_allow_covers").assertIsDisplayed()
+        rule.onNodeWithTag("cover_online_allow_covers").performScrollTo().assertIsDisplayed()
         assertFalse(consent.enabled.value); assertTrue(images.requests.isEmpty() && editionCalls == 0)
     }
 
@@ -255,5 +256,71 @@ class OnlineCoverPickerUiTest {
         waitGone("cover_status")
         rule.waitForIdle()
         assertTrue("details, the cover dialog and closing it make no request", images.requests.isEmpty() && editionCalls == 0)
+    }
+
+    // ---- injected gamepad/D-pad events (NOT physical-controller evidence): the whole flow with no touch ----
+
+    private fun pad(code: Int) {
+        val down = android.os.SystemClock.uptimeMillis()
+        val inst = InstrumentationRegistry.getInstrumentation()
+        inst.sendKeySync(android.view.KeyEvent(down, down, android.view.KeyEvent.ACTION_DOWN, code, 0, 0, -1, 0, 0, android.view.InputDevice.SOURCE_GAMEPAD))
+        inst.sendKeySync(android.view.KeyEvent(down, android.os.SystemClock.uptimeMillis(), android.view.KeyEvent.ACTION_UP, code, 0, 0, -1, 0, 0, android.view.InputDevice.SOURCE_GAMEPAD))
+        rule.waitForIdle()
+    }
+    private fun focused(tag: String) = rule.onAllNodesWithTag(tag).fetchSemanticsNodes().firstOrNull()
+        ?.config?.let { c -> androidx.compose.ui.semantics.SemanticsProperties.Focused.let { k -> if (c.contains(k)) c[k] else false } } == true
+    /** Moves focus with the D-pad (Down, then Up, Right every third press) until [tag] is focused; fails if it is never reachable. */
+    private fun focusedTags() = rule.onAllNodes(androidx.compose.ui.test.SemanticsMatcher("focused") { c -> c.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Focused) && c.config[androidx.compose.ui.semantics.SemanticsProperties.Focused] })
+        .fetchSemanticsNodes().map { n -> n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag) }
+    private fun reach(tag: String) {
+        waitFor(tag)
+        val trail = ArrayList<String>()
+        repeat(60) { i -> if (focused(tag)) return; trail += focusedTags().toString(); pad(if (i % 3 == 2) android.view.KeyEvent.KEYCODE_DPAD_RIGHT else if (i < 20 || i >= 45) android.view.KeyEvent.KEYCODE_DPAD_DOWN else android.view.KeyEvent.KEYCODE_DPAD_UP) }
+        val now = rule.onAllNodes(androidx.compose.ui.test.SemanticsMatcher("focused") { c -> c.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Focused) && c.config[androidx.compose.ui.semantics.SemanticsProperties.Focused] })
+            .fetchSemanticsNodes().map { n -> n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag) }
+        fail("$tag was not reachable by D-pad; focus trail: ${trail.distinct()}")
+    }
+    private fun confirm(tag: String) { reach(tag); pad(android.view.KeyEvent.KEYCODE_BUTTON_A) }
+
+    @Test fun theWholePickerWorksFromTheDpadWithNoAccidentalConsentOrApply() {
+        script(); show()
+        // Details are entered by touch, as in the other dialog tests (a controller key then switches the window to keyboard mode); everything inside the dialogs is D-pad only.
+        click("cover_action"); waitFor("cover_find_online")
+        confirm("cover_find_online"); waitFor("cover_online_disclosure")
+        assertFalse("opening with CONFIRM grants nothing", consent.enabled.value || metadata.onlineEnabled)
+        rule.onNodeWithTag("cover_online_enable").assertIsNotEnabled()
+        assertTrue(images.requests.isEmpty() && editionCalls == 0)
+        confirm("cover_online_allow_metadata"); assertFalse("a tick is not consent yet", consent.enabled.value || metadata.onlineEnabled)
+        confirm("cover_online_allow_covers")
+        confirm("cover_online_enable"); waitFor("cover_online_find")
+        assertTrue(consent.enabled.value && metadata.onlineEnabled)
+        assertTrue("enabling sends nothing", images.requests.isEmpty() && editionCalls == 0)
+        confirm("cover_online_find"); waitFor("cover_online_candidate_0")
+        assertEquals(1, editionCalls); assertTrue(images.requests.isEmpty())
+        confirm("cover_online_preview_0"); waitFor("cover_online_use")
+        assertEquals("one preview request", 1, images.requests.size)
+        // Back, then the same candidate again: nothing was applied and the preview is reused without a request.
+        confirm("cover_online_back"); waitFor("cover_online_candidate_0")
+        assertNull(userRow()); assertEquals(1, images.requests.size)
+        confirm("cover_online_preview_0"); waitFor("cover_online_use")
+        assertEquals("preview reused", 1, images.requests.size)
+        reach("cover_online_use")
+        assertNull("focus alone applies nothing", userRow())
+        pad(android.view.KeyEvent.KEYCODE_BUTTON_A); pad(android.view.KeyEvent.KEYCODE_BUTTON_A)   // a repeated press must not start a second download
+        // The second press lands on Cancel/Close once Use is disabled and may dismiss the dialog before the "saved" line is read, so the invariant is the stored result.
+        rule.waitUntil(10_000) { userRow() != null }
+        assertEquals("exactly one large download", 1, images.requests.count { it.contains("-L.jpg") })
+        assertEquals("PROVIDER_SELECTED", userRow()!![1])
+    }
+
+    @Test fun cancelAndBackFromTheDpadNeverApplyAnything() {
+        script(); metadata.enableProvider("openlibrary"); consent.set(true)
+        show()
+        click("cover_action"); waitFor("cover_find_online"); confirm("cover_find_online"); waitFor("cover_online_find")
+        confirm("cover_online_find"); waitFor("cover_online_candidate_0")
+        confirm("cover_online_preview_1"); waitFor("cover_online_use")
+        confirm("cover_online_back"); waitFor("cover_online_candidate_1")
+        confirm("cover_online_close"); waitGone("cover_online_dialog")
+        assertNull(userRow()); assertFalse(images.requests.any { it.contains("-L.jpg") })
     }
 }

@@ -78,6 +78,8 @@ fun OnlineCoverDialog(item: LibraryItem, controller: OnlineCoverController, onDi
     var inspecting by rememberSaveable(item.id) { mutableStateOf<String?>(null) }
     var allowMetadata by rememberSaveable { mutableStateOf(false) }
     var allowCovers by rememberSaveable { mutableStateOf(false) }
+    var lastInspected by rememberSaveable(item.id) { mutableStateOf<String?>(null) }
+    val findFocus = remember { FocusRequester() }
     val close = { controller.cancel(item.id); onDismiss() }
     val available = access == OnlineCoverAccess.AVAILABLE
     val needsMetadata = access == OnlineCoverAccess.METADATA_OFF || access == OnlineCoverAccess.BOTH_OFF
@@ -101,11 +103,12 @@ fun OnlineCoverDialog(item: LibraryItem, controller: OnlineCoverController, onDi
                     Inspector(item, controller, ui, open, busy, { inspecting = null })
                 } else {
                     Text(stringResource(R.string.cover_online_intro), style = MaterialTheme.typography.bodySmall, color = t.colors.secondary)
-                    PickerButton(stringResource(R.string.cover_online_find), "cover_online_find", !busy) { controller.find(item) }
+                    PickerButton(stringResource(R.string.cover_online_find), "cover_online_find", !busy, Modifier.focusRequester(findFocus)) { controller.find(item) }
+                    if (lastInspected == null) FocusOnEntry(findFocus)
                     if (ui.discovering) Progress(R.string.cover_online_finding, "cover_online_finding")
                     ui.candidates?.let { list ->
                         if (list.isEmpty()) Text(stringResource(R.string.cover_online_none), Modifier.testTag("cover_online_none"))
-                        list.forEachIndexed { i, c -> CandidateRow(item, controller, ui, c, i, list.size, busy) { inspecting = c.key; if (c.key !in ui.previews) controller.preview(item, c.key) } }
+                        list.forEachIndexed { i, c -> CandidateRow(item, controller, ui, c, i, list.size, busy, restoreFocus = c.key == lastInspected) { inspecting = c.key; lastInspected = c.key; if (c.key !in ui.previews) controller.preview(item, c.key) } }
                     }
                 }
                 if (ui.saved) Text(stringResource(R.string.cover_online_saved), Modifier.testTag("cover_online_saved").semantics { liveRegion = LiveRegionMode.Polite })
@@ -121,6 +124,17 @@ fun OnlineCoverDialog(item: LibraryItem, controller: OnlineCoverController, onDi
             }
         },
         dismissButton = { PickerButton(stringResource(if (busy) R.string.action_cancel else R.string.action_close), "cover_online_close", modifier = Modifier.focusRequester(safeFocus), onClick = close) })
+}
+
+/**
+ * Keyboard/gamepad users: moves focus to [requester] when this enters the composition (and again when [key] changes). Without it, swapping the
+ * dialog's content leaves focus on the dialog's Close button, and in a short window the controls the person needs next (Find, Use, Back) sit
+ * beyond the viewport where directional search cannot find them. Touch is unaffected.
+ */
+@Composable
+private fun FocusOnEntry(requester: FocusRequester, key: Any? = Unit) {
+    val keyboard = LocalInputModeManager.current.inputMode == InputMode.Keyboard
+    LaunchedEffect(key, keyboard) { if (keyboard) runCatching { requester.requestFocus() } }
 }
 
 @Composable
@@ -177,7 +191,8 @@ private fun CandidateSummary(c: OnlineCoverCandidate) {
 }
 
 @Composable
-private fun CandidateRow(item: LibraryItem, controller: OnlineCoverController, ui: OnlineCoverUi, c: OnlineCoverCandidate, index: Int, count: Int, busy: Boolean, inspect: () -> Unit) {
+private fun CandidateRow(item: LibraryItem, controller: OnlineCoverController, ui: OnlineCoverUi, c: OnlineCoverCandidate, index: Int, count: Int, busy: Boolean, restoreFocus: Boolean, inspect: () -> Unit) {
+    val previewFocus = remember { FocusRequester() }
     Row(Modifier.fillMaxWidth().testTag("cover_online_candidate_$index"), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(Modifier.width(72.dp), contentAlignment = Alignment.TopCenter) {
             if (ui.previews.containsKey(c.key)) PickerArtwork(controller, item, c.key, "cover_online_thumb_$index", maxHeight = 108)
@@ -185,7 +200,8 @@ private fun CandidateRow(item: LibraryItem, controller: OnlineCoverController, u
         Column(Modifier.weight(1f)) {
             CandidateSummary(c)
             val description = stringResource(R.string.cover_online_candidate_desc, index + 1, count, c.title ?: stringResource(R.string.cover_online_untitled))
-            PickerButton(stringResource(R.string.cover_online_preview), "cover_online_preview_$index", !busy, description = description, onClick = inspect)
+            PickerButton(stringResource(R.string.cover_online_preview), "cover_online_preview_$index", !busy, Modifier.focusRequester(previewFocus), description, inspect)
+            if (restoreFocus) FocusOnEntry(previewFocus)   // back from the inspector: focus returns to the candidate that was open
             if (ui.busyKey == c.key && !ui.busyUse) Progress(R.string.cover_online_previewing, "cover_online_busy")
         }
     }
@@ -195,6 +211,7 @@ private fun CandidateRow(item: LibraryItem, controller: OnlineCoverController, u
 private fun Inspector(item: LibraryItem, controller: OnlineCoverController, ui: OnlineCoverUi, c: OnlineCoverCandidate, busy: Boolean, back: () -> Unit) {
     val t = LocalShelfTokens.current
     val preview = ui.previews[c.key]
+    val backFocus = remember { FocusRequester() }
     Column(Modifier.testTag("cover_online_inspector"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         CandidateSummary(c)
         if (preview != null) {
@@ -206,6 +223,8 @@ private fun Inspector(item: LibraryItem, controller: OnlineCoverController, ui: 
         if (ui.busyKey == c.key && ui.busyUse) Progress(R.string.cover_online_using, "cover_online_busy")
         // Use this cover needs the artwork on screen first: preview is not confirmation, and nothing is applied by tapping a candidate.
         PickerButton(stringResource(R.string.cover_online_use), "cover_online_use", preview != null && !busy) { controller.use(item, c.key) }
-        PickerButton(stringResource(R.string.action_back), "cover_online_back", !(busy && ui.busyUse), onClick = back)
+        PickerButton(stringResource(R.string.action_back), "cover_online_back", !(busy && ui.busyUse), Modifier.focusRequester(backFocus), onClick = back)
+        // Focus lands on the safe control (Back), never on Use this cover: the artwork scrolls into view and Up reaches Use.
+        if (preview != null) FocusOnEntry(backFocus, c.key)
     }
 }
