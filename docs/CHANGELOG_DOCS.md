@@ -2654,3 +2654,7 @@ Decisions:
 ## Quiet Motion v1A targeted QA remediation (2026-10-23)
 
 - MOTION.md §2/§2.1 now distinguish implemented v1A press/release (draw-only, inside `clickable`; first-DOWN-only manual key flag) from the still-proposed roles, state the 90/130 ms and 0.98 values are provisional pending owner sign-off, and record the bounded API 35 emulator Reduced Motion observation. DESIGN_SYSTEM §12 no longer claims decorative motion is unimplemented. VALIDATION corrects the unit-test count to 999 total / 998 passed / 1 skipped and adds the remediation record. Historic QA records are intact; hardware, performance and owner acceptance stay OPEN.
+
+## Quiet Motion v1A test-coverage cleanup (2026-10-23)
+
+- VALIDATION corrects the remediation record (API 24 was 1 executed / 11 skipped, not a pass; lint is 0 errors, 62 warnings, 1 hint) and adds the after-cleanup run: `ShelfActionMotionUiTest` split into Functional and Visual methods, API 24 now executes 9 and skips only the 11 pixel-based Visual methods. Docs only; feature acceptance, hardware, performance and owner sign-off stay OPEN.
