@@ -47,8 +47,16 @@ TalkBack gap are recorded in `docs/VALIDATION.md`. The next active milestone is 
 EPUB, CBZ/CBR and PDF first-page covers with the generated cover as fallback) is merged (PR #44).
 Slice 4.5A.2 (configurable cover shape and fit in Settings → Library appearance) is merged (PR #45).
 Slice 4.5B (offline metadata core: identifiers, publisher, dates, series/volume/issue, credits and
-user edits with field-level provenance) is implemented on branch `phase-4.5/4.5b-metadata-core`
-and is **under independent review, not accepted or merged**; there is no online enrichment. Phase 5 remains Advanced PDF Ingestion.
+user edits with field-level provenance) is merged (PR #46), as are the opt-in Open Library metadata
+lookup (#54), the debug-only Cover Lab (#55), UX stabilization (#56) and, most recently, the **manual
+Open Library Book cover picker (4.5C.3A, PR #58)**. The picker is in release builds but does nothing
+until the person turns on a separate, default-off cover consent (plus the online-metadata opt-in) and
+then explicitly searches, previews and chooses a cover; the choice is saved on the device as a durable
+user cover with provenance. It is not automatic: there is no background enrichment, no provider cache,
+no Manga/Comic online cover picker, and Archive.org cover redirects remain blocked (F-2). Open Library
+has not granted ShelfOS any bespoke approval or image licence. Physical-controller, TalkBack and live
+provider acceptance gaps remain, Phase 4.5 as a whole (including 4.5G) is not complete, and Phase 5
+(Advanced PDF Ingestion) has not started.
 
 Global destinations are Library, Search, Notes, Shelves and Settings. Notes is a real
 cross-library hub (Phase 4D, merged and implementation complete); Shelves is a

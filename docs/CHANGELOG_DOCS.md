@@ -2641,3 +2641,8 @@ Decisions:
 - debug builds may simulate Plus
 - official releases are controlled by signing/store credentials
 - `main` should be protected and changed through reviewed pull requests
+
+## Post-PR #58 status reconciliation (docs only)
+
+- README, ROADMAP (Phase 4.5 current status and sequencing item 1), plan header and §44.1, BOOK_PROVIDERS and ARCHITECTURE now state that 4.5B (#46) and 4.5C.3A (#58, squash `3138e94`) are merged, replacing "under review", "pending QA/merge" and "no production cover retrieval" as current claims. Older dated entries and the VALIDATION record are kept as historical.
+- Stated: 4.5C.3 as a whole, 4.5G and Phase 4.5 acceptance remain open; Quiet Motion v1 is only proposed next; D1-C-PROD/D31/F-2 unchanged; no Open Library approval or image licence. No tests were run in this docs pass.
