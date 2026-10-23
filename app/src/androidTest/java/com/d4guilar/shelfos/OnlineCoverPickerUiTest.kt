@@ -281,26 +281,41 @@ class OnlineCoverPickerUiTest {
         fail("$tag was not reachable by D-pad; focus trail: ${trail.distinct()}")
     }
     private fun confirm(tag: String) { reach(tag); pad(android.view.KeyEvent.KEYCODE_BUTTON_A) }
+    /** Waits for the dialog's own focus move (a LaunchedEffect) to land on [tag]; unlike [reach] it sends no key, so it asserts where focus was placed. */
+    private fun assertFocusLands(tag: String, why: String) {
+        try { rule.waitUntil(5_000) { focused(tag) } } catch (_: androidx.compose.ui.test.ComposeTimeoutException) { fail("$why: expected focus on $tag, focused was ${focusedTags()}") }
+    }
 
     @Test fun theWholePickerWorksFromTheDpadWithNoAccidentalConsentOrApply() {
         script(); show()
         // Details are entered by touch, as in the other dialog tests (a controller key then switches the window to keyboard mode); everything inside the dialogs is D-pad only.
         click("cover_action"); waitFor("cover_find_online")
         confirm("cover_find_online"); waitFor("cover_online_disclosure")
+        // Known gap (plan 44.1, R1): the picker is a new dialog window that opens in touch input mode and refuses programmatic focus, so a controller user is NOT
+        // started on Close; the first directional press reaches the first (unticked) checkbox. What is asserted is the safety property: that press never lands on
+        // the disabled Enable button, and nothing is granted by focus alone.
+        assertFalse("nothing is focused inside the dialog yet", focused("cover_online_enable"))
+        pad(android.view.KeyEvent.KEYCODE_DPAD_DOWN)
+        assertFalse("the first controller press never lands on Enable", focused("cover_online_enable"))
+        rule.onNodeWithTag("cover_online_enable").assertIsNotEnabled()
         assertFalse("opening with CONFIRM grants nothing", consent.enabled.value || metadata.onlineEnabled)
         rule.onNodeWithTag("cover_online_enable").assertIsNotEnabled()
         assertTrue(images.requests.isEmpty() && editionCalls == 0)
         confirm("cover_online_allow_metadata"); assertFalse("a tick is not consent yet", consent.enabled.value || metadata.onlineEnabled)
         confirm("cover_online_allow_covers")
         confirm("cover_online_enable"); waitFor("cover_online_find")
+        assertFocusLands("cover_online_find", "after Enable focus moves to Find covers")
         assertTrue(consent.enabled.value && metadata.onlineEnabled)
         assertTrue("enabling sends nothing", images.requests.isEmpty() && editionCalls == 0)
         confirm("cover_online_find"); waitFor("cover_online_candidate_0")
         assertEquals(1, editionCalls); assertTrue(images.requests.isEmpty())
         confirm("cover_online_preview_0"); waitFor("cover_online_use")
+        assertFocusLands("cover_online_back", "after Preview focus is on Back")
+        assertFalse("focus is never placed on Use this cover", focused("cover_online_use"))
         assertEquals("one preview request", 1, images.requests.size)
         // Back, then the same candidate again: nothing was applied and the preview is reused without a request.
         confirm("cover_online_back"); waitFor("cover_online_candidate_0")
+        assertFocusLands("cover_online_preview_0", "leaving the preview returns focus to the inspected candidate")
         assertNull(userRow()); assertEquals(1, images.requests.size)
         confirm("cover_online_preview_0"); waitFor("cover_online_use")
         assertEquals("preview reused", 1, images.requests.size)

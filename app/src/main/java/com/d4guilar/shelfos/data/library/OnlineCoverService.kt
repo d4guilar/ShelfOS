@@ -22,6 +22,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
+import android.content.Context
+import androidx.core.content.edit
 import java.io.File
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -49,6 +51,9 @@ data class OnlineCoverDiscovery(val candidates: List<OnlineCoverCandidate>, val 
  */
 class OnlineCoverFiles(private val previewRoot: File, val stagingRoot: File) {
     private val random = SecureRandom()
+
+    // Construction happens once per process, before any transfer can start, so whatever a killed process left behind is abandoned.
+    init { sweepTemporaries() }
     private fun token() = "%016x".format(random.nextLong())
     private fun itemDir(itemId: String): File { require(ID.matches(itemId)) { "unsafe library item id" }; return File(previewRoot, itemId) }
 
@@ -72,7 +77,7 @@ class OnlineCoverFiles(private val previewRoot: File, val stagingRoot: File) {
 
     fun clearPreviews(itemId: String) { runCatching { itemDir(itemId).deleteRecursively() } }
 
-    /** Startup/dialog cleanup of anything a killed process left behind. */
+    /** Removes anything a killed process left behind: every staged download and every unfinished preview. Committed previews are kept. */
     fun sweepTemporaries() {
         runCatching { stagingRoot.listFiles()?.forEach { it.delete() } }
         runCatching { previewRoot.listFiles()?.forEach { d -> d.listFiles()?.filter { it.name.endsWith(".tmp") }?.forEach { it.delete() } } }
@@ -103,10 +108,67 @@ class OnlineCoverBudget(private val maxDiscoveries: Int = 8, private val maxImag
     @Synchronized fun takeImage() = take(images, maxImages)
 }
 
+/** A single persisted number (the cooldown deadline); a fake in JVM tests. */
+interface LongStore {
+    fun get(key: String, default: Long): Long
+    fun put(key: String, value: Long)
+}
+
+class SharedPreferencesLongStore(context: Context, name: String = OnlineCoverConsent.PREFERENCES) : LongStore {
+    private val prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE)
+    override fun get(key: String, default: Long) = prefs.getLong(key, default)
+    override fun put(key: String, value: Long) { prefs.edit { putLong(key, value) } }
+}
+
+class MemoryLongStore : LongStore {
+    private val values = HashMap<String, Long>()
+    @Synchronized override fun get(key: String, default: Long) = values[key] ?: default
+    @Synchronized override fun put(key: String, value: Long) { values[key] = value }
+}
+
+/**
+ * The provider-imposed pause after a 403/429 (D31), kept across process restarts. The deadline is stored as wall-clock time (the only clock that means
+ * anything after a restart) and, on construction, turned into a remaining duration clamped to [MAX_PAUSE_MS] so a clock moved backwards can never
+ * create a longer pause; within the process expiry is measured on [monotonicMs]. A new pause never shortens a running one, and nothing here is cleared
+ * by consent changes. All access is synchronized, so concurrent updates cannot lose or shorten each other.
+ */
+class OnlineCoverCooldown(
+    private val store: LongStore,
+    private val wallMs: () -> Long = System::currentTimeMillis,
+    private val monotonicMs: () -> Long = android.os.SystemClock::elapsedRealtime,
+) {
+    private var untilMono = 0L
+
+    init {
+        val stored = store.get(KEY, 0L)
+        val remaining = (stored - wallMs()).coerceAtMost(MAX_PAUSE_MS)
+        if (remaining > 0) untilMono = monotonicMs() + remaining else if (stored != 0L) store.put(KEY, 0L)
+    }
+
+    /** Milliseconds left of the pause, or 0 when requests may start. */
+    @Synchronized fun remainingMs(): Long = (untilMono - monotonicMs()).coerceAtLeast(0L)
+
+    /** Starts a pause of [retryAfterMs] (default and bounds apply) unless a longer one is already running. */
+    @Synchronized fun pause(retryAfterMs: Long?) {
+        val wait = (retryAfterMs ?: DEFAULT_PAUSE_MS).coerceIn(MIN_PAUSE_MS, MAX_PAUSE_MS)
+        val mono = monotonicMs()
+        if (mono + wait <= untilMono) return
+        untilMono = mono + wait
+        store.put(KEY, wallMs() + wait)
+    }
+
+    companion object {
+        const val KEY = "open_library_cover_pause_until"
+        const val MIN_PAUSE_MS = 1_000L
+        const val DEFAULT_PAUSE_MS = 5 * 60_000L
+        const val MAX_PAUSE_MS = 60 * 60_000L
+    }
+}
+
 /**
  * Manual online cover selection for Books (Phase 4.5C.3A, D1-C-PROD): discover → preview → explicit select. Every public step is started by a person,
  * is refused unless [authorization] holds at that moment (checked before any request, again under the slot, and again immediately before the commit),
- * handles one operation at a time ([slot]), never retries by itself, and pauses all requests after a 403/429 until `Retry-After`. The UI hands over a
+ * handles one operation at a time ([slot]), never retries by itself, and pauses all requests after a 403/429 until `Retry-After` ([cooldown], which survives a restart). The UI hands over a
  * candidate KEY only: the candidate itself is the one this service produced in the item's latest discovery, so a forged, stale or foreign candidate cannot
  * name a URL. The selected image becomes the Book's USER cover through [commit] (production: [UserCoverStore.setFromPrivateFile]) and nothing here writes
  * the ONLINE slot or any other cover row, runs in the background or fetches on its own.
@@ -129,14 +191,14 @@ class OnlineCoverService(
     private val inspect: (File) -> PilotImage? = ::inspectImageBounds,
     private val budget: OnlineCoverBudget = OnlineCoverBudget(),
     private val nowMs: () -> Long = System::currentTimeMillis,
+    private val cooldown: OnlineCoverCooldown = OnlineCoverCooldown(MemoryLongStore(), nowMs, nowMs),
 ) {
     private val slot = Mutex()
-    @Volatile private var pausedUntil = 0L
     private val discovered = ConcurrentHashMap<String, Map<String, OnlineCoverCandidate>>()
 
     private fun permitted(item: LibraryItem) = item.category == MediaCategory.BOOK && authorization.permits(OpenLibrary.ID, item.category)
-    private fun pauseFailure() = (pausedUntil - nowMs()).takeIf { it > 0 }?.let { OnlineCoverResult.Failed(OnlineCoverFailure.RATE_LIMITED, it) }
-    private fun pause(retryAfterMs: Long?) { pausedUntil = nowMs() + (retryAfterMs ?: DEFAULT_PAUSE_MS).coerceIn(1_000L, MAX_PAUSE_MS) }
+    private fun pauseFailure() = cooldown.remainingMs().takeIf { it > 0 }?.let { OnlineCoverResult.Failed(OnlineCoverFailure.RATE_LIMITED, it) }
+    private fun pause(retryAfterMs: Long?) = cooldown.pause(retryAfterMs)
 
     /** The candidates the latest discovery produced for [itemId], or empty after a restart (the person searches again). */
     fun known(itemId: String): List<OnlineCoverCandidate> = discovered[itemId]?.values?.toList().orEmpty()
@@ -278,7 +340,7 @@ class OnlineCoverService(
     }
 
     companion object {
-        const val DEFAULT_PAUSE_MS = 5 * 60_000L
-        const val MAX_PAUSE_MS = 60 * 60_000L
+        const val DEFAULT_PAUSE_MS = OnlineCoverCooldown.DEFAULT_PAUSE_MS
+        const val MAX_PAUSE_MS = OnlineCoverCooldown.MAX_PAUSE_MS
     }
 }

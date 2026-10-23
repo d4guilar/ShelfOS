@@ -39,6 +39,8 @@ import com.d4guilar.shelfos.core.network.RequestPacer
 import com.d4guilar.shelfos.core.network.HttpUrlConnectionImageTransport
 import com.d4guilar.shelfos.data.library.OnlineCoverAuthorization
 import com.d4guilar.shelfos.data.library.OnlineCoverConsent
+import com.d4guilar.shelfos.data.library.OnlineCoverCooldown
+import com.d4guilar.shelfos.data.library.SharedPreferencesLongStore
 import com.d4guilar.shelfos.data.library.OnlineCoverFiles
 import com.d4guilar.shelfos.data.library.OnlineCoverService
 import com.d4guilar.shelfos.data.metadata.metadataQuery
@@ -136,7 +138,8 @@ class AppContainer(val application: Application) {
         OnlineCoverService(onlineCoverAuthorization, onlineCoverFiles, images, OpenLibraryProvider(json)::coverEditions,
             queryFor = { item -> metadata.resolved(item.id)?.let { metadataQuery(item, it) } },
             currentItem = { id -> library.publication(id).first() }, freeBytes = coverFiles::freeBytes,
-            epochOf = userCovers::epoch, commit = { id, file, origin, epoch, guard -> userCovers.setFromPrivateFile(id, file, origin, epoch, guard) })
+            epochOf = userCovers::epoch, commit = { id, file, origin, epoch, guard -> userCovers.setFromPrivateFile(id, file, origin, epoch, guard) },
+            cooldown = OnlineCoverCooldown(SharedPreferencesLongStore(application)))
     }
     val onlineCovers by lazy {
         OnlineCoverController(onlineCoverAuthorization, onlineCoverAuthorization.consent, onlineSettings, onlineCoverService, backgroundScope, coverArtwork.presentations)

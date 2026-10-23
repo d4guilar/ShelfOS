@@ -8462,6 +8462,8 @@ Branch `phase-4.5/4.5c3a-production-cover-picker` from `main` e37060f. Scope and
 
 **Process note:** the emulator hung during one long batch (2 GB guest); it was restarted with `-no-snapshot` on the same AVD and the batch re-run from the current APKs. The migration/`UserCoverStore` failures seen in an earlier run were real regressions of this change (fixture version expectations; a temp-file ordering in the refactored store) and were fixed before the table above.
 
+**Historical note:** the "no RP5 instrumentation" statement below is true of this initial record only; the RP5 run was done later and is recorded in "PHASE 4.5C.3A R1: RETROID POCKET 5 VALIDATION" further down.
+
 **Not executed (evidence gaps, stated plainly):** the Retroid Pocket 5 (`d8f7f1b6`) was not connected when the final run started, so **no RP5 instrumentation, landscape or physical D-pad/gamepad run exists for this slice**; the Samsung SM-T580 (API 27) was not available; no 320 dp / tablet window test beyond the existing responsive Publication Details suite; TalkBack not run; no live Open Library request, so the real redirect behaviour of a selected cover (F-2) is unobserved.
 
 **Manual acceptance (owner, non-sensitive test Book with an ISBN):** open Details > Cover > Find cover online; read the disclosure; tick and Enable; Find covers; Preview one; Use this cover; check Library/Search/Details show it; force-stop, relaunch, disable Wi-Fi: same cover; Cover > Use the file's cover restores the next cover; the book file is unchanged. If the chosen image redirects to Archive.org the expected result is the "stored at a location ShelfOS does not allow" message and an unchanged cover (F-2), not a policy change.
@@ -8500,3 +8502,17 @@ An intermediate `UserCoverUiTest` failure (`cover_restore` not displayed) was a 
 **Baselines.** None of the RP5 classes above failed on a pre-existing basis. The two `CoverPresentationUiTest` failures recorded earlier are emulator-specific (RP5 8/8 here).
 
 **Not done / limits:** Samsung SM-T580 not available (no evidence); TalkBack not run; 320 dp width not exercised; no live Open Library request or UAT, so the real redirect behavior (F-2) is unobserved and F-2 remains unresolved and fail-closed; the owner's acceptance steps in the previous section still apply.
+
+## PHASE 4.5C.3A R1 REMEDIATION: PERSISTENT COVER COOLDOWN AND QA RECONCILIATION (2026-10-22, pending independent delta QA)
+
+Branch `phase-4.5/4.5c3a-production-cover-picker`, one local commit above `8075028`. No live Open Library or Archive.org request was made. Scope: M1-B (persistent provider cooldown), M1-A / M2 / L7 (documentation), L1 (temporary-file sweep), L6 (focus assertions).
+
+**Code.** `OnlineCoverCooldown` keeps a provider-imposed pause in the `online_covers` preference file (`open_library_cover_pause_until`, wall-clock deadline). On construction it restores `min(deadline - now, 1 h)` onto the monotonic clock, so a clock moved backwards cannot create a longer pause, and clears an expired value. Updates are synchronized and never shorten a running pause; consent changes never touch it; expiry starts nothing. No Room table, schema, transport, URL-policy or authorization change. `OnlineCoverFiles` now sweeps abandoned `.tmp` files once at construction (before any transfer); committed previews and USER covers (stored elsewhere) are kept.
+
+**JVM.** `OnlineCoverServiceTest` 29 -> 38 tests, all pass (restart persistence, expired deadline, clock moved back, consent toggling, 403 default pause, discovery `RATE_LIMITED`/`ACCESS_BLOCKED`, no shortening, no request while paused, no request on expiry, temp-file sweep). Full suite: 999 tests, 1 skipped, 0 failures. `:app:assembleDebug`, `:app:assembleRelease`, `:app:lintDebug`, `:app:assembleDebugAndroidTest`: pass.
+
+**RP5 `d8f7f1b6` (API 33, landscape, `install -r -t` over the existing app; no `pm clear`, uninstall or wipe; the class uses in-memory Room and cache fixtures, not `shelfos.db`).** `OnlineCoverPickerUiTest` **13/13**, with new focus-state assertions (injected gamepad/D-pad events, not a physical controller): focus lands on Find covers after Enable; on Back, never on Use this cover, after Preview; and returns to the inspected candidate after leaving the preview. The emulator was not run for this delta; the known emulator-only `CoverPresentationUiTest` failures are unaffected.
+
+**Open observation (LOW, not fixed).** The planned "safe start on Close" is not delivered when a controller opens the picker from the Cover dialog: the new dialog window opens in touch input mode and `requestFocus` on Close returns false (logged), so the first directional press reaches the first unticked checkbox. Three attempted fixes (passing the opener's mode, retrying, forcing keyboard mode) did not make Compose accept focus, were reverted, and no product UI code changed. The safety property holds and is asserted: that press never lands on the disabled Enable, and neither focus nor a tick grants consent. Follow-up candidate.
+
+**Deferred LOW follow-ups (not security defects):** M3 separate metadata/cover cooldowns; L2 old previews after revocation; L3 checkbox drafts after an access change; L4 cosmetic thumbnail eviction; L5 double CONFIRM cancelling an in-flight download.

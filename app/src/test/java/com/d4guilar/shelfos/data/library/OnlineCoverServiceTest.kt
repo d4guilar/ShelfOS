@@ -52,7 +52,7 @@ class OnlineCoverServiceTest {
     private fun enableAll() { metadata.enableProvider(OpenLibrary.ID); consent.set(true) }
     private fun files() = OnlineCoverFiles(File(tmp.root, "previews"), File(tmp.root, "staging"))
 
-    private fun service(budget: OnlineCoverBudget = OnlineCoverBudget(nowMs = { now }), files: OnlineCoverFiles = files()) = OnlineCoverService(auth, files, images,
+    private fun service(budget: OnlineCoverBudget = OnlineCoverBudget(nowMs = { now }), files: OnlineCoverFiles = files(), cooldown: OnlineCoverCooldown = cooldown()) = OnlineCoverService(auth, files, images,
         { onEditions?.invoke(); editionCalls++; listOf(
             CoverEdition("OL1M", "Matilda", listOf(5L), listOf(PublicationIdentifier(IdentifierType.ISBN_13, isbn)), "Puffin", "1998", "en", true),
             CoverEdition("OL2M", "Matilda", listOf(6L), listOf(PublicationIdentifier(IdentifierType.ISBN_13, "9780141322643")), "Penguin", "2001", "en", false)) },
@@ -63,7 +63,11 @@ class OnlineCoverServiceTest {
             commitResult?.invoke(guard) ?: if (guard()) UserCoverOutcome.SAVED else UserCoverOutcome.NOT_PERMITTED
         },
         PilotImageNormalizer { raw, out -> out.writeBytes(raw.readBytes()); PilotImage("image/jpeg", "jpg", 400, 600, 400, 600, out.length()) },
-        { f -> if (f.length() > 0) PilotImage("image/jpeg", f.extension, 400, 600, 400, 600, f.length()) else null }, budget, { now })
+        { f -> if (f.length() > 0) PilotImage("image/jpeg", f.extension, 400, 600, 400, 600, f.length()) else null }, budget, { now }, cooldown)
+
+    private fun cooldown(store: LongStore = longs) = OnlineCoverCooldown(store, { now }, { now })
+    private val longs = MemoryLongStore()
+    private fun tick(ms: Long) { now += ms }
 
     private fun failed(r: OnlineCoverResult<*>) = (r as OnlineCoverResult.Failed).reason
     private fun <T> ok(r: OnlineCoverResult<T>) = (r as OnlineCoverResult.Ok<T>).value
@@ -343,6 +347,99 @@ class OnlineCoverServiceTest {
         val s = service(); s.discoverOk()
         assertEquals(OnlineCoverFailure.STORAGE_FULL, failed(s.select(item, exactKey)))
         assertTrue(images.requests.isEmpty())
+    }
+
+    // ---- the persisted provider cooldown (D31) ----
+
+    private val okImage: suspend (String, File) -> ImageFetch = { _, f -> f.writeBytes(JPEG_BYTES); ImageFetch(200, "image/jpeg", null, JPEG_BYTES.size.toLong()) }
+
+    @Test fun `a 429 cooldown survives a restart and a new service cannot request before it expires`() = runTest {
+        enableAll(); images.respond = { _, _ -> ImageFetch(429, null, "90", 0) }
+        val s = service(); s.discoverOk()
+        assertEquals(OnlineCoverFailure.RATE_LIMITED, failed(s.select(item, exactKey)))
+        assertEquals(now + 90_000L, longs.get(OnlineCoverCooldown.KEY, 0L))
+        val requests = images.requests.size; val calls = editionCalls
+        tick(30_000)   // the process died; 30 s later a new one starts with the same store
+        val restarted = service(cooldown = cooldown())
+        val r = restarted.discover(item) as OnlineCoverResult.Failed
+        assertEquals(OnlineCoverFailure.RATE_LIMITED, r.reason); assertEquals(60_000L, r.retryAfterMs)
+        assertEquals(calls, editionCalls); assertEquals(requests, images.requests.size)
+    }
+
+    @Test fun `an expired persisted deadline permits a request and is cleared`() = runTest {
+        enableAll(); longs.put(OnlineCoverCooldown.KEY, now - 1)
+        val s = service(cooldown = cooldown())
+        assertEquals(0L, longs.get(OnlineCoverCooldown.KEY, -1L))
+        assertEquals(2, s.discoverOk().size); assertEquals(1, editionCalls)
+    }
+
+    @Test fun `a clock moved backwards cannot restore a pause longer than the maximum`() = runTest {
+        enableAll(); longs.put(OnlineCoverCooldown.KEY, now + 10 * 3_600_000L)
+        val s = service(cooldown = cooldown())
+        val r = s.discover(item) as OnlineCoverResult.Failed
+        assertEquals(OnlineCoverCooldown.MAX_PAUSE_MS, r.retryAfterMs)
+        tick(OnlineCoverCooldown.MAX_PAUSE_MS + 1)
+        assertEquals(2, s.discoverOk().size)
+    }
+
+    @Test fun `switching consent off and on does not clear the cooldown`() = runTest {
+        enableAll(); images.respond = { _, _ -> ImageFetch(429, null, "600", 0) }
+        val s = service(); s.discoverOk(); s.select(item, exactKey)
+        consent.set(false); consent.set(true); metadata.setProviderEnabled(OpenLibrary.ID, false); metadata.setProviderEnabled(OpenLibrary.ID, true)
+        val requests = images.requests.size; val calls = editionCalls
+        assertEquals(OnlineCoverFailure.RATE_LIMITED, failed(service(cooldown = cooldown()).discover(item)))
+        assertEquals(OnlineCoverFailure.RATE_LIMITED, failed(s.preview(item, exactKey)))
+        assertEquals(calls, editionCalls); assertEquals(requests, images.requests.size)
+    }
+
+    @Test fun `a 403 without Retry-After persists the default pause`() = runTest {
+        enableAll(); images.respond = { _, _ -> ImageFetch(403, null, null, 0) }
+        val s = service(); s.discoverOk()
+        assertEquals(OnlineCoverFailure.ACCESS_BLOCKED, failed(s.select(item, exactKey)))
+        assertEquals(now + OnlineCoverCooldown.DEFAULT_PAUSE_MS, longs.get(OnlineCoverCooldown.KEY, 0L))
+        assertEquals(OnlineCoverFailure.RATE_LIMITED, failed(service(cooldown = cooldown()).discover(item)))
+    }
+
+    @Test fun `a discovery rate limit or block persists its pause`() = runTest {
+        enableAll()
+        for ((kind, wait, expected) in listOf(Triple(ProviderFailureKind.RATE_LIMITED, 120_000L, 120_000L), Triple(ProviderFailureKind.ACCESS_BLOCKED, null, OnlineCoverCooldown.DEFAULT_PAUSE_MS))) {
+            longs.put(OnlineCoverCooldown.KEY, 0L)
+            val s = OnlineCoverService(auth, files(), images, { throw ProviderException(kind, wait) }, { query }, { item }, { free }, { 0 }, { _, _, _, _, _ -> UserCoverOutcome.SAVED }, nowMs = { now }, cooldown = cooldown())
+            assertEquals(fromKind(kind), failed(s.discover(item)))
+            assertEquals(now + expected, longs.get(OnlineCoverCooldown.KEY, 0L))
+        }
+    }
+    private fun fromKind(k: ProviderFailureKind) = if (k == ProviderFailureKind.RATE_LIMITED) OnlineCoverFailure.RATE_LIMITED else OnlineCoverFailure.ACCESS_BLOCKED
+
+    @Test fun `a shorter pause never reduces a longer one`() {
+        val c = cooldown()
+        c.pause(1_800_000L); val stored = longs.get(OnlineCoverCooldown.KEY, 0L)
+        c.pause(5_000L); c.pause(null)
+        assertEquals(1_800_000L, c.remainingMs()); assertEquals(stored, longs.get(OnlineCoverCooldown.KEY, 0L))
+        tick(1_000_000L); c.pause(60_000L)   // 800 s left, so 60 s changes nothing
+        assertEquals(800_000L, c.remainingMs())
+        c.pause(OnlineCoverCooldown.MAX_PAUSE_MS)   // a longer one extends
+        assertEquals(OnlineCoverCooldown.MAX_PAUSE_MS, c.remainingMs())
+    }
+
+    @Test fun `expiry starts nothing by itself`() = runTest {
+        enableAll(); images.respond = { _, _ -> ImageFetch(429, null, "60", 0) }
+        val s = service(); s.discoverOk(); s.select(item, exactKey)
+        val requests = images.requests.size; val calls = editionCalls
+        tick(OnlineCoverCooldown.MAX_PAUSE_MS * 2); testScheduler.advanceUntilIdle()
+        assertEquals(requests, images.requests.size); assertEquals(calls, editionCalls); assertTrue(commits.isEmpty())
+        images.respond = okImage
+        ok(s.select(item, exactKey))   // only a person's press resumes
+    }
+
+    @Test fun `the files manager removes abandoned temporaries at construction and keeps real files`() {
+        val staging = File(tmp.root, "staging").apply { mkdirs() }; val previews = File(tmp.root, "previews/b1").apply { mkdirs() }
+        val strayStage = File(staging, "aaaa.tmp").apply { writeText("x") }; val strayPreview = File(previews, "bbbb.tmp").apply { writeText("x") }
+        val keep = File(previews, "pv-OL1M-id-5.jpg").apply { writeBytes(JPEG_BYTES) }
+        val covers = File(tmp.root, "covers").apply { mkdirs() }; val userCover = File(covers, "b1.jpg").apply { writeBytes(JPEG_BYTES) }
+        files()
+        assertFalse(strayStage.exists()); assertFalse(strayPreview.exists())
+        assertTrue(keep.exists()); assertTrue(userCover.exists())
     }
 
     // ---- the finite budget ----
