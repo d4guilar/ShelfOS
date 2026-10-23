@@ -8465,3 +8465,38 @@ Branch `phase-4.5/4.5c3a-production-cover-picker` from `main` e37060f. Scope and
 **Not executed (evidence gaps, stated plainly):** the Retroid Pocket 5 (`d8f7f1b6`) was not connected when the final run started, so **no RP5 instrumentation, landscape or physical D-pad/gamepad run exists for this slice**; the Samsung SM-T580 (API 27) was not available; no 320 dp / tablet window test beyond the existing responsive Publication Details suite; TalkBack not run; no live Open Library request, so the real redirect behaviour of a selected cover (F-2) is unobserved.
 
 **Manual acceptance (owner, non-sensitive test Book with an ISBN):** open Details > Cover > Find cover online; read the disclosure; tick and Enable; Find covers; Preview one; Use this cover; check Library/Search/Details show it; force-stop, relaunch, disable Wi-Fi: same cover; Cover > Use the file's cover restores the next cover; the book file is unchanged. If the chosen image redirects to Archive.org the expected result is the "stored at a location ShelfOS does not allow" message and an unchanged cover (F-2), not a policy change.
+
+## PHASE 4.5C.3A R1: RETROID POCKET 5 VALIDATION (2026-10-22, pending independent Codex High QA)
+
+Branch `phase-4.5/4.5c3a-production-cover-picker`; implementation commit `9bb7f0e`; remediation commit recorded in the handoff (it follows `9bb7f0e` and changes `OnlineCoverDialog.kt` plus tests only).
+
+**Device.** RP5 `d8f7f1b6` (`Retroid_Pocket_5`), API 33, physical 1080x1920 @ 360 dpi, `user_rotation=1` with `accelerometer_rotation=1`; observed display orientation 1 (landscape) 1920x1080 = **640 x 360 dp**, font scale 1.0, en-US. Debug `com.d4guilar.shelfos` 0.1.0-alpha upgraded in place with `adb install -r -t` (same debug signature); **no `pm clear`, uninstall, wipe or deletion was run on the RP5**. Before running, the classes below were inspected: they use in-memory Room databases, `cacheDir` fixtures, fake preference stores and fake transports (one migration test opens and deletes its own named test database); none opens the owner's `shelfos.db`.
+
+**Defect found and fixed (MEDIUM, controller focus trap in short landscape).** Reproduced with an injected-D-pad test: after the picker's content changed (enabling consent, opening a preview) focus stayed on the dialog's Close button and Down/Up/Right never reached Find, Use this cover or Back, which sit below the 360 dp viewport (the earlier touch-only tests passed). Fix (smallest, `OnlineCoverDialog.kt` only): focus moves to Find after enabling, to Back (deliberately not Use this cover) once a preview is on screen, and back to the inspected candidate's Preview button when leaving the inspector; keyboard/gamepad mode only, touch unchanged. No consent, transport, budget or persistence code changed.
+
+**RP5 instrumentation (one class per `am instrument -r`, orientation landscape as above; counts from the status stream).**
+
+| Class | Started | Passed | Failed | Skipped |
+| --- | --- | --- | --- | --- |
+| `OnlineCoverPickerUiTest` (11 touch + 2 injected D-pad) | 13 | 13 | 0 | 0 |
+| `OnlineCoverPersistenceTest` | 8 | 8 | 0 | 0 |
+| `CoverOriginMigrationTest` | 1 | 1 | 0 | 0 |
+| `UserCoverUiTest` (after the test scrolls to content) | 5 | 5 | 0 | 0 |
+| `PublicationDetailsResponsiveUiTest` | 14 | 13 | 0 | 1 (portrait-specific test: assumption skipped, host 360 x 432 dp; **not counted as a pass**) |
+| `OnlineMetadataUiTest` | 6 | 6 | 0 | 0 |
+| `OnlineCoverPilotUiTest` | 16 | 16 | 0 | 0 |
+| `CoverLifecycleTest` | 12 | 12 | 0 | 0 |
+| `UserCoverStoreTest` | 14 | 14 | 0 | 0 |
+| `CoverPresentationUiTest` (extra) | 8 | 8 | 0 | 0 |
+
+An intermediate `UserCoverUiTest` failure (`cover_restore` not displayed) was a test assumption: the Cover dialog content scrolls and the button is below the 360 dp viewport; the test now scrolls to it (the emulator is tall enough that it passed there unscrolled). API 35 emulator re-run after the fix: `OnlineCoverPickerUiTest` 13/13, `UserCoverUiTest` 5/5. JVM `:app:testDebugUnitTest` passes (990 tests, 1 pre-existing skip).
+
+**Landscape (640 x 360 dp), exercised by the passing tests:** Details and the Cover action reachable; Find cover online usable; the consent dialog scrolls and both checkboxes are readable and selectable; candidate labels and warnings present; the inspector shows artwork, dimensions, rights note and Use/Back by scrolling; Use this cover and Back reachable; Cancel/Back/Close apply nothing; repeated activation produced exactly one large download; rotation restoration passes. No screenshot review of clipping was made beyond the semantics assertions (`assertIsDisplayed` after scroll).
+
+**Controller evidence, labelled.** *Injected gamepad/D-pad events* (`Instrumentation.sendKeySync`, `SOURCE_GAMEPAD`, `DPAD_*` and `BUTTON_A`): the full path from the Cover dialog (opened by touch, since a key press is what switches the window to keyboard mode, as in the other dialog tests) through disclosure (opening grants nothing; a tick is not consent; Enable), Find covers, Preview, Back (nothing applied, preview reused with no request), reopen, Use this cover, and Cancel/Back/Close, all with directional input only. *Physical RP5 buttons:* **not exercised; no owner hardware UAT result exists.** *Untested:* analog-stick navigation, held-key repeat, details-screen entry by D-pad from a cold start.
+
+**Security regression (no network, tests and inspection):** cover consent default OFF; metadata consent alone and cover consent alone never authorize (`OnlineCoverServiceTest`, 29 JVM); enabling and opening send nothing; Find covers is the only discovery trigger; Preview saves nothing; Use this cover is explicit; revocation blocks later requests and commits; provider/category fixed to Open Library + Books; budget and pacing unchanged; USER precedence unchanged; no ONLINE row written (`OnlineCoverPersistenceTest`); `OpenLibraryCovers` allowlist, `OpenLibraryCoverStorage` and F-2 untouched (Archive.org redirects still `REDIRECT_BLOCKED`); release dex contains no Cover Lab classes.
+
+**Baselines.** None of the RP5 classes above failed on a pre-existing basis. The two `CoverPresentationUiTest` failures recorded earlier are emulator-specific (RP5 8/8 here).
+
+**Not done / limits:** Samsung SM-T580 not available (no evidence); TalkBack not run; 320 dp width not exercised; no live Open Library request or UAT, so the real redirect behavior (F-2) is unobserved and F-2 remains unresolved and fail-closed; the owner's acceptance steps in the previous section still apply.
