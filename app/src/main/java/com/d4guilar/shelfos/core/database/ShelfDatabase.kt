@@ -26,7 +26,7 @@ interface AppearanceDao {
     suspend fun save(preference: AppearancePreference)
 }
 
-@Database(entities = [AppearancePreference::class, LibraryEntity::class, ReadingEntity::class, ReaderPreferenceEntity::class, BookmarkEntity::class, AnnotationEntity::class, AnnotationSourceSnapshotEntity::class, PublicationCoverEntity::class, CoverPresentationPreferenceEntity::class, PublicationMetadataEntity::class], version = 8, exportSchema = true)
+@Database(entities = [AppearancePreference::class, LibraryEntity::class, ReadingEntity::class, ReaderPreferenceEntity::class, BookmarkEntity::class, AnnotationEntity::class, AnnotationSourceSnapshotEntity::class, PublicationCoverEntity::class, CoverPresentationPreferenceEntity::class, PublicationMetadataEntity::class], version = 9, exportSchema = true)
 abstract class ShelfDatabase : RoomDatabase() {
     abstract fun appearance(): AppearanceDao
     abstract fun library(): LibraryDao
@@ -125,7 +125,19 @@ abstract class ShelfDatabase : RoomDatabase() {
         }
         /** Must equal `8.json`'s `publication_metadata.createSql` with the table name substituted (asserted by the migration test). */
         const val PUBLICATION_METADATA_CREATE_SQL = "CREATE TABLE IF NOT EXISTS `publication_metadata` (`libraryItemId` TEXT NOT NULL, `subtitle` TEXT, `description` TEXT, `publisher` TEXT, `publishedDate` TEXT, `language` TEXT, `seriesName` TEXT, `volume` TEXT, `issue` TEXT, `identifiersJson` TEXT, `creditsJson` TEXT, `provenanceJson` TEXT, `localAnalysisVersion` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`libraryItemId`), FOREIGN KEY(`libraryItemId`) REFERENCES `library_item`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+        /**
+         * v8 -> v9 (Phase 4.5C.3A): purely additive. Adds six NULLABLE origin columns to `publication_cover` (who supplied a USER cover's artwork).
+         * Every existing row, LOCAL or USER, keeps all its values and gets NULL = unknown origin; nothing is rewritten or backfilled.
+         */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                for ((name, type) in COVER_ORIGIN_COLUMNS) db.execSQL("ALTER TABLE `publication_cover` ADD COLUMN `$name` $type")
+            }
+        }
+        /** In entity order, so a migrated table equals the fresh one (asserted by the migration test against `9.json`). */
+        val COVER_ORIGIN_COLUMNS = listOf("originKind" to "TEXT", "originProvider" to "TEXT", "originEdition" to "TEXT", "originRefKind" to "TEXT",
+            "originRefValue" to "TEXT", "originSelectedAt" to "INTEGER")
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
         /** Must equal `6.json`'s `publication_cover.createSql` with the table name substituted (asserted by the migration test). */
         const val PUBLICATION_COVER_CREATE_SQL = "CREATE TABLE IF NOT EXISTS `publication_cover` (`libraryItemId` TEXT NOT NULL, `slot` TEXT NOT NULL, `status` TEXT NOT NULL, `failureReason` TEXT, `fileName` TEXT, `mimeType` TEXT, `representation` TEXT, `sourceWidthPx` INTEGER, `sourceHeightPx` INTEGER, `storedWidthPx` INTEGER, `storedHeightPx` INTEGER, `storedBytes` INTEGER, `localSource` TEXT, `sourceRef` TEXT, `sourceChoice` TEXT, `sourceRevision` TEXT, `extractorVersion` INTEGER NOT NULL, `attempts` INTEGER NOT NULL DEFAULT 0, `interruptions` INTEGER NOT NULL DEFAULT 0, `attemptStartedAt` INTEGER, `attemptExtractorVersion` INTEGER, `nextEligibleAt` INTEGER, `parked` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`libraryItemId`, `slot`), FOREIGN KEY(`libraryItemId`) REFERENCES `library_item`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
         fun create(context: Context): ShelfDatabase = Room.databaseBuilder(

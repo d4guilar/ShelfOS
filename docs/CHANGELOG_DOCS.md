@@ -1,5 +1,10 @@
 # Documentation Changelog
 
+## Phase 4.5C.3A: Production Find Cover Online, manual selection (2026-10-22, pending independent QA)
+
+- Plan header and new section 44.1 (authorization via D1-C-PROD separate from `ScopedGrant`, separate default-OFF cover consent, discovery, request budget of 8 discoveries / 30 images per rolling hour, USER-slot persistence bridge, schema v9 provenance, release separation, limitations). BOOK_PROVIDERS and ROADMAP status; VALIDATION 4.5C.3A evidence.
+- Only 4.5C.3A is recorded; 4.5C.3 (ONLINE slot, durable cache, automatic enrichment) is not. F-2 unchanged and fail-closed; Open Library stays `CONDITIONAL`; D31 unchanged. OMNIBUS_COVERS clarification: USER-slot covers carry an `originKind`; a row with no recorded origin is unknown, not user-supplied.
+
 ## Omnibus covers, Rooms and Quiet Motion planning (2026-10-22)
 
 - New: `features/OMNIBUS_COVERS.md`, `features/ROOMS.md` (provisional name), `design/MOTION.md`. Accepted product

@@ -47,7 +47,7 @@ class CoverMigrationTest {
         try {
             val sql = migrated.openHelper.writableDatabase
             SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READONLY).use { raw ->
-                assertEquals(8, raw.version)
+                assertEquals(9, raw.version)
                 for ((table, order) in tables) assertEquals("$table must be unchanged by v5 -> v7", before.getValue(table), LegacyDatabases.dump(raw, table, order))
             }
             sql.query("SELECT COUNT(*) FROM publication_cover").use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
@@ -56,7 +56,8 @@ class CoverMigrationTest {
             // cid, name, type, notnull, dflt_value, pk
             assertEquals(listOf("libraryItemId", "slot", "status", "failureReason", "fileName", "mimeType", "representation", "sourceWidthPx",
                 "sourceHeightPx", "storedWidthPx", "storedHeightPx", "storedBytes", "localSource", "sourceRef", "sourceChoice", "sourceRevision",
-                "extractorVersion", "attempts", "interruptions", "attemptStartedAt", "attemptExtractorVersion", "nextEligibleAt", "parked", "updatedAt"),
+                "extractorVersion", "attempts", "interruptions", "attemptStartedAt", "attemptExtractorVersion", "nextEligibleAt", "parked", "updatedAt",
+                "originKind", "originProvider", "originEdition", "originRefKind", "originRefValue", "originSelectedAt"),
                 columns.map { it[1] })
             assertEquals("composite primary key in order", listOf("libraryItemId" to "1", "slot" to "2"), columns.filter { it[5] != "0" }.map { it[1] to it[5] })
             assertEquals(listOf("attempts" to "0", "interruptions" to "0", "parked" to "0"), columns.filter { it[4] != null }.map { it[1] to it[4] })
@@ -66,8 +67,9 @@ class CoverMigrationTest {
             val indices = sql.query("PRAGMA index_list(publication_cover)").use(LegacyDatabases::rows)
             assertEquals("only the primary-key autoindex", listOf("pk"), indices.map { it[3] })
             assertFalse(schema(sql)[0].toString().contains("CHECK", ignoreCase = true))
-            assertEquals("fresh install and upgrade have the same publication_cover schema", schema(fresh.openHelper.writableDatabase), schema(sql))
-            assertEquals(ShelfDatabase.PUBLICATION_COVER_CREATE_SQL.replace("IF NOT EXISTS ", ""), schema(sql)[0])
+            // Columns, keys and indices are identical; only the stored CREATE text differs (ALTER TABLE appends the v9 columns to the v6 text).
+            assertEquals("fresh install and upgrade have the same publication_cover schema", schema(fresh.openHelper.writableDatabase).drop(1), schema(sql).drop(1))
+            for ((name, _) in ShelfDatabase.COVER_ORIGIN_COLUMNS) assertTrue(schema(sql)[0].toString().contains("`$name`"))
         } finally { migrated.close(); fresh.close(); context.deleteDatabase(name) }
     }
 

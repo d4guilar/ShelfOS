@@ -24,6 +24,11 @@ data class PublicationCoverEntity(
     val attemptStartedAt: Long?, val attemptExtractorVersion: Int?, val nextEligibleAt: Long?,
     @ColumnInfo(defaultValue = "0") val parked: Boolean,
     val updatedAt: Long,
+    /** Schema v9 (4.5C.3A): who supplied a USER cover's artwork (`CoverOriginKind` name). NULL = unknown, e.g. every pre-v9 row; always NULL for LOCAL. */
+    val originKind: String? = null,
+    val originProvider: String? = null, val originEdition: String? = null, val originRefKind: String? = null, val originRefValue: String? = null,
+    /** When the person confirmed a provider's artwork. */
+    val originSelectedAt: Long? = null,
 )
 
 /** The cover-map projection (§19.1): only what the renderer needs, READY rows only. */
@@ -77,20 +82,28 @@ abstract class CoverDao {
 
     /** Guarded USER write (4.5F.0): inserts nothing when the item is gone; the row is a plain READY row of the existing shape. */
     @Query("""INSERT OR REPLACE INTO publication_cover (libraryItemId, slot, status, failureReason, fileName, mimeType, representation,
-        sourceWidthPx, sourceHeightPx, storedWidthPx, storedHeightPx, storedBytes, extractorVersion, attempts, interruptions, parked, updatedAt)
+        sourceWidthPx, sourceHeightPx, storedWidthPx, storedHeightPx, storedBytes, extractorVersion, attempts, interruptions, parked, updatedAt,
+        originKind, originProvider, originEdition, originRefKind, originRefValue, originSelectedAt)
         SELECT :id, 'USER', 'READY', NULL, :fileName, :mimeType, :representation, :sourceWidth, :sourceHeight, :storedWidth, :storedHeight,
-        :storedBytes, 0, 0, 0, 0, :now WHERE EXISTS (SELECT 1 FROM library_item WHERE id = :id)""")
+        :storedBytes, 0, 0, 0, 0, :now, :originKind, :originProvider, :originEdition, :originRefKind, :originRefValue, :originSelectedAt
+        WHERE EXISTS (SELECT 1 FROM library_item WHERE id = :id)""")
     protected abstract suspend fun upsertUser(id: String, fileName: String, mimeType: String, representation: String, sourceWidth: Int,
-        sourceHeight: Int, storedWidth: Int, storedHeight: Int, storedBytes: Long, now: Long)
+        sourceHeight: Int, storedWidth: Int, storedHeight: Int, storedBytes: Long, now: Long, originKind: String?, originProvider: String?,
+        originEdition: String?, originRefKind: String?, originRefValue: String?, originSelectedAt: Long?)
+
+    @Query("SELECT * FROM publication_cover WHERE libraryItemId = :id AND slot = 'USER'")
+    abstract suspend fun user(id: String): PublicationCoverEntity?
 
     /**
      * Success commit of a user-chosen cover: replaces the USER row in one transaction and returns the previous file name
      * (deleted by the caller only after this commits). Throws [CoverRejectedException] when the item no longer exists.
      */
     @Transaction open suspend fun commitUser(id: String, fileName: String, mimeType: String, representation: String, sourceWidth: Int,
-        sourceHeight: Int, storedWidth: Int, storedHeight: Int, storedBytes: Long, now: Long): String? {
+        sourceHeight: Int, storedWidth: Int, storedHeight: Int, storedBytes: Long, now: Long, originKind: String?, originProvider: String?,
+        originEdition: String?, originRefKind: String?, originRefValue: String?, originSelectedAt: Long?): String? {
         val previous = userFileName(id)
-        upsertUser(id, fileName, mimeType, representation, sourceWidth, sourceHeight, storedWidth, storedHeight, storedBytes, now)
+        upsertUser(id, fileName, mimeType, representation, sourceWidth, sourceHeight, storedWidth, storedHeight, storedBytes, now,
+            originKind, originProvider, originEdition, originRefKind, originRefValue, originSelectedAt)
         if (userFileName(id) != fileName) throw CoverRejectedException(0)
         return previous
     }

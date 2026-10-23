@@ -8438,3 +8438,30 @@ Closes QA findings F-1 and F-2 (and F-3). Test and documentation only: no produc
 The API 35 emulator's system server hung during a rerun and was restarted (`-no-snapshot`, same AVD, no data wipe); the portrait result above is from the restarted emulator on the final test APK. RP5 rotation settings were restored afterwards (`accelerometer_rotation=1`, `user_rotation=1`).
 
 **F-3.** The portrait test now expands the Details section (the production design keeps identifiers there) and asserts the fixture's exact ISBN-13 `9780007527526` is displayed. No production change.
+
+## PHASE 4.5C.3A: PRODUCTION FIND COVER ONLINE, MANUAL SELECTION (2026-10-22, pending independent Codex High QA)
+
+Branch `phase-4.5/4.5c3a-production-cover-picker` from `main` e37060f. Scope and design: plan §44.1. No live provider request was made; every network step used scripted fakes. No app data was cleared on an owner device, nothing was uninstalled, no user publication was touched.
+
+**Builds:** `:app:assembleDebug`, `:app:assembleRelease`, `:app:assembleDebugAndroidTest`, `:app:lintDebug`: pass. Release dex: no `coverlab` classes or strings; `OnlineCoverService`/dialog present. `AndroidManifest.xml` unchanged.
+
+**JVM (`:app:testDebugUnitTest`):** 990 tests, 0 failures, 0 errors, 1 skipped (pre-existing). New `OnlineCoverServiceTest` 29/29 (consent and scope combinations, no request before authorization, D1-M/D1-C-DEV cannot authorize production, wrong provider/category, forged or stale candidate consumes no budget, revocation during discovery and download, redirect blocked, size/timeout/offline/server/MIME/magic-byte failures, 403/429 + Retry-After pause, BUSY, cancellation cleanup, low storage, budget refill/limits). `CoverPilotServiceTest` 39/39 unchanged. The existing Archive.org/redirect tests in `ImageTransportTest` still pass unchanged (F-2 fail-closed).
+
+**API 35 emulator (`emulator-5554`, `shelfos-phase0`, 1080x2340 @440 dpi, portrait, font 1.0, en-US; one class per `am instrument` after `pm clear`; counts from the status stream):**
+
+| Class | Passed / total |
+| --- | --- |
+| `OnlineCoverPersistenceTest` (new: USER slot not ONLINE, provenance, atomic replace, failure keeps old cover, supersession, revoked guard, staging confinement, remove reveals LOCAL) | 8/8 |
+| `CoverOriginMigrationTest` (new: real v8 file -> v9, rows identical, new columns NULL, fresh == migrated) | 1/1 |
+| `OnlineCoverPickerUiTest` (new: disclosure sends nothing, per-requirement consent, labels/warnings, preview != confirmation, Use this cover, cancel/close, blocked redirect, rotation, consent withdrawn, no request without a press) | 11/11 |
+| `CoverMigrationTest` / `CoverPresentationMigrationTest` / `MetadataMigrationTest` / `AnnotationMigrationTest` / `NotesSnapshotMigrationTest` (version expectations 8 -> 9; pre-v9 cover rows compared on their original 24 columns) | 2 / 3 / 3 / 6 / 4, all pass |
+| `UserCoverStoreTest` / `UserCoverUiTest` / `CoverLifecycleTest` / `OnlineMetadataUiTest` / `OnlineCoverPilotUiTest` / `PublicationDetailsResponsiveUiTest` | 14 / 5 / 12 / 6 / 16 / 14, all pass |
+| `FixedAnnotationRepositoryTest` (schema version 9) | 8/8 |
+
+`CoverPresentationUiTest` 6/8 on the emulator: the same two tests (`libraryGridKeepsSelectionScrollAndFocusAcrossPresentationChanges`, `rendererShapesOriginalBoundsFocusAndGeneratedFallback`) are recorded above as failing identically before these changes (emulator-specific baseline).
+
+**Process note:** the emulator hung during one long batch (2 GB guest); it was restarted with `-no-snapshot` on the same AVD and the batch re-run from the current APKs. The migration/`UserCoverStore` failures seen in an earlier run were real regressions of this change (fixture version expectations; a temp-file ordering in the refactored store) and were fixed before the table above.
+
+**Not executed (evidence gaps, stated plainly):** the Retroid Pocket 5 (`d8f7f1b6`) was not connected when the final run started, so **no RP5 instrumentation, landscape or physical D-pad/gamepad run exists for this slice**; the Samsung SM-T580 (API 27) was not available; no 320 dp / tablet window test beyond the existing responsive Publication Details suite; TalkBack not run; no live Open Library request, so the real redirect behaviour of a selected cover (F-2) is unobserved.
+
+**Manual acceptance (owner, non-sensitive test Book with an ISBN):** open Details > Cover > Find cover online; read the disclosure; tick and Enable; Find covers; Preview one; Use this cover; check Library/Search/Details show it; force-stop, relaunch, disable Wi-Fi: same cover; Cover > Use the file's cover restores the next cover; the book file is unchanged. If the chosen image redirects to Archive.org the expected result is the "stored at a location ShelfOS does not allow" message and an unchanged cover (F-2), not a policy change.

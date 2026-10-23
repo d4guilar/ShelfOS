@@ -16,6 +16,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d4guilar.shelfos.R
 import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import com.d4guilar.shelfos.data.metadata.openlibrary.OpenLibrary
+import com.d4guilar.shelfos.feature.library.LocalOnlineCovers
 import com.d4guilar.shelfos.feature.library.LocalOnlineMetadata
 
 /**
@@ -40,6 +41,7 @@ fun OnlineMetadataSection() {
         Text(stringResource(if (online && providerOn) R.string.settings_online_status_on else R.string.settings_online_status_off), Modifier.testTag("online_status"),
             style = MaterialTheme.typography.bodySmall)
         Text(stringResource(R.string.provider_openlibrary_attribution), color = t.colors.secondary, style = MaterialTheme.typography.bodySmall)
+        CoverDownloadsSettings(online && providerOn)
         TextButton({ uri.openUri("https://openlibrary.org") }, Modifier.testTag("online_openlibrary_link")) { Text(stringResource(R.string.settings_online_link)) }
     }
 }
@@ -50,5 +52,21 @@ private fun SwitchRow(label: String, checked: Boolean, tag: String, enabled: Boo
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(label, Modifier.weight(1f))
         Switch(checked, null, enabled = enabled)
+    }
+}
+
+/** The separate cover-download consent (Phase 4.5C.3A, D1-C-PROD): OFF by default, never implied by the metadata switches above. */
+@Composable
+private fun CoverDownloadsSettings(metadataOn: Boolean) {
+    val covers = LocalOnlineCovers.current ?: return
+    val t = LocalShelfTokens.current
+    val on by covers.coverConsent.collectAsStateWithLifecycle()
+    Column(verticalArrangement = Arrangement.spacedBy(t.spacing.small)) {
+        Text(stringResource(R.string.settings_cover_online_title), style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.settings_cover_online_summary), color = t.colors.secondary, style = MaterialTheme.typography.bodySmall)
+        SwitchRow(stringResource(R.string.settings_cover_online_switch), on, "online_covers_switch") { covers.setCoverConsent(it) }
+        if (!metadataOn) Text(stringResource(R.string.settings_cover_online_needs_metadata), color = t.colors.secondary, style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(if (on && metadataOn) R.string.settings_cover_online_status_on else R.string.settings_cover_online_status_off), Modifier.testTag("online_covers_status"),
+            style = MaterialTheme.typography.bodySmall)
     }
 }

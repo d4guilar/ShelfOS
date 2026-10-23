@@ -21,7 +21,7 @@ import java.net.URLEncoder
 /**
  * Open Library public, keyless book metadata (Phase 4.5C.2A, plan D1-M; BOOK_PROVIDERS §7). Textual metadata only: cover
  * identifiers and URLs in a response are never read into a [MetadataCandidate], so the metadata path cannot fetch artwork (D1-C stays unresolved).
- * [OpenLibraryProvider.coverEditions] is the separate, debug-pilot-only reader of an edition's cover ids (D1-C-DEV).
+ * [OpenLibraryProvider.coverEditions] is the separate reader of an edition's cover ids for the Cover Lab (D1-C-DEV) and the manual cover picker (D1-C-PROD).
  * Endpoints (all GET, HTTPS, `openlibrary.org`): `/isbn/{isbn13}.json` (redirects to the edition record), `/authors/{olid}.json`
  * (at most [MAX_AUTHORS] per lookup) and `/search.json` (title/author, minimal `fields`, [SEARCH_LIMIT] results).
  *
@@ -99,7 +99,7 @@ class OpenLibraryProvider(private val http: HttpTransport, private val wallClock
     }
 
     /**
-     * Cover discovery for the debug-only Cover Lab (Phase 4.5C.2B). The edition must name [isbn13] itself (stricter than [lookup], which
+     * Cover discovery for the Cover Lab (Phase 4.5C.2B) and the production manual picker (Phase 4.5C.3A). The edition must name [isbn13] itself (stricter than [lookup], which
      * tolerates a record with no ISBNs): that record is the exact edition. If it belongs to exactly one work, that work's first editions
      * (one bounded request, at most [maxEditions] in total) are offered as alternatives, each only if its own record lists a cover.
      * A work-level `cover_i` is never read. Does not change [lookup] or [search].

@@ -36,6 +36,16 @@ import com.d4guilar.shelfos.data.preferences.AppCompatLanguageRepository
 import android.os.SystemClock
 import com.d4guilar.shelfos.core.network.HttpUrlConnectionTransport
 import com.d4guilar.shelfos.core.network.RequestPacer
+import com.d4guilar.shelfos.core.network.HttpUrlConnectionImageTransport
+import com.d4guilar.shelfos.data.library.OnlineCoverAuthorization
+import com.d4guilar.shelfos.data.library.OnlineCoverConsent
+import com.d4guilar.shelfos.data.library.OnlineCoverFiles
+import com.d4guilar.shelfos.data.library.OnlineCoverService
+import com.d4guilar.shelfos.data.metadata.metadataQuery
+import com.d4guilar.shelfos.data.metadata.openlibrary.OpenLibraryCoverRoutes
+import com.d4guilar.shelfos.data.metadata.openlibrary.OpenLibraryCovers
+import com.d4guilar.shelfos.feature.library.OnlineCoverController
+import java.io.File
 import com.d4guilar.shelfos.data.metadata.ManualMetadataLookup
 import com.d4guilar.shelfos.data.metadata.ProviderLookup
 import com.d4guilar.shelfos.data.metadata.ProviderPolicyEngine
@@ -107,7 +117,29 @@ class AppContainer(val application: Application) {
     }
     /** Durable user-chosen covers (4.5F.0): offline; the picked image is copied into app storage, never kept as a URI. */
     val userCovers by lazy {
-        UserCoverStore(covers, coverFiles, coverScheduler.lock, { uri -> application.contentResolver.openInputStream(uri.toUri()) })
+        UserCoverStore(covers, coverFiles, coverScheduler.lock, { uri -> application.contentResolver.openInputStream(uri.toUri()) },
+            stagingRoot = onlineCoverFiles.stagingRoot)
+    }
+    /**
+     * Phase 4.5C.3A (D1-C-PROD): manual Open Library cover selection for Books. Nothing here runs from startup, import, the Library or a theme change; a
+     * person's button press starts each request. Cover consent is its own default-OFF preference, separate from [onlineSettings].
+     */
+    val onlineCoverFiles by lazy { OnlineCoverFiles(File(application.cacheDir, "cover_picker/previews"), File(application.cacheDir, "cover_picker/staging")) }
+    val onlineCoverAuthorization by lazy {
+        OnlineCoverAuthorization(onlineSettings, OnlineCoverConsent(SharedPreferencesBooleanStore(application, OnlineCoverConsent.PREFERENCES)))
+    }
+    val onlineCoverService by lazy {
+        val ua = userAgent
+        // Exact hosts, documented routes only, every redirect hop re-checked (F-2: an unlisted redirect target fails closed as REDIRECT_BLOCKED).
+        val json = HttpUrlConnectionTransport(OpenLibraryCoverRoutes.urlPolicy, ua, maxBytes = OpenLibrary.MAX_RESPONSE_BYTES, pacer = openLibraryPacer, check = OpenLibraryCoverRoutes::check)
+        val images = HttpUrlConnectionImageTransport(OpenLibraryCovers.urlPolicy, ua, openLibraryPacer, OpenLibraryCovers::check)
+        OnlineCoverService(onlineCoverAuthorization, onlineCoverFiles, images, OpenLibraryProvider(json)::coverEditions,
+            queryFor = { item -> metadata.resolved(item.id)?.let { metadataQuery(item, it) } },
+            currentItem = { id -> library.publication(id).first() }, freeBytes = coverFiles::freeBytes,
+            epochOf = userCovers::epoch, commit = { id, file, origin, epoch, guard -> userCovers.setFromPrivateFile(id, file, origin, epoch, guard) })
+    }
+    val onlineCovers by lazy {
+        OnlineCoverController(onlineCoverAuthorization, onlineCoverAuthorization.consent, onlineSettings, onlineCoverService, backgroundScope, coverArtwork.presentations)
     }
     /** What the shared cover renderer reads; one instance (one bitmap cache) per process. */
     val coverArtwork by lazy {

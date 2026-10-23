@@ -42,10 +42,19 @@ class RoomCoverRepository(
     fun hasUser(id: String): Flow<Boolean> = dao.observeHasUser(id).distinctUntilChanged()
 
     /** Guarded USER commit (4.5F.0); returns the previous USER file name. Throws `CoverRejectedException` if the item is gone. */
-    internal suspend fun commitUser(id: String, fileName: String, image: StoredImage): String? {
+    internal suspend fun commitUser(id: String, fileName: String, image: StoredImage, origin: CoverOrigin? = null): String? {
         requireValidUser(fileName, image)
+        val now = clock()
+        // The origin columns and the file name commit in the same transaction; an unknown origin stays all-NULL.
         return dao.commitUser(id, fileName, image.mimeType, image.representation.name, image.sourceWidth, image.sourceHeight,
-            image.storedWidth, image.storedHeight, image.bytes, clock())
+            image.storedWidth, image.storedHeight, image.bytes, now, origin?.kind?.name, origin?.providerId, origin?.editionRef,
+            origin?.refKind, origin?.refValue, origin?.takeIf { it.kind == CoverOriginKind.PROVIDER_SELECTED }?.let { it.selectedAtMs ?: now })
+    }
+
+    /** The recorded origin of the USER cover, or null when there is none or it predates origin tracking (unknown). */
+    suspend fun userOrigin(id: String): CoverOrigin? = dao.user(id)?.let { row ->
+        val kind = enumOrNull<CoverOriginKind>(row.originKind) ?: return null
+        runCatching { CoverOrigin(kind, row.originProvider, row.originEdition, row.originRefKind, row.originRefValue, row.originSelectedAt) }.getOrNull()
     }
 
     /** Removes the USER override; returns the file to delete once this has committed, or null when there was none. */

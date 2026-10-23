@@ -55,7 +55,7 @@ class CoverPresentationMigrationTest {
         try {
             val sql = migrated.openHelper.writableDatabase
             SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READONLY).use { raw ->
-                assertEquals(8, raw.version)
+                assertEquals(9, raw.version)
                 for ((table, order) in tables) assertEquals("$table must be unchanged by v6 -> current", before.getValue(table), LegacyDatabases.dump(raw, table, order))
             }
             sql.query("SELECT COUNT(*) FROM cover_presentation_preference").use { it.moveToFirst(); assertEquals("no backfill: empty = defaults", 0, it.getInt(0)) }
@@ -107,7 +107,7 @@ class CoverPresentationMigrationTest {
             val db = LegacyDatabases.open(context, name)
             try {
                 val sql = db.openHelper.writableDatabase
-                sql.query("PRAGMA user_version").use { it.moveToFirst(); assertEquals("v$version", 8, it.getInt(0)) }
+                sql.query("PRAGMA user_version").use { it.moveToFirst(); assertEquals("v$version", 9, it.getInt(0)) }
                 assertEquals(listOf("cover_presentation_preference", "publication_cover"), sql.query(
                     "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('cover_presentation_preference', 'publication_cover') ORDER BY name",
                 ).use(LegacyDatabases::rows).map { it[0] })

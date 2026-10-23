@@ -94,7 +94,7 @@ class AnnotationMigrationTest {
             raw.use {
                 for ((table, order) in listOf("library_item" to "id", "reading_state" to "itemId", "reader_preference" to "itemId", "bookmark" to "id", "appearance_preference" to "id"))
                     assertEquals("$table must be unchanged by the migration", tables.getValue(table), LegacyDatabases.dump(it, table, order))
-                assertEquals(8, it.version)
+                assertEquals(9, it.version)
             }
 
             // The compatibility BookmarkRepository returns equivalent data in the exact legacy order.

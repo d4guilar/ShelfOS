@@ -68,7 +68,7 @@ class NotesSnapshotMigrationTest {
             // Every pre-existing table is unchanged, row for row (library, reading state, preferences, legacy bookmarks, annotations).
             val raw = SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READONLY)
             raw.use {
-                assertEquals("migrated through v5 to the current v8", 8, it.version)
+                assertEquals("migrated through v5 to the current v9", 9, it.version)
                 for ((table, order) in tables) assertEquals("$table must be unchanged by v4 -> v5", before.getValue(table), LegacyDatabases.dump(it, table, order))
             }
             // Legacy locators are still exactly what 4A/4B/4C wrote, and the repository reads them.
@@ -141,7 +141,7 @@ class NotesSnapshotMigrationTest {
             val sql = db.openHelper.writableDatabase
             sql.query("SELECT COUNT(*) FROM annotation").use { it.moveToFirst(); assertEquals(1, it.getInt(0)) }
             sql.query("SELECT COUNT(*) FROM annotation_source_snapshot").use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
-            sql.query("PRAGMA user_version").use { it.moveToFirst(); assertEquals(8, it.getInt(0)) }
+            sql.query("PRAGMA user_version").use { it.moveToFirst(); assertEquals(9, it.getInt(0)) }
         } finally { db.close(); context.deleteDatabase(name) }
     }
 }

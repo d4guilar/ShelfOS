@@ -4,6 +4,8 @@ package com.d4guilar.shelfos.feature.library
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -20,6 +22,7 @@ import com.d4guilar.shelfos.core.theme.LocalShelfTokens
 import com.d4guilar.shelfos.data.library.UserCoverOutcome
 import com.d4guilar.shelfos.data.library.UserCoverStore
 import com.d4guilar.shelfos.domain.library.LibraryItem
+import com.d4guilar.shelfos.domain.library.MediaCategory
 import com.d4guilar.shelfos.feature.reader.activateOnGamepadConfirm
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -50,10 +53,13 @@ fun CoverDialog(item: LibraryItem, store: UserCoverStore, onDismiss: () -> Unit)
     val choose = { picker.launch(arrayOf("image/*")) }
     val close = { onDismiss() }
     val cancel = { job?.cancel(); working = false }
+    val onlineCovers = LocalOnlineCovers.current.takeIf { item.category == MediaCategory.BOOK }
+    var onlineOpen by rememberSaveable(item.id) { mutableStateOf(false) }
+    if (onlineOpen && onlineCovers != null) OnlineCoverDialog(item, onlineCovers) { onlineOpen = false }
     AlertDialog(onDismissRequest = { if (!working) onDismiss() },
         title = { Text(stringResource(R.string.cover_title)) },
         text = {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 PublicationCover(item, Modifier.heightIn(max = 180.dp).testTag("cover_preview"), whole = true)
                 Text(stringResource(if (custom) R.string.cover_custom_active else R.string.cover_file_active), Modifier.testTag("cover_status")
                     .semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodyMedium)
@@ -70,6 +76,12 @@ fun CoverDialog(item: LibraryItem, store: UserCoverStore, onDismiss: () -> Unit)
                         UserCoverOutcome.STORAGE_FULL -> R.string.cover_error_storage
                         else -> R.string.cover_error_failed
                     }), Modifier.testTag("cover_error").semantics { liveRegion = LiveRegionMode.Assertive }, color = MaterialTheme.colorScheme.error)
+                }
+                if (onlineCovers != null) {
+                    val findOnline = { onlineOpen = true }
+                    TextButton(findOnline, Modifier.testTag("cover_find_online").activateOnGamepadConfirm(!working, findOnline), enabled = !working) {
+                        Text(stringResource(R.string.cover_online_action))
+                    }
                 }
                 if (custom) {
                     Text(stringResource(R.string.cover_restore_explain), style = MaterialTheme.typography.bodySmall, color = t.colors.secondary)
