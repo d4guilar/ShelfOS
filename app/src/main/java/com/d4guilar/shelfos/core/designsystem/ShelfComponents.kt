@@ -25,7 +25,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
@@ -43,7 +44,7 @@ import com.d4guilar.shelfos.core.theme.reducedMotionEnabled
  * One focus/activation policy for touch, keyboard, D-pad and gamepad controls. [focusIndicator] false is only for a
  * caller that draws its own visible focus ring (the Library tile draws it on the cover's visible artwork, D10).
  *
- * Quiet Motion v1A: pressed feedback is a graphics-layer scale toward [com.d4guilar.shelfos.core.theme.ShelfMotion.pressedScale]
+ * Quiet Motion v1A: pressed feedback is a draw-only content scale toward [com.d4guilar.shelfos.core.theme.ShelfMotion.pressedScale]
  * (shrink only, so it can never overflow a parent or clip the ring). Focus keeps the static ring, never animated away, plus
  * the existing indication's focus state layer; a focus scale was rejected because growing a full-width item clips its ring
  * at the screen edge. Layout, hit target and activation are untouched; the system animator policy (Remove animations)
@@ -73,7 +74,6 @@ fun Modifier.shelfAction(
         label = "shelfActionScale",
     )
     this
-        .graphicsLayer { scaleX = scale; scaleY = scale }
         .onFocusChanged {
             focused = it.isFocused
             if (!it.isFocused) confirmKeyDown = false
@@ -85,12 +85,20 @@ fun Modifier.shelfAction(
         .onKeyEvent { event ->
             val native = event.nativeKeyEvent
             if (enabled && native.shelfCommand(InputContext.LIBRARY) == ShelfCommand.CONFIRM) {
-                if (native.action == android.view.KeyEvent.ACTION_DOWN) confirmKeyDown = true
+                // Only the first DOWN: clickable consumes it and the UP for Enter/D-pad center but lets repeats bubble here,
+                // where nothing would ever clear the flag again.
+                if (native.action == android.view.KeyEvent.ACTION_DOWN && native.repeatCount == 0) confirmKeyDown = true
                 if (native.action == android.view.KeyEvent.ACTION_UP) { confirmKeyDown = false; onClick() }
                 true
             } else false
         }
         .clickable(interactionSource = interactions, indication = LocalIndication.current, enabled = enabled, role = role, onClick = onClick)
+        // Draw-only and inside clickable: no graphics layer, so pointer hit-testing, semantics bounds, ring and ripple
+        // keep the resting box; only the content shrinks.
+        .drawWithContent {
+            if (scale == 1f) drawContent()
+            else scale(scale, scale, center) { this@drawWithContent.drawContent() }
+        }
 }
 
 enum class ShelfIcon { LIBRARY, SEARCH, NOTES, SHELVES, SETTINGS, BACK, STAR }

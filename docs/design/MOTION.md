@@ -1,6 +1,6 @@
 # Quiet Motion
 
-Status: **accepted product direction** (2026-10-22); **implemented so far: v1A shared press feedback only** (§2.1); all else
+Status: **accepted product direction** (2026-10-22); **implemented so far: v1A shared press feedback only, provisional pending owner sign-off** (§2.1); all else
 proposed. All
 durations and curves here are **provisional prototype values for review**, not implementation constants. Nothing
 here is claimed performant until measured (Section 9). Related: [Design system](DESIGN_SYSTEM.md),
@@ -17,17 +17,17 @@ Series browsing, and future Room navigation. Active reading surfaces stay calm a
 
 ## 2. What already exists (reuse, do not duplicate)
 
-- `ShelfMotion` (in `core.theme`, carried by `ShelfTokens`): currently one value, `focusMillis = 120`. The extension
-  point for motion tokens. Capability inventory, distinguishing defined, used and implemented:
-  - *Defined tokens:* `focusMillis`; `ShelfFocus` also defines `scale = 1.01f`.
-  - *Actively used:* `focusMillis` drives the existing NavHost enter/exit fade (`ShelfApp`). The `ShelfFocus` scale is
-    defined but is **not** currently an implemented shared focus animation.
-  - *Implemented animations:* that NavHost fade (which also depends on Compose's own animation handling) and the
-    reader-entry cover transition below.
-  - *Proposed only:* dedicated navigation-duration tokens and everything in Section 4.
-- `shelfAction` (`core.designsystem`): the single focus/activation policy for touch, keyboard, D-pad and gamepad.
-  Focus today is a static outline; there is no animation yet. It is where press/focus feedback would be added so every
-  control inherits it.
+- `ShelfMotion` (in `core.theme`, carried by `ShelfTokens`): the extension point for motion tokens. Capability inventory,
+  distinguishing defined, used and implemented:
+  - *Defined tokens:* `focusMillis = 120`; and, for v1A, `pressMillis = 90`, `releaseMillis = 130`, `pressedScale = 0.98f`
+    (the v1A values are provisional, pending owner sign-off). `ShelfFocus` also defines `scale = 1.01f`.
+  - *Actively used:* `focusMillis` drives the existing NavHost enter/exit fade (`ShelfApp`); the v1A tokens drive the
+    `shelfAction` press/release scale. The `ShelfFocus` scale is defined but is **not** an implemented shared focus animation.
+  - *Implemented animations:* the NavHost fade, the reader-entry cover transition below, and the v1A press/release scale.
+  - *Proposed only:* dedicated navigation-duration tokens, selection/rail indicators, dialog, favorite and Shelf/Series/Room
+    motion, haptics, and everything else in Section 4.
+- `shelfAction` (`core.designsystem`): the single focus/activation policy for touch, keyboard, D-pad and gamepad. It now
+  carries the v1A press/release scale (§2.1). Focus is still an **instant static outline** with no focus-scale animation.
 - `reducedMotionEnabled()` (`core.theme/ReducedMotion.kt`): reads the system "Remove animations" /
   animator-duration setting; never inferred from a device model. Currently used by the cover transition.
 - The **reader-entry cover transition** (`CoverExpandTransition.kt`, `COVER_EXPAND_MILLIS = 220`, CLASSIC_UI §12): the
@@ -40,10 +40,14 @@ A future implementation extends `ShelfMotion` and `shelfAction`; it does not add
 
 - `ShelfMotion` gained `pressMillis = 90`, `releaseMillis = 130`, `pressedScale = 0.98f` (`focusMillis = 120` unchanged).
   **Prototype values, not approved constants**; easing is the stock `FastOutSlowInEasing`, no overshoot.
-- `shelfAction` scales the control with a `graphicsLayer` (draw-only: layout size, padding, hit region origin and
-  neighbours never change) toward `pressedScale` while pressed and back on release. Pressed comes from one
-  `MutableInteractionSource` (touch, and Enter/D-pad centre that `clickable` handles) plus a flag set by the existing
-  confirm key handler (controller A); the flag clears on key-up and on focus loss. Activation is unchanged: key-up
+- `shelfAction` scales the control's **content** with a draw-only `drawWithContent` placed *inside* `clickable` (no graphics
+  layer, so pointer hit-testing, semantics bounds, the focus ring and the ripple keep the full resting box; layout size,
+  padding and neighbours never change) toward `pressedScale` while pressed and back on release. (QA remediation: the first
+  prototype used an outermost `graphicsLayer`, whose 0.98 transform made edge touches fail hit-testing.) Pressed comes from
+  one `MutableInteractionSource` (touch, and Enter/D-pad centre / NumPad Enter that `clickable` handles) plus a flag set by
+  the existing confirm key handler for keys `clickable` does not own (controller A). The flag is set only by the initial
+  DOWN (`repeatCount == 0`), because `clickable` consumes that DOWN and its UP but lets key-repeat DOWNs bubble to the outer
+  handler, which would otherwise latch the pressed look; it clears on key-up and on focus loss. Activation is unchanged: key-up
   confirm, `clickable` onClick, never tied to animation. Any new input retargets the animation; nothing queues.
 - **Reduced Motion:** `reducedMotionEnabled()` is read on each interaction-driven recomposition (no polling); when true
   the scale is dropped and any change is a `snap()`.
@@ -52,9 +56,13 @@ A future implementation extends `ShelfMotion` and `shelfAction`; it does not add
   faded) plus the Material indication's existing focus state layer. `focusIndicator = false` (Library tile) still draws
   no ring of its own; only the press scale applies there.
 - Not done: selection/rail indicator, dialogs, favorites, haptics, any timing approval, any device measurement.
-- Caveat: on API 26+ `ValueAnimator.areAnimatorsEnabled()` reflects the value the process last received, so a system
-  change made while ShelfOS runs may take effect only after the process is notified; only the pre-26 settings path was
-  exercised (API 24 emulator).
+- Caveat (API 26+): `ValueAnimator.areAnimatorsEnabled()` reflects the value the process last received. Bounded observation
+  on a disposable API 35 emulator only: after `animator_duration_scale` was set to 0, `areAnimatorsEnabled()` reported false
+  within about 2.5 s without recreating the activity; the next interaction then suppressed the scale, and a press already
+  active at that moment returned to scale 1 on release. This is not a claim for every device or an instantaneous reaction.
+  The pre-26 settings path was exercised on an API 24 emulator. RP5 and SM-T580 remain unverified.
+- Status: the 90/130 ms timings and the 0.98 scale are provisional prototype values awaiting owner sign-off; automated
+  checks show correctness (activation, hit target, restore), not visual approval, and performance acceptance (§9) is open.
 
 ## 3. Interaction contract
 

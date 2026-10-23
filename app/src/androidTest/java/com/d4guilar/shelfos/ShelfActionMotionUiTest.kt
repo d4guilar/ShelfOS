@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.mutableIntStateOf
@@ -14,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
@@ -21,12 +24,14 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.d4guilar.shelfos.core.designsystem.shelfAction
 import com.d4guilar.shelfos.core.theme.ShelfTheme
 import com.d4guilar.shelfos.core.theme.ThemeId
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -63,6 +68,33 @@ class ShelfActionMotionUiTest {
             }
         }
         rule.waitForIdle()
+        enterKeyboardMode()
+    }
+
+    /** Real key injection leaves Android touch mode; without it RequestFocus is refused on API 28+ (as in NavigationSmokeTest). */
+    private fun enterKeyboardMode() {
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_TAB)
+        rule.waitForIdle()
+    }
+
+    private val wideClicks = mutableIntStateOf(0)
+    private val neighbourClicks = mutableIntStateOf(0)
+
+    /** Full-width 100 dp controls stacked with no gap: at the old 0.98 layer the dead strip is several dp per side. */
+    private fun showWide() {
+        rule.setContent {
+            ShelfTheme(ThemeId.CLASSIC) {
+                Column(Modifier.testTag("col").background(Color.White).padding(16.dp)) {
+                    for (tag in listOf("wtop", "w", "wbot")) {
+                        Box(Modifier.fillMaxWidth().height(100.dp).testTag(tag)
+                            .shelfAction(role = Role.Tab, onClick = { if (tag == "w") wideClicks.intValue++ else neighbourClicks.intValue++ })) {
+                            Box(Modifier.fillMaxSize().background(Color.Black))
+                        }
+                    }
+                }
+            }
+        }
+        rule.waitForIdle()
     }
 
     private fun focus(tag: String) { rule.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.RequestFocus); if (rule.mainClock.autoAdvance) rule.waitForIdle() }
@@ -70,7 +102,19 @@ class ShelfActionMotionUiTest {
     private fun Bitmap.lum(x: Int, y: Int): Int = getPixel(x, y).let { ((it shr 16 and 255) + (it shr 8 and 255) + (it and 255)) / 3 }
     /** Top-left pixel of control "a" at rest, read from the parent: a scaled node is captured by its shrunken bounds. */
     private fun corner(): Int = shot("col").lum((16 * rule.density.density).toInt(), (16 * rule.density.density).toInt())
-    private fun shot(tag: String): Bitmap = rule.onNodeWithTag(tag).captureToImage().asAndroidBitmap()
+    /** One capture per assertion, so the message reports the value that was actually judged. */
+    private fun assertPressed(msg: String) {
+        val series = mutableListOf(corner())
+        // Allow the 90 ms press to settle frame by frame; the series is the failure message.
+        while (series.last() <= 200 && series.size < 40) { rule.mainClock.advanceTimeBy(16); series += corner() }
+        assertTrue("$msg lum series=$series", series.last() > 200)
+    }
+    private fun assertResting(msg: String) { val v = corner(); assertTrue("$msg lum=$v", v < 40) }
+    private fun shot(tag: String): Bitmap {
+        // captureToImage uses PixelCopy (API 26+); the pixel-observed scale checks are skipped, not faked, on API 24-25.
+        assumeTrue("captureToImage needs API 26", android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O)
+        return rule.onNodeWithTag(tag).captureToImage().asAndroidBitmap()
+    }
 
     @Test fun touchAndAccessibilityActivateOnceAndKeepSemantics() {
         show()
@@ -88,29 +132,107 @@ class ShelfActionMotionUiTest {
         assertTrue(shot("a").lum(1, 50) < 40)
     }
 
-    @Test fun confirmKeysActivateOnceOnKeyUpAndRepeatsDoNotMultiply() {
+    /** A real Android KeyEvent, checked to be the intended key (not KEYCODE_UNKNOWN) before it is sent. */
+    private fun send(tag: String, action: Int, androidCode: Int, expected: Key, repeat: Int = 0) {
+        val native = android.view.KeyEvent(0L, 0L, action, androidCode, repeat)
+        val event = androidx.compose.ui.input.key.KeyEvent(native)
+        assertEquals("generated event keyCode", androidCode, native.keyCode)
+        assertEquals("generated event is the intended key", expected, event.key)
+        assertEquals(repeat, native.repeatCount)
+        rule.onNodeWithTag(tag).performKeyPress(event)
+    }
+
+    private val confirmKeys = listOf(
+        Triple(Key.Enter, android.view.KeyEvent.KEYCODE_ENTER, "Enter"),
+        Triple(Key.DirectionCenter, android.view.KeyEvent.KEYCODE_DPAD_CENTER, "DPadCenter"),
+        Triple(Key.NumPadEnter, android.view.KeyEvent.KEYCODE_NUMPAD_ENTER, "NumPadEnter"),
+        Triple(Key.ButtonA, android.view.KeyEvent.KEYCODE_BUTTON_A, "ButtonA"),
+    )
+
+    @Test fun confirmKeysHeldWithRepeatActivateOnceAndReturnToFullSize() {
         show()
-        for ((n, key) in listOf(Key.Enter, Key.DirectionCenter, Key.ButtonA).withIndex()) {
+        rule.mainClock.autoAdvance = false
+        for ((key, code, name) in confirmKeys) {
             focus("a")
-            rule.onNodeWithTag("a").performKeyInput {
-                keyDown(key)
-            }
-            // Held: the system sends further ACTION_DOWN events with a repeat count.
+            val before = count
+            send("a", android.view.KeyEvent.ACTION_DOWN, code, key)
+            rule.mainClock.advanceTimeBy(300)
+            assertPressed("$name held: pressed")
+            // Held past the repeat delay: the system sends further ACTION_DOWN events with repeatCount > 0.
             for (repeat in 1..3) {
-                val code = (key.keyCode and 0xFFFFFFFFL).toInt()
-                rule.onNodeWithTag("a").performKeyPress(androidx.compose.ui.input.key.KeyEvent(
-                    android.view.KeyEvent(0L, 0L, android.view.KeyEvent.ACTION_DOWN, code, repeat)))
+                send("a", android.view.KeyEvent.ACTION_DOWN, code, key, repeat)
+                rule.mainClock.advanceTimeBy(60)
             }
-            rule.waitForIdle()
-            assertEquals("$key fires on key up, not on down/repeat", n, count)
-            rule.onNodeWithTag("a").performKeyInput { keyUp(key) }
-            rule.waitForIdle()
-            assertEquals("$key exactly once", n + 1, count)
+            assertPressed("$name still pressed while repeating")
+            assertEquals("$name fires on key up, not on down/repeat", before, count)
+            send("a", android.view.KeyEvent.ACTION_UP, code, key)
+            rule.mainClock.advanceTimeBy(300)
+            assertEquals("$name exactly once", before + 1, count)
+            assertResting("$name released after a repeated hold")
+            // A following ordinary tap neither sticks nor doubles.
+            send("a", android.view.KeyEvent.ACTION_DOWN, code, key); rule.mainClock.advanceTimeBy(200)
+            assertPressed("$name second tap pressed")
+            send("a", android.view.KeyEvent.ACTION_UP, code, key); rule.mainClock.advanceTimeBy(300)
+            assertEquals("$name second tap once", before + 2, count)
+            assertResting("$name second tap released")
         }
-        val before = count
-        repeat(5) { rule.onNodeWithTag("a").performKeyInput { keyDown(Key.ButtonA); keyUp(Key.ButtonA) } }
-        rule.waitForIdle()
-        assertEquals("five rapid presses are five activations, none lost, none doubled", before + 5, count)
+    }
+
+    @Test fun controllerAHeldAndReleasedSeparatelyFromClickableKeys() {
+        show()
+        rule.mainClock.autoAdvance = false
+        focus("a")
+        val code = android.view.KeyEvent.KEYCODE_BUTTON_A
+        send("a", android.view.KeyEvent.ACTION_DOWN, code, Key.ButtonA)
+        rule.mainClock.advanceTimeBy(1000)
+        assertPressed("A held 1 s: pressed")
+        assertEquals(0, count)
+        send("a", android.view.KeyEvent.ACTION_UP, code, Key.ButtonA)
+        rule.mainClock.advanceTimeBy(300)
+        assertEquals(1, count)
+        assertResting("A released")
+        repeat(5) {
+            send("a", android.view.KeyEvent.ACTION_DOWN, code, Key.ButtonA); send("a", android.view.KeyEvent.ACTION_UP, code, Key.ButtonA)
+        }
+        rule.mainClock.advanceTimeBy(300)
+        assertEquals("five rapid presses are five activations, none lost, none doubled", 6, count)
+        assertTrue(corner() < 40)
+    }
+
+    @Test fun pointerEdgeGesturesOnPressedFullWidthControlStillActivateOnceEach() {
+        showWide()
+        rule.mainClock.autoAdvance = false
+        fun node(tag: String) = rule.onNodeWithTag(tag).fetchSemanticsNode()
+        val rest = listOf("wtop", "w", "wbot").map { node(it).let { n -> n.size to n.boundsInRoot } }
+        val d = rule.density.density
+        val x0 = (16 * d).toInt() + 2; val yMid = ((16 + 100 + 50) * d).toInt()
+        // 0.3 dp / 0.8 dp inside each edge, 1 px of movement toward the inside, as a real thumb would produce.
+        val gestures: List<Triple<String, (Float, Float, Float) -> Offset, Offset>> = listOf(
+            Triple("left 0.3dp", { _, h, dp -> Offset(0.3f * dp, h / 2) }, Offset(1f, 0f)),
+            Triple("left 0.8dp", { _, h, dp -> Offset(0.8f * dp, h / 2) }, Offset(1f, 0f)),
+            Triple("right 0.3dp", { w, h, dp -> Offset(w - 0.3f * dp - 1f, h / 2) }, Offset(-1f, 0f)),
+            Triple("right 0.8dp", { w, h, dp -> Offset(w - 0.8f * dp - 1f, h / 2) }, Offset(-1f, 0f)),
+            Triple("top 0.3dp", { w, _, dp -> Offset(w / 2, 0.3f * dp) }, Offset(0f, 1f)),
+            Triple("bottom 0.3dp", { w, h, dp -> Offset(w / 2, h - 0.3f * dp - 1f) }, Offset(0f, -1f)),
+        )
+        for ((n, g) in gestures.withIndex()) {
+            val (name, start, move) = g
+            val before = wideClicks.intValue
+            rule.onNodeWithTag("w").performTouchInput { down(start(width.toFloat(), height.toFloat(), density)) }
+            rule.mainClock.advanceTimeBy(300)
+            // Pressed: content visibly smaller (white strip at the left of the control), box and neighbours unmoved.
+            assertTrue("$name pressed shows subtle feedback lum=${shot("col").lum(x0, yMid)}", shot("col").lum(x0, yMid) > 200)
+            rule.onNodeWithTag("w").performTouchInput { moveBy(move) }
+            rule.mainClock.advanceTimeBy(50)
+            val now = listOf("wtop", "w", "wbot").map { node(it).let { nd -> nd.size to nd.boundsInRoot } }
+            assertEquals("$name pressed layout size/bounds unchanged", rest, now)
+            rule.onNodeWithTag("w").performTouchInput { up() }
+            rule.mainClock.advanceTimeBy(300)
+            assertEquals("$name activates exactly once", before + 1, wideClicks.intValue)
+            assertEquals("$name must not activate a neighbour", 0, neighbourClicks.intValue)
+            assertTrue("$name released back to full size", shot("col").lum(x0, yMid) < 40)
+            assertEquals(n + 1, wideClicks.intValue)
+        }
     }
 
     @Test fun focusRingStaysAcrossFocusChangeAndSelectionIsUnchanged() {
@@ -161,10 +283,10 @@ class ShelfActionMotionUiTest {
         rule.mainClock.autoAdvance = false
         rule.onNodeWithTag("a").performTouchInput { down(center) }
         rule.mainClock.advanceTimeBy(300)
-        assertTrue("pressed control is drawn smaller lum=${corner()}", corner() > 200)
+        assertPressed("pressed control is drawn smaller")
         rule.onNodeWithTag("a").performTouchInput { up() }
         rule.mainClock.advanceTimeBy(400)
-        assertTrue("released control is back to full size lum=${corner()}", corner() < 40)
+        assertResting("released control is back to full size")
         assertEquals(1, count)
     }
 
@@ -173,15 +295,15 @@ class ShelfActionMotionUiTest {
         rule.mainClock.autoAdvance = false
         rule.onNodeWithTag("a").performTouchInput { down(center); cancel() }
         rule.mainClock.advanceTimeBy(400)
-        assertTrue("touch cancel restores size lum=${corner()}", corner() < 40)
+        assertResting("touch cancel restores size")
         assertEquals("a cancelled touch is not an activation", 0, count)
         focus("a")
         rule.onNodeWithTag("a").performKeyInput { keyDown(Key.ButtonA) }
         rule.mainClock.advanceTimeBy(300)
-        assertTrue("key held: pressed lum=${corner()}", corner() > 200)
+        assertPressed("key held: pressed")
         focus("b") // focus leaves mid-press: key-up will go elsewhere
         rule.mainClock.advanceTimeBy(400)
-        assertTrue("focus loss restores size lum=${corner()}", corner() < 40)
+        assertResting("focus loss restores size")
         assertEquals(0, count)
     }
 
@@ -199,37 +321,50 @@ class ShelfActionMotionUiTest {
         rule.onNodeWithTag("c").assertIsFocused()
     }
 
-    @Test fun removeAnimationsDropsScaleButKeepsRingAndActivation() {
+    private fun shell(c: String): String {
         val ui = InstrumentationRegistry.getInstrumentation().uiAutomation
-        fun shell(c: String) = android.os.ParcelFileDescriptor.AutoCloseInputStream(ui.executeShellCommand(c)).use { it.readBytes().decodeToString() }
+        return android.os.ParcelFileDescriptor.AutoCloseInputStream(ui.executeShellCommand(c)).use { it.readBytes().decodeToString() }
+    }
+
+    /**
+     * Sets the global animator scale and restores EXACTLY what was there: the prior string, or the key deleted when it was
+     * unset (never a hard-coded 1.0). Emulator only; if the test process dies abruptly the setting stays altered, so this
+     * must never be automated on a physical device.
+     */
+    private fun withAnimatorScale(value: String, block: () -> Unit) {
+        val fp = android.os.Build.FINGERPRINT + android.os.Build.HARDWARE + android.os.Build.PRODUCT
+        assumeTrue("global-setting mutation runs only on a disposable emulator",
+            fp.contains("generic") || fp.contains("ranchu") || fp.contains("goldfish") || fp.contains("sdk"))
         val previous = shell("settings get global animator_duration_scale").trim()
+        val wasUnset = previous.isEmpty() || previous == "null"
         try {
-            shell("settings put global animator_duration_scale 0")
-            show()
-            rule.mainClock.autoAdvance = false
-            rule.onNodeWithTag("a").performTouchInput { down(center) }
-            rule.mainClock.advanceTimeBy(300)
-            assertTrue("no decorative scale under Remove animations lum=${corner()}", corner() < 40)
-            rule.onNodeWithTag("a").performTouchInput { up() }
-            rule.mainClock.advanceTimeBy(50)
-            assertEquals(1, count)
+            shell("settings put global animator_duration_scale $value")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                // The platform propagates the setting asynchronously (observed up to ~2.5 s on API 35); wait for it, bounded.
+                val deadline = System.currentTimeMillis() + 6000
+                while (android.animation.ValueAnimator.areAnimatorsEnabled() && System.currentTimeMillis() < deadline) Thread.sleep(100)
+            }
+            block()
         } finally {
-            shell("settings put global animator_duration_scale ${previous.takeIf { it.isNotEmpty() && it != "null" } ?: "1.0"}")
+            if (wasUnset) shell("settings delete global animator_duration_scale") else shell("settings put global animator_duration_scale $previous")
         }
     }
 
-    @Test fun removeAnimationsKeepsFocusRingVisibleImmediately() {
-        val ui = InstrumentationRegistry.getInstrumentation().uiAutomation
-        fun shell(c: String) = android.os.ParcelFileDescriptor.AutoCloseInputStream(ui.executeShellCommand(c)).use { it.readBytes().decodeToString() }
-        val previous = shell("settings get global animator_duration_scale").trim()
-        try {
-            shell("settings put global animator_duration_scale 0")
-            show(fill = false)
-            rule.mainClock.autoAdvance = false
-            focus("a"); rule.mainClock.advanceTimeBy(16)
-            assertTrue("ring visible with no animation time elapsed lum=${shot("a").lum(1, 50)}", shot("a").lum(1, 50) < 90)
-        } finally {
-            shell("settings put global animator_duration_scale ${previous.takeIf { it.isNotEmpty() && it != "null" } ?: "1.0"}")
-        }
+    @Test fun removeAnimationsDropsScaleButKeepsRingAndActivation() = withAnimatorScale("0") {
+        show()
+        rule.mainClock.autoAdvance = false
+        rule.onNodeWithTag("a").performTouchInput { down(center) }
+        rule.mainClock.advanceTimeBy(300)
+        assertResting("no decorative scale under Remove animations")
+        rule.onNodeWithTag("a").performTouchInput { up() }
+        rule.mainClock.advanceTimeBy(50)
+        assertEquals(1, count)
+    }
+
+    @Test fun removeAnimationsKeepsFocusRingVisibleImmediately() = withAnimatorScale("0") {
+        show(fill = false)
+        rule.mainClock.autoAdvance = false
+        focus("a"); rule.mainClock.advanceTimeBy(16)
+        assertTrue("ring visible with no animation time elapsed lum=${shot("a").lum(1, 50)}", shot("a").lum(1, 50) < 90)
     }
 }

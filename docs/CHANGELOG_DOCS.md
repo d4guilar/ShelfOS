@@ -2650,3 +2650,7 @@ Decisions:
 ## Quiet Motion v1A (docs with code)
 
 - MOTION.md header and new §2.1 record exactly what shipped (press/release scale on `shelfAction`, new `ShelfMotion` prototype tokens, Reduced Motion handling) and what stays proposed, including why focus scale was rejected and the API 26+ live-setting caveat. Timings/easing remain owner decisions; the §9 device gate is open.
+
+## Quiet Motion v1A targeted QA remediation (2026-10-23)
+
+- MOTION.md §2/§2.1 now distinguish implemented v1A press/release (draw-only, inside `clickable`; first-DOWN-only manual key flag) from the still-proposed roles, state the 90/130 ms and 0.98 values are provisional pending owner sign-off, and record the bounded API 35 emulator Reduced Motion observation. DESIGN_SYSTEM §12 no longer claims decorative motion is unimplemented. VALIDATION corrects the unit-test count to 999 total / 998 passed / 1 skipped and adds the remediation record. Historic QA records are intact; hardware, performance and owner acceptance stay OPEN.

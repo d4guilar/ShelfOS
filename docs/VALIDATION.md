@@ -1,5 +1,32 @@
 # Validation
 
+## QUIET MOTION v1A — TARGETED QA REMEDIATION (2026-10-23, implemented / pending fresh independent delta QA)
+
+**Not accepted; no push/PR/merge; hardware, performance and owner visual acceptance remain OPEN.** Follow-up local commit on
+`phase-4.5/quiet-motion-v1a-shared-feedback` after independent QA found two HIGH regressions (stuck pressed look after key
+repeat; scale shrinking the pointer hit region at edges) and test defects. Disposable emulators only (`shelfos-phase0`
+API 35 `emulator-5570`, `shelfos-api24` `emulator-5572`, every command `-s`/`ANDROID_SERIAL`); the attached RP5 was not used.
+Instrumented classes ran one at a time.
+
+| Command / class | Tests | Result |
+| --- | --- | --- |
+| `ShelfActionMotionUiTest`, API 35 | 12 | 12 pass, 0 fail, 0 skipped |
+| `ShelfActionMotionUiTest`, API 24 | 12 | 1 pass (`layoutBoxAndNeighboursNeverMoveWhilePressedOrFocused`); 11 assumption-skipped (`captureToImage`/PixelCopy needs API 26; the XML records them as failure elements of `AssumptionViolatedException`, Gradle reports success). **Pixel-observed checks are therefore not covered on API 24.** |
+| `ShelfActionMotionUiTest` against the original `29f2f82` implementation (API 35, file temporarily swapped, then restored) | 12 | 10 pass, **2 fail as intended**: `confirmKeysHeldWithRepeatActivateOnceAndReturnToFullSize` (Enter stays pressed after repeat) and `pointerEdgeGesturesOnPressedFullWidthControlStillActivateOnceEach` (pressed bounds/hit region changed) |
+| `NavigationSmokeTest` API 35 | 28 | 28 pass |
+| `BottomNavigationLabelsUiTest` API 35 / API 24 | 4 / 4 | pass / pass |
+| `InputModalityClassificationTest` API 35 / API 24 | 10 / 10 | pass / pass |
+| `CoverPresentationUiTest` API 35 | 8 | 6 pass, 2 fail — the **pre-existing** `rendererShapesOriginalBoundsFocusAndGeneratedFallback` (590 vs 351) and `libraryGridKeepsSelectionScrollAndFocusAcrossPresentationChanges` (item-26 focus); identical on base per independent QA; not caused or fixed here |
+| `:app:testDebugUnitTest` | 999 | 998 pass, 1 skipped (`ProviderLabBridgeTest.scoreLabRecordsWithTheProductionMatcher`), 0 fail |
+| `:app:assembleDebug`, `:app:assembleDebugAndroidTest`, `:app:lintDebug` | — | pass; lint report 0 issues |
+
+Test hygiene: real `android.view.KeyEvent` (DOWN, repeatCount>0 DOWN, UP) is built and asserted to be the intended key
+(the previous `and 0xFFFFFFFFL` produced `KEYCODE_UNKNOWN`); the class enters keyboard mode with a real TAB before
+requesting focus; the animator-scale tests restore the exact prior value (or `settings delete` when it was unset), run only
+on emulator fingerprints, and still could leave the setting altered if the test process dies abruptly — never automate them
+on a physical device. **NOT MEASURED / OPEN:** dense-grid GPU performance (§9), RP5 physical A/D-pad, SM-T580, TalkBack,
+owner visual approval of 90/130 ms and 0.98.
+
 ## QUIET MOTION v1A — SHARED PRESS FEEDBACK (2026-10-22, implemented / pending independent review)
 
 **Not accepted, not merged; no performance claim.** Branch `phase-4.5/quiet-motion-v1a-shared-feedback` from `main`
@@ -8,7 +35,7 @@ SM-T580 were not used). Instrumented classes ran one at a time via `am instrumen
 
 | Command / class | Tests | Pass | Fail | Result | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `gradlew.bat :app:testDebugUnitTest` | 999 | 999 | 0 | PASS | no new unit tests |
+| `gradlew.bat :app:testDebugUnitTest` | 999 | 998 | 0 | PASS | no new unit tests; 1 skipped (corrected 2026-10-23: the earlier "999/999 pass" omitted the skip) |
 | `lintDebug` | — | — | — | PASS | 0 errors, 62 warnings; none in the touched files |
 | `ShelfActionMotionUiTest` (new) | 10 | 10 | 0 | PASS | one activation for touch/semantics OnClick, none when disabled; Enter, D-pad centre, controller A fire once on key-up despite repeats, 5 rapid presses = 5; ring present mid-animation and absent on `focusIndicator=false`; layout sizes and neighbours fixed, pressed box stays inside its resting box; scale applies and fully restores; touch cancel and focus loss clear the pressed look; fast traversal/taps settle; Remove animations (`animator_duration_scale 0`, restored in `finally`) gives no scale but ring and callback |
 | `BottomNavigationLabelsUiTest` | 4 | 4 | 0 | PASS | |
